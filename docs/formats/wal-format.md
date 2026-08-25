@@ -21,6 +21,6 @@ The minimum delete record is 36 bytes. An upsert record is
 
 Recovery requires strictly increasing, non-zero sequence numbers and an exact
 dimension match. If EOF occurs before a complete final header or record, that
-tail is ignored. Once a complete record is present, invalid magic, version,
+tail is ignored and the WAL is fsynced back to its last valid record boundary
+before new writes are accepted. Once a complete record is present, invalid magic, version,
 flags, operation, length, sequence, dimension, or CRC is corruption.
-

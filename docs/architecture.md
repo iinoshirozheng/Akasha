@@ -19,13 +19,37 @@ storage + compute + document + common
 ## Initial write path
 
 ```text
-validate -> WAL -> mutable memtable -> immutable segment -> manifest publish
+validate
+   -> assign sequence
+   -> append checksummed WAL record + fsync
+   -> latest-state MemTable
+   -> exact SIMD search
+
+flush
+   -> complete live snapshot segment + fsync
+   -> atomic segment rename + directory fsync
+   -> atomic manifest publish + directory fsync
 ```
 
 ## Initial read path
 
 ```text
-filter AST -> planner -> exact/ANN search -> exact rerank -> payload fetch
+manifest -> immutable snapshot -> newer WAL replay -> MemTable
+                                                   |
+query -> SIMD metric -> bounded Top-K <-------------+
 ```
 
-The first exact vector-search slice is implemented as a scalar correctness baseline. Metadata filters and crash-safe persistence are the next milestone. HNSW, hybrid search, Arrow interchange, GPU kernels, and distributed execution remain explicit future work.
+## Implemented storage boundary
+
+`PersistentCollection` is an embedded, single-writer engine. WAL, MemTable,
+segment, manifest, CRC32, and the filesystem durability boundary are all Mojo
+modules under `src/akasha/storage` and `src/akasha/api`. Recovery accepts only an
+incomplete final WAL record; it truncates that tail before another append.
+Complete checksum corruption fails open.
+
+Segments are full live-state snapshots in Phase 3. WAL rotation, obsolete
+segment cleanup, incremental segments, compaction, multi-process locking, and
+snapshot-isolated concurrent readers remain future storage work.
+
+Metadata filters, payload persistence, HNSW, hybrid search, Arrow interchange,
+GPU kernels, and distributed execution remain explicit future work.

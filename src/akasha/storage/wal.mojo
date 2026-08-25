@@ -7,6 +7,7 @@ from akasha.storage.filesystem import (
     append_file_sync,
     path_exists,
     read_file_bytes,
+    write_file_sync,
 )
 
 
@@ -88,6 +89,20 @@ def replay_wal(path: String, dimension: Int) raises -> List[WalRecord]:
         return List[WalRecord]()
     var bytes = read_file_bytes(path)
     return decode_wal_bytes(bytes^, dimension)
+
+
+def recover_wal(path: String, dimension: Int) raises -> List[WalRecord]:
+    """Replay a WAL and durably remove an accepted torn EOF tail."""
+    if not path_exists(path):
+        return List[WalRecord]()
+    var bytes = read_file_bytes(path)
+    var decode_copy = _copy_range(bytes, 0, len(bytes))
+    var records = decode_wal_bytes(decode_copy^, dimension)
+    var valid_length = _valid_prefix_length(bytes)
+    if valid_length < len(bytes):
+        var valid_bytes = _copy_range(bytes, 0, valid_length)
+        write_file_sync(path, valid_bytes)
+    return records^
 
 
 def decode_wal_bytes(
@@ -228,3 +243,16 @@ def _copy_range(bytes: List[UInt8], start: Int, end: Int) -> List[UInt8]:
     for index in range(start, end):
         result.append(bytes[index])
     return result^
+
+
+def _valid_prefix_length(bytes: List[UInt8]) -> Int:
+    var offset = 0
+    while offset < len(bytes):
+        var remaining = len(bytes) - offset
+        if remaining < _HEADER_SIZE:
+            break
+        var record_size = _read_u32_at(bytes, offset + 8)
+        if remaining < record_size:
+            break
+        offset += record_size
+    return offset

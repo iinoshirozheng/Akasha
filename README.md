@@ -1,6 +1,9 @@
 # AkashaDB
 
-AkashaDB is an experimental embedded document and vector database kernel written in Mojo. It currently provides validated scalar and CPU-SIMD `Float32` distance primitives plus a deterministic in-memory exact Top-K index, alongside the architectural boundaries for persistence and document filtering.
+AkashaDB is an experimental embedded vector database kernel written in Mojo. It
+provides validated CPU-SIMD `Float32` exact search and a crash-recoverable,
+single-writer storage engine built from a binary WAL, latest-state MemTable,
+immutable snapshot segments, and an atomic manifest.
 
 ## Requirements
 
@@ -15,6 +18,27 @@ pixi install
 pixi run test
 pixi run build
 pixi run smoke
+pixi run test-crash
+```
+
+Run the persistent collection example:
+
+```bash
+pixi run example-persistent
+```
+
+Minimal Mojo API:
+
+```mojo
+from akasha import PersistentCollection
+
+var collection = PersistentCollection.open("/tmp/my-vectors", 3)
+collection.upsert(42, [1.0, 0.0, 0.0])
+collection.flush()
+
+var reopened = PersistentCollection.open("/tmp/my-vectors", 3)
+var query: List[Float32] = [1.0, 0.0, 0.0]
+var results = reopened.search_cosine(query, 10)
 ```
 
 Run the exact-search microbenchmarks:
@@ -43,5 +67,12 @@ Implemented:
 - Input validation for empty, mismatched, non-finite, and zero-norm vectors.
 - An owning in-memory `FlatIndex` with one-pass bounded-heap Top-K selection.
 - Stable ascending point-ID tie-breaking for equal scores.
+- `PersistentCollection` upsert, delete, exact search, flush, and reopen.
+- Versioned little-endian WAL, segment, and manifest formats with CRC32.
+- WAL append fsync, immutable snapshot publication, and atomic manifest commit.
+- WAL-only and snapshot-plus-WAL recovery, including torn-tail repair.
 
-Next milestones are crash-safe local persistence and metadata filters. HNSW, hybrid retrieval, Arrow interchange, GPU kernels, and distributed execution remain deferred.
+Text chunks and images can already be embedded externally and stored as vectors.
+Persisting the original chunk text, image URI, and metadata payload is planned
+for Phase 4. WAL rotation, compaction, metadata filters, HNSW, hybrid retrieval,
+Arrow interchange, GPU kernels, and distributed execution remain deferred.

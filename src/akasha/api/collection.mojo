@@ -14,7 +14,7 @@ from akasha.storage.filesystem import (
 from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import read_segment, write_segment
-from akasha.storage.wal import append_wal, replay_wal, WalRecord
+from akasha.storage.wal import append_wal, recover_wal, WalRecord
 from std.math import isfinite
 
 
@@ -73,7 +73,7 @@ struct PersistentCollection:
                     values^,
                 )
 
-        var records = replay_wal(path + "/wal.bin", dimension)
+        var records = recover_wal(path + "/wal.bin", dimension)
         var last_sequence = snapshot_sequence
         for index in range(len(records)):
             if records[index].sequence <= snapshot_sequence:
