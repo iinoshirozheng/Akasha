@@ -1,3 +1,11 @@
+from akasha.document.record import (
+    clone_fields,
+    DocumentField,
+    DocumentRecord,
+    validate_fields,
+)
+
+
 struct MemTableEntry(Movable):
     """The newest known state for one point ID."""
 
@@ -5,6 +13,7 @@ struct MemTableEntry(Movable):
     var sequence: UInt64
     var tombstone: Bool
     var values: List[Float32]
+    var fields: List[DocumentField]
 
     def __init__(
         out self,
@@ -17,12 +26,31 @@ struct MemTableEntry(Movable):
         self.sequence = sequence
         self.tombstone = tombstone
         self.values = values^
+        self.fields = List[DocumentField]()
 
-    def clone(self) -> MemTableEntry:
-        var values = List[Float32](capacity=len(self.values))
-        for value in self.values:
-            values.append(value)
-        return MemTableEntry(self.id, self.sequence, self.tombstone, values^)
+    @staticmethod
+    def with_fields(
+        id: Int,
+        sequence: UInt64,
+        tombstone: Bool,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) raises -> MemTableEntry:
+        validate_fields(fields)
+        var entry = MemTableEntry(id, sequence, tombstone, values^)
+        entry.fields = fields^
+        return entry^
+
+    def clone(self) raises -> MemTableEntry:
+        var values = _clone_vector(self.values)
+        var fields = clone_fields(self.fields)
+        return MemTableEntry.with_fields(
+            self.id,
+            self.sequence,
+            self.tombstone,
+            values^,
+            fields^,
+        )
 
 
 struct MemTable:
@@ -45,10 +73,21 @@ struct MemTable:
     def apply_upsert(
         mut self, id: Int, sequence: UInt64, var values: List[Float32]
     ) raises:
+        var fields = List[DocumentField]()
+        self.apply_document_upsert(id, sequence, values^, fields^)
+
+    def apply_document_upsert(
+        mut self,
+        id: Int,
+        sequence: UInt64,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) raises:
         if sequence == 0:
             raise Error("memtable sequence must be positive")
         if len(values) != self.dimension:
             raise Error("vector dimension does not match memtable")
+        validate_fields(fields)
 
         self._advance_sequence(sequence)
         var index = self._find_index(id)
@@ -58,9 +97,12 @@ struct MemTable:
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = False
             self._entries[index].values = values^
+            self._entries[index].fields = fields^
             return
 
-        self._entries.append(MemTableEntry(id, sequence, False, values^))
+        self._entries.append(
+            MemTableEntry.with_fields(id, sequence, False, values^, fields^)
+        )
 
     def apply_delete(mut self, id: Int, sequence: UInt64) raises:
         if sequence == 0:
@@ -74,11 +116,26 @@ struct MemTable:
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = True
             self._entries[index].values = List[Float32]()
+            self._entries[index].fields = List[DocumentField]()
             return
 
         self._entries.append(MemTableEntry(id, sequence, True, List[Float32]()))
 
-    def live_entries(self) -> List[MemTableEntry]:
+    def get(self, id: Int) raises -> Optional[DocumentRecord]:
+        var index = self._find_index(id)
+        if index < 0 or self._entries[index].tombstone:
+            return Optional[DocumentRecord]()
+        var vector = _clone_vector(self._entries[index].values)
+        var fields = clone_fields(self._entries[index].fields)
+        var record = DocumentRecord(
+            id,
+            self._entries[index].sequence,
+            vector^,
+            fields^,
+        )
+        return Optional(record^)
+
+    def live_entries(self) raises -> List[MemTableEntry]:
         """Return owned live entries sorted by ascending point ID."""
         var result = List[MemTableEntry]()
         for index in range(len(self._entries)):
@@ -101,3 +158,10 @@ struct MemTable:
     def _advance_sequence(mut self, sequence: UInt64):
         if sequence > self.last_sequence:
             self.last_sequence = sequence
+
+
+def _clone_vector(values: List[Float32]) -> List[Float32]:
+    var result = List[Float32](capacity=len(values))
+    for value in values:
+        result.append(value)
+    return result^
