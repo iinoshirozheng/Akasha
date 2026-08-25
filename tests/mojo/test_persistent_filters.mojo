@@ -8,7 +8,7 @@ from akasha.storage.filesystem import (
     ensure_directory,
     remove_file_if_exists,
 )
-from std.testing import assert_equal, assert_raises, TestSuite
+from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
 
 def _reset(directory: String) raises:
@@ -142,6 +142,74 @@ def test_filtered_search_revalidates_mutated_conditions() raises:
 
     with assert_raises():
         _ = collection.search_dot_filtered(query, 1, conditions)
+
+
+def test_filtered_search_survives_wal_only_reopen_and_resolves_payload() raises:
+    var path = String("/tmp/akasha-phase4-filter-wal-reopen")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    var keep = _fields("keep", 9)
+    var drop = _fields("drop", 9)
+    collection.upsert_document(10, [2.0, 0.0], keep^)
+    collection.upsert_document(20, [3.0, 0.0], drop^)
+
+    var reopened = PersistentCollection.open(path, 2)
+    var conditions = List[FilterCondition]()
+    conditions.append(
+        FilterCondition.equal("category", PayloadValue.string("keep"))
+    )
+    var query: List[Float32] = [1.0, 0.0]
+    var results = reopened.search_dot_filtered(query, 1, conditions)
+    var document = reopened.get(results[0].id)
+
+    assert_equal(results[0].id, 10)
+    assert_true(Bool(document))
+    assert_equal(
+        document.value().get_field("category").value().as_string(), "keep"
+    )
+
+
+def test_filtered_search_survives_snapshot_reopen() raises:
+    var path = String("/tmp/akasha-phase4-filter-snapshot-reopen")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    var lower = _fields("keep", 2)
+    var higher = _fields("keep", 8)
+    collection.upsert_document(1, [3.0, 0.0], lower^)
+    collection.upsert_document(2, [1.0, 0.0], higher^)
+    collection.flush()
+
+    var reopened = PersistentCollection.open(path, 2)
+    var conditions = List[FilterCondition]()
+    conditions.append(
+        FilterCondition.greater_than("page", PayloadValue.integer(5))
+    )
+    var query: List[Float32] = [1.0, 0.0]
+    var results = reopened.search_dot_filtered(query, 2, conditions)
+
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 2)
+
+
+def test_vector_replacement_and_delete_remove_filter_candidates() raises:
+    var path = String("/tmp/akasha-phase4-filter-mutations")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    var replaced = _fields("keep", 1)
+    var deleted = _fields("keep", 1)
+    collection.upsert_document(1, [3.0], replaced^)
+    collection.upsert_document(2, [2.0], deleted^)
+    collection.upsert(1, [3.0])
+    collection.delete(2)
+
+    var conditions = List[FilterCondition]()
+    conditions.append(
+        FilterCondition.equal("category", PayloadValue.string("keep"))
+    )
+    var query: List[Float32] = [1.0]
+    var results = collection.search_dot_filtered(query, 2, conditions)
+
+    assert_equal(len(results), 0)
 
 
 def main() raises:
