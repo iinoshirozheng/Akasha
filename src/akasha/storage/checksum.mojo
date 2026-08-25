@@ -48,6 +48,9 @@ struct BinaryWriter:
     def write_f32(mut self, value: Float32):
         self.write_u32(bitcast[DType.uint32](value))
 
+    def write_f64(mut self, value: Float64):
+        self.write_u64(bitcast[DType.uint64](value))
+
     def write_bytes(mut self, values: List[UInt8]):
         for value in values:
             self._bytes.append(value)
@@ -109,6 +112,9 @@ struct BinaryReader:
 
     def read_f32(mut self) raises -> Float32:
         return bitcast[DType.float32](self.read_u32())
+
+    def read_f64(mut self) raises -> Float64:
+        return bitcast[DType.float64](self.read_u64())
 
     def read_bytes(mut self, count: Int) raises -> List[UInt8]:
         self._require(count)
