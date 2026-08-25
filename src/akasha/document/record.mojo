@@ -8,7 +8,7 @@ struct DocumentField(Movable):
     var value: PayloadValue
 
     def __init__(out self, name: String, var value: PayloadValue) raises:
-        _validate_field_name(name)
+        validate_field_name(name)
         self.name = String(copy=name)
         self.value = value^
 
@@ -60,13 +60,13 @@ def clone_fields(fields: List[DocumentField]) raises -> List[DocumentField]:
 
 def validate_fields(fields: List[DocumentField]) raises:
     for index in range(len(fields)):
-        _validate_field_name(fields[index].name)
+        validate_field_name(fields[index].name)
         for previous in range(index):
             if fields[index].name == fields[previous].name:
                 raise Error("document field names must be unique")
 
 
-def _validate_field_name(name: String) raises:
+def validate_field_name(name: String) raises:
     if name.byte_length() == 0:
         raise Error("document field name cannot be empty")
     for byte in name.bytes():

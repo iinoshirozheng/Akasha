@@ -51,6 +51,18 @@ struct PayloadValue(Movable):
     def kind(self) -> UInt8:
         return self._kind
 
+    def is_string(self) -> Bool:
+        return self._kind == _STRING_KIND
+
+    def is_integer(self) -> Bool:
+        return self._kind == _INT_KIND
+
+    def is_floating(self) -> Bool:
+        return self._kind == _FLOAT_KIND
+
+    def is_boolean(self) -> Bool:
+        return self._kind == _BOOL_KIND
+
     def as_string(self) raises -> String:
         if self._kind != _STRING_KIND:
             raise Error("payload value is not a string")
