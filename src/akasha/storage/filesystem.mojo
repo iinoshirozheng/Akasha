@@ -38,6 +38,23 @@ def remove_file_if_exists(path: String) raises:
         remove(path)
 
 
+def atomic_replace(source: String, destination: String) raises:
+    var source_path = source
+    var destination_path = destination
+    var result = external_call["rename", c_int](
+        source_path.as_c_string_slice(),
+        destination_path.as_c_string_slice(),
+    )
+    if result != 0:
+        raise Error("rename failed: " + String(get_errno()))
+
+
+def sync_directory(path: String) raises:
+    var directory = open(path, "r")
+    _sync_descriptor(directory.handle)
+    directory.close()
+
+
 def _sync_descriptor(descriptor: Int) raises:
     var result = external_call["fsync", c_int](c_int(descriptor))
     if result != 0:
