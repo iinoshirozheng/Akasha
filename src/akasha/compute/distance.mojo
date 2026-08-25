@@ -1,4 +1,4 @@
-from std.math import sqrt
+from std.math import isfinite, sqrt
 
 
 def _validate_pair(lhs: List[Float32], rhs: List[Float32]) raises:
@@ -6,6 +6,9 @@ def _validate_pair(lhs: List[Float32], rhs: List[Float32]) raises:
         raise Error("vectors must not be empty")
     if len(lhs) != len(rhs):
         raise Error("vector dimensions must match")
+    for i in range(len(lhs)):
+        if not isfinite(lhs[i]) or not isfinite(rhs[i]):
+            raise Error("vectors must contain only finite values")
 
 
 def dot_product(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:

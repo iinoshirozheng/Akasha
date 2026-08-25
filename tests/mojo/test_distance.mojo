@@ -3,6 +3,7 @@ from akasha.compute.distance import (
     dot_product,
     l2_squared_distance,
 )
+from std.math import inf, nan
 from std.testing import assert_almost_equal, assert_raises, TestSuite
 
 
@@ -46,6 +47,30 @@ def test_distance_rejects_empty_vectors() raises:
 def test_cosine_rejects_zero_norm_vectors() raises:
     var lhs: List[Float32] = [0.0, 0.0]
     var rhs: List[Float32] = [1.0, 0.0]
+
+    with assert_raises():
+        _ = cosine_similarity(lhs, rhs)
+
+
+def test_dot_product_rejects_nan() raises:
+    var lhs: List[Float32] = [1.0, nan[DType.float32]()]
+    var rhs: List[Float32] = [1.0, 2.0]
+
+    with assert_raises():
+        _ = dot_product(lhs, rhs)
+
+
+def test_l2_rejects_infinity() raises:
+    var lhs: List[Float32] = [1.0, inf[DType.float32]()]
+    var rhs: List[Float32] = [1.0, 2.0]
+
+    with assert_raises():
+        _ = l2_squared_distance(lhs, rhs)
+
+
+def test_cosine_rejects_negative_infinity() raises:
+    var lhs: List[Float32] = [1.0, -inf[DType.float32]()]
+    var rhs: List[Float32] = [1.0, 2.0]
 
     with assert_raises():
         _ = cosine_similarity(lhs, rhs)
