@@ -1,0 +1,1 @@
+# Future: background segment compaction.

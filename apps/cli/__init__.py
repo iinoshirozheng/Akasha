@@ -1,0 +1,1 @@
+"""AkashaDB command-line adapter."""

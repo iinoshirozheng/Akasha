@@ -1,0 +1,1 @@
+"""AkashaDB HTTP adapter."""

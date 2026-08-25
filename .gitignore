@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.pixi/
+.pytest_cache/
+__mojocache__/
+__pycache__/
+*.mojoc
+*.so
+.coverage
+htmlcov/
+benchmarks/datasets/*
+!benchmarks/datasets/README.md

@@ -1,0 +1,23 @@
+[workspace]
+authors = ["Ray <iinoshirozheng@gmail.com>"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
+name = "Akasha"
+platforms = ["osx-arm64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+test-mojo = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
+test-python = { cmd = "pytest tests/python -q", env = { PYTHONPATH = "python:." } }
+test = { depends-on = ["test-mojo", "test-python"] }
+build = "mojo build -I src examples/smoke.mojo -o .build/akasha-smoke"
+smoke = "mojo run -I src examples/smoke.mojo"
+serve = { cmd = "uvicorn apps.server.main:app --reload", env = { PYTHONPATH = "python:." } }
+
+[dependencies]
+mojo = ">=1.0.0,<2"
+python = "==3.11"
+fastapi = ">=0.141.1,<0.142"
+uvicorn = ">=0.52.4,<0.53"
+pytest = ">=9.1.1,<10"
+hypothesis = ">=6.165.10,<7"
+numpy = ">=2.4.6,<3"
