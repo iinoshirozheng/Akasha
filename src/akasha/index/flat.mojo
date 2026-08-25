@@ -1,8 +1,9 @@
-from akasha.compute.distance import (
-    cosine_similarity,
-    dot_product,
-    l2_squared_distance,
+from akasha.compute.simd import (
+    simd_cosine_similarity,
+    simd_dot_product,
+    simd_l2_squared_distance,
 )
+from akasha.compute.topk import BoundedTopK
 
 
 comptime _DOT_METRIC = 0
@@ -34,24 +35,10 @@ def _score(
     metric: Int, query: List[Float32], candidate: List[Float32]
 ) raises -> Float32:
     if metric == _DOT_METRIC:
-        return dot_product(query, candidate)
+        return simd_dot_product(query, candidate)
     if metric == _L2_METRIC:
-        return l2_squared_distance(query, candidate)
-    return cosine_similarity(query, candidate)
-
-
-def _is_better(
-    metric: Int,
-    score: Float32,
-    point_id: Int,
-    best_score: Float32,
-    best_id: Int,
-) -> Bool:
-    if score == best_score:
-        return point_id < best_id
-    if metric == _L2_METRIC:
-        return score < best_score
-    return score > best_score
+        return simd_l2_squared_distance(query, candidate)
+    return simd_cosine_similarity(query, candidate)
 
 
 struct FlatIndex:
@@ -102,36 +89,21 @@ struct FlatIndex:
         if result_count > len(self._records):
             result_count = len(self._records)
 
-        var selected = List[Bool]()
-        for _ in range(len(self._records)):
-            selected.append(False)
+        if result_count == 0:
+            return List[SearchResult]()
 
-        var results = List[SearchResult]()
-        for _ in range(result_count):
-            var best_index = -1
-            var best_id = 0
-            var best_score: Float32 = 0.0
+        var topk = BoundedTopK(
+            result_count, smaller_is_better=metric == _L2_METRIC
+        )
+        for record_index in range(len(self._records)):
+            topk.offer(
+                self._records[record_index].id,
+                _score(metric, query, self._records[record_index].values),
+            )
 
-            for record_index in range(len(self._records)):
-                if selected[record_index]:
-                    continue
-
-                var candidate_score = _score(
-                    metric, query, self._records[record_index].values
-                )
-                var candidate_id = self._records[record_index].id
-                if best_index == -1 or _is_better(
-                    metric,
-                    candidate_score,
-                    candidate_id,
-                    best_score,
-                    best_id,
-                ):
-                    best_index = record_index
-                    best_id = candidate_id
-                    best_score = candidate_score
-
-            selected[best_index] = True
-            results.append(SearchResult(best_id, best_score))
+        var entries = topk.sorted_entries()
+        var results = List[SearchResult](capacity=len(entries))
+        for entry in entries:
+            results.append(SearchResult(entry.id, entry.score))
 
         return results^

@@ -61,6 +61,22 @@ def test_search_limits_results_to_k() raises:
     assert_equal(results[0].id, 2)
 
 
+def test_large_search_replaces_heap_root_and_preserves_ties() raises:
+    var index = FlatIndex(5)
+    for point_id in range(32):
+        index.add(point_id, [Float32(point_id), 0.0, 0.0, 0.0, 0.0])
+    index.add(100, [100.0, 0.0, 0.0, 0.0, 0.0])
+    index.add(50, [100.0, 0.0, 0.0, 0.0, 0.0])
+    var query: List[Float32] = [1.0, 0.0, 0.0, 0.0, 0.0]
+
+    var results = index.search_dot(query, 4)
+
+    assert_equal(results[0].id, 50)
+    assert_equal(results[1].id, 100)
+    assert_equal(results[2].id, 31)
+    assert_equal(results[3].id, 30)
+
+
 def test_empty_index_returns_no_results() raises:
     var index = FlatIndex(2)
     var query: List[Float32] = [1.0, 0.0]
