@@ -27,19 +27,34 @@ Run the persistent collection example:
 pixi run example-persistent
 ```
 
-Minimal Mojo API:
+Store a vector with a flat typed document payload, then retrieve the complete
+document through a search result ID:
 
 ```mojo
-from akasha import PersistentCollection
+from akasha import DocumentField, PayloadValue, PersistentCollection
 
 var collection = PersistentCollection.open("/tmp/my-vectors", 3)
-collection.upsert(42, [1.0, 0.0, 0.0])
+var fields = List[DocumentField]()
+fields.append(
+    DocumentField("chunk_text", PayloadValue.string("Vector database notes"))
+)
+fields.append(DocumentField("page", PayloadValue.integer(7)))
+fields.append(DocumentField("verified", PayloadValue.boolean(True)))
+collection.upsert_document(42, [1.0, 0.0, 0.0], fields^)
 collection.flush()
 
 var reopened = PersistentCollection.open("/tmp/my-vectors", 3)
 var query: List[Float32] = [1.0, 0.0, 0.0]
 var results = reopened.search_cosine(query, 10)
+var document = reopened.get(results[0].id)
+var chunk = document.value().get_field("chunk_text").value().as_string()
 ```
+
+`upsert(id, vector)` remains available for vector-only records. The document
+API accepts at most 1,024 unique, non-empty field names and a 16 MiB encoded
+payload. Values are explicitly tagged as `String`, `Int64`, finite `Float64`,
+or `Bool`. `get(id)` returns an owned record containing its vector, sequence,
+and fields; deleted or unknown IDs return `None`.
 
 Run the exact-search microbenchmarks:
 
@@ -68,11 +83,19 @@ Implemented:
 - An owning in-memory `FlatIndex` with one-pass bounded-heap Top-K selection.
 - Stable ascending point-ID tie-breaking for equal scores.
 - `PersistentCollection` upsert, delete, exact search, flush, and reopen.
+- Atomic vector-plus-payload `upsert_document` and owned point lookup with
+  `get`.
+- Flat typed document fields for chunk text, image URIs, MIME types, and scalar
+  metadata.
 - Versioned little-endian WAL, segment, and manifest formats with CRC32.
 - WAL append fsync, immutable snapshot publication, and atomic manifest commit.
 - WAL-only and snapshot-plus-WAL recovery, including torn-tail repair.
+- Backward-compatible WAL and segment readers for Phase 3 version 1 data;
+  subsequent writes and snapshots use payload-aware version 2 formats.
 
-Text chunks and images can already be embedded externally and stored as vectors.
-Persisting the original chunk text, image URI, and metadata payload is planned
-for Phase 4. WAL rotation, compaction, metadata filters, HNSW, hybrid retrieval,
-Arrow interchange, GPU kernels, and distributed execution remain deferred.
+Text and image bytes are not embedded by the database: callers generate vectors
+externally and may persist the original text or an image URI as fields. Metadata
+filtering is the Phase 4.2 boundary; current search retrieves vector candidates
+first and callers resolve their payloads with `get`. WAL rotation, compaction,
+HNSW, hybrid retrieval, Arrow interchange, GPU kernels, and distributed
+execution remain deferred.

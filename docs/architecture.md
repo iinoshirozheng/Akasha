@@ -19,14 +19,14 @@ storage + compute + document + common
 ## Initial write path
 
 ```text
-validate
+validate vector + flat typed fields
    -> assign sequence
-   -> append checksummed WAL record + fsync
-   -> latest-state MemTable
+   -> append atomic vector-plus-payload WAL v2 record + fsync
+   -> latest complete document in MemTable
    -> exact SIMD search
 
 flush
-   -> complete live snapshot segment + fsync
+   -> complete live vector-plus-payload segment v2 + fsync
    -> atomic segment rename + directory fsync
    -> atomic manifest publish + directory fsync
 ```
@@ -34,9 +34,11 @@ flush
 ## Initial read path
 
 ```text
-manifest -> immutable snapshot -> newer WAL replay -> MemTable
-                                                   |
-query -> SIMD metric -> bounded Top-K <-------------+
+manifest -> v1/v2 snapshot -> newer v1/v2 WAL replay -> MemTable
+                                                         |
+query -> SIMD metric -> bounded Top-K IDs <---------------+
+                              |
+                              +-> get(ID) -> owned document
 ```
 
 ## Implemented storage boundary
@@ -47,9 +49,18 @@ modules under `src/akasha/storage` and `src/akasha/api`. Recovery accepts only a
 incomplete final WAL record; it truncates that tail before another append.
 Complete checksum corruption fails open.
 
+WAL and segment writers emit version 2 records that store the vector and its
+encoded payload as one checksummed unit. Readers also accept Phase 3 version 1
+vector-only records and expose them with an empty field list; a later flush
+publishes a version 2 snapshot. Payloads are flat ordered fields with unique,
+non-empty names. Supported values are String, Int64, finite Float64, and Bool,
+with a maximum of 1,024 fields and 16 MiB encoded payload per document.
+
 Segments are full live-state snapshots in Phase 3. WAL rotation, obsolete
 segment cleanup, incremental segments, compaction, multi-process locking, and
 snapshot-isolated concurrent readers remain future storage work.
 
-Metadata filters, payload persistence, HNSW, hybrid search, Arrow interchange,
-GPU kernels, and distributed execution remain explicit future work.
+Metadata filters remain the Phase 4.2 boundary: exact vector search currently
+returns lightweight IDs and scores, and `get` resolves the latest owned payload.
+HNSW, hybrid search, Arrow interchange, GPU kernels, and distributed execution
+remain explicit future work.
