@@ -9,9 +9,11 @@ version = "0.1.0"
 test-mojo = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
 test-python = { cmd = "pytest tests/python -q", env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
-build = "mojo build -I src examples/smoke.mojo -o .build/akasha-smoke"
+build = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke"
 smoke = "mojo run -I src examples/smoke.mojo"
 serve = { cmd = "uvicorn apps.server.main:app --reload", env = { PYTHONPATH = "python:." } }
+bench-distance = "mojo run -I src benchmarks/mojo/distance_bench.mojo"
+bench-flat = "mojo run -I src benchmarks/mojo/flat_bench.mojo"
 
 [dependencies]
 mojo = ">=1.0.0,<2"

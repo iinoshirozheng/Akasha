@@ -1,6 +1,6 @@
 # AkashaDB
 
-AkashaDB is an experimental embedded document and vector database kernel written in Mojo. It currently provides validated `Float32` distance primitives and a deterministic in-memory exact Top-K index, alongside the architectural boundaries for persistence and document filtering.
+AkashaDB is an experimental embedded document and vector database kernel written in Mojo. It currently provides validated scalar and CPU-SIMD `Float32` distance primitives plus a deterministic in-memory exact Top-K index, alongside the architectural boundaries for persistence and document filtering.
 
 ## Requirements
 
@@ -15,6 +15,13 @@ pixi install
 pixi run test
 pixi run build
 pixi run smoke
+```
+
+Run the exact-search microbenchmarks:
+
+```bash
+pixi run bench-distance
+pixi run bench-flat
 ```
 
 Run the development-only HTTP adapter:
@@ -32,8 +39,9 @@ The Mojo kernel under `src/akasha` never depends on Python or FastAPI. Language 
 Implemented:
 
 - Dot product, squared L2 distance, and cosine similarity.
-- Input validation for empty, mismatched, and zero-norm vectors.
-- An owning in-memory `FlatIndex` with deterministic Top-K ordering.
+- Scalar correctness-oracle and hardware-width CPU SIMD kernels.
+- Input validation for empty, mismatched, non-finite, and zero-norm vectors.
+- An owning in-memory `FlatIndex` with one-pass bounded-heap Top-K selection.
 - Stable ascending point-ID tie-breaking for equal scores.
 
-Next milestones are metadata filters and crash-safe local persistence. HNSW, hybrid retrieval, Arrow interchange, GPU kernels, and distributed execution remain deferred.
+Next milestones are crash-safe local persistence and metadata filters. HNSW, hybrid retrieval, Arrow interchange, GPU kernels, and distributed execution remain deferred.

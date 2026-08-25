@@ -9,9 +9,7 @@ struct TopKEntry(TrivialRegisterPassable, Writable):
         self.score = score
 
 
-def _is_better(
-    lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool
-) -> Bool:
+def _is_better(lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool) -> Bool:
     if lhs.score == rhs.score:
         return lhs.id < rhs.id
     if smaller_is_better:
@@ -19,9 +17,7 @@ def _is_better(
     return lhs.score > rhs.score
 
 
-def _is_worse(
-    lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool
-) -> Bool:
+def _is_worse(lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool) -> Bool:
     return _is_better(rhs, lhs, smaller_is_better)
 
 

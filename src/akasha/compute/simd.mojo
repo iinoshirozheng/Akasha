@@ -13,9 +13,9 @@ def _dot_kernel[width: Int](lhs: List[Float32], rhs: List[Float32]) -> Float32:
     var offset = 0
 
     while offset + width <= len(lhs):
-        lanes += lhs_ptr.unsafe_load[width=width](
-            offset
-        ) * rhs_ptr.unsafe_load[width=width](offset)
+        lanes += lhs_ptr.unsafe_load[width=width](offset) * rhs_ptr.unsafe_load[
+            width=width
+        ](offset)
         offset += width
 
     var total = lanes.reduce_add()
@@ -46,9 +46,7 @@ def _l2_kernel[width: Int](lhs: List[Float32], rhs: List[Float32]) -> Float32:
     return total
 
 
-def simd_dot_product(
-    lhs: List[Float32], rhs: List[Float32]
-) raises -> Float32:
+def simd_dot_product(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:
     """Return a hardware-width SIMD dot-product score."""
     _validate_pair(lhs, rhs)
     return _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)

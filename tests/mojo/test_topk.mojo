@@ -1,5 +1,10 @@
 from akasha.compute.topk import BoundedTopK
-from std.testing import assert_almost_equal, assert_equal, assert_raises, TestSuite
+from std.testing import (
+    assert_almost_equal,
+    assert_equal,
+    assert_raises,
+    TestSuite,
+)
 
 
 def test_larger_scores_replace_worst_entry() raises:
