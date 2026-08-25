@@ -1,6 +1,7 @@
 from akasha import (
     DocumentField,
     dot_product,
+    FilterCondition,
     FlatIndex,
     PayloadValue,
     simd_dot_product,
@@ -25,6 +26,13 @@ def test_root_package_exports_document_types() raises:
 
     assert_equal(field.name, "chunk")
     assert_equal(field.value.as_string(), "hello")
+
+
+def test_root_package_exports_filter_condition() raises:
+    var condition = FilterCondition.equal("page", PayloadValue.integer(7))
+
+    assert_equal(condition.name, "page")
+    assert_equal(condition.value.as_int(), Int64(7))
 
 
 def main() raises:

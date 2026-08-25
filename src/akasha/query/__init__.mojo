@@ -1,1 +1,1 @@
-# Query representation, planning, and execution.
+from .filter_ast import FilterCondition

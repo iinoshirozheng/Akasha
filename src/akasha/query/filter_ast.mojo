@@ -22,20 +22,7 @@ struct FilterCondition(Movable):
         operator_kind: UInt8,
         var value: PayloadValue,
     ) raises:
-        validate_field_name(name)
-        if operator_kind < Self.EQUAL or operator_kind > Self.GREATER_OR_EQUAL:
-            raise Error("unknown filter operator")
-        if not (
-            value.is_string()
-            or value.is_integer()
-            or value.is_floating()
-            or value.is_boolean()
-        ):
-            raise Error("unknown filter value kind")
-        if operator_kind >= Self.LESS_THAN and (
-            value.is_string() or value.is_boolean()
-        ):
-            raise Error("range filters require an integer or float value")
+        _validate_condition(name, operator_kind, value)
         self.name = String(copy=name)
         self._operator_kind = operator_kind
         self.value = value^
@@ -77,9 +64,34 @@ struct FilterCondition(Movable):
     def operator_kind(self) -> UInt8:
         return self._operator_kind
 
+    def validate(self) raises:
+        _validate_condition(self.name, self._operator_kind, self.value)
+
     def clone(self) raises -> FilterCondition:
         return FilterCondition(
             self.name,
             self._operator_kind,
             self.value.clone(),
         )
+
+
+def _validate_condition(
+    name: String, operator_kind: UInt8, value: PayloadValue
+) raises:
+    validate_field_name(name)
+    if (
+        operator_kind < FilterCondition.EQUAL
+        or operator_kind > FilterCondition.GREATER_OR_EQUAL
+    ):
+        raise Error("unknown filter operator")
+    if not (
+        value.is_string()
+        or value.is_integer()
+        or value.is_floating()
+        or value.is_boolean()
+    ):
+        raise Error("unknown filter value kind")
+    if operator_kind >= FilterCondition.LESS_THAN and (
+        value.is_string() or value.is_boolean()
+    ):
+        raise Error("range filters require an integer or float value")

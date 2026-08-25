@@ -10,6 +10,8 @@ from akasha.document.record import (
     DocumentRecord,
 )
 from akasha.index.flat import SearchResult
+from akasha.query.evaluator import matches_all
+from akasha.query.filter_ast import FilterCondition
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -144,17 +146,44 @@ struct PersistentCollection:
     def search_dot(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _DOT_METRIC)
+        var conditions = List[FilterCondition]()
+        return self._search_filtered(query, k, _DOT_METRIC, conditions)
 
     def search_l2(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _L2_METRIC)
+        var conditions = List[FilterCondition]()
+        return self._search_filtered(query, k, _L2_METRIC, conditions)
 
     def search_cosine(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _COSINE_METRIC)
+        var conditions = List[FilterCondition]()
+        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+
+    def search_dot_filtered(
+        self,
+        query: List[Float32],
+        k: Int,
+        conditions: List[FilterCondition],
+    ) raises -> List[SearchResult]:
+        return self._search_filtered(query, k, _DOT_METRIC, conditions)
+
+    def search_l2_filtered(
+        self,
+        query: List[Float32],
+        k: Int,
+        conditions: List[FilterCondition],
+    ) raises -> List[SearchResult]:
+        return self._search_filtered(query, k, _L2_METRIC, conditions)
+
+    def search_cosine_filtered(
+        self,
+        query: List[Float32],
+        k: Int,
+        conditions: List[FilterCondition],
+    ) raises -> List[SearchResult]:
+        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
 
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
@@ -178,12 +207,18 @@ struct PersistentCollection:
         )
         publish_manifest(self.path, manifest)
 
-    def _search(
-        self, query: List[Float32], k: Int, metric: Int
+    def _search_filtered(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
         self._validate_vector(query)
         if k <= 0:
             raise Error("k must be positive")
+        for index in range(len(conditions)):
+            conditions[index].validate()
         var entries = self._memtable.live_entries()
         if len(entries) == 0:
             return List[SearchResult]()
@@ -195,6 +230,8 @@ struct PersistentCollection:
             result_count, smaller_is_better=metric == _L2_METRIC
         )
         for index in range(len(entries)):
+            if not matches_all(entries[index].fields, conditions):
+                continue
             var score: Float32
             if metric == _DOT_METRIC:
                 score = simd_dot_product(query, entries[index].values)
