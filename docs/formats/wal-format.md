@@ -1,12 +1,13 @@
-# WAL Binary Format v1
+# WAL Binary Formats v1 and v2
 
 Akasha stores `wal.bin` as concatenated, little-endian records. The format is
-append-only in Phase 3.
+append-only, and each record carries its own version so a WAL may contain v1 and
+v2 records during an online upgrade.
 
 | Offset | Size | Field |
 | ---: | ---: | --- |
 | 0 | 4 | Magic ASCII `AKWL` |
-| 4 | 2 | Version (`1`) |
+| 4 | 2 | Version (`1` or `2`) |
 | 6 | 1 | Operation (`1` upsert, `2` delete) |
 | 7 | 1 | Flags (must be `0`) |
 | 8 | 4 | Total record length, including checksum |
@@ -14,10 +15,25 @@ append-only in Phase 3.
 | 20 | 8 | Signed point ID |
 | 28 | 4 | Collection dimension |
 | 32 | `dimension * 4` or `0` | Upsert `Float32` values; empty for delete |
-| final 4 | 4 | CRC32 of bytes `[4, final 4)` |
 
-The minimum delete record is 36 bytes. An upsert record is
-`36 + dimension * 4` bytes. Integers and IEEE-754 values are little-endian.
+Version 1 ends with the four-byte CRC32 immediately after the vector. Its
+minimum delete record is 36 bytes and an upsert is
+`36 + dimension * 4` bytes.
+
+Version 2 appends these fields before the final CRC32:
+
+| Size | Field |
+| ---: | --- |
+| 4 | Encoded payload byte length |
+| variable | Typed payload bytes; empty for delete |
+| 4 | CRC32 of bytes `[4, final 4)` |
+
+New vector-only upserts contain the four-byte empty payload encoding. New
+document upserts contain the payload format documented by the document codec.
+A v2 delete has a zero payload length and is 40 bytes. New writes always use
+version 2; recovered version 1 upserts have an empty field list.
+
+Integers and IEEE-754 values are little-endian.
 
 Recovery requires strictly increasing, non-zero sequence numbers and an exact
 dimension match. If EOF occurs before a complete final header or record, that

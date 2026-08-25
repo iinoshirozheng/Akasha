@@ -1,3 +1,5 @@
+from akasha.document import DocumentField, PayloadValue
+from akasha.storage.checksum import crc32_range
 from akasha.storage.filesystem import (
     append_file_sync,
     remove_file_if_exists,
@@ -7,6 +9,7 @@ from akasha.storage.wal import (
     append_wal,
     decode_wal_bytes,
     encode_delete,
+    encode_document_upsert,
     encode_upsert,
     replay_wal,
     WalRecord,
@@ -86,6 +89,45 @@ def test_dimension_mismatch_and_sequence_regression_are_rejected() raises:
         combined.append(byte)
     with assert_raises():
         _ = decode_wal_bytes(combined^, 1)
+
+
+def test_wal_v2_round_trips_document_and_vector_only_payloads() raises:
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("chunk", PayloadValue.string("hello")))
+    fields.append(DocumentField("page", PayloadValue.integer(3)))
+    var document = encode_document_upsert(1, 42, 2, [1.0, 2.0], fields)
+    var vector_only = encode_upsert(2, 7, 2, [3.0, 4.0])
+    var deleted = encode_delete(3, 42, 2)
+    var combined = List[UInt8]()
+    for byte in document:
+        combined.append(byte)
+    for byte in vector_only:
+        combined.append(byte)
+    for byte in deleted:
+        combined.append(byte)
+
+    var records = decode_wal_bytes(combined^, 2)
+
+    assert_equal(len(records), 3)
+    assert_equal(records[0].fields[0].value.as_string(), "hello")
+    assert_equal(records[0].fields[1].value.as_int(), Int64(3))
+    assert_equal(len(records[1].fields), 0)
+    assert_equal(len(records[2].fields), 0)
+
+
+def test_wal_v2_rejects_malformed_payload_with_valid_record_crc() raises:
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("x", PayloadValue.boolean(True)))
+    var bytes = encode_document_upsert(1, 1, 1, [1.0], fields)
+    bytes[48] = 2  # Invalid Bool body inside the length-prefixed payload.
+    var checksum = crc32_range(bytes, 4, len(bytes) - 4)
+    for byte_index in range(4):
+        bytes[len(bytes) - 4 + byte_index] = UInt8(
+            checksum >> UInt32(byte_index * 8)
+        )
+
+    with assert_raises():
+        _ = decode_wal_bytes(bytes^, 1)
 
 
 def main() raises:

@@ -1,3 +1,9 @@
+from akasha.document.codec import (
+    decode_payload,
+    encode_payload,
+    MAX_PAYLOAD_BYTES,
+)
+from akasha.document.record import DocumentField
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
@@ -15,7 +21,8 @@ comptime _MAGIC_0 = UInt8(0x41)  # A
 comptime _MAGIC_1 = UInt8(0x4B)  # K
 comptime _MAGIC_2 = UInt8(0x57)  # W
 comptime _MAGIC_3 = UInt8(0x4C)  # L
-comptime _VERSION = UInt16(1)
+comptime _VERSION_V1 = UInt16(1)
+comptime _VERSION_V2 = UInt16(2)
 comptime _UPSERT = UInt8(1)
 comptime _DELETE = UInt8(2)
 comptime _HEADER_SIZE = 32
@@ -29,6 +36,7 @@ struct WalRecord(Movable):
     var id: Int
     var is_delete: Bool
     var values: List[Float32]
+    var fields: List[DocumentField]
 
     def __init__(
         out self,
@@ -41,6 +49,19 @@ struct WalRecord(Movable):
         self.id = id
         self.is_delete = is_delete
         self.values = values^
+        self.fields = List[DocumentField]()
+
+    @staticmethod
+    def with_fields(
+        sequence: UInt64,
+        id: Int,
+        is_delete: Bool,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) -> WalRecord:
+        var record = WalRecord(sequence, id, is_delete, values^)
+        record.fields = fields^
+        return record^
 
     @staticmethod
     def upsert(
@@ -52,6 +73,15 @@ struct WalRecord(Movable):
     def delete(sequence: UInt64, id: Int) -> WalRecord:
         return WalRecord(sequence, id, True, List[Float32]())
 
+    @staticmethod
+    def document_upsert(
+        sequence: UInt64,
+        id: Int,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) -> WalRecord:
+        return WalRecord.with_fields(sequence, id, False, values^, fields^)
+
 
 def encode_upsert(
     sequence: UInt64,
@@ -61,7 +91,20 @@ def encode_upsert(
 ) raises -> List[UInt8]:
     if dimension <= 0 or len(values) != dimension:
         raise Error("WAL upsert dimension mismatch")
-    return _encode_record(sequence, id, dimension, _UPSERT, values)
+    var fields = List[DocumentField]()
+    return _encode_record(sequence, id, dimension, _UPSERT, values, fields)
+
+
+def encode_document_upsert(
+    sequence: UInt64,
+    id: Int,
+    dimension: Int,
+    values: List[Float32],
+    fields: List[DocumentField],
+) raises -> List[UInt8]:
+    if dimension <= 0 or len(values) != dimension:
+        raise Error("WAL upsert dimension mismatch")
+    return _encode_record(sequence, id, dimension, _UPSERT, values, fields)
 
 
 def encode_delete(
@@ -70,7 +113,8 @@ def encode_delete(
     if dimension <= 0:
         raise Error("WAL dimension must be positive")
     var empty = List[Float32]()
-    return _encode_record(sequence, id, dimension, _DELETE, empty)
+    var fields = List[DocumentField]()
+    return _encode_record(sequence, id, dimension, _DELETE, empty, fields)
 
 
 def append_wal(path: String, dimension: Int, record: WalRecord) raises:
@@ -78,8 +122,12 @@ def append_wal(path: String, dimension: Int, record: WalRecord) raises:
     if record.is_delete:
         bytes = encode_delete(record.sequence, record.id, dimension)
     else:
-        bytes = encode_upsert(
-            record.sequence, record.id, dimension, record.values
+        bytes = encode_document_upsert(
+            record.sequence,
+            record.id,
+            dimension,
+            record.values,
+            record.fields,
         )
     append_file_sync(path, bytes)
 
@@ -114,7 +162,7 @@ def decode_wal_bytes(
     var records = List[WalRecord]()
     var offset = 0
     var previous_sequence = UInt64(0)
-    var maximum_size = _MIN_RECORD_SIZE + dimension * 4
+    var maximum_size = 40 + dimension * 4 + MAX_PAYLOAD_BYTES
 
     while offset < len(bytes):
         var remaining = len(bytes) - offset
@@ -146,18 +194,24 @@ def _encode_record(
     dimension: Int,
     operation: UInt8,
     values: List[Float32],
+    fields: List[DocumentField],
 ) raises -> List[UInt8]:
     if sequence == 0:
         raise Error("WAL sequence must be positive")
-    var payload_size = 0 if operation == _DELETE else dimension * 4
-    var record_size = _MIN_RECORD_SIZE + payload_size
+    var payload = List[UInt8]()
+    if operation == _UPSERT:
+        payload = encode_payload(fields)
+    elif len(fields) != 0:
+        raise Error("WAL delete cannot contain fields")
+    var vector_size = 0 if operation == _DELETE else dimension * 4
+    var record_size = 40 + vector_size + len(payload)
 
     var writer = BinaryWriter()
     writer.write_u8(_MAGIC_0)
     writer.write_u8(_MAGIC_1)
     writer.write_u8(_MAGIC_2)
     writer.write_u8(_MAGIC_3)
-    writer.write_u16(_VERSION)
+    writer.write_u16(_VERSION_V2)
     writer.write_u8(operation)
     writer.write_u8(0)
     writer.write_u32(UInt32(record_size))
@@ -167,6 +221,8 @@ def _encode_record(
     if operation == _UPSERT:
         for value in values:
             writer.write_f32(value)
+    writer.write_u32(UInt32(len(payload)))
+    writer.write_bytes(payload)
 
     var body = writer.take_bytes()
     var checksum = crc32_range(body, 4, len(body))
@@ -192,7 +248,8 @@ def _decode_record(
         or reader.read_u8() != _MAGIC_3
     ):
         raise Error("invalid WAL record magic")
-    if reader.read_u16() != _VERSION:
+    var version = reader.read_u16()
+    if version != _VERSION_V1 and version != _VERSION_V2:
         raise Error("unsupported WAL version")
     var operation = reader.read_u8()
     if operation != _UPSERT and operation != _DELETE:
@@ -214,10 +271,20 @@ def _decode_record(
     if operation == _UPSERT:
         for _ in range(dimension):
             values.append(reader.read_f32())
+    var fields = List[DocumentField]()
+    if version == _VERSION_V2:
+        var payload_length = Int(reader.read_u32())
+        if operation == _DELETE and payload_length != 0:
+            raise Error("WAL delete cannot contain payload")
+        var payload = reader.read_bytes(payload_length)
+        if operation == _UPSERT:
+            fields = decode_payload(payload^)
     _ = reader.read_u32()
     if reader.remaining() != 0:
         raise Error("unexpected WAL payload")
-    return WalRecord(sequence, id, operation == _DELETE, values^)
+    return WalRecord.with_fields(
+        sequence, id, operation == _DELETE, values^, fields^
+    )
 
 
 def _has_magic(bytes: List[UInt8], offset: Int) -> Bool:
