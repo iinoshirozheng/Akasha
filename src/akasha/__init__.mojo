@@ -7,4 +7,5 @@ from .compute import (
     simd_dot_product,
     simd_l2_squared_distance,
 )
+from .document import DocumentField, DocumentRecord, PayloadValue
 from .index import FlatIndex, SearchResult

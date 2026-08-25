@@ -4,6 +4,11 @@ from akasha.compute.simd import (
     simd_l2_squared_distance,
 )
 from akasha.compute.topk import BoundedTopK
+from akasha.document.record import (
+    clone_fields,
+    DocumentField,
+    DocumentRecord,
+)
 from akasha.index.flat import SearchResult
 from akasha.storage.filesystem import (
     atomic_replace,
@@ -67,10 +72,12 @@ struct PersistentCollection:
             snapshot_sequence = manifest.last_sequence
             for index in range(len(snapshot.entries)):
                 var values = _clone_vector(snapshot.entries[index].values)
-                memtable.apply_upsert(
+                var fields = clone_fields(snapshot.entries[index].fields)
+                memtable.apply_document_upsert(
                     snapshot.entries[index].id,
                     snapshot.entries[index].sequence,
                     values^,
+                    fields^,
                 )
 
         var records = recover_wal(path + "/wal.bin", dimension)
@@ -84,8 +91,12 @@ struct PersistentCollection:
                 )
             else:
                 var values = _clone_vector(records[index].values)
-                memtable.apply_upsert(
-                    records[index].id, records[index].sequence, values^
+                var fields = clone_fields(records[index].fields)
+                memtable.apply_document_upsert(
+                    records[index].id,
+                    records[index].sequence,
+                    values^,
+                    fields^,
                 )
             last_sequence = records[index].sequence
 
@@ -102,6 +113,26 @@ struct PersistentCollection:
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
         self._last_sequence = sequence
+
+    def upsert_document(
+        mut self,
+        id: Int,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) raises:
+        self._validate_vector(values)
+        var sequence = self._next_sequence()
+        var wal_values = _clone_vector(values)
+        var wal_fields = clone_fields(fields)
+        var record = WalRecord.document_upsert(
+            sequence, id, wal_values^, wal_fields^
+        )
+        append_wal(self._wal_path, self.dimension, record)
+        self._memtable.apply_document_upsert(id, sequence, values^, fields^)
+        self._last_sequence = sequence
+
+    def get(self, id: Int) raises -> Optional[DocumentRecord]:
+        return self._memtable.get(id)
 
     def delete(mut self, id: Int) raises:
         var sequence = self._next_sequence()
