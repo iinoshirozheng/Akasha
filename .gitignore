@@ -2,6 +2,7 @@
 .build/
 .pixi/
 .pytest_cache/
+.worktrees/
 __mojocache__/
 __pycache__/
 *.mojoc
