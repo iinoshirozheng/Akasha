@@ -31,7 +31,12 @@ Store a vector with a flat typed document payload, then retrieve the complete
 document through a search result ID:
 
 ```mojo
-from akasha import DocumentField, PayloadValue, PersistentCollection
+from akasha import (
+    DocumentField,
+    FilterCondition,
+    PayloadValue,
+    PersistentCollection,
+)
 
 var collection = PersistentCollection.open("/tmp/my-vectors", 3)
 var fields = List[DocumentField]()
@@ -45,7 +50,11 @@ collection.flush()
 
 var reopened = PersistentCollection.open("/tmp/my-vectors", 3)
 var query: List[Float32] = [1.0, 0.0, 0.0]
-var results = reopened.search_cosine(query, 10)
+var conditions = List[FilterCondition]()
+conditions.append(
+    FilterCondition.greater_or_equal("page", PayloadValue.integer(5))
+)
+var results = reopened.search_cosine_filtered(query, 10, conditions)
 var document = reopened.get(results[0].id)
 var chunk = document.value().get_field("chunk_text").value().as_string()
 ```
@@ -55,6 +64,13 @@ API accepts at most 1,024 unique, non-empty field names and a 16 MiB encoded
 payload. Values are explicitly tagged as `String`, `Int64`, finite `Float64`,
 or `Bool`. `get(id)` returns an owned record containing its vector, sequence,
 and fields; deleted or unknown IDs return `None`.
+
+Typed metadata filters are available for dot-product, squared-L2, and cosine
+search through `search_*_filtered`. Conditions are combined with AND and run
+before vector scoring. String and Bool support `==` and `!=`; Int64 and finite
+Float64 additionally support `<`, `<=`, `>`, and `>=`. Missing fields and type
+mismatches do not match, including inequality. Phase 4.2 performs a linear
+payload scan without a metadata index.
 
 Run the exact-search microbenchmarks:
 
@@ -92,10 +108,12 @@ Implemented:
 - WAL-only and snapshot-plus-WAL recovery, including torn-tail repair.
 - Backward-compatible WAL and segment readers for Phase 3 version 1 data;
   subsequent writes and snapshots use payload-aware version 2 formats.
+- Strict typed AND metadata filters evaluated before exact SIMD scoring for all
+  three vector metrics.
 
 Text and image bytes are not embedded by the database: callers generate vectors
-externally and may persist the original text or an image URI as fields. Metadata
-filtering is the Phase 4.2 boundary; current search retrieves vector candidates
-first and callers resolve their payloads with `get`. WAL rotation, compaction,
-HNSW, hybrid retrieval, Arrow interchange, GPU kernels, and distributed
-execution remain deferred.
+externally and may persist the original text or an image URI as fields. Filtered
+search returns candidate IDs and scores; callers resolve payloads with `get`.
+OR/NOT expressions, metadata indexes, WAL rotation, compaction, HNSW, hybrid
+retrieval, Arrow interchange, GPU kernels, and distributed execution remain
+deferred.

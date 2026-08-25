@@ -1,7 +1,7 @@
 # Query model
 
-Status: exact vector retrieval and point document lookup implemented; filtering
-and hybrid retrieval planned.
+Status: exact vector retrieval, strict typed AND filtering, and point document
+lookup implemented; hybrid retrieval planned.
 
 The current Mojo API exposes exact dot-product, squared-L2, and cosine Top-K
 searches through `FlatIndex` and `PersistentCollection`. Scores remain in their
@@ -17,9 +17,15 @@ scalar metadata. Vector-only `upsert` replaces the record with empty fields;
 `upsert_document` atomically replaces both vector and payload; delete makes
 `get` return `None`.
 
-Phase 4.2 will introduce field predicates and define whether filtering happens
-before or after vector scoring. Until then, filtering is deliberately not part
-of the storage API. The future query model will separate vector retrieval,
-document filtering, result fusion, exact reranking, projection, and limits. The
-planner will choose between filtered exact search and approximate search based
-on candidate selectivity.
+`search_dot_filtered`, `search_l2_filtered`, and `search_cosine_filtered` accept
+a list of `FilterCondition` values combined with AND. Conditions run before
+vector scoring. String and Bool support equality and inequality; Int64 and
+finite Float64 also support range comparisons. A missing field or different
+payload type never matches, including for `!=`. An empty condition list is
+equivalent to unfiltered search.
+
+Phase 4.2 uses a linear payload scan and does not persist filter state or a
+metadata index, so v1/v2 storage compatibility is unchanged. The future query
+model will add OR/NOT expression trees, indexed candidate generation, result
+fusion, exact reranking, projection, and limits. A planner can later choose
+between filtered exact search and approximate search based on selectivity.

@@ -36,9 +36,9 @@ flush
 ```text
 manifest -> v1/v2 snapshot -> newer v1/v2 WAL replay -> MemTable
                                                          |
-query -> SIMD metric -> bounded Top-K IDs <---------------+
-                              |
-                              +-> get(ID) -> owned document
+query -> typed AND filter -> SIMD metric -> bounded Top-K IDs
+                                                         |
+                              get(ID) -> owned document <-+
 ```
 
 ## Implemented storage boundary
@@ -60,7 +60,10 @@ Segments are full live-state snapshots in Phase 3. WAL rotation, obsolete
 segment cleanup, incremental segments, compaction, multi-process locking, and
 snapshot-isolated concurrent readers remain future storage work.
 
-Metadata filters remain the Phase 4.2 boundary: exact vector search currently
+Phase 4.2 evaluates strict typed AND conditions against each live payload before
+SIMD scoring. Missing fields and type mismatches do not match. There is no
+metadata index yet, so a filtered exact query scans live documents and performs
+linear field lookup; WAL, Segment, and Manifest formats are unchanged. Search
 returns lightweight IDs and scores, and `get` resolves the latest owned payload.
-HNSW, hybrid search, Arrow interchange, GPU kernels, and distributed execution
-remain explicit future work.
+OR/NOT expressions, metadata indexes, HNSW, hybrid search, Arrow interchange,
+GPU kernels, and distributed execution remain explicit future work.
