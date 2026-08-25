@@ -1,4 +1,4 @@
-from .api import DatabaseConfig
+from .api import DatabaseConfig, PersistentCollection
 from .compute import (
     cosine_similarity,
     dot_product,
