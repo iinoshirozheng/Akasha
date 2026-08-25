@@ -1,3 +1,5 @@
+from akasha.document.codec import decode_payload, encode_payload
+from akasha.document.record import DocumentField
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
@@ -11,7 +13,8 @@ comptime _MAGIC_0 = UInt8(0x41)  # A
 comptime _MAGIC_1 = UInt8(0x4B)  # K
 comptime _MAGIC_2 = UInt8(0x53)  # S
 comptime _MAGIC_3 = UInt8(0x47)  # G
-comptime _VERSION = UInt16(1)
+comptime _VERSION_V1 = UInt16(1)
+comptime _VERSION_V2 = UInt16(2)
 comptime _FIXED_SIZE = 32
 
 
@@ -66,7 +69,7 @@ def encode_segment(
     writer.write_u8(_MAGIC_1)
     writer.write_u8(_MAGIC_2)
     writer.write_u8(_MAGIC_3)
-    writer.write_u16(_VERSION)
+    writer.write_u16(_VERSION_V2)
     writer.write_u16(0)
     writer.write_u32(UInt32(dimension))
     writer.write_u64(UInt64(len(entries)))
@@ -76,6 +79,9 @@ def encode_segment(
         writer.write_u64(entries[index].sequence)
         for value in entries[index].values:
             writer.write_f32(value)
+        var payload = encode_payload(entries[index].fields)
+        writer.write_u32(UInt32(len(payload)))
+        writer.write_bytes(payload)
 
     var body = writer.take_bytes()
     var checksum = crc32_range(body, 4, len(body))
@@ -106,7 +112,8 @@ def decode_segment_bytes(
         or reader.read_u8() != _MAGIC_3
     ):
         raise Error("invalid segment magic")
-    if reader.read_u16() != _VERSION:
+    var version = reader.read_u16()
+    if version != _VERSION_V1 and version != _VERSION_V2:
         raise Error("unsupported segment version")
     if reader.read_u16() != 0:
         raise Error("unsupported segment flags")
@@ -118,9 +125,16 @@ def decode_segment_bytes(
         raise Error("segment record count is too large")
     var record_count = Int(record_count_u64)
     var last_sequence = reader.read_u64()
-    var record_size = 16 + dimension * 4
-    if _FIXED_SIZE + record_count * record_size != encoded_size:
-        raise Error("segment length mismatch")
+    var v1_record_size = 16 + dimension * 4
+    if version == _VERSION_V1:
+        if _FIXED_SIZE + record_count * v1_record_size != encoded_size:
+            raise Error("segment length mismatch")
+    else:
+        var minimum_record_size = 20 + dimension * 4
+        if record_count_u64 > UInt64(
+            (encoded_size - _FIXED_SIZE) // minimum_record_size
+        ):
+            raise Error("segment record count exceeds file length")
     if record_count > 0 and last_sequence == 0:
         raise Error("invalid segment sequence")
 
@@ -137,7 +151,14 @@ def decode_segment_bytes(
         var values = List[Float32](capacity=dimension)
         for _ in range(dimension):
             values.append(reader.read_f32())
-        entries.append(MemTableEntry(id, sequence, False, values^))
+        var fields = List[DocumentField]()
+        if version == _VERSION_V2:
+            var payload_length = Int(reader.read_u32())
+            var payload = reader.read_bytes(payload_length)
+            fields = decode_payload(payload^)
+        entries.append(
+            MemTableEntry.with_fields(id, sequence, False, values^, fields^)
+        )
 
     _ = reader.read_u32()
     if reader.remaining() != 0:
