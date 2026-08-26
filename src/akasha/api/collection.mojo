@@ -406,7 +406,7 @@ struct PersistentCollection:
         var source_checksum = authoritative_index_checksum(memtable)
         var hnsw_load = _load_hnsw_cache(
             path,
-            dimension,
+            config,
             cache_generation,
             last_sequence,
             source_checksum,
@@ -1547,7 +1547,7 @@ struct PersistentCollection:
     def _ensure_hnsw(mut self) raises:
         if not self._hnsw_dirty:
             return
-        var rebuilt = _build_hnsw(self._memtable, self._config.dimension)
+        var rebuilt = _build_hnsw(self._memtable, self._config)
         self._hnsw = rebuilt^
         self._hnsw_dirty = False
         self._publish_index_caches_best_effort()
@@ -1682,8 +1682,10 @@ def _raise_config_mismatch(
     )
 
 
-def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:
-    var index = HnswIndex(dimension)
+def _build_hnsw(
+    memtable: MemTable, config: CollectionConfig
+) raises -> HnswIndex:
+    var index = HnswIndex(config)
     var entries = memtable.live_entries()
     for entry_index in range(len(entries)):
         index.add(entries[entry_index].id, entries[entry_index].values)
@@ -1715,8 +1717,8 @@ struct _HnswCacheLoad(Movable):
         self.hit = hit
 
     def take_index(mut self) raises -> HnswIndex:
-        var dimension = self.index.dimension
-        var replacement = HnswIndex(dimension)
+        var config = self.index.config.copy()
+        var replacement = HnswIndex(config)
         var result = self.index^
         self.index = replacement^
         return result^
@@ -1739,7 +1741,7 @@ struct _MetadataCacheLoad(Movable):
 
 def _load_hnsw_cache(
     path: String,
-    dimension: Int,
+    config: CollectionConfig,
     generation: UInt64,
     sequence: UInt64,
     source_checksum: UInt32,
@@ -1748,7 +1750,7 @@ def _load_hnsw_cache(
     var cached = load_cache_payload(
         path + "/hnsw.cache",
         CACHE_HNSW_KIND,
-        dimension,
+        config.dimension,
         generation,
         sequence,
         source_checksum,
@@ -1756,15 +1758,15 @@ def _load_hnsw_cache(
     if Bool(cached):
         try:
             var payload = cached.value().copy()
-            var decoded = HnswIndex.decode_cache_payload(
-                dimension, payload^
+            var decoded = HnswIndex.decode_cache_payload_with_config(
+                config, payload^
             )
             if decoded.point_count() != len(memtable.live_entries()):
                 raise Error("HNSW cache live point count mismatch")
             return _HnswCacheLoad(decoded^, True)
         except:
             pass
-    var empty = HnswIndex(dimension)
+    var empty = HnswIndex(config)
     return _HnswCacheLoad(empty^, False)
 
 

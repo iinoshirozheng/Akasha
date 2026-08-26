@@ -1,7 +1,9 @@
 from akasha import (
+    CollectionConfig,
     DocumentField,
     FilterCondition,
     FilterExpression,
+    MetricKind,
     PayloadValue,
     PersistentCollection,
 )
@@ -25,6 +27,8 @@ from std.testing import assert_equal, assert_false, assert_true, TestSuite
 def _reset(path: String) raises:
     ensure_directory(path)
     for name in [
+        "collection.bin",
+        "collection.bin.tmp",
         "manifest.bin",
         "manifest.bin.tmp",
         "wal.bin",
@@ -58,6 +62,17 @@ def _expression() raises -> FilterExpression:
     )
 
 
+def _cache_config(dimension: Int) -> CollectionConfig:
+    var config = CollectionConfig.defaults(dimension)
+    config.m = 2
+    config.m0 = 2
+    config.ef_construction = 16
+    config.default_ef_search = 8
+    config.max_ef_search = 128
+    config.max_level = 4
+    return config^
+
+
 def _legacy_two_point_hnsw_payload() -> List[UInt8]:
     var writer = BinaryWriter()
     writer.write_u16(UInt16(2))
@@ -87,7 +102,8 @@ def _legacy_two_point_hnsw_payload() -> List[UInt8]:
 def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     var path = String("/tmp/akasha-phase12-persisted-cache")
     _reset(path)
-    var collection = PersistentCollection.open(path, 2)
+    var config = _cache_config(2)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 81):
         var fields = List[DocumentField]()
         fields.append(
@@ -104,7 +120,7 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     assert_true(path_exists(path + "/metadata.cache"))
     collection.close()
 
-    var reopened = PersistentCollection.open(path, 2)
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_true(reopened.hnsw_cache_hit())
     assert_true(reopened.metadata_cache_hit())
     var actual = reopened.search_l2_approx([1.0, 2.0], 3, 80)
@@ -120,9 +136,10 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
 
 def test_corrupt_or_stale_caches_rebuild_without_losing_queries() raises:
     var path = String("/tmp/akasha-phase12-persisted-cache")
+    var config = _cache_config(2)
     write_file_sync(path + "/hnsw.cache", [UInt8(0), UInt8(1)])
     write_file_sync(path + "/metadata.cache", [UInt8(0), UInt8(1)])
-    var reopened = PersistentCollection.open(path, 2)
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_false(reopened.hnsw_cache_hit())
     assert_false(reopened.metadata_cache_hit())
     assert_equal(
@@ -137,7 +154,7 @@ def test_corrupt_or_stale_caches_rebuild_without_losing_queries() raises:
     reopened.upsert(81, [100.0, 1.0])
     reopened.close()
 
-    var stale = PersistentCollection.open(path, 2)
+    var stale = PersistentCollection.open_with_config(path, config.copy())
     assert_false(stale.hnsw_cache_hit())
     assert_false(stale.metadata_cache_hit())
     assert_equal(stale.search_dot([1.0, 0.0], 1)[0].id, 81)
@@ -147,7 +164,8 @@ def test_corrupt_or_stale_caches_rebuild_without_losing_queries() raises:
 def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
     var path = String("/tmp/akasha-phase13-legacy-hnsw-cache")
     _reset(path)
-    var collection = PersistentCollection.open(path, 1)
+    var config = _cache_config(1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
     collection.upsert(10, [1.0])
     collection.upsert(20, [2.0])
     _ = collection.search_l2_approx([1.1], 1, 8)
@@ -168,8 +186,82 @@ def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
     )
     publish_cache(path, "hnsw.cache", artifact)
 
-    var reopened = PersistentCollection.open(path, 1)
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_true(reopened.hnsw_cache_hit())
+    assert_equal(reopened.search_l2_approx([1.1], 1, 8)[0].id, 10)
+    reopened.close()
+
+
+def test_nonlossless_collection_identity_does_not_publish_hnsw_cache() raises:
+    var path = String("/tmp/akasha-phase13-nonlossless-hnsw-cache")
+    _reset(path)
+    var config = CollectionConfig.defaults(1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    for id in range(1, 81):
+        collection.upsert(id, [Float32(id)])
+    assert_equal(collection.search_l2_approx([80.0], 1, 32)[0].id, 80)
+    collection.flush()
+    assert_false(path_exists(path + "/hnsw.cache"))
+    collection.close()
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_false(reopened.hnsw_cache_hit())
+    assert_equal(reopened.search_l2_approx([80.0], 1, 32)[0].id, 80)
+    reopened.close()
+
+
+def test_non_l2_collection_builds_bound_graph_without_lossy_cache() raises:
+    var path = String("/tmp/akasha-phase13-dot-bound-hnsw")
+    _reset(path)
+    var config = _cache_config(1)
+    config.ann_metric = MetricKind.dot()
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    for id in range(1, 81):
+        collection.upsert(id, [Float32(id)])
+    assert_equal(collection.search_dot_approx([1.0], 1, 32)[0].id, 80)
+    collection.flush()
+    assert_false(path_exists(path + "/hnsw.cache"))
+    collection.close()
+
+
+def test_crc_valid_hostile_legacy_cache_is_a_safe_miss() raises:
+    var path = String("/tmp/akasha-phase13-hostile-hnsw-cache")
+    _reset(path)
+    var config = _cache_config(1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    collection.upsert(10, [1.0])
+    collection.upsert(20, [2.0])
+    _ = collection.search_l2_approx([1.1], 1, 8)
+    collection.flush()
+    collection.close()
+    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
+
+    var writer = BinaryWriter()
+    writer.write_u16(UInt16.MAX)
+    writer.write_u16(UInt16(1))
+    writer.write_u32(UInt32(1))
+    writer.write_i64(Int64(0))
+    writer.write_i64(Int64(0))
+    writer.write_i64(Int64(10))
+    writer.write_u16(UInt16(0))
+    writer.write_u16(UInt16(0))
+    writer.write_f32(1.0)
+    writer.write_u16(UInt16(0))
+    writer.write_u16(UInt16(0))
+    var hostile = writer.take_bytes()
+    var artifact = CacheArtifact(
+        CACHE_HNSW_KIND,
+        1,
+        current.generation,
+        current.sequence,
+        current.source_checksum,
+        hostile^,
+    )
+    # publish_cache gives the hostile payload a valid outer CRC/envelope.
+    publish_cache(path, "hnsw.cache", artifact)
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_false(reopened.hnsw_cache_hit())
     assert_equal(reopened.search_l2_approx([1.1], 1, 8)[0].id, 10)
     reopened.close()
 

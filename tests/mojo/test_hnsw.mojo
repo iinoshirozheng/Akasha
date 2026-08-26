@@ -4,6 +4,7 @@ from std.testing import (
     assert_almost_equal,
     assert_equal,
     assert_raises,
+    assert_true,
     TestSuite,
 )
 
@@ -66,8 +67,15 @@ def test_legacy_constructor_is_l2_only_and_rejects_metric_mismatch() raises:
     index.add(2, [2.0])
 
     assert_equal(index.search_l2([1.1], 1, 8)[0].id, 1)
-    with assert_raises():
+    var message = String()
+    try:
         _ = index.search_dot([1.0], 1, 8)
+    except error:
+        message = String(error)
+    assert_equal(
+        message,
+        "HNSW metric mismatch: graph is bound to l2 but search requested dot",
+    )
     with assert_raises():
         _ = index.search_cosine([1.0], 1, 8)
 
@@ -95,6 +103,9 @@ def test_hnsw_validates_configuration_vectors_and_search() raises:
     var index = HnswIndex(2)
     with assert_raises():
         index.add(1, [1.0])
+    assert_equal(index.point_count(), 0)
+    assert_true(index.valid)
+    assert_true(index.graph.is_valid())
     index.add(1, [1.0, 0.0])
     with assert_raises():
         _ = index.search_l2([1.0], 1, 8)
@@ -107,6 +118,29 @@ def test_hnsw_validates_configuration_vectors_and_search() raises:
 def test_empty_standard_index_is_structurally_valid() raises:
     var index = HnswIndex(_config(2, MetricKind.l2()))
     index.validate_structure()
+
+
+def test_huge_k_clamps_to_actual_points_and_configured_ef_limit() raises:
+    var index = HnswIndex(_config(1, MetricKind.l2()))
+    for id in range(1, 5):
+        index.add(id, [Float32(id)])
+
+    var huge = index.search([2.5], Int.MAX, ef_search=1)
+    assert_equal(len(huge), 4)
+    assert_equal(index.last_search_effective_ef(), 4)
+
+    var above_max = index.search([2.5], 129, ef_search=1)
+    assert_equal(len(above_max), 4)
+    assert_equal(index.last_search_effective_ef(), 4)
+
+    var bounded_config = _config(1, MetricKind.l2())
+    bounded_config.default_ef_search = 4
+    bounded_config.max_ef_search = 4
+    var bounded = HnswIndex(bounded_config)
+    for id in range(1, 6):
+        bounded.add(id, [Float32(id)])
+    with assert_raises():
+        _ = bounded.search([2.5], 5, ef_search=1)
 
 
 def main() raises:

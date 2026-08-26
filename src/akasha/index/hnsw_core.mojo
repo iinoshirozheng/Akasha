@@ -303,10 +303,41 @@ def validate_bidirectional_links(graph: HnswStorage) raises:
     if not graph.is_valid():
         raise Error("HNSW graph is marked invalid")
     graph.validate_structure()
+    var maximum_level = -1
     for index in range(graph.slot_count()):
         var slot = UInt32(index)
-        for level in range(graph.level(slot) + 1):
-            _validate_link_level(graph, slot, level)
+        var level = graph.level(slot)
+        if level > maximum_level:
+            maximum_level = level
+    # Validate one level at a time. UInt32 slot pairs pack injectively into a
+    # UInt64 key, avoiding both quadratic reverse scans and per-edge strings.
+    for level in range(maximum_level + 1):
+        var edges = Dict[UInt64, Bool]()
+        for index in range(graph.slot_count()):
+            var slot = UInt32(index)
+            if graph.level(slot) < level:
+                continue
+            var count = graph.neighbor_count(slot, level)
+            if count > graph.level_capacity(slot, level):
+                raise Error("HNSW touched adjacency exceeds level capacity")
+            for edge_index in range(count):
+                var neighbor = graph.neighbor_at(slot, level, edge_index)
+                if graph.level(neighbor) < level:
+                    raise Error("HNSW edge target does not own graph level")
+                var key = (UInt64(slot) << UInt64(32)) | UInt64(neighbor)
+                edges[key] = True
+        for index in range(graph.slot_count()):
+            var slot = UInt32(index)
+            if graph.level(slot) < level:
+                continue
+            var count = graph.neighbor_count(slot, level)
+            for edge_index in range(count):
+                var neighbor = graph.neighbor_at(slot, level, edge_index)
+                var reverse = (
+                    (UInt64(neighbor) << UInt64(32)) | UInt64(slot)
+                )
+                if reverse not in edges:
+                    raise Error("HNSW graph contains an asymmetric edge")
 
 
 def connect_bidirectional(

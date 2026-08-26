@@ -2,7 +2,13 @@ from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_level import sample_level
 from akasha.storage.checksum import BinaryWriter
-from std.testing import assert_equal, assert_true, TestSuite
+from std.testing import (
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+    TestSuite,
+)
 
 
 def _config(ef_construction: Int = 24) -> CollectionConfig:
@@ -151,6 +157,229 @@ def test_legacy_cache_accepts_prototype_m_one_and_zero_max_level() raises:
     for offset in range(len(expected)):
         assert_equal(encoded[offset], expected[offset])
     assert_equal(index.search_l2([3.0], 1, 1)[0].id, 7)
+
+
+def _decode_error(var payload: List[UInt8]) -> String:
+    try:
+        _ = HnswIndex.decode_cache_payload(1, payload^)
+    except error:
+        return String(error)
+    return ""
+
+
+def test_cache_preflight_rejects_maximum_degree_allocation_amplification() raises:
+    var writer = BinaryWriter()
+    writer.write_u16(UInt16.MAX)
+    writer.write_u16(UInt16(1))
+    writer.write_u32(UInt32(1))
+    writer.write_i64(Int64(0))
+    writer.write_i64(Int64(0))
+    writer.write_i64(Int64(7))
+    writer.write_u16(UInt16(0))
+    writer.write_u16(UInt16(0))
+    writer.write_f32(3.0)
+    writer.write_u16(UInt16(0))
+    writer.write_u16(UInt16(0))
+    var payload = writer.take_bytes()
+
+    assert_equal(
+        _decode_error(payload^),
+        "HNSW cache estimated allocation exceeds amplification limit",
+    )
+
+
+def test_cache_preflight_rejects_maximum_level_before_append() raises:
+    var writer = BinaryWriter()
+    writer.write_u16(UInt16(1))
+    writer.write_u16(UInt16.MAX)
+    writer.write_u32(UInt32(1))
+    writer.write_i64(Int64(0))
+    writer.write_i64(Int64(Int(UInt16.MAX)))
+    writer.write_i64(Int64(7))
+    writer.write_u16(UInt16.MAX)
+    writer.write_u16(UInt16(0))
+    writer.write_f32(3.0)
+    # Deliberately omit 65,536 level headers: preflight must reject the
+    # estimated packed allocation instead of appending and then seeing EOF.
+    var payload = writer.take_bytes()
+
+    assert_equal(
+        _decode_error(payload^),
+        "HNSW cache estimated allocation exceeds amplification limit",
+    )
+
+
+def _two_node_cache(
+    first_level: Int,
+    second_level: Int,
+    entry_index: Int,
+    first_level_zero: List[UInt32],
+    first_level_one: List[UInt32],
+    second_level_zero: List[UInt32],
+) -> List[UInt8]:
+    var writer = BinaryWriter()
+    writer.write_u16(UInt16(4))
+    writer.write_u16(UInt16(4))
+    writer.write_u32(UInt32(2))
+    writer.write_i64(Int64(entry_index))
+    var entry_level = first_level if entry_index == 0 else second_level
+    writer.write_i64(Int64(entry_level))
+    writer.write_i64(Int64(10))
+    writer.write_u16(UInt16(first_level))
+    writer.write_u16(UInt16(0))
+    writer.write_f32(1.0)
+    writer.write_u16(UInt16(len(first_level_zero)))
+    writer.write_u16(UInt16(0))
+    for neighbor in first_level_zero:
+        writer.write_u32(neighbor)
+    if first_level > 0:
+        writer.write_u16(UInt16(len(first_level_one)))
+        writer.write_u16(UInt16(0))
+        for neighbor in first_level_one:
+            writer.write_u32(neighbor)
+    writer.write_i64(Int64(20))
+    writer.write_u16(UInt16(second_level))
+    writer.write_u16(UInt16(0))
+    writer.write_f32(2.0)
+    writer.write_u16(UInt16(len(second_level_zero)))
+    writer.write_u16(UInt16(0))
+    for neighbor in second_level_zero:
+        writer.write_u32(neighbor)
+    if second_level > 0:
+        writer.write_u16(UInt16(0))
+        writer.write_u16(UInt16(0))
+    return writer.take_bytes()
+
+
+def test_cache_rejects_asymmetry_and_target_level_mismatch() raises:
+    var one: List[UInt32] = [UInt32(1)]
+    var none = List[UInt32]()
+    var asymmetric = _two_node_cache(0, 0, 0, one, none, none)
+    assert_equal(
+        _decode_error(asymmetric^),
+        "HNSW graph contains an asymmetric edge",
+    )
+
+    var upper: List[UInt32] = [UInt32(1)]
+    var reciprocal: List[UInt32] = [UInt32(0)]
+    var wrong_level = _two_node_cache(
+        1, 0, 0, one, upper, reciprocal
+    )
+    assert_equal(
+        _decode_error(wrong_level^),
+        "HNSW edge target does not own graph level",
+    )
+
+
+def test_cache_rejects_nonhighest_entry_duplicate_and_self_edges() raises:
+    var none = List[UInt32]()
+    var nonhighest = _two_node_cache(0, 1, 0, none, none, none)
+    assert_equal(
+        _decode_error(nonhighest^),
+        "HNSW cache entry point is not on the highest graph level",
+    )
+
+    var duplicates: List[UInt32] = [UInt32(1), UInt32(1)]
+    var reciprocal: List[UInt32] = [UInt32(0)]
+    var duplicate = _two_node_cache(
+        0, 0, 0, duplicates, none, reciprocal
+    )
+    assert_equal(
+        _decode_error(duplicate^),
+        "HNSW cache neighbor list contains a duplicate",
+    )
+
+    var self_edge: List[UInt32] = [UInt32(0)]
+    var self_payload = _two_node_cache(
+        0, 0, 0, self_edge, none, none
+    )
+    assert_equal(
+        _decode_error(self_payload^),
+        "HNSW cache self edges are not allowed",
+    )
+
+
+def test_config_mutation_is_rejected_before_append_without_quarantine() raises:
+    var config = _config()
+    var index = HnswIndex(config)
+    var first = _point(1)
+    index.add(1, first^)
+    var before_distances = index.build_distance_evaluations()
+    index.config.m = 5
+
+    var second = _point(2)
+    with assert_raises():
+        index.add(2, second^)
+    assert_equal(index.point_count(), 1)
+    assert_equal(index.build_distance_evaluations(), before_distances)
+    assert_true(index.valid)
+    assert_true(index.graph.is_valid())
+
+
+def test_post_append_internal_failure_quarantines_and_preserves_stats() raises:
+    var index = HnswIndex(_config())
+    for id in range(1, 4):
+        var values = _point(id)
+        index.add(id, values^)
+    var entry = index.entry_slot.value()
+    assert_true(index.graph.neighbor_count(entry, 0) > 0)
+    index.graph.neighbor_slots[index.graph.neighbor_bases[Int(entry)]] = (
+        UInt32(999)
+    )
+    var before_slots = index.build_stats.slot_count
+    var before_edges = index.build_stats.directed_edges
+    var before_distances = index.build_stats.distance_evaluations
+    var before_maximum = index.build_stats.maximum_level
+
+    var next = _point(4)
+    with assert_raises():
+        index.add(4, next^)
+
+    assert_false(index.valid)
+    assert_false(index.graph.is_valid())
+    assert_equal(index.build_stats.slot_count, before_slots)
+    assert_equal(index.build_stats.directed_edges, before_edges)
+    assert_equal(index.build_stats.distance_evaluations, before_distances)
+    assert_equal(index.build_stats.maximum_level, before_maximum)
+    with assert_raises():
+        var query = _point(1)
+        _ = index.search(query^, 1, ef_search=8)
+
+
+def test_nonlegacy_identity_cannot_use_lossy_cache_codec() raises:
+    var dot_config = _config()
+    dot_config.ann_metric = MetricKind.dot()
+    var dot = HnswIndex(dot_config)
+    var dot_point = _point(1)
+    dot.add(1, dot_point^)
+    with assert_raises():
+        _ = dot.encode_cache_payload()
+
+    var m0_config = _config()
+    var m0 = HnswIndex(m0_config)
+    var m0_point = _point(1)
+    m0.add(1, m0_point^)
+    with assert_raises():
+        _ = m0.encode_cache_payload()
+
+
+def test_legacy_initializer_supports_old_bounded_configuration_range() raises:
+    var minimum = HnswIndex(1, m=1, max_level=0)
+    minimum.add(1, [1.0])
+    assert_equal(minimum.search_l2([1.0], 1, 1)[0].id, 1)
+
+    var wide_level = HnswIndex(1, m=2, max_level=65_535)
+    wide_level.add(1, [1.0])
+    assert_equal(wide_level.search_l2([1.0], 1, 1)[0].id, 1)
+
+    var wide_m = HnswIndex(1, m=65_535, max_level=0)
+    wide_m.add(1, [1.0])
+    assert_equal(wide_m.search_l2([1.0], 1, 1)[0].id, 1)
+
+    with assert_raises():
+        _ = HnswIndex(1, m=65_536, max_level=0)
+    with assert_raises():
+        _ = HnswIndex(1, m=1, max_level=65_536)
 
 
 def main() raises:

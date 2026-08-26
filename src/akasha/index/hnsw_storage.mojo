@@ -395,15 +395,17 @@ struct HnswStorage:
                 if count < 0 or count > capacity:
                     raise Error("HNSW neighbor count exceeds capacity")
                 var base = self._level_base(slot, graph_level)
+                var seen_neighbors = Dict[Int, Bool]()
                 for edge_index in range(capacity):
                     var neighbor = self.neighbor_slots[base + edge_index]
                     if edge_index < count:
                         self._validate_neighbor(slot, neighbor)
-                        for earlier in range(edge_index):
-                            if self.neighbor_slots[base + earlier] == neighbor:
-                                raise Error(
-                                    "HNSW neighbor tape has a duplicate"
-                                )
+                        var key = Int(neighbor)
+                        if key in seen_neighbors:
+                            raise Error(
+                                "HNSW neighbor tape has a duplicate"
+                            )
+                        seen_neighbors[key] = True
                     elif neighbor != HNSW_EMPTY_NEIGHBOR:
                         raise Error("HNSW unused neighbor cell is not empty")
 
