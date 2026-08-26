@@ -12,7 +12,9 @@ from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.storage.memtable import MemTable
+from akasha.storage.generation_pins import GenerationPinRegistry
 from std.math import isfinite
+from std.memory import ArcPointer
 
 
 comptime _DOT_METRIC = 0
@@ -28,6 +30,8 @@ struct ReadSnapshot(Movable):
     var _sequence: UInt64
     var _memtable: MemTable
     var _metadata: MetadataIndex
+    var _pins: ArcPointer[GenerationPinRegistry]
+    var _closed: Bool
 
     def __init__(
         out self,
@@ -36,12 +40,15 @@ struct ReadSnapshot(Movable):
         sequence: UInt64,
         var memtable: MemTable,
         var metadata: MetadataIndex,
+        var pins: ArcPointer[GenerationPinRegistry],
     ):
         self._dimension = dimension
         self._generation = generation
         self._sequence = sequence
         self._memtable = memtable^
         self._metadata = metadata^
+        self._pins = pins^
+        self._closed = False
 
     @staticmethod
     def capture(
@@ -49,6 +56,7 @@ struct ReadSnapshot(Movable):
         generation: UInt64,
         sequence: UInt64,
         memtable: MemTable,
+        pins: ArcPointer[GenerationPinRegistry],
     ) raises -> ReadSnapshot:
         if dimension <= 0 or memtable.dimension != dimension:
             raise Error("snapshot dimension mismatch")
@@ -56,13 +64,27 @@ struct ReadSnapshot(Movable):
             raise Error("snapshot sequence does not match memtable")
         var owned = memtable.clone()
         var metadata = _build_metadata(owned)
+        var owned_pins = pins
+        owned_pins[].pin(generation)
         return ReadSnapshot(
             dimension,
             generation,
             sequence,
             owned^,
             metadata^,
+            owned_pins^,
         )
+
+    def __deinit__(deinit self):
+        if not self._closed:
+            self._pins[].unpin(self._generation)
+
+    def close(mut self):
+        """Release the manifest generation pin; safe to call repeatedly."""
+        if self._closed:
+            return
+        self._pins[].unpin(self._generation)
+        self._closed = True
 
     def generation(self) -> UInt64:
         return self._generation
@@ -71,6 +93,7 @@ struct ReadSnapshot(Movable):
         return self._sequence
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
+        self._ensure_open()
         return self._memtable.get(id)
 
     def search_dot(
@@ -195,6 +218,7 @@ struct ReadSnapshot(Movable):
         return results^
 
     def _validate_query(self, query: List[Float32], k: Int) raises:
+        self._ensure_open()
         if len(query) != self._dimension:
             raise Error("query dimension does not match snapshot")
         if k <= 0:
@@ -202,6 +226,10 @@ struct ReadSnapshot(Movable):
         for value in query:
             if not isfinite(value):
                 raise Error("query vector must contain only finite values")
+
+    def _ensure_open(self) raises:
+        if self._closed:
+            raise Error("snapshot is closed")
 
 
 def _build_metadata(memtable: MemTable) raises -> MetadataIndex:

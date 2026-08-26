@@ -21,6 +21,7 @@ from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
 from akasha.storage.compaction import CompactionPolicy
+from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -56,11 +57,27 @@ from akasha.storage.sparse_store import (
 )
 from akasha.storage.wal import append_wal, recover_wal, rotate_wal, WalRecord
 from std.math import isfinite
+from std.memory import ArcPointer
 
 
 comptime _DOT_METRIC = 0
 comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
+
+
+struct _RetiredGeneration(Movable):
+    var maximum_generation: UInt64
+    var files: List[String]
+
+    def __init__(out self, maximum_generation: UInt64, var files: List[String]):
+        self.maximum_generation = maximum_generation
+        self.files = files^
+
+    def clone(self) -> _RetiredGeneration:
+        var files = List[String](capacity=len(self.files))
+        for index in range(len(self.files)):
+            files.append(String(copy=self.files[index]))
+        return _RetiredGeneration(self.maximum_generation, files^)
 
 
 struct PersistentCollection:
@@ -79,6 +96,8 @@ struct PersistentCollection:
     var _sparse_wal_path: String
     var _sparse_pending: List[SparseWalRecord]
     var _metadata: MetadataIndex
+    var _pins: ArcPointer[GenerationPinRegistry]
+    var _retired: List[_RetiredGeneration]
 
     def __init__(
         out self,
@@ -105,6 +124,8 @@ struct PersistentCollection:
         self._sparse_wal_path = path + "/sparse.wal"
         self._sparse_pending = sparse_pending^
         self._metadata = metadata^
+        self._pins = ArcPointer(GenerationPinRegistry())
+        self._retired = List[_RetiredGeneration]()
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -339,6 +360,7 @@ struct PersistentCollection:
             generation,
             self._last_sequence,
             self._memtable,
+            self._pins,
         )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
@@ -642,6 +664,7 @@ struct PersistentCollection:
     def flush(mut self) raises:
         """Atomically append an immutable incremental checkpoint."""
         self._ensure_open()
+        self._reclaim_retired()
         var previous_sequence = UInt64(0)
         var generation = UInt64(1)
         var has_previous_manifest = False
@@ -812,23 +835,12 @@ struct PersistentCollection:
         )
         publish_manifest(self.path, compacted)
 
-        for index in range(len(previous.segments)):
-            if previous.segments[index].name != segment_name:
-                remove_file_if_exists(
-                    self.path + "/" + previous.segments[index].name
-                )
-            if (
-                previous.segments[index].sparse_name.byte_length() > 0
-                and previous.segments[index].sparse_name != sparse_name
-            ):
-                remove_file_if_exists(
-                    self.path + "/" + previous.segments[index].sparse_name
-                )
-        sync_directory(self.path)
+        self._retire_or_reclaim(previous, segment_name, sparse_name)
 
     def maintenance(mut self) raises -> Bool:
         """Run synchronous compaction when the default L0 threshold is met."""
         self._ensure_open()
+        self._reclaim_retired()
         self.flush()
         if not path_exists(self.path + "/manifest.bin"):
             return False
@@ -838,6 +850,51 @@ struct PersistentCollection:
             return False
         self._compact_committed(manifest^)
         return True
+
+    def _retire_or_reclaim(
+        mut self,
+        previous: Manifest,
+        retained_dense: String,
+        retained_sparse: String,
+    ) raises:
+        var removed = List[String]()
+        for index in range(len(previous.segments)):
+            if previous.segments[index].name != retained_dense:
+                removed.append(self.path + "/" + previous.segments[index].name)
+            if (
+                previous.segments[index].sparse_name.byte_length() > 0
+                and previous.segments[index].sparse_name != retained_sparse
+            ):
+                removed.append(
+                    self.path + "/" + previous.segments[index].sparse_name
+                )
+
+        if self._pins[].has_pin_at_or_before(previous.generation):
+            self._retired.append(
+                _RetiredGeneration(previous.generation, removed^)
+            )
+            return
+        for index in range(len(removed)):
+            remove_file_if_exists(removed[index])
+        sync_directory(self.path)
+
+    def _reclaim_retired(mut self) raises:
+        if len(self._retired) == 0:
+            return
+        var retained = List[_RetiredGeneration]()
+        var removed_any = False
+        for index in range(len(self._retired)):
+            if self._pins[].has_pin_at_or_before(
+                self._retired[index].maximum_generation
+            ):
+                retained.append(self._retired[index].clone())
+                continue
+            for file_index in range(len(self._retired[index].files)):
+                remove_file_if_exists(self._retired[index].files[file_index])
+            removed_any = True
+        self._retired = retained^
+        if removed_any:
+            sync_directory(self.path)
 
     def _search_filtered(
         self,

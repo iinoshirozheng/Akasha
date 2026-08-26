@@ -6,11 +6,16 @@ from akasha import (
     PersistentCollection,
     ReadSnapshot,
 )
-from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
+from akasha.storage.filesystem import (
+    ensure_directory,
+    path_exists,
+    remove_file_if_exists,
+)
 from std.testing import (
     assert_almost_equal,
     assert_equal,
     assert_false,
+    assert_raises,
     assert_true,
     TestSuite,
 )
@@ -56,6 +61,17 @@ def _old_group_expression() raises -> FilterExpression:
     return FilterExpression.condition(
         FilterCondition.equal("group", PayloadValue.string("old"))
     )
+
+
+def _compact_with_temporary_snapshot(
+    mut collection: PersistentCollection, path: String
+) raises:
+    var snapshot = collection.snapshot()
+    collection.upsert(2, [2.0])
+    collection.flush()
+    collection.compact()
+    assert_true(Bool(snapshot.get(1)))
+    assert_true(path_exists(path + "/segment-base-1.bin"))
 
 
 def test_snapshot_preserves_owned_documents_search_and_filters() raises:
@@ -121,6 +137,47 @@ def test_snapshot_survives_later_flush_and_compaction() raises:
     assert_equal(len(results), 1)
     assert_equal(results[0].id, 10)
     assert_false(Bool(collection.get(10)))
+    collection.close()
+
+
+def test_snapshot_pin_defers_compaction_reclamation_until_close() raises:
+    var path = String("/tmp/akasha-phase11-snapshot-pin")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    collection.flush()
+    var snapshot = collection.snapshot()
+
+    collection.upsert(2, [2.0])
+    collection.flush()
+    collection.compact()
+
+    assert_true(path_exists(path + "/segment-base-1.bin"))
+    assert_true(path_exists(path + "/sparse-base-1.bin"))
+    assert_true(Bool(snapshot.get(1)))
+
+    snapshot.close()
+    _ = collection.maintenance()
+    assert_false(path_exists(path + "/segment-base-1.bin"))
+    assert_false(path_exists(path + "/sparse-base-1.bin"))
+    snapshot.close()
+    with assert_raises():
+        _ = snapshot.get(1)
+    collection.close()
+
+
+def test_snapshot_raii_releases_generation_pin() raises:
+    var path = String("/tmp/akasha-phase11-snapshot-raii")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    collection.flush()
+
+    _compact_with_temporary_snapshot(collection, path)
+    _ = collection.maintenance()
+
+    assert_false(path_exists(path + "/segment-base-1.bin"))
+    assert_false(path_exists(path + "/sparse-base-1.bin"))
     collection.close()
 
 
