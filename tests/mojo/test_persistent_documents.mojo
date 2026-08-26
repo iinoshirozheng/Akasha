@@ -10,6 +10,7 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
     write_file_sync,
 )
+from akasha.storage.manifest import load_manifest
 from std.testing import (
     assert_equal,
     assert_false,
@@ -30,6 +31,12 @@ def _reset(directory: String) raises:
         )
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin.tmp"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin.tmp"
         )
 
 
@@ -156,7 +163,7 @@ def test_invalid_document_does_not_consume_sequence() raises:
     assert_equal(collection.last_sequence(), UInt64(1))
 
 
-def test_v1_database_opens_and_flushes_as_v2_segment() raises:
+def test_v1_database_opens_and_flushes_as_v3_base_segment() raises:
     var path = String("/tmp/akasha-phase4-document-upgrade")
     _reset(path)
     var v1_wal = _encode_v1_wal()
@@ -169,8 +176,11 @@ def test_v1_database_opens_and_flushes_as_v2_segment() raises:
     collection.flush()
     collection.close()
 
-    var segment = read_file_bytes(path + "/segment-1.bin")
-    assert_equal(segment[4], UInt8(2))
+    var manifest = load_manifest(path, 1)
+    assert_equal(manifest.format_version, 2)
+    assert_equal(manifest.segments[0].level, 1)
+    var segment = read_file_bytes(path + "/segment-base-1.bin")
+    assert_equal(segment[4], UInt8(3))
     var reopened = PersistentCollection.open(path, 1)
     assert_true(Bool(reopened.get(99)))
 

@@ -164,8 +164,6 @@ struct MemTable:
     ) raises -> List[MemTableEntry]:
         """Return owned latest states newer than a checkpoint, including deletes.
         """
-        if checkpoint_sequence > self.last_sequence:
-            raise Error("checkpoint sequence is newer than memtable")
         var result = List[MemTableEntry]()
         for index in range(len(self._entries)):
             if self._entries[index].sequence > checkpoint_sequence:

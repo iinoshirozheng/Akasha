@@ -7,6 +7,7 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.manifest import (
+    load_manifest,
     Manifest,
     publish_manifest,
     SegmentDescriptor,
@@ -41,6 +42,18 @@ def _reset(directory: String) raises:
         )
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin.tmp"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin.tmp"
+        )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin.tmp"
         )
 
 
@@ -178,7 +191,7 @@ def test_flush_rotates_wal_and_reopen_uses_snapshot() raises:
     assert_equal(reopened.get(1).value().vector[0], Float32(2.0))
 
 
-def test_later_flush_reclaims_only_previous_manifest_segment() raises:
+def test_later_flush_appends_delta_and_preserves_referenced_base() raises:
     var path = String("/tmp/akasha-phase5-segment-reclaim")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
@@ -187,12 +200,24 @@ def test_later_flush_reclaims_only_previous_manifest_segment() raises:
     var stray: List[UInt8] = [1, 2, 3]
     write_file_sync(path + "/segment-stray.bin", stray)
 
+    collection.delete(1)
     collection.upsert(2, [2.0])
     collection.flush()
 
-    assert_equal(path_exists(path + "/segment-1.bin"), False)
-    assert_equal(path_exists(path + "/segment-2.bin"), True)
+    var manifest = load_manifest(path, 1)
+    assert_equal(manifest.format_version, 2)
+    assert_equal(manifest.generation, UInt64(2))
+    assert_equal(len(manifest.segments), 2)
+    assert_equal(manifest.segments[0].level, 1)
+    assert_equal(manifest.segments[1].level, 0)
+    assert_equal(path_exists(path + "/segment-base-1.bin"), True)
+    assert_equal(path_exists(path + "/segment-delta-3.bin"), True)
     assert_equal(path_exists(path + "/segment-stray.bin"), True)
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    assert_equal(Bool(reopened.get(1)), False)
+    assert_equal(reopened.get(2).value().vector[0], Float32(2.0))
     remove_file_if_exists(path + "/segment-stray.bin")
 
 

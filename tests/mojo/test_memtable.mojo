@@ -139,12 +139,11 @@ def test_memtable_entries_after_returns_changed_latest_states_in_id_order() rais
     assert_equal(len(table.entries_after(4)), 0)
 
 
-def test_memtable_entries_after_rejects_future_checkpoint() raises:
+def test_memtable_entries_after_allows_global_checkpoint_beyond_dense_state() raises:
     var table = MemTable(1)
     table.apply_upsert(1, 1, [1.0])
 
-    with assert_raises():
-        _ = table.entries_after(2)
+    assert_equal(len(table.entries_after(2)), 0)
 
 
 def main() raises:

@@ -26,14 +26,19 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
     sync_directory,
 )
-from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
+from akasha.storage.manifest import (
+    load_manifest,
+    Manifest,
+    publish_manifest,
+    SegmentDescriptor,
+)
 from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import (
     read_segment,
     SEGMENT_KIND_BASE,
     SEGMENT_KIND_DELTA,
-    write_segment,
+    write_segment_v3,
 )
 from akasha.storage.sparse_store import (
     append_sparse_wal,
@@ -533,16 +538,28 @@ struct PersistentCollection:
         )
 
     def flush(mut self) raises:
-        """Atomically publish a complete immutable live-state snapshot."""
+        """Atomically append an immutable incremental checkpoint."""
         self._ensure_open()
-        var previous_segment = String()
         var previous_sequence = UInt64(0)
-        var has_previous_segment = False
+        var generation = UInt64(1)
+        var has_previous_manifest = False
+        var descriptors = List[SegmentDescriptor]()
         if path_exists(self.path + "/manifest.bin"):
             var previous_manifest = load_manifest(self.path, self.dimension)
-            previous_segment = String(copy=previous_manifest.segment_name)
             previous_sequence = previous_manifest.last_sequence
-            has_previous_segment = True
+            has_previous_manifest = True
+            if self._last_sequence < previous_sequence:
+                raise Error("collection sequence precedes checkpoint")
+            if self._last_sequence == previous_sequence:
+                rotate_wal(self.path)
+                rotate_sparse_wal(self.path)
+                return
+            if previous_manifest.format_version == 2:
+                if previous_manifest.generation == UInt64.MAX:
+                    raise Error("manifest generation exhausted")
+                generation = previous_manifest.generation + 1
+            for index in range(len(previous_manifest.segments)):
+                descriptors.append(previous_manifest.segments[index].clone())
 
         var sparse_name = "sparse-" + String(self._last_sequence) + ".bin"
         var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
@@ -553,29 +570,49 @@ struct PersistentCollection:
         atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
         sync_directory(self.path)
 
+        var kind = SEGMENT_KIND_BASE
+        var level = 1
+        var min_sequence = UInt64(0)
+        var segment_prefix = String("segment-base-")
         var entries = self._memtable.live_entries()
-        var segment_name = "segment-" + String(self._last_sequence) + ".bin"
+        if has_previous_manifest:
+            kind = SEGMENT_KIND_DELTA
+            level = 0
+            min_sequence = previous_sequence + 1
+            segment_prefix = "segment-delta-"
+            entries = self._memtable.entries_after(previous_sequence)
+        var segment_name = segment_prefix + String(self._last_sequence) + ".bin"
         var temporary_path = self.path + "/" + segment_name + ".tmp"
         var final_path = self.path + "/" + segment_name
-        var checksum = write_segment(
+        var checksum = write_segment_v3(
             temporary_path,
             self.dimension,
+            kind,
+            min_sequence,
             self._last_sequence,
             entries,
         )
         atomic_replace(temporary_path, final_path)
         sync_directory(self.path)
-        var manifest = Manifest(
+        descriptors.append(
+            SegmentDescriptor(
+                level,
+                min_sequence,
+                self._last_sequence,
+                checksum,
+                segment_name,
+            )
+        )
+        var manifest = Manifest.with_segments(
             self.dimension,
+            generation,
             self._last_sequence,
-            checksum,
-            segment_name,
+            descriptors^,
         )
         publish_manifest(self.path, manifest)
         rotate_wal(self.path)
         rotate_sparse_wal(self.path)
-        if has_previous_segment and previous_segment != segment_name:
-            remove_file_if_exists(self.path + "/" + previous_segment)
+        if has_previous_manifest:
             remove_file_if_exists(
                 self.path + "/sparse-" + String(previous_sequence) + ".bin"
             )
