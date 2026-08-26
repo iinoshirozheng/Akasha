@@ -9,9 +9,11 @@ comptime _I8_TAG = UInt8(3)
 
 comptime _FNV_OFFSET_BASIS = UInt64(14695981039346656037)
 comptime _FNV_PRIME = UInt64(1099511628211)
+comptime _UINT16_MAX_AS_INT = 65_535
+comptime _UINT32_MAX_AS_INT = 4_294_967_295
 
 
-struct MetricKind(Copyable, Movable, Writable):
+struct MetricKind(Copyable, Equatable, Movable, Writable):
     """The metric used to build and traverse a collection's ANN graph."""
 
     var _tag: UInt8
@@ -59,7 +61,7 @@ struct MetricKind(Copyable, Movable, Writable):
         return self._tag == other._tag
 
 
-struct ScalarKind(Copyable, Movable, Writable):
+struct ScalarKind(Copyable, Equatable, Movable, Writable):
     """The scalar representation used by the collection's ANN graph."""
 
     var _tag: UInt8
@@ -114,7 +116,7 @@ struct ScalarKind(Copyable, Movable, Writable):
         return self._tag == other._tag
 
 
-struct CollectionConfig(Copyable, Movable, Writable):
+struct CollectionConfig(Copyable, Equatable, Movable, Writable):
     """Immutable-on-disk identity and HNSW tuning for one collection."""
 
     var dimension: Int
@@ -178,23 +180,45 @@ struct CollectionConfig(Copyable, Movable, Writable):
     def validate(self) raises:
         if self.dimension <= 0:
             raise Error("dimension must be positive")
+        if self.dimension > _UINT32_MAX_AS_INT:
+            raise Error("dimension must fit UInt32")
         if not self.ann_metric.is_valid():
-            raise Error("ann_metric has an unknown tag")
+            raise Error(
+                String(
+                    "ann_metric has an unknown tag: ",
+                    Int(self.ann_metric.tag()),
+                )
+            )
         if not self.scalar_kind.is_valid():
-            raise Error("scalar_kind has an unknown tag")
+            raise Error(
+                String(
+                    "scalar_kind has an unknown tag: ",
+                    Int(self.scalar_kind.tag()),
+                )
+            )
         if self.m < 2:
             raise Error("m must be at least 2")
+        if self.m > _UINT16_MAX_AS_INT:
+            raise Error("m must fit UInt16")
         if self.m0 < self.m:
             raise Error("m0 must be greater than or equal to m")
+        if self.m0 > _UINT16_MAX_AS_INT:
+            raise Error("m0 must fit UInt16")
         if self.ef_construction < self.m0:
             raise Error("ef_construction must be greater than or equal to m0")
+        if self.ef_construction > _UINT32_MAX_AS_INT:
+            raise Error("ef_construction must fit UInt32")
         if self.default_ef_search < 1:
             raise Error("default_ef_search must be at least 1")
+        if self.default_ef_search > _UINT32_MAX_AS_INT:
+            raise Error("default_ef_search must fit UInt32")
         if self.max_ef_search < self.default_ef_search:
             raise Error(
                 "max_ef_search must be greater than or equal to"
                 " default_ef_search"
             )
+        if self.max_ef_search > _UINT32_MAX_AS_INT:
+            raise Error("max_ef_search must fit UInt32")
         if self.max_level < 1 or self.max_level > 63:
             raise Error("max_level must be between 1 and 63")
         if (
@@ -204,6 +228,8 @@ struct CollectionConfig(Copyable, Movable, Writable):
             raise Error("rebuild_inactive_percent must be between 1 and 90")
         if self.delta_max_points <= 0:
             raise Error("delta_max_points must be positive")
+        if self.delta_max_points > _UINT32_MAX_AS_INT:
+            raise Error("delta_max_points must fit UInt32")
         if (
             self.scalar_kind == ScalarKind.i8()
             and self.ann_metric == MetricKind.l2()
@@ -217,7 +243,16 @@ struct CollectionConfig(Copyable, Movable, Writable):
         return self.scalar_kind.name()
 
     def fingerprint(self) -> UInt64:
-        """Return stable FNV-1a over fixed-order, little-endian field values."""
+        """Return the stable collection-identity fingerprint.
+
+        Fingerprint schema v1 is FNV-1a 64 (offset 14695981039346656037,
+        prime 1099511628211) over these bytes in exact order: dimension as
+        u64 LE; ANN metric as u8; scalar kind as u8; m, m0, ef_construction,
+        default_ef_search, max_ef_search, max_level,
+        rebuild_inactive_percent, and delta_max_points each as u64 LE; then
+        level_seed as u64 LE. Width and order are intentionally independent
+        from the durable collection codec and are locked by golden vectors.
+        """
         var value = _FNV_OFFSET_BASIS
         value = _mix_u64(value, UInt64(self.dimension))
         value = _mix_u8(value, self.ann_metric.tag())

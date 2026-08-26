@@ -25,6 +25,14 @@ def _valid_config() -> CollectionConfig:
     )
 
 
+def _validation_error(config: CollectionConfig) -> String:
+    try:
+        config.validate()
+    except error:
+        return String(error)
+    return ""
+
+
 def test_metric_tags_names_and_equality_are_stable() raises:
     assert_equal(MetricKind.dot().tag(), UInt8(0))
     assert_equal(MetricKind.l2().tag(), UInt8(1))
@@ -32,6 +40,7 @@ def test_metric_tags_names_and_equality_are_stable() raises:
     assert_equal(MetricKind.dot().name(), "dot")
     assert_equal(MetricKind.l2().name(), "l2")
     assert_equal(MetricKind.cosine().name(), "cosine")
+    assert_equal(MetricKind.dot(), MetricKind.dot())
     assert_true(MetricKind.dot() == MetricKind.dot())
     assert_false(MetricKind.dot() == MetricKind.l2())
 
@@ -45,6 +54,7 @@ def test_scalar_tags_names_and_equality_are_stable() raises:
     assert_equal(ScalarKind.bf16().name(), "bf16")
     assert_equal(ScalarKind.f16().name(), "f16")
     assert_equal(ScalarKind.i8().name(), "i8")
+    assert_equal(ScalarKind.i8(), ScalarKind.i8())
     assert_true(ScalarKind.i8() == ScalarKind.i8())
     assert_false(ScalarKind.i8() == ScalarKind.f32())
 
@@ -162,16 +172,73 @@ def test_accepts_inclusive_integer_boundaries() raises:
     config.validate()
 
 
+def test_accepts_durable_wire_integer_maxima() raises:
+    var config = _valid_config()
+    config.dimension = 4_294_967_295
+    config.m = 65_535
+    config.m0 = 65_535
+    config.ef_construction = 4_294_967_295
+    config.default_ef_search = 4_294_967_295
+    config.max_ef_search = 4_294_967_295
+    config.delta_max_points = 4_294_967_295
+    config.validate()
+
+
+def test_rejects_values_above_durable_wire_integer_maxima() raises:
+    var dimension = _valid_config()
+    dimension.dimension = 4_294_967_296
+    with assert_raises():
+        dimension.validate()
+
+    var m = _valid_config()
+    m.m = 65_536
+    m.m0 = 65_536
+    m.ef_construction = 65_536
+    with assert_raises():
+        m.validate()
+
+    var m0 = _valid_config()
+    m0.m0 = 65_536
+    m0.ef_construction = 65_536
+    with assert_raises():
+        m0.validate()
+
+    var construction = _valid_config()
+    construction.ef_construction = 4_294_967_296
+    with assert_raises():
+        construction.validate()
+
+    var default_search = _valid_config()
+    default_search.default_ef_search = 4_294_967_296
+    default_search.max_ef_search = 4_294_967_296
+    with assert_raises():
+        default_search.validate()
+
+    var max_search = _valid_config()
+    max_search.max_ef_search = 4_294_967_296
+    with assert_raises():
+        max_search.validate()
+
+    var delta_limit = _valid_config()
+    delta_limit.delta_max_points = 4_294_967_296
+    with assert_raises():
+        delta_limit.validate()
+
+
 def test_rejects_unknown_metric_and_scalar_tags() raises:
     var unknown_metric = _valid_config()
     unknown_metric.ann_metric = MetricKind.from_tag(UInt8(99))
-    with assert_raises():
-        unknown_metric.validate()
+    assert_equal(
+        _validation_error(unknown_metric),
+        "ann_metric has an unknown tag: 99",
+    )
 
     var unknown_scalar = _valid_config()
     unknown_scalar.scalar_kind = ScalarKind.from_tag(UInt8(99))
-    with assert_raises():
-        unknown_scalar.validate()
+    assert_equal(
+        _validation_error(unknown_scalar),
+        "scalar_kind has an unknown tag: 99",
+    )
 
 
 def test_scalar_metric_compatibility_is_explicit() raises:
@@ -236,8 +303,30 @@ def test_scalar_metric_compatibility_is_explicit() raises:
 def test_fingerprint_is_stable_for_equal_configs() raises:
     var first = _valid_config()
     var second = _valid_config()
+    assert_equal(first, second)
     assert_equal(first.fingerprint(), second.fingerprint())
     assert_equal(first.fingerprint(), first.fingerprint())
+
+
+def test_fingerprint_matches_documented_golden_vectors() raises:
+    var defaults = _valid_config()
+    assert_equal(defaults.fingerprint(), UInt64(0x8D41EBD1B46D20E2))
+
+    var alternate = CollectionConfig(
+        dimension=17,
+        ann_metric=MetricKind.cosine(),
+        scalar_kind=ScalarKind.f16(),
+        m=12,
+        m0=24,
+        ef_construction=96,
+        default_ef_search=40,
+        max_ef_search=400,
+        max_level=21,
+        rebuild_inactive_percent=30,
+        delta_max_points=7_777,
+        level_seed=UInt64(0x0123456789ABCDEF),
+    )
+    assert_equal(alternate.fingerprint(), UInt64(0xF124E7DE2F465213))
 
 
 def test_fingerprint_includes_every_immutable_field() raises:
