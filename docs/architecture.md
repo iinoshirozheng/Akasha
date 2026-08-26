@@ -87,16 +87,25 @@ manifest because replay ignores sequence numbers already covered by the
 snapshot. Incremental segments, leveled compaction, and snapshot-isolated
 concurrent readers remain future storage work.
 
-Phase 4.2 evaluates strict typed conditions against each live payload before
-SIMD scoring. Phase 4.3 composes them as bounded All/Any/Negate expressions,
-stored in a flat node arena to keep Mojo ownership explicit. Missing fields and
-type mismatches do not match at the condition level. There is no metadata index
-yet, so a filtered exact query scans live documents and performs linear field
-lookup; WAL, Segment, and Manifest formats are unchanged. Search returns
+Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
+composes them as bounded All/Any/Negate expressions stored in a flat node arena
+to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
+a derived `MetadataIndex`: stable MemTable slots are ordinals in dense 64-bit
+candidate bitmaps, String/Bool values use bitmap postings, and Int64/Float64
+values use type-specific sorted blocks for equality and ranges. Missing fields
+and type mismatches do not match, including inequality.
+
+Document writes incrementally remove old postings and add new postings after
+the authoritative WAL and MemTable mutation succeeds. Deletes clear the live
+universe bit. Recovery rebuilds the complete derived index from stable MemTable
+slots after Segment and WAL replay, so WAL, Segment, and Manifest formats remain
+unchanged. Exact filtered execution scores only selected ordinals. Approximate
+planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
+point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
-Metadata indexes, incremental compaction, trusted zero-copy Arrow C Data
-interchange, GPU kernels, and distributed execution remain explicit future
-work.
+
+Incremental compaction, trusted zero-copy Arrow C Data interchange, GPU kernels,
+and distributed execution remain explicit future work.
 
 ## Implemented adapter boundary
 

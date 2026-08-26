@@ -197,8 +197,13 @@ Implemented:
 - Strict typed AND metadata filters evaluated before exact SIMD scoring for all
   three vector metrics.
 - Bounded Boolean All/Any/Negate filter expressions with pre-score evaluation.
+- Derived in-memory metadata indexes with 64-bit candidate bitmaps, String/Bool
+  postings, and sorted Int64/Float64 equality and range lookup.
+- Incremental metadata index maintenance for replace/delete and deterministic
+  rebuild after WAL or snapshot recovery without changing durable formats.
 - Deterministic bounded HNSW approximate search with configurable `ef_search`,
-  lazy graph refresh, and filter-aware exact fallback.
+  lazy graph refresh, bitmap-cardinality planning, and filter-aware exact
+  fallback.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - A compiled Mojo Python extension, typed Python facade and errors, functional
@@ -207,5 +212,5 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Metadata indexes, incremental compaction, trusted zero-copy Arrow C Data
-interchange, GPU kernels, and distributed execution remain deferred.
+Incremental compaction, trusted zero-copy Arrow C Data interchange, GPU kernels,
+and distributed execution remain deferred.

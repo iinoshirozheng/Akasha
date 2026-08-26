@@ -1,10 +1,12 @@
 from akasha import (
+    Bitmap,
     DocumentField,
     dot_product,
     FilterCondition,
     FilterExpression,
     FlatIndex,
     HnswIndex,
+    MetadataIndex,
     PayloadValue,
     simd_dot_product,
     SparseElement,
@@ -57,6 +59,14 @@ def test_root_package_exports_sparse_index() raises:
     var index = SparseIndex()
     index.upsert(1, [SparseElement(7, 2.0)])
     assert_equal(index.search_dot([SparseElement(7, 1.0)], 1)[0].id, 1)
+
+
+def test_root_package_exports_metadata_index_types() raises:
+    var bitmap = Bitmap.full(2)
+    var index = MetadataIndex()
+    index.upsert(1, List[DocumentField]())
+    assert_equal(bitmap.count(), 2)
+    assert_equal(index.live_count(), 1)
 
 
 def main() raises:

@@ -80,3 +80,60 @@ def test_copying_arrow_compatible_columns(tmp_path) -> None:
     assert columns["id"] == [3, 4]
     assert columns["score"] == [1.0, 0.0]
     collection.close()
+
+
+def test_compiled_kernel_rebuilds_nested_metadata_index_on_reopen(tmp_path) -> None:
+    path = tmp_path / "indexed"
+    collection = akashadb.Collection(path, 1)
+    collection.upsert(
+        1,
+        [1.0],
+        [
+            akashadb.PayloadField("category", "string", "keep"),
+            akashadb.PayloadField("page", "int", 1),
+        ],
+    )
+    collection.upsert(
+        2,
+        [2.0],
+        [
+            akashadb.PayloadField("category", "string", "drop"),
+            akashadb.PayloadField("page", "int", 8),
+        ],
+    )
+    collection.upsert(
+        3,
+        [3.0],
+        [
+            akashadb.PayloadField("category", "string", "drop"),
+            akashadb.PayloadField("page", "int", 1),
+        ],
+    )
+    collection.flush()
+    collection.close()
+
+    reopened = akashadb.Collection(path, 1)
+    nested = {
+        "kind": "any",
+        "children": [
+            {
+                "kind": "condition",
+                "name": "category",
+                "operator": "eq",
+                "type": "string",
+                "value": "keep",
+            },
+            {
+                "kind": "condition",
+                "name": "page",
+                "operator": "ge",
+                "type": "int",
+                "value": 5,
+            },
+        ],
+    }
+    results = reopened.search(
+        akashadb.SearchRequest("dot", 3, vector=[1.0], filter=nested)
+    )
+    assert [item.id for item in results] == [2, 1]
+    reopened.close()

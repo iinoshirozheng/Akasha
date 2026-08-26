@@ -58,6 +58,37 @@ def test_http_adapter_runs_collection_document_and_hybrid_flow(tmp_path) -> None
         )
         assert searched.status_code == 200
         assert [item["id"] for item in searched.json()] == [1]
+
+        nested = client.post(
+            "/collections/demo/search",
+            json={
+                "metric": "dot",
+                "mode": "exact",
+                "k": 2,
+                "vector": [1.0, 0.0],
+                "filter": {
+                    "kind": "any",
+                    "children": [
+                        {
+                            "kind": "condition",
+                            "name": "kind",
+                            "operator": "eq",
+                            "type": "string",
+                            "value": "chunk",
+                        },
+                        {
+                            "kind": "condition",
+                            "name": "kind",
+                            "operator": "ne",
+                            "type": "string",
+                            "value": "chunk",
+                        },
+                    ],
+                },
+            },
+        )
+        assert nested.status_code == 200
+        assert [item["id"] for item in nested.json()] == [1]
         assert client.post("/collections/demo/flush").status_code == 200
         assert client.delete("/collections/demo").json() == {"closed": True}
 
