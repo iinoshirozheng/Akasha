@@ -1,7 +1,7 @@
 """Typed, dependency-free Python request and result values."""
 
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 
 Metric: TypeAlias = Literal["dot", "l2", "cosine"]
@@ -52,3 +52,4 @@ class SearchRequest:
     ef_search: int = 64
     fetch_k: int = 50
     rank_constant: int = 60
+    filter: dict[str, Any] | None = None

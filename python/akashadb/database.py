@@ -40,6 +40,19 @@ class KernelCollection(Protocol):
         sparse: list[dict[str, object]],
         options: dict[str, int],
     ) -> list[dict[str, Any]]: ...
+    def search_dense_where(
+        self, metric: str, vector: list[float], options: dict[str, object]
+    ) -> list[dict[str, Any]]: ...
+    def search_sparse_where(
+        self, sparse: list[dict[str, object]], options: dict[str, object]
+    ) -> list[dict[str, Any]]: ...
+    def search_hybrid_where(
+        self,
+        metric: str,
+        vector: list[float],
+        sparse: list[dict[str, object]],
+        options: dict[str, object],
+    ) -> list[dict[str, Any]]: ...
 
 
 def _kernel_module() -> Any:
@@ -118,7 +131,42 @@ class Collection:
     def search(self, request: SearchRequest) -> list[SearchResult]:
         vector = request.vector
         sparse = [item.to_kernel() for item in request.sparse]
-        if request.mode == "sparse":
+        if request.filter is not None and request.mode == "sparse":
+            raw = self._call(
+                "search_sparse_where",
+                sparse,
+                {"k": request.k, "filter": request.filter},
+            )
+        elif request.filter is not None and request.mode == "hybrid":
+            if vector is None:
+                raise ValueError("hybrid search requires a dense vector")
+            raw = self._call(
+                "search_hybrid_where",
+                request.metric,
+                vector,
+                sparse,
+                {
+                    "k": request.k,
+                    "fetch_k": request.fetch_k,
+                    "rank_constant": request.rank_constant,
+                    "filter": request.filter,
+                },
+            )
+        elif request.filter is not None:
+            if vector is None:
+                raise ValueError("dense search requires a vector")
+            raw = self._call(
+                "search_dense_where",
+                request.metric,
+                vector,
+                {
+                    "k": request.k,
+                    "approximate": request.mode == "approx",
+                    "ef_search": request.ef_search,
+                    "filter": request.filter,
+                },
+            )
+        elif request.mode == "sparse":
             raw = self._call("search_sparse", sparse, request.k)
         elif request.mode == "hybrid":
             if vector is None:

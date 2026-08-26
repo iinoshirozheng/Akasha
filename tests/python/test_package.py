@@ -38,9 +38,24 @@ def test_compiled_kernel_supports_document_dense_sparse_hybrid_and_reopen(
             fetch_k=2,
         )
     )
+    filtered = collection.search(
+        akashadb.SearchRequest(
+            "dot",
+            2,
+            vector=[1.0, 0.0],
+            filter={
+                "kind": "condition",
+                "name": "kind",
+                "operator": "eq",
+                "type": "string",
+                "value": "chunk",
+            },
+        )
+    )
     assert [item.id for item in exact] == [1, 2]
     assert [item.id for item in sparse] == [1, 2]
     assert hybrid[0].id == 1
+    assert [item.id for item in filtered] == [1]
     assert collection.get(1).fields[0].value == "chunk"
     collection.flush()
     collection.close()

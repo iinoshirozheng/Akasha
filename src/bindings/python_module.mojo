@@ -1,5 +1,7 @@
 from akasha import (
     DocumentField,
+    FilterCondition,
+    FilterExpression,
     PayloadValue,
     PersistentCollection,
     SparseElement,
@@ -233,6 +235,118 @@ struct BoundCollection(Movable, Writable):
             )
         raise Error("unknown dense metric")
 
+    @staticmethod
+    def search_dense_where(
+        py_self: PythonObject,
+        metric: PythonObject,
+        query: PythonObject,
+        options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var values = _float_vector(query)
+        var k = Int(py=options["k"])
+        var expression = _filter_expression(options["filter"])
+        var approximate = Bool(
+            py=options.get("approximate", PythonObject(False))
+        )
+        if approximate:
+            var ef = Int(py=options["ef_search"])
+            if metric_name == "dot":
+                return _results_to_python(
+                    self[]
+                    .inner.value()
+                    .search_dot_approx_where(values, k, ef, expression)
+                )
+            if metric_name == "l2":
+                return _results_to_python(
+                    self[]
+                    .inner.value()
+                    .search_l2_approx_where(values, k, ef, expression)
+                )
+            if metric_name == "cosine":
+                return _results_to_python(
+                    self[]
+                    .inner.value()
+                    .search_cosine_approx_where(values, k, ef, expression)
+                )
+        else:
+            if metric_name == "dot":
+                return _results_to_python(
+                    self[].inner.value().search_dot_where(values, k, expression)
+                )
+            if metric_name == "l2":
+                return _results_to_python(
+                    self[].inner.value().search_l2_where(values, k, expression)
+                )
+            if metric_name == "cosine":
+                return _results_to_python(
+                    self[]
+                    .inner.value()
+                    .search_cosine_where(values, k, expression)
+                )
+        raise Error("unknown dense metric")
+
+    @staticmethod
+    def search_sparse_where(
+        py_self: PythonObject,
+        query: PythonObject,
+        options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var sparse = _sparse_vector(query)
+        var expression = _filter_expression(options["filter"])
+        return _results_to_python(
+            self[]
+            .inner.value()
+            .search_sparse_dot_where(sparse, Int(py=options["k"]), expression)
+        )
+
+    @staticmethod
+    def search_hybrid_where(
+        py_self: PythonObject,
+        metric: PythonObject,
+        dense_query: PythonObject,
+        sparse_query: PythonObject,
+        options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var dense = _float_vector(dense_query)
+        var sparse = _sparse_vector(sparse_query)
+        var k = Int(py=options["k"])
+        var fetch_k = Int(py=options["fetch_k"])
+        var rank_constant = Int(py=options["rank_constant"])
+        var expression = _filter_expression(options["filter"])
+        if metric_name == "dot":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_dot_where(
+                    dense, sparse, k, fetch_k, rank_constant, expression
+                )
+            )
+        if metric_name == "l2":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_l2_where(
+                    dense, sparse, k, fetch_k, rank_constant, expression
+                )
+            )
+        if metric_name == "cosine":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_cosine_where(
+                    dense, sparse, k, fetch_k, rank_constant, expression
+                )
+            )
+        raise Error("unknown dense metric")
+
 
 def _ensure_open(collection: BoundCollection) raises:
     if not Bool(collection.inner):
@@ -280,6 +394,55 @@ def _document_fields(value: PythonObject) raises -> List[DocumentField]:
         else:
             raise Error("unknown payload value type")
     return result^
+
+
+def _filter_expression(value: PythonObject) raises -> FilterExpression:
+    var kind = String(py=value["kind"])
+    if kind == "condition":
+        var operator_name = String(py=value["operator"])
+        var operator_kind: UInt8
+        if operator_name == "eq":
+            operator_kind = FilterCondition.EQUAL
+        elif operator_name == "ne":
+            operator_kind = FilterCondition.NOT_EQUAL
+        elif operator_name == "lt":
+            operator_kind = FilterCondition.LESS_THAN
+        elif operator_name == "le":
+            operator_kind = FilterCondition.LESS_OR_EQUAL
+        elif operator_name == "gt":
+            operator_kind = FilterCondition.GREATER_THAN
+        elif operator_name == "ge":
+            operator_kind = FilterCondition.GREATER_OR_EQUAL
+        else:
+            raise Error("unknown filter operator")
+        var payload = _payload_value(String(py=value["type"]), value["value"])
+        var condition = FilterCondition(
+            String(py=value["name"]), operator_kind, payload^
+        )
+        return FilterExpression.condition(condition^)
+    if kind == "not":
+        var child = _filter_expression(value["child"])
+        return FilterExpression.negate(child^)
+    if kind == "all" or kind == "any":
+        var children = List[FilterExpression]()
+        for item in value["children"]:
+            children.append(_filter_expression(item))
+        if kind == "all":
+            return FilterExpression.all(children^)
+        return FilterExpression.any(children^)
+    raise Error("unknown filter expression kind")
+
+
+def _payload_value(kind: String, raw: PythonObject) raises -> PayloadValue:
+    if kind == "string":
+        return PayloadValue.string(String(py=raw))
+    if kind == "int":
+        return PayloadValue.integer(Int64(py=raw))
+    if kind == "float":
+        return PayloadValue.floating(Float64(py=raw))
+    if kind == "bool":
+        return PayloadValue.boolean(Bool(py=raw))
+    raise Error("unknown payload value type")
 
 
 def _field_to_python(field: DocumentField) raises -> PythonObject:
@@ -336,6 +499,15 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.search_approx]("search_approx")
             .def_method[BoundCollection.search_sparse]("search_sparse")
             .def_method[BoundCollection.search_hybrid]("search_hybrid")
+            .def_method[BoundCollection.search_dense_where](
+                "search_dense_where"
+            )
+            .def_method[BoundCollection.search_sparse_where](
+                "search_sparse_where"
+            )
+            .def_method[BoundCollection.search_hybrid_where](
+                "search_hybrid_where"
+            )
         )
         return module.finalize()
     except error:
