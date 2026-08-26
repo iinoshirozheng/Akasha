@@ -19,6 +19,7 @@ from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
+from akasha.api.snapshot import ReadSnapshot
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.filesystem import (
     atomic_replace,
@@ -326,6 +327,19 @@ struct PersistentCollection:
     def metadata_match_count(self, expression: FilterExpression) raises -> Int:
         self._ensure_open()
         return evaluate_expression(self._metadata, expression).count()
+
+    def snapshot(self) raises -> ReadSnapshot:
+        """Capture an immutable owned view of all currently visible records."""
+        self._ensure_open()
+        var generation = UInt64(0)
+        if path_exists(self.path + "/manifest.bin"):
+            generation = load_manifest(self.path, self.dimension).generation
+        return ReadSnapshot.capture(
+            self.dimension,
+            generation,
+            self._last_sequence,
+            self._memtable,
+        )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()

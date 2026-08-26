@@ -70,6 +70,14 @@ struct MemTable:
     def entry_count(self) -> Int:
         return len(self._entries)
 
+    def clone(self) raises -> MemTable:
+        """Return an owned copy preserving stable ordinal slot order."""
+        var result = MemTable(self.dimension)
+        result.last_sequence = self.last_sequence
+        for index in range(len(self._entries)):
+            result._entries.append(self._entries[index].clone())
+        return result^
+
     def slot_count(self) -> Int:
         """Return stable ordinal slots, including tombstones."""
         return len(self._entries)

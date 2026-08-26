@@ -1,0 +1,128 @@
+from akasha import (
+    DocumentField,
+    FilterCondition,
+    FilterExpression,
+    PayloadValue,
+    PersistentCollection,
+    ReadSnapshot,
+)
+from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
+from std.testing import (
+    assert_almost_equal,
+    assert_equal,
+    assert_false,
+    assert_true,
+    TestSuite,
+)
+
+
+def _reset(directory: String) raises:
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    remove_file_if_exists(directory + "/wal.bin")
+    remove_file_if_exists(directory + "/wal.bin.tmp")
+    remove_file_if_exists(directory + "/sparse.wal")
+    remove_file_if_exists(directory + "/sparse.wal.tmp")
+    for sequence in range(32):
+        remove_file_if_exists(
+            directory + "/segment-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-delta-" + String(sequence) + ".bin"
+        )
+
+
+def _fields(group: String, chunk: String) raises -> List[DocumentField]:
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("group", PayloadValue.string(group)))
+    fields.append(DocumentField("chunk", PayloadValue.string(chunk)))
+    return fields^
+
+
+def _old_group_expression() raises -> FilterExpression:
+    return FilterExpression.condition(
+        FilterCondition.equal("group", PayloadValue.string("old"))
+    )
+
+
+def test_snapshot_preserves_owned_documents_search_and_filters() raises:
+    var path = String("/tmp/akasha-phase11-snapshot-owned")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    var first_fields = _fields("old", "first version")
+    collection.upsert_document(1, [1.0, 0.0], first_fields^)
+    var second_fields = _fields("other", "second point")
+    collection.upsert_document(2, [0.0, 1.0], second_fields^)
+
+    var snapshot: ReadSnapshot = collection.snapshot()
+    var replacement = _fields("new", "replacement")
+    collection.upsert_document(1, [9.0, 0.0], replacement^)
+    collection.delete(2)
+    collection.upsert(3, [10.0, 0.0])
+
+    assert_equal(snapshot.last_sequence(), UInt64(2))
+    var old_document = snapshot.get(1)
+    assert_true(Bool(old_document))
+    assert_equal(old_document.value().vector[0], Float32(1.0))
+    assert_equal(
+        old_document.value().get_field("chunk").value().as_string(),
+        "first version",
+    )
+    assert_true(Bool(snapshot.get(2)))
+    assert_false(Bool(snapshot.get(3)))
+
+    var exact = snapshot.search_dot([1.0, 0.0], 3)
+    assert_equal(len(exact), 2)
+    assert_equal(exact[0].id, 1)
+    assert_almost_equal(exact[0].score, 1.0, atol=1.0e-6)
+    var filtered = snapshot.search_dot_where(
+        [1.0, 0.0], 3, _old_group_expression()
+    )
+    assert_equal(len(filtered), 1)
+    assert_equal(filtered[0].id, 1)
+
+    var live_document = collection.get(1)
+    assert_equal(live_document.value().vector[0], Float32(9.0))
+    assert_false(Bool(collection.get(2)))
+    collection.close()
+
+
+def test_snapshot_survives_later_flush_and_compaction() raises:
+    var path = String("/tmp/akasha-phase11-snapshot-compaction")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    var fields = _fields("old", "pinned")
+    collection.upsert_document(10, [2.0], fields^)
+    collection.flush()
+    var snapshot = collection.snapshot()
+
+    collection.delete(10)
+    collection.upsert(20, [3.0])
+    collection.flush()
+    collection.compact()
+
+    assert_equal(snapshot.generation(), UInt64(1))
+    assert_true(Bool(snapshot.get(10)))
+    assert_false(Bool(snapshot.get(20)))
+    var results = snapshot.search_l2([2.0], 2)
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 10)
+    assert_false(Bool(collection.get(10)))
+    collection.close()
+
+
+def main() raises:
+    TestSuite.discover_tests[__functions_in_module()]().run()
