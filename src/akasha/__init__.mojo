@@ -9,8 +9,10 @@ from .compute import (
 )
 from .document import DocumentField, DocumentRecord, PayloadValue
 from .index import (
+    Bitmap,
     FlatIndex,
     HnswIndex,
+    MetadataIndex,
     SearchResult,
     SparseElement,
     SparseIndex,
