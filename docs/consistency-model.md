@@ -74,6 +74,11 @@ and PQ may change candidate recall and approximate scores, but exact rerank uses
 the same Float32 SIMD metric oracle. Parallel range scheduling cannot change
 visible snapshot state or deterministic tie order.
 
+GPU execution also consumes only owned snapshot state. The planner and device
+allocation happen after snapshot capture; any device rejection or runtime
+failure recomputes the whole batch through the exact CPU executor. There is no
+partially device-produced result, mutation, or durability side effect.
+
 If a crash occurs after manifest publication but before WAL replacement,
 recovery may see the new snapshot and the pre-checkpoint WAL. Records at or
 before the manifest sequence are skipped, so each mutation is restored once.

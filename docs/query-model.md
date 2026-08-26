@@ -63,7 +63,15 @@ approximations. With `rerank_k >= k`, the approximate index selects candidates
 and original Float32 vectors produce final metric scores. A larger candidate
 set improves recall at extra CPU cost.
 
+`search_device_*_batch[use_accelerator=True]` returns a `DeviceBatchResult`
+containing per-query results, `used_gpu`, a planner/fallback reason, and planned
+device bytes. The device kernels preserve input order and ascending-ID ties;
+Float32 GPU scores are differential-tested against SIMD with a `1e-4`
+tolerance. `_where_batch` device variants evaluate each metadata expression
+before scoring. `use_accelerator=False` compiles a portable CPU-only path for
+hosts without an optional device compiler.
+
 For one condition, lookup is proportional to keyword posting discovery or
 `O(log N + M)` numeric range discovery plus bitmap materialization, where `M`
 is the number of matches. Boolean set operations are linear in bitmap words.
-Projection, GPU execution, and distributed query execution remain future work.
+Projection and distributed query execution remain future work.

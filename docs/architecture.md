@@ -117,6 +117,15 @@ quantization stores one centroid byte per configured subvector. Both preserve
 the scalar/SIMD implementation as the correctness oracle and optionally exact
 rerank an expanded candidate set against owned Float32 vectors.
 
+Phase 13 device batch execution flattens owned snapshot vectors and queries,
+then launches one Mojo GPU scoring thread per query/candidate pair. A second
+kernel assigns one query per thread and emits deterministic metric-aware Top-K
+with ascending-ID ties and no kernel heap allocation. The host planner accounts
+for work size, transfer bytes, configured budget, and live device free memory.
+Disabled or absent hardware, small work, budget rejection, allocation/launch
+failure, and injected failures all use the existing exact SIMD batch executor.
+Filtered device batches materialize indexed candidates before device scoring.
+
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
 to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
@@ -137,8 +146,8 @@ planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Trusted zero-copy Arrow C Data interchange, GPU kernels, operations tooling,
-and distributed execution remain explicit Phase 13–16 work.
+Trusted zero-copy Arrow C Data interchange, operations tooling, and distributed
+execution remain explicit Phase 14–16 work.
 
 ## Implemented adapter boundary
 

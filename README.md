@@ -123,6 +123,9 @@ var sq8 = snapshot.search_sq8_l2(query, 10, rerank_k=50)
 var pq = snapshot.search_pq_l2(
     query, 10, subquantizers=4, centroids=16, rerank_k=50
 )
+var device = snapshot.search_device_l2_batch[use_accelerator=True](
+    queries, 10, GpuExecutionOptions()
+)
 ```
 
 SQ8 uses per-dimension affine byte codes. PQ uses deterministically trained
@@ -162,7 +165,14 @@ pixi run bench-compaction
 pixi run bench-batch
 pixi run bench-phase11
 pixi run bench-phase12
+pixi run test-gpu
+pixi run bench-phase13-gpu
 ```
+
+`test-gpu` is an actual-device gate, not a skip-capable portability test. Apple
+silicon requires Xcode 16+ and may require
+`xcodebuild -downloadComponent MetalToolchain`. The regular `pixi run test`
+always verifies the compile-time CPU fallback and does not require a GPU.
 
 Use the compiled in-process Python adapter:
 
@@ -263,6 +273,9 @@ Implemented:
 - Checksummed HNSW and metadata derived caches keyed by manifest generation,
   accepted sequence, and authoritative live-state fingerprint; any cache
   failure safely rebuilds.
+- Batched Mojo GPU dot/L2/cosine scoring and deterministic GPU Top-K for Apple,
+  NVIDIA, or AMD accelerators, with device-memory planning and exact CPU
+  fallback for disabled, unavailable, small, memory-rejected, or failed work.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
@@ -284,5 +297,5 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Trusted zero-copy Arrow C Data interchange, GPU kernels, operations tooling,
-and distributed execution remain Phase 13–16 work.
+Trusted zero-copy Arrow C Data interchange, operations tooling, and distributed
+execution remain Phase 14–16 work.

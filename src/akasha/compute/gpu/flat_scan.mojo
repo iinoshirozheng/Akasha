@@ -205,7 +205,12 @@ def execute_device_batch[use_accelerator: Bool](
                 if options.fail_before_launch:
                     raise Error("injected GPU launch failure")
                 var results = _execute_gpu_batch(
-                    memtable, queries, k, metric, options.block_size
+                    memtable,
+                    queries,
+                    k,
+                    metric,
+                    options.block_size,
+                    plan.required_bytes,
                 )
                 return DeviceBatchResult(
                     results^, True, "gpu executed", plan.required_bytes
@@ -285,6 +290,7 @@ def _execute_gpu_batch(
     k: Int,
     metric: Int,
     block_size: Int,
+    required_bytes: UInt64,
 ) raises -> List[List[SearchResult]]:
     _validate_gpu_inputs(memtable, queries, k, metric)
     var entries = memtable.live_entries()
@@ -300,6 +306,9 @@ def _execute_gpu_batch(
     var score_count = query_count * point_count
     var output_count = query_count * result_count
     var context = DeviceContext()
+    var memory = context.get_memory_info()
+    if required_bytes > UInt64(memory[0]):
+        raise Error("GPU free memory is below planned allocation")
     var vectors_buffer = context.enqueue_create_buffer[DType.float32](
         vector_count
     )

@@ -8,6 +8,7 @@ version = "0.1.0"
 [tasks]
 build-native-worker = "bash -c 'mkdir -p .build/native; if [ \"$(uname -s)\" = Darwin ]; then clang -std=c11 -Wall -Wextra -Werror -dynamiclib native/maintenance_worker.c -o .build/native/libakasha_worker.so; else cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -pthread native/maintenance_worker.c -o .build/native/libakasha_worker.so; fi'"
 test-mojo = { cmd = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'", depends-on = ["build-native-worker"] }
+test-gpu = "bash -c 'for test_file in tests/gpu/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
 build-python = "mojo build --emit shared-lib -I src src/bindings/python_module.mojo -o python/akashadb/_kernel.so"
 test-python = { cmd = "pytest tests/python -q", depends-on = ["build-python", "build-native-worker"], env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
@@ -25,6 +26,7 @@ bench-compaction = "mojo run -I src benchmarks/mojo/compaction_bench.mojo"
 bench-batch = "mojo run -I src benchmarks/mojo/batch_query_bench.mojo"
 bench-phase11 = { cmd = "mojo run -I src benchmarks/mojo/phase11_bench.mojo", depends-on = ["build-native-worker"] }
 bench-phase12 = "mojo run -I src benchmarks/mojo/phase12_bench.mojo"
+bench-phase13-gpu = "mojo run -I src benchmarks/mojo/phase13_gpu_bench.mojo"
 
 [dependencies]
 mojo = ">=1.0.0,<2"
