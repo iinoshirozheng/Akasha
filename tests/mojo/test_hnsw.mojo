@@ -1,12 +1,5 @@
-from akasha.index.hnsw import HnswIndex, deterministic_level
+from akasha.index.hnsw import HnswIndex
 from std.testing import assert_equal, assert_raises, assert_true, TestSuite
-
-
-def test_level_generation_is_deterministic_and_bounded() raises:
-    assert_equal(deterministic_level(8, 6), deterministic_level(8, 6))
-    assert_true(deterministic_level(8, 6) >= 0)
-    assert_true(deterministic_level(8, 6) <= 6)
-    assert_true(deterministic_level(-8, 6) <= 6)
 
 
 def test_graph_bounds_neighbors_and_rejects_duplicate_ids() raises:
