@@ -1,1 +1,1 @@
-# Future GPU kernels; intentionally empty in the first milestone.
+from .planner import GpuExecutionOptions, GpuPlan, plan_gpu_execution
