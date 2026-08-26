@@ -37,7 +37,15 @@ def test_manifest_v2_round_trips_ordered_segment_descriptors() raises:
         SegmentDescriptor(1, 0, 3, 0x11111111, "segment-base-3.bin")
     )
     segments.append(
-        SegmentDescriptor(0, 4, 5, 0x22222222, "segment-delta-5.bin")
+        SegmentDescriptor.with_sparse(
+            0,
+            4,
+            5,
+            0x22222222,
+            "segment-delta-5.bin",
+            0x33333333,
+            "sparse-delta-5.bin",
+        )
     )
     var manifest = Manifest.with_segments(3, 7, 5, segments^)
     var bytes = encode_manifest_v2(manifest)
@@ -53,6 +61,8 @@ def test_manifest_v2_round_trips_ordered_segment_descriptors() raises:
     assert_equal(decoded.segments[0].checksum, UInt32(0x11111111))
     assert_equal(decoded.segments[1].level, 0)
     assert_equal(decoded.segments[1].name, "segment-delta-5.bin")
+    assert_equal(decoded.segments[1].sparse_checksum, UInt32(0x33333333))
+    assert_equal(decoded.segments[1].sparse_name, "sparse-delta-5.bin")
     assert_equal(decoded.segment_name, "segment-delta-5.bin")
     assert_equal(decoded.segment_checksum, UInt32(0x22222222))
 
@@ -134,11 +144,22 @@ def test_load_v2_requires_every_referenced_segment() raises:
     remove_file_if_exists(directory + "/manifest.bin.tmp")
     remove_file_if_exists(directory + "/segment-base-2.bin")
     remove_file_if_exists(directory + "/segment-delta-3.bin")
+    remove_file_if_exists(directory + "/sparse-delta-3.bin")
     var empty = List[UInt8]()
     write_file_sync(directory + "/segment-base-2.bin", empty)
     var segments = List[SegmentDescriptor]()
     segments.append(SegmentDescriptor(1, 0, 2, 1, "segment-base-2.bin"))
-    segments.append(SegmentDescriptor(0, 3, 3, 2, "segment-delta-3.bin"))
+    segments.append(
+        SegmentDescriptor.with_sparse(
+            0,
+            3,
+            3,
+            2,
+            "segment-delta-3.bin",
+            3,
+            "sparse-delta-3.bin",
+        )
+    )
     var manifest = Manifest.with_segments(1, 2, 3, segments^)
     publish_manifest(directory, manifest)
 
@@ -146,12 +167,17 @@ def test_load_v2_requires_every_referenced_segment() raises:
         _ = load_manifest(directory, 1)
 
     write_file_sync(directory + "/segment-delta-3.bin", empty)
+    with assert_raises():
+        _ = load_manifest(directory, 1)
+
+    write_file_sync(directory + "/sparse-delta-3.bin", empty)
     var loaded = load_manifest(directory, 1)
     assert_equal(len(loaded.segments), 2)
 
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/segment-base-2.bin")
     remove_file_if_exists(directory + "/segment-delta-3.bin")
+    remove_file_if_exists(directory + "/sparse-delta-3.bin")
 
 
 def test_load_rejects_missing_referenced_segment() raises:

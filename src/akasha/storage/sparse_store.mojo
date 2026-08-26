@@ -20,9 +20,12 @@ comptime _MAGIC_0 = UInt8(0x41)  # A
 comptime _MAGIC_1 = UInt8(0x4B)  # K
 comptime _MAGIC_3 = UInt8(0x52)  # R
 comptime _VERSION = UInt16(1)
+comptime _SEGMENT_VERSION = UInt16(2)
 comptime _UPSERT = UInt8(1)
 comptime _DELETE = UInt8(2)
 comptime _WAL_FIXED_SIZE = 36
+comptime SPARSE_SEGMENT_KIND_BASE = 1
+comptime SPARSE_SEGMENT_KIND_DELTA = 2
 
 
 struct SparseWalRecord(Movable):
@@ -52,6 +55,195 @@ struct SparseWalRecord(Movable):
     @staticmethod
     def delete(sequence: UInt64, id: Int) -> SparseWalRecord:
         return SparseWalRecord(sequence, id, True, List[SparseElement]())
+
+    def clone(self) -> SparseWalRecord:
+        var elements = self.elements.copy()
+        return SparseWalRecord(
+            self.sequence, self.id, self.is_delete, elements^
+        )
+
+
+struct SparseSegment(Movable):
+    var kind: Int
+    var min_sequence: UInt64
+    var last_sequence: UInt64
+    var checksum: UInt32
+    var records: List[SparseWalRecord]
+
+    def __init__(
+        out self,
+        kind: Int,
+        min_sequence: UInt64,
+        last_sequence: UInt64,
+        checksum: UInt32,
+        var records: List[SparseWalRecord],
+    ):
+        self.kind = kind
+        self.min_sequence = min_sequence
+        self.last_sequence = last_sequence
+        self.checksum = checksum
+        self.records = records^
+
+
+def latest_sparse_records(
+    records: List[SparseWalRecord],
+) raises -> List[SparseWalRecord]:
+    """Collapse ordered mutations to the newest state for each point ID."""
+    var latest = List[SparseWalRecord]()
+    var previous_sequence = UInt64(0)
+    for index in range(len(records)):
+        if records[index].sequence == 0:
+            raise Error("sparse mutation sequence must be positive")
+        if index > 0 and records[index].sequence <= previous_sequence:
+            raise Error("sparse mutation sequences must increase")
+        previous_sequence = records[index].sequence
+        if records[index].is_delete:
+            if len(records[index].elements) != 0:
+                raise Error("sparse delete cannot contain elements")
+        else:
+            validate_sparse(records[index].elements)
+        var found = -1
+        for latest_index in range(len(latest)):
+            if latest[latest_index].id == records[index].id:
+                found = latest_index
+                break
+        if found >= 0:
+            latest[found] = records[index].clone()
+        else:
+            latest.append(records[index].clone())
+
+    for index in range(1, len(latest)):
+        var cursor = index
+        while cursor > 0 and latest[cursor].id < latest[cursor - 1].id:
+            latest.swap_elements(cursor, cursor - 1)
+            cursor -= 1
+    return latest^
+
+
+def write_sparse_segment(
+    path: String,
+    kind: Int,
+    min_sequence: UInt64,
+    max_sequence: UInt64,
+    records: List[SparseWalRecord],
+) raises -> UInt32:
+    var bytes = encode_sparse_segment(kind, min_sequence, max_sequence, records)
+    var checksum = UInt32(_read_u32_at(bytes, len(bytes) - 4))
+    write_file_sync(path, bytes)
+    return checksum
+
+
+def encode_sparse_segment(
+    kind: Int,
+    min_sequence: UInt64,
+    max_sequence: UInt64,
+    records: List[SparseWalRecord],
+) raises -> List[UInt8]:
+    if kind != SPARSE_SEGMENT_KIND_BASE and kind != SPARSE_SEGMENT_KIND_DELTA:
+        raise Error("unsupported sparse segment kind")
+    if min_sequence > max_sequence:
+        raise Error("sparse segment sequence range is invalid")
+    var ordered = List[SparseWalRecord](capacity=len(records))
+    for index in range(len(records)):
+        if (
+            records[index].sequence == 0
+            or records[index].sequence < min_sequence
+            or records[index].sequence > max_sequence
+        ):
+            raise Error("invalid sparse segment record sequence")
+        if records[index].is_delete:
+            if kind == SPARSE_SEGMENT_KIND_BASE:
+                raise Error("sparse base segment cannot contain deletes")
+            if len(records[index].elements) != 0:
+                raise Error("sparse delete cannot contain elements")
+        else:
+            validate_sparse(records[index].elements)
+        ordered.append(records[index].clone())
+    for index in range(1, len(ordered)):
+        var cursor = index
+        while cursor > 0 and ordered[cursor].id < ordered[cursor - 1].id:
+            ordered.swap_elements(cursor, cursor - 1)
+            cursor -= 1
+    for index in range(1, len(ordered)):
+        if ordered[index].id == ordered[index - 1].id:
+            raise Error("sparse segment point IDs must be unique")
+
+    var writer = BinaryWriter()
+    _write_magic(writer, _SNAPSHOT_MAGIC_2)
+    writer.write_u16(_SEGMENT_VERSION)
+    writer.write_u16(UInt16(kind))
+    writer.write_u64(UInt64(len(ordered)))
+    writer.write_u64(min_sequence)
+    writer.write_u64(max_sequence)
+    for index in range(len(ordered)):
+        writer.write_i64(Int64(ordered[index].id))
+        writer.write_u64(ordered[index].sequence)
+        writer.write_u8(_DELETE if ordered[index].is_delete else _UPSERT)
+        writer.write_u8(0)
+        writer.write_u16(0)
+        writer.write_u32(UInt32(len(ordered[index].elements)))
+        _write_elements(writer, ordered[index].elements)
+    return _finish_checksum(writer)
+
+
+def read_sparse_segment(path: String) raises -> SparseSegment:
+    var bytes = read_file_bytes(path)
+    if len(bytes) < 36:
+        raise Error("truncated sparse segment")
+    _validate_checksum(bytes)
+    var stored_checksum = UInt32(_read_u32_at(bytes, len(bytes) - 4))
+    var encoded_size = len(bytes)
+    var reader = BinaryReader(bytes^)
+    _read_magic(reader, _SNAPSHOT_MAGIC_2)
+    if reader.read_u16() != _SEGMENT_VERSION:
+        raise Error("unsupported sparse segment version")
+    var kind = Int(reader.read_u16())
+    if kind != SPARSE_SEGMENT_KIND_BASE and kind != SPARSE_SEGMENT_KIND_DELTA:
+        raise Error("unsupported sparse segment kind")
+    var count_u64 = reader.read_u64()
+    if count_u64 > UInt64(Int.MAX):
+        raise Error("sparse segment record count is too large")
+    var count = Int(count_u64)
+    if count > (encoded_size - 36) // 24:
+        raise Error("sparse segment record count exceeds file length")
+    var min_sequence = reader.read_u64()
+    var max_sequence = reader.read_u64()
+    if min_sequence > max_sequence:
+        raise Error("sparse segment sequence range is invalid")
+    var records = List[SparseWalRecord](capacity=count)
+    var previous_id = 0
+    for index in range(count):
+        var id = Int(reader.read_i64())
+        if index > 0 and id <= previous_id:
+            raise Error("sparse segment point IDs must increase")
+        previous_id = id
+        var sequence = reader.read_u64()
+        if sequence == 0 or sequence < min_sequence or sequence > max_sequence:
+            raise Error("invalid sparse segment record sequence")
+        var operation = reader.read_u8()
+        if operation != _UPSERT and operation != _DELETE:
+            raise Error("invalid sparse segment operation")
+        if reader.read_u8() != 0 or reader.read_u16() != 0:
+            raise Error("unsupported sparse segment record flags")
+        var elements = _read_elements(reader)
+        if operation == _DELETE:
+            if kind == SPARSE_SEGMENT_KIND_BASE:
+                raise Error("sparse base segment cannot contain deletes")
+            if len(elements) != 0:
+                raise Error("sparse delete cannot contain elements")
+        records.append(
+            SparseWalRecord(sequence, id, operation == _DELETE, elements^)
+        )
+    _ = reader.read_u32()
+    if reader.remaining() != 0:
+        raise Error("unexpected sparse segment payload")
+    return SparseSegment(
+        kind,
+        min_sequence,
+        max_sequence,
+        stored_checksum,
+        records^,
+    )
 
 
 def write_sparse_snapshot(

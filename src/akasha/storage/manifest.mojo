@@ -34,6 +34,8 @@ struct SegmentDescriptor(Movable):
     var max_sequence: UInt64
     var checksum: UInt32
     var name: String
+    var sparse_checksum: UInt32
+    var sparse_name: String
 
     def __init__(
         out self,
@@ -53,8 +55,38 @@ struct SegmentDescriptor(Movable):
         self.max_sequence = max_sequence
         self.checksum = checksum
         self.name = String(copy=name)
+        self.sparse_checksum = 0
+        self.sparse_name = String()
+
+    @staticmethod
+    def with_sparse(
+        level: Int,
+        min_sequence: UInt64,
+        max_sequence: UInt64,
+        checksum: UInt32,
+        name: String,
+        sparse_checksum: UInt32,
+        sparse_name: String,
+    ) raises -> SegmentDescriptor:
+        _validate_segment_name(sparse_name)
+        var descriptor = SegmentDescriptor(
+            level, min_sequence, max_sequence, checksum, name
+        )
+        descriptor.sparse_checksum = sparse_checksum
+        descriptor.sparse_name = String(copy=sparse_name)
+        return descriptor^
 
     def clone(self) raises -> SegmentDescriptor:
+        if self.sparse_name.byte_length() > 0:
+            return SegmentDescriptor.with_sparse(
+                self.level,
+                self.min_sequence,
+                self.max_sequence,
+                self.checksum,
+                self.name,
+                self.sparse_checksum,
+                self.sparse_name,
+            )
         return SegmentDescriptor(
             self.level,
             self.min_sequence,
@@ -177,10 +209,15 @@ def encode_manifest_v2(manifest: Manifest) raises -> List[UInt8]:
     writer.write_u32(0)
     for index in range(len(manifest.segments)):
         var name_length = manifest.segments[index].name.byte_length()
+        var sparse_name_length = manifest.segments[
+            index
+        ].sparse_name.byte_length()
         if name_length > Int(UInt16.MAX):
             raise Error("manifest segment name is too long")
+        if sparse_name_length > Int(UInt16.MAX):
+            raise Error("manifest sparse segment name is too long")
         writer.write_u16(UInt16(manifest.segments[index].level))
-        writer.write_u16(0)
+        writer.write_u16(UInt16(1 if sparse_name_length > 0 else 0))
         writer.write_u64(manifest.segments[index].min_sequence)
         writer.write_u64(manifest.segments[index].max_sequence)
         writer.write_u32(manifest.segments[index].checksum)
@@ -188,6 +225,12 @@ def encode_manifest_v2(manifest: Manifest) raises -> List[UInt8]:
         writer.write_u16(0)
         for byte in manifest.segments[index].name.bytes():
             writer.write_u8(byte)
+        if sparse_name_length > 0:
+            writer.write_u32(manifest.segments[index].sparse_checksum)
+            writer.write_u16(UInt16(sparse_name_length))
+            writer.write_u16(0)
+            for byte in manifest.segments[index].sparse_name.bytes():
+                writer.write_u8(byte)
     return _finish_manifest(writer^)
 
 
@@ -254,6 +297,12 @@ def load_manifest(
     for index in range(len(manifest.segments)):
         if not path_exists(directory + "/" + manifest.segments[index].name):
             raise Error("manifest references a missing segment")
+        if manifest.segments[
+            index
+        ].sparse_name.byte_length() > 0 and not path_exists(
+            directory + "/" + manifest.segments[index].sparse_name
+        ):
+            raise Error("manifest references a missing sparse segment")
     return manifest^
 
 
@@ -294,7 +343,8 @@ def _decode_manifest_v2(
     var segments = List[SegmentDescriptor](capacity=segment_count)
     for _ in range(segment_count):
         var level = Int(reader.read_u16())
-        if reader.read_u16() != 0:
+        var descriptor_flags = reader.read_u16()
+        if descriptor_flags > 1:
             raise Error("unsupported manifest segment flags")
         var min_sequence = reader.read_u64()
         var max_sequence = reader.read_u64()
@@ -304,9 +354,30 @@ def _decode_manifest_v2(
             raise Error("unsupported manifest segment reserved field")
         var name_bytes = reader.read_bytes(name_length)
         var name = String(from_utf8=name_bytes)
-        segments.append(
-            SegmentDescriptor(level, min_sequence, max_sequence, checksum, name)
-        )
+        if descriptor_flags == 1:
+            var sparse_checksum = reader.read_u32()
+            var sparse_name_length = Int(reader.read_u16())
+            if reader.read_u16() != 0:
+                raise Error("unsupported manifest sparse reserved field")
+            var sparse_name_bytes = reader.read_bytes(sparse_name_length)
+            var sparse_name = String(from_utf8=sparse_name_bytes)
+            segments.append(
+                SegmentDescriptor.with_sparse(
+                    level,
+                    min_sequence,
+                    max_sequence,
+                    checksum,
+                    name,
+                    sparse_checksum,
+                    sparse_name,
+                )
+            )
+        else:
+            segments.append(
+                SegmentDescriptor(
+                    level, min_sequence, max_sequence, checksum, name
+                )
+            )
 
     _ = reader.read_u32()
     if reader.remaining() != 0:
@@ -330,6 +401,16 @@ def _validate_manifest_segments(
         for prior in range(index):
             if segments[prior].name == segments[index].name:
                 raise Error("manifest segment names must be unique")
+            if (
+                segments[index].sparse_name.byte_length() > 0
+                and segments[prior].sparse_name == segments[index].sparse_name
+            ):
+                raise Error("manifest sparse segment names must be unique")
+        if (
+            segments[index].sparse_name.byte_length() > 0
+            and segments[index].sparse_name == segments[index].name
+        ):
+            raise Error("dense and sparse segment names must differ")
         previous_max = segments[index].max_sequence
     if segments[len(segments) - 1].max_sequence != last_sequence:
         raise Error("manifest does not cover checkpoint sequence")

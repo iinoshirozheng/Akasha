@@ -23,7 +23,6 @@ from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
     path_exists,
-    remove_file_if_exists,
     sync_directory,
 )
 from akasha.storage.manifest import (
@@ -42,11 +41,15 @@ from akasha.storage.segment import (
 )
 from akasha.storage.sparse_store import (
     append_sparse_wal,
+    latest_sparse_records,
+    read_sparse_segment,
     read_sparse_snapshot,
     recover_sparse_wal,
     rotate_sparse_wal,
+    SPARSE_SEGMENT_KIND_BASE,
+    SPARSE_SEGMENT_KIND_DELTA,
     SparseWalRecord,
-    write_sparse_snapshot,
+    write_sparse_segment,
 )
 from akasha.storage.wal import append_wal, recover_wal, rotate_wal, WalRecord
 from std.math import isfinite
@@ -71,6 +74,7 @@ struct PersistentCollection:
     var _hnsw_dirty: Bool
     var _sparse: SparseIndex
     var _sparse_wal_path: String
+    var _sparse_pending: List[SparseWalRecord]
     var _metadata: MetadataIndex
 
     def __init__(
@@ -82,6 +86,7 @@ struct PersistentCollection:
         var lock: CollectionLock,
         var hnsw: HnswIndex,
         var sparse: SparseIndex,
+        var sparse_pending: List[SparseWalRecord],
         var metadata: MetadataIndex,
     ):
         self.path = String(copy=path)
@@ -95,6 +100,7 @@ struct PersistentCollection:
         self._hnsw_dirty = False
         self._sparse = sparse^
         self._sparse_wal_path = path + "/sparse.wal"
+        self._sparse_pending = sparse_pending^
         self._metadata = metadata^
 
     @staticmethod
@@ -179,18 +185,109 @@ struct PersistentCollection:
             last_sequence = records[index].sequence
 
         var sparse = SparseIndex()
-        var sparse_snapshot_path = (
-            path + "/sparse-" + String(snapshot_sequence) + ".bin"
-        )
-        if path_exists(sparse_snapshot_path):
-            var sparse_records = read_sparse_snapshot(
-                sparse_snapshot_path, snapshot_sequence
-            )
-            for index in range(len(sparse_records)):
-                sparse.upsert(
-                    sparse_records[index].id,
-                    sparse_records[index].elements,
+        if path_exists(manifest_path):
+            var sparse_manifest = load_manifest(path, dimension)
+            var described_sparse_count = 0
+            for descriptor_index in range(len(sparse_manifest.segments)):
+                if (
+                    sparse_manifest.segments[
+                        descriptor_index
+                    ].sparse_name.byte_length()
+                    > 0
+                ):
+                    described_sparse_count += 1
+            if described_sparse_count == 0:
+                var legacy_path = (
+                    path + "/sparse-" + String(snapshot_sequence) + ".bin"
                 )
+                if path_exists(legacy_path):
+                    var legacy_records = read_sparse_snapshot(
+                        legacy_path, snapshot_sequence
+                    )
+                    for record_index in range(len(legacy_records)):
+                        sparse.upsert(
+                            legacy_records[record_index].id,
+                            legacy_records[record_index].elements,
+                        )
+            else:
+                for descriptor_index in range(len(sparse_manifest.segments)):
+                    if (
+                        sparse_manifest.segments[
+                            descriptor_index
+                        ].sparse_name.byte_length()
+                        == 0
+                    ):
+                        var legacy_path = (
+                            path
+                            + "/sparse-"
+                            + String(
+                                sparse_manifest.segments[
+                                    descriptor_index
+                                ].max_sequence
+                            )
+                            + ".bin"
+                        )
+                        if path_exists(legacy_path):
+                            var legacy_records = read_sparse_snapshot(
+                                legacy_path,
+                                sparse_manifest.segments[
+                                    descriptor_index
+                                ].max_sequence,
+                            )
+                            for record_index in range(len(legacy_records)):
+                                sparse.upsert(
+                                    legacy_records[record_index].id,
+                                    legacy_records[record_index].elements,
+                                )
+                        continue
+                    var sparse_segment = read_sparse_segment(
+                        path
+                        + "/"
+                        + sparse_manifest.segments[descriptor_index].sparse_name
+                    )
+                    if (
+                        sparse_segment.min_sequence
+                        != sparse_manifest.segments[
+                            descriptor_index
+                        ].min_sequence
+                        or sparse_segment.last_sequence
+                        != sparse_manifest.segments[
+                            descriptor_index
+                        ].max_sequence
+                    ):
+                        raise Error(
+                            "manifest and sparse segment sequence mismatch"
+                        )
+                    if (
+                        sparse_segment.checksum
+                        != sparse_manifest.segments[
+                            descriptor_index
+                        ].sparse_checksum
+                    ):
+                        raise Error(
+                            "manifest and sparse segment checksum mismatch"
+                        )
+                    if (
+                        sparse_manifest.segments[descriptor_index].level == 0
+                        and sparse_segment.kind != SPARSE_SEGMENT_KIND_DELTA
+                    ):
+                        raise Error("level-zero sparse entry must be a delta")
+                    if (
+                        sparse_manifest.segments[descriptor_index].level > 0
+                        and sparse_segment.kind != SPARSE_SEGMENT_KIND_BASE
+                    ):
+                        raise Error("compacted sparse entry must be a base")
+                    for record_index in range(len(sparse_segment.records)):
+                        if sparse_segment.records[record_index].is_delete:
+                            sparse.delete(
+                                sparse_segment.records[record_index].id
+                            )
+                        else:
+                            sparse.upsert(
+                                sparse_segment.records[record_index].id,
+                                sparse_segment.records[record_index].elements,
+                            )
+        var sparse_pending = List[SparseWalRecord]()
         var sparse_wal = recover_sparse_wal(path + "/sparse.wal")
         for index in range(len(sparse_wal)):
             if sparse_wal[index].sequence <= snapshot_sequence:
@@ -199,6 +296,7 @@ struct PersistentCollection:
                 sparse.delete(sparse_wal[index].id)
             else:
                 sparse.upsert(sparse_wal[index].id, sparse_wal[index].elements)
+            sparse_pending.append(sparse_wal[index].clone())
             if sparse_wal[index].sequence > last_sequence:
                 last_sequence = sparse_wal[index].sequence
         var recovered_sparse = sparse.records()
@@ -216,6 +314,7 @@ struct PersistentCollection:
             lock^,
             hnsw^,
             sparse^,
+            sparse_pending^,
             metadata^,
         )
 
@@ -283,11 +382,10 @@ struct PersistentCollection:
             raise Error("sparse vectors require an existing live point")
         var sequence = self._next_sequence()
         var wal_elements = elements.copy()
-        append_sparse_wal(
-            self._sparse_wal_path,
-            SparseWalRecord.upsert(sequence, id, wal_elements^),
-        )
+        var record = SparseWalRecord.upsert(sequence, id, wal_elements^)
+        append_sparse_wal(self._sparse_wal_path, record)
         self._sparse.upsert(id, elements)
+        self._sparse_pending.append(record.clone())
         self._last_sequence = sequence
 
     def delete(mut self, id: Int) raises:
@@ -553,6 +651,7 @@ struct PersistentCollection:
             if self._last_sequence == previous_sequence:
                 rotate_wal(self.path)
                 rotate_sparse_wal(self.path)
+                self._sparse_pending = List[SparseWalRecord]()
                 return
             if previous_manifest.format_version == 2:
                 if previous_manifest.generation == UInt64.MAX:
@@ -561,11 +660,29 @@ struct PersistentCollection:
             for index in range(len(previous_manifest.segments)):
                 descriptors.append(previous_manifest.segments[index].clone())
 
-        var sparse_name = "sparse-" + String(self._last_sequence) + ".bin"
-        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_kind = SPARSE_SEGMENT_KIND_BASE
+        var sparse_prefix = String("sparse-base-")
+        var sparse_mutations = List[SparseWalRecord]()
         var sparse_records = self._sparse.records()
-        _ = write_sparse_snapshot(
-            sparse_temporary, self._last_sequence, sparse_records
+        for index in range(len(sparse_records)):
+            var elements = sparse_records[index].elements.copy()
+            sparse_mutations.append(
+                SparseWalRecord.upsert(
+                    self._last_sequence, sparse_records[index].id, elements^
+                )
+            )
+        if has_previous_manifest:
+            sparse_kind = SPARSE_SEGMENT_KIND_DELTA
+            sparse_prefix = "sparse-delta-"
+            sparse_mutations = latest_sparse_records(self._sparse_pending)
+        var sparse_name = sparse_prefix + String(self._last_sequence) + ".bin"
+        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_checksum = write_sparse_segment(
+            sparse_temporary,
+            sparse_kind,
+            0 if not has_previous_manifest else previous_sequence + 1,
+            self._last_sequence,
+            sparse_mutations,
         )
         atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
         sync_directory(self.path)
@@ -595,12 +712,14 @@ struct PersistentCollection:
         atomic_replace(temporary_path, final_path)
         sync_directory(self.path)
         descriptors.append(
-            SegmentDescriptor(
+            SegmentDescriptor.with_sparse(
                 level,
                 min_sequence,
                 self._last_sequence,
                 checksum,
                 segment_name,
+                sparse_checksum,
+                sparse_name,
             )
         )
         var manifest = Manifest.with_segments(
@@ -612,11 +731,7 @@ struct PersistentCollection:
         publish_manifest(self.path, manifest)
         rotate_wal(self.path)
         rotate_sparse_wal(self.path)
-        if has_previous_manifest:
-            remove_file_if_exists(
-                self.path + "/sparse-" + String(previous_sequence) + ".bin"
-            )
-            sync_directory(self.path)
+        self._sparse_pending = List[SparseWalRecord]()
 
     def _search_filtered(
         self,

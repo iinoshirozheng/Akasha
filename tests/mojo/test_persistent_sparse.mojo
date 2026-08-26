@@ -11,6 +11,7 @@ from akasha.storage.filesystem import (
     path_exists,
     remove_file_if_exists,
 )
+from akasha.storage.manifest import load_manifest
 from std.testing import assert_equal, assert_raises, TestSuite
 
 
@@ -30,7 +31,19 @@ def _reset(directory: String) raises:
             directory + "/segment-" + String(sequence) + ".bin"
         )
         remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
             directory + "/sparse-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-delta-" + String(sequence) + ".bin"
         )
 
 
@@ -107,18 +120,28 @@ def test_filtered_sparse_and_hybrid_search() raises:
     assert_equal(hybrid[0].id, 1)
 
 
-def test_later_checkpoint_reclaims_previous_sparse_sidecar() raises:
+def test_later_checkpoint_appends_sparse_delta_and_preserves_base() raises:
     var path = String("/tmp/akasha-phase7-sparse-cleanup")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
     collection.upsert_sparse(1, [SparseElement(1, 1.0)])
     collection.flush()
-    assert_equal(path_exists(path + "/sparse-2.bin"), True)
+    assert_equal(path_exists(path + "/sparse-base-2.bin"), True)
     collection.upsert_sparse(1, [SparseElement(2, 1.0)])
     collection.flush()
-    assert_equal(path_exists(path + "/sparse-2.bin"), False)
-    assert_equal(path_exists(path + "/sparse-3.bin"), True)
+    assert_equal(path_exists(path + "/sparse-base-2.bin"), True)
+    assert_equal(path_exists(path + "/sparse-delta-3.bin"), True)
+    var manifest = load_manifest(path, 1)
+    assert_equal(len(manifest.segments), 2)
+    assert_equal(manifest.segments[0].sparse_name, "sparse-base-2.bin")
+    assert_equal(manifest.segments[1].sparse_name, "sparse-delta-3.bin")
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    var results = reopened.search_sparse_dot([SparseElement(2, 1.0)], 1)
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 1)
 
 
 def main() raises:

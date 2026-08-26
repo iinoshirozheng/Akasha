@@ -47,7 +47,7 @@ Each descriptor is encoded as:
 | Relative offset | Size | Field |
 | ---: | ---: | --- |
 | 0 | 2 | Level (`0..7`) |
-| 2 | 2 | Flags (must be `0`) |
+| 2 | 2 | Flags (`0` dense only, `1` paired sparse segment) |
 | 4 | 8 | Minimum contained sequence |
 | 12 | 8 | Maximum contained sequence |
 | 20 | 4 | Referenced segment CRC32 |
@@ -55,7 +55,18 @@ Each descriptor is encoded as:
 | 26 | 2 | Reserved (must be `0`) |
 | 28 | variable | UTF-8 segment filename |
 
-Descriptor filenames are unique, non-empty, and contain neither `/` nor NUL.
+When descriptor flag `1` is set, the dense filename is immediately followed
+by:
+
+| Size | Field |
+| ---: | --- |
+| 4 | Referenced sparse segment CRC32 |
+| 2 | UTF-8 sparse filename byte length |
+| 2 | Reserved (must be `0`) |
+| variable | UTF-8 sparse segment filename |
+
+Dense and sparse descriptor filenames are unique, non-empty, differ from each
+other, and contain neither `/` nor NUL.
 Sequence intervals must increase without overlap in manifest order; every
 maximum is at or below the checkpoint sequence and the final maximum equals the
 checkpoint sequence. Level 0 is an incremental delta and higher levels are
