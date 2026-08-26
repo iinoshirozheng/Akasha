@@ -1,6 +1,6 @@
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
-from akasha.query.filter_ast import FilterCondition
+from akasha.query.filter_ast import FilterCondition, FilterExpression
 
 
 def matches_all(
@@ -8,19 +8,76 @@ def matches_all(
 ) raises -> Bool:
     """Return true when every condition matches one same-named field."""
     for condition_index in range(len(conditions)):
-        var found = False
-        for field_index in range(len(fields)):
-            if fields[field_index].name != conditions[condition_index].name:
-                continue
-            found = True
-            if not _matches_value(
-                fields[field_index].value, conditions[condition_index]
-            ):
-                return False
-            break
-        if not found:
+        if not _matches_condition(fields, conditions[condition_index]):
             return False
     return True
+
+
+def matches_expression(
+    fields: List[DocumentField], expression: FilterExpression
+) raises -> Bool:
+    """Evaluate a bounded expression with deterministic short-circuiting."""
+    expression.validate()
+    var node_stack = List[Int]()
+    var child_positions = List[Int]()
+    node_stack.append(expression.root_index())
+    child_positions.append(0)
+    var has_result = False
+    var result = False
+
+    while len(node_stack) > 0:
+        var stack_index = len(node_stack) - 1
+        var node_index = node_stack[stack_index]
+        var kind = expression.node_kind(node_index)
+
+        if has_result:
+            if kind == FilterExpression.NEGATE:
+                _ = node_stack.pop()
+                _ = child_positions.pop()
+                result = not result
+                continue
+            if kind == FilterExpression.ALL and not result:
+                _ = node_stack.pop()
+                _ = child_positions.pop()
+                continue
+            if kind == FilterExpression.ANY and result:
+                _ = node_stack.pop()
+                _ = child_positions.pop()
+                continue
+            child_positions[stack_index] += 1
+            has_result = False
+            continue
+
+        if kind == FilterExpression.CONDITION:
+            var condition = expression.node_condition(node_index)
+            result = _matches_condition(fields, condition.value())
+            _ = node_stack.pop()
+            _ = child_positions.pop()
+            has_result = True
+            continue
+
+        var child_position = child_positions[stack_index]
+        if child_position >= expression.node_child_count(node_index):
+            result = kind == FilterExpression.ALL
+            _ = node_stack.pop()
+            _ = child_positions.pop()
+            has_result = True
+            continue
+
+        node_stack.append(expression.node_child(node_index, child_position))
+        child_positions.append(0)
+
+    return result
+
+
+def _matches_condition(
+    fields: List[DocumentField], condition: FilterCondition
+) raises -> Bool:
+    for field_index in range(len(fields)):
+        if fields[field_index].name != condition.name:
+            continue
+        return _matches_value(fields[field_index].value, condition)
+    return False
 
 
 def _matches_value(

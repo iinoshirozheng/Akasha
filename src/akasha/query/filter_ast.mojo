@@ -255,6 +255,23 @@ struct FilterExpression(Movable):
     def _root_index(self) -> Int:
         return self._root
 
+    def root_index(self) -> Int:
+        return self._root
+
+    def node_kind(self, node_index: Int) -> UInt8:
+        return self._node_kind(node_index)
+
+    def node_child_count(self, node_index: Int) -> Int:
+        return self._node_child_count(node_index)
+
+    def node_child(self, node_index: Int, child_index: Int) -> Int:
+        return self._node_child(node_index, child_index)
+
+    def node_condition(
+        self, node_index: Int
+    ) raises -> Optional[FilterCondition]:
+        return self._get_node_condition(node_index)
+
 
 def _validate_requested_shape(
     kind: UInt8,

@@ -1,6 +1,6 @@
 from akasha.document import DocumentField, PayloadValue
-from akasha.query.evaluator import matches_all
-from akasha.query.filter_ast import FilterCondition
+from akasha.query.evaluator import matches_all, matches_expression
+from akasha.query.filter_ast import FilterCondition, FilterExpression
 from std.testing import assert_false, assert_true, TestSuite
 
 
@@ -155,6 +155,72 @@ def test_missing_fields_and_type_mismatches_never_match() raises:
             FilterCondition.not_equal("page", PayloadValue.floating(7.0)),
         )
     )
+
+
+def _condition_expression(
+    var condition: FilterCondition,
+) raises -> FilterExpression:
+    return FilterExpression.condition(condition^)
+
+
+def test_expression_evaluator_matches_nested_boolean_logic() raises:
+    var fields = _fields()
+    var left_children = List[FilterExpression]()
+    left_children.append(
+        _condition_expression(
+            FilterCondition.equal("category", PayloadValue.string("database"))
+        )
+    )
+    left_children.append(
+        _condition_expression(
+            FilterCondition.greater_or_equal("page", PayloadValue.integer(5))
+        )
+    )
+    var root_children = List[FilterExpression]()
+    root_children.append(FilterExpression.all(left_children^))
+    root_children.append(
+        FilterExpression.negate(
+            _condition_expression(
+                FilterCondition.equal("verified", PayloadValue.boolean(True))
+            )
+        )
+    )
+    var expression = FilterExpression.any(root_children^)
+
+    assert_true(matches_expression(fields, expression))
+
+
+def test_expression_evaluator_defines_empty_all_and_any() raises:
+    var fields = _fields()
+    var all_expression = FilterExpression.all(List[FilterExpression]())
+    var any_expression = FilterExpression.any(List[FilterExpression]())
+
+    assert_true(matches_expression(fields, all_expression))
+    assert_false(matches_expression(fields, any_expression))
+
+
+def test_expression_evaluator_propagates_missing_field_boolean_results() raises:
+    var fields = _fields()
+    var any_children = List[FilterExpression]()
+    any_children.append(
+        _condition_expression(
+            FilterCondition.equal("missing", PayloadValue.integer(1))
+        )
+    )
+    any_children.append(
+        _condition_expression(
+            FilterCondition.equal("page", PayloadValue.integer(7))
+        )
+    )
+    var any_expression = FilterExpression.any(any_children^)
+    var negated_missing = FilterExpression.negate(
+        _condition_expression(
+            FilterCondition.equal("missing", PayloadValue.integer(1))
+        )
+    )
+
+    assert_true(matches_expression(fields, any_expression))
+    assert_true(matches_expression(fields, negated_missing))
 
 
 def main() raises:
