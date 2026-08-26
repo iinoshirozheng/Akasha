@@ -1,6 +1,14 @@
+from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.flat import FlatIndex, SearchResult
 from akasha.index.hnsw import HnswIndex
 from std.sys.arg import argv
+from std.time import perf_counter_ns
+
+
+comptime _SEED = UInt64(0xA5A5D00D12345678)
+comptime _M = 24
+comptime _M0 = 48
+comptime _EF_CONSTRUCTION = 192
 
 
 struct SplitMix64(Movable):
@@ -76,8 +84,42 @@ def _query_vector(
     return _uniform_vector(rng, dimension)
 
 
+def _exact_search(
+    index: FlatIndex,
+    metric: MetricKind,
+    query: List[Float32],
+    k: Int,
+) raises -> List[SearchResult]:
+    if metric == MetricKind.dot():
+        return index.search_dot(query, k)
+    if metric == MetricKind.l2():
+        return index.search_l2(query, k)
+    return index.search_cosine(query, k)
+
+
+def _packed_size_estimate(index: HnswIndex) -> Int:
+    """Estimate serialized bytes from the live packed-tape lengths.
+
+    This deliberately excludes allocator capacity and dictionary overhead. It
+    is a stable layout estimate for comparing benchmark runs, not an RSS
+    measurement or the size of a committed persistence format.
+    """
+    return (
+        64
+        + len(index.graph.ids) * 8
+        + len(index.graph.levels) * 2
+        + len(index.graph.current_flags) * 3
+        + len(index.graph.vector_scalars) * 4
+        + len(index.graph.neighbor_bases) * 8
+        + len(index.graph.neighbor_count_bases) * 8
+        + len(index.graph.neighbor_counts) * 4
+        + len(index.graph.neighbor_slots) * 4
+    )
+
+
 def run_dataset(
     dataset: String,
+    metric: MetricKind,
     point_count: Int,
     dimension: Int,
     query_count: Int,
@@ -85,9 +127,15 @@ def run_dataset(
     ef: Int,
     clustered: Bool,
 ) raises:
-    var rng = SplitMix64(UInt64(0xA5A5D00D12345678))
+    var rng = SplitMix64(_SEED)
     var exact = FlatIndex(dimension)
-    var approximate = HnswIndex(dimension, m=16, max_level=16)
+    var config = CollectionConfig.defaults(dimension)
+    config.ann_metric = metric.copy()
+    config.m = _M
+    config.m0 = _M0
+    config.ef_construction = _EF_CONSTRUCTION
+    config.max_level = 16
+    var approximate = HnswIndex(config)
 
     for point_id in range(point_count):
         var values = _query_vector(rng, point_id, dimension, clustered)
@@ -95,19 +143,29 @@ def run_dataset(
         exact.add(point_id, values^)
 
     var recall_sum = Float64(0.0)
+    var total_visited = 0
+    var total_distances = 0
+    var search_start = perf_counter_ns()
     for query_id in range(query_count):
         var query = _query_vector(
             rng, point_count + query_id, dimension, clustered
         )
-        var ground_truth = exact.search_l2(query, k)
-        var candidates = approximate.search_l2(query, k, ef)
+        var ground_truth = _exact_search(exact, metric, query, k)
+        var candidates = approximate.search(query, k, ef_search=ef)
         recall_sum += recall_at_k(ground_truth, candidates)
+        total_visited += (
+            approximate.last_search_stats.upper_visited
+            + approximate.last_search_stats.base_visited
+        )
+        total_distances += approximate.last_search_stats.distance_evaluations
 
+    var search_elapsed = perf_counter_ns() - search_start
     var recall = recall_sum / Float64(query_count)
-    # Task 13 wires actual HNSW traversal counters into these two fields.
     print(
         "dataset="
         + dataset
+        + " metric="
+        + metric.name()
         + " points="
         + String(point_count)
         + " dimension="
@@ -118,7 +176,18 @@ def run_dataset(
         + String(ef)
         + " recall="
         + String(recall)
-        + " visited=0 distances=0"
+        + " build_distances="
+        + String(approximate.build_stats.distance_evaluations)
+        + " directed_edges="
+        + String(approximate.build_stats.directed_edges)
+        + " avg_visited="
+        + String(Float64(total_visited) / Float64(query_count))
+        + " avg_search_distances="
+        + String(Float64(total_distances) / Float64(query_count))
+        + " packed_size_estimate_bytes="
+        + String(_packed_size_estimate(approximate))
+        + " local_search_ns_per_query="
+        + String(Float64(search_elapsed) / Float64(query_count))
     )
 
 
@@ -140,7 +209,24 @@ def main() raises:
         k = 5
         ef = 32
 
-    run_dataset("uniform", point_count, dimension, query_count, k, ef, False)
-    run_dataset(
-        "eight-cluster", point_count, dimension, query_count, k, ef, True
-    )
+    for metric in [MetricKind.dot(), MetricKind.l2(), MetricKind.cosine()]:
+        run_dataset(
+            "uniform",
+            metric,
+            point_count,
+            dimension,
+            query_count,
+            k,
+            ef,
+            False,
+        )
+        run_dataset(
+            "eight-cluster",
+            metric,
+            point_count,
+            dimension,
+            query_count,
+            k,
+            ef,
+            True,
+        )
