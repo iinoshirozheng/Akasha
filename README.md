@@ -48,6 +48,7 @@ fields.append(DocumentField("page", PayloadValue.integer(7)))
 fields.append(DocumentField("verified", PayloadValue.boolean(True)))
 collection.upsert_document(42, [1.0, 0.0, 0.0], fields^)
 collection.flush()
+collection.close()
 
 var reopened = PersistentCollection.open("/tmp/my-vectors", 3)
 var query: List[Float32] = [1.0, 0.0, 0.0]
@@ -131,6 +132,9 @@ Implemented:
   metadata.
 - Versioned little-endian WAL, segment, and manifest formats with CRC32.
 - WAL append fsync, immutable snapshot publication, and atomic manifest commit.
+- Enforced single-writer collection ownership with deterministic `close()`.
+- Ordered checkpoints that rotate the WAL and reclaim the previous committed
+  snapshot segment without weakening crash recovery.
 - WAL-only and snapshot-plus-WAL recovery, including torn-tail repair.
 - Backward-compatible WAL and segment readers for Phase 3 version 1 data;
   subsequent writes and snapshots use payload-aware version 2 formats.
@@ -141,5 +145,5 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Metadata indexes, WAL rotation, compaction, HNSW, hybrid retrieval, Arrow
+Metadata indexes, incremental compaction, HNSW, hybrid retrieval, Arrow
 interchange, GPU kernels, and distributed execution remain deferred.

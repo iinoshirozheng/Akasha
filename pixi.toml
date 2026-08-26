@@ -9,7 +9,7 @@ version = "0.1.0"
 test-mojo = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
 test-python = { cmd = "pytest tests/python -q", env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
-test-crash = "mojo run -I src tests/crash/test_wal_tail.mojo"
+test-crash = "bash -c 'for test_file in tests/crash/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
 build = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent"
 smoke = "mojo run -I src examples/smoke.mojo"
 example-persistent = "mojo run -I src examples/persistent_collection.mojo"

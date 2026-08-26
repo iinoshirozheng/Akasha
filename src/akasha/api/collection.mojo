@@ -16,13 +16,14 @@ from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
     path_exists,
+    remove_file_if_exists,
     sync_directory,
 )
 from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
 from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import read_segment, write_segment
-from akasha.storage.wal import append_wal, recover_wal, WalRecord
+from akasha.storage.wal import append_wal, recover_wal, rotate_wal, WalRecord
 from std.math import isfinite
 
 
@@ -233,6 +234,13 @@ struct PersistentCollection:
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
         self._ensure_open()
+        var previous_segment = String()
+        var has_previous_segment = False
+        if path_exists(self.path + "/manifest.bin"):
+            var previous_manifest = load_manifest(self.path, self.dimension)
+            previous_segment = String(copy=previous_manifest.segment_name)
+            has_previous_segment = True
+
         var entries = self._memtable.live_entries()
         var segment_name = "segment-" + String(self._last_sequence) + ".bin"
         var temporary_path = self.path + "/" + segment_name + ".tmp"
@@ -252,6 +260,10 @@ struct PersistentCollection:
             segment_name,
         )
         publish_manifest(self.path, manifest)
+        rotate_wal(self.path)
+        if has_previous_segment and previous_segment != segment_name:
+            remove_file_if_exists(self.path + "/" + previous_segment)
+            sync_directory(self.path)
 
     def _search_filtered(
         self,

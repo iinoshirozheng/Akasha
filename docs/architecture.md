@@ -29,6 +29,8 @@ flush
    -> complete live vector-plus-payload segment v2 + fsync
    -> atomic segment rename + directory fsync
    -> atomic manifest publish + directory fsync
+   -> atomic empty WAL replacement + directory fsync
+   -> previous manifest segment removal + directory fsync
 ```
 
 ## Initial read path
@@ -43,7 +45,10 @@ query -> typed AND filter -> SIMD metric -> bounded Top-K IDs
 
 ## Implemented storage boundary
 
-`PersistentCollection` is an embedded, single-writer engine. WAL, MemTable,
+`PersistentCollection` is an embedded, single-writer engine. Opening a
+collection obtains a non-blocking exclusive advisory lock on the stable
+`collection.lock` file before recovery; `close()` releases it deterministically
+and RAII releases it if the owner is dropped. WAL, MemTable,
 segment, manifest, CRC32, and the filesystem durability boundary are all Mojo
 modules under `src/akasha/storage` and `src/akasha/api`. Recovery accepts only an
 incomplete final WAL record; it truncates that tail before another append.
@@ -56,9 +61,13 @@ publishes a version 2 snapshot. Payloads are flat ordered fields with unique,
 non-empty names. Supported values are String, Int64, finite Float64, and Bool,
 with a maximum of 1,024 fields and 16 MiB encoded payload per document.
 
-Segments are full live-state snapshots in Phase 3. WAL rotation, obsolete
-segment cleanup, incremental segments, compaction, multi-process locking, and
-snapshot-isolated concurrent readers remain future storage work.
+Segments are full live-state snapshots. A flush is an ordered checkpoint: it
+publishes the new segment and manifest, atomically replaces the WAL with an
+empty durable file, then removes only the segment named by the previous valid
+manifest. Recovery remains safe if a crash retains the old WAL after the new
+manifest because replay ignores sequence numbers already covered by the
+snapshot. Incremental segments, leveled compaction, and snapshot-isolated
+concurrent readers remain future storage work.
 
 Phase 4.2 evaluates strict typed conditions against each live payload before
 SIMD scoring. Phase 4.3 composes them as bounded All/Any/Negate expressions,
