@@ -19,10 +19,12 @@ from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
+from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
     path_exists,
+    remove_file_if_exists,
     sync_directory,
 )
 from akasha.storage.manifest import (
@@ -732,6 +734,102 @@ struct PersistentCollection:
         rotate_wal(self.path)
         rotate_sparse_wal(self.path)
         self._sparse_pending = List[SparseWalRecord]()
+
+    def compact(mut self) raises:
+        """Replace the committed segment set with one complete live base."""
+        self._ensure_open()
+        self.flush()
+        if not path_exists(self.path + "/manifest.bin"):
+            return
+        var previous = load_manifest(self.path, self.dimension)
+        if len(previous.segments) <= 1:
+            return
+        if previous.generation == UInt64.MAX:
+            raise Error("manifest generation exhausted")
+
+        var sparse_name = "sparse-base-" + String(self._last_sequence) + ".bin"
+        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_mutations = List[SparseWalRecord]()
+        var sparse_records = self._sparse.records()
+        for index in range(len(sparse_records)):
+            var elements = sparse_records[index].elements.copy()
+            sparse_mutations.append(
+                SparseWalRecord.upsert(
+                    self._last_sequence, sparse_records[index].id, elements^
+                )
+            )
+        var sparse_checksum = write_sparse_segment(
+            sparse_temporary,
+            SPARSE_SEGMENT_KIND_BASE,
+            0,
+            self._last_sequence,
+            sparse_mutations,
+        )
+        atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
+        sync_directory(self.path)
+
+        var segment_name = (
+            "segment-base-" + String(self._last_sequence) + ".bin"
+        )
+        var segment_temporary = self.path + "/" + segment_name + ".tmp"
+        var live_entries = self._memtable.live_entries()
+        var checksum = write_segment_v3(
+            segment_temporary,
+            self.dimension,
+            SEGMENT_KIND_BASE,
+            0,
+            self._last_sequence,
+            live_entries,
+        )
+        atomic_replace(segment_temporary, self.path + "/" + segment_name)
+        sync_directory(self.path)
+
+        var descriptors = List[SegmentDescriptor]()
+        descriptors.append(
+            SegmentDescriptor.with_sparse(
+                1,
+                0,
+                self._last_sequence,
+                checksum,
+                segment_name,
+                sparse_checksum,
+                sparse_name,
+            )
+        )
+        var compacted = Manifest.with_segments(
+            self.dimension,
+            previous.generation + 1,
+            self._last_sequence,
+            descriptors^,
+        )
+        publish_manifest(self.path, compacted)
+
+        for index in range(len(previous.segments)):
+            if previous.segments[index].name != segment_name:
+                remove_file_if_exists(
+                    self.path + "/" + previous.segments[index].name
+                )
+            if (
+                previous.segments[index].sparse_name.byte_length() > 0
+                and previous.segments[index].sparse_name != sparse_name
+            ):
+                remove_file_if_exists(
+                    self.path + "/" + previous.segments[index].sparse_name
+                )
+        sync_directory(self.path)
+
+    def maintenance(mut self) raises -> Bool:
+        """Run synchronous compaction when the default L0 threshold is met."""
+        self._ensure_open()
+        self.flush()
+        if not path_exists(self.path + "/manifest.bin"):
+            return False
+        var manifest = load_manifest(self.path, self.dimension)
+        var policy = CompactionPolicy(4)
+        if not policy.should_compact(manifest):
+            return False
+        self.compact()
+        return True
 
     def _search_filtered(
         self,

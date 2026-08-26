@@ -144,5 +144,27 @@ def test_later_checkpoint_appends_sparse_delta_and_preserves_base() raises:
     assert_equal(results[0].id, 1)
 
 
+def test_full_compaction_rewrites_sparse_state_and_reclaims_inputs() raises:
+    var path = String("/tmp/akasha-phase10-sparse-compaction")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    collection.upsert_sparse(1, [SparseElement(1, 1.0)])
+    collection.flush()
+    collection.upsert_sparse(1, [SparseElement(2, 2.0)])
+    collection.flush()
+
+    collection.compact()
+
+    assert_equal(path_exists(path + "/sparse-base-2.bin"), False)
+    assert_equal(path_exists(path + "/sparse-delta-3.bin"), False)
+    assert_equal(path_exists(path + "/sparse-base-3.bin"), True)
+    collection.close()
+    var reopened = PersistentCollection.open(path, 1)
+    var results = reopened.search_sparse_dot([SparseElement(2, 1.0)], 1)
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 1)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

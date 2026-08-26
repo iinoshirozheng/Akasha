@@ -304,5 +304,61 @@ def test_recovery_applies_base_and_deltas_in_manifest_sequence_order() raises:
     assert_equal(collection.get(2).value().vector[0], Float32(4.0))
 
 
+def test_full_compaction_replaces_segments_and_preserves_query_results() raises:
+    var path = String("/tmp/akasha-phase10-full-compaction")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    collection.flush()
+    collection.upsert(1, [4.0])
+    collection.upsert(2, [2.0])
+    collection.flush()
+    collection.delete(1)
+    collection.upsert(3, [3.0])
+    collection.flush()
+    var stray: List[UInt8] = [9, 9]
+    write_file_sync(path + "/segment-stray.bin", stray)
+    var before = collection.search_dot([1.0], 3)
+    var before_manifest = load_manifest(path, 1)
+    assert_equal(len(before_manifest.segments), 3)
+
+    collection.compact()
+
+    var compacted = load_manifest(path, 1)
+    var after = collection.search_dot([1.0], 3)
+    assert_equal(compacted.generation, UInt64(4))
+    assert_equal(len(compacted.segments), 1)
+    assert_equal(compacted.segments[0].level, 1)
+    assert_equal(compacted.segments[0].name, "segment-base-5.bin")
+    assert_equal(path_exists(path + "/segment-base-1.bin"), False)
+    assert_equal(path_exists(path + "/segment-delta-3.bin"), False)
+    assert_equal(path_exists(path + "/segment-delta-5.bin"), False)
+    assert_equal(path_exists(path + "/segment-stray.bin"), True)
+    assert_equal(len(after), len(before))
+    assert_equal(after[0].id, before[0].id)
+    assert_equal(after[1].id, before[1].id)
+    assert_equal(Bool(collection.get(1)), False)
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    assert_equal(reopened.search_dot([1.0], 3)[0].id, 3)
+    assert_equal(Bool(reopened.get(1)), False)
+
+
+def test_maintenance_compacts_at_default_level_zero_threshold() raises:
+    var path = String("/tmp/akasha-phase10-maintenance-threshold")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    collection.flush()
+    for id in range(2, 6):
+        collection.upsert(id, [Float32(id)])
+        collection.flush()
+
+    assert_equal(collection.maintenance(), True)
+    assert_equal(len(load_manifest(path, 1).segments), 1)
+    assert_equal(collection.maintenance(), False)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
