@@ -3,11 +3,13 @@ from akasha.document.record import (
     DocumentField,
     validate_fields,
 )
+from akasha.document.codec import decode_payload, encode_payload
 from akasha.index.bitmap import Bitmap
 from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
 from std.collections import Dict
+from akasha.storage.checksum import BinaryReader, BinaryWriter
 
 
 struct MetadataIndex:
@@ -104,6 +106,60 @@ struct MetadataIndex:
         if ordinal < 0:
             return False
         return candidates.contains(ordinal)
+
+    def encode_cache_payload(self) raises -> List[UInt8]:
+        """Encode stable metadata slots for a rebuildable cache."""
+        if self.slot_count() > Int(UInt32.MAX):
+            raise Error("metadata cache slot count exceeds format")
+        var writer = BinaryWriter()
+        writer.write_u32(UInt32(self.slot_count()))
+        for ordinal in range(self.slot_count()):
+            writer.write_i64(Int64(self._ids[ordinal]))
+            writer.write_u8(
+                UInt8(1) if self._live.contains(ordinal) else UInt8(0)
+            )
+            writer.write_u8(UInt8(0))
+            writer.write_u16(UInt16(0))
+            var payload = encode_payload(self._fields[ordinal])
+            if len(payload) > Int(UInt32.MAX):
+                raise Error("metadata cache payload exceeds format")
+            writer.write_u32(UInt32(len(payload)))
+            writer.write_bytes(payload)
+        return writer.take_bytes()
+
+    @staticmethod
+    def decode_cache_payload(
+        var payload: List[UInt8]
+    ) raises -> MetadataIndex:
+        var reader = BinaryReader(payload^)
+        var slot_count = Int(reader.read_u32())
+        if slot_count > 10_000_000:
+            raise Error("metadata cache slot count exceeds limit")
+        var index = MetadataIndex()
+        index.begin_bulk()
+        for _ in range(slot_count):
+            var id = Int(reader.read_i64())
+            var live = reader.read_u8()
+            if (
+                live > UInt8(1)
+                or reader.read_u8() != UInt8(0)
+                or reader.read_u16() != UInt16(0)
+            ):
+                raise Error("metadata cache slot header is invalid")
+            var payload_length = Int(reader.read_u32())
+            if payload_length > reader.remaining():
+                raise Error("metadata cache field payload is truncated")
+            var fields = decode_payload(reader.read_bytes(payload_length))
+            if live == UInt8(1):
+                index.upsert(id, fields^)
+            else:
+                if len(fields) != 0:
+                    raise Error("metadata tombstone cache contains fields")
+                index.delete(id)
+        if reader.remaining() != 0:
+            raise Error("metadata cache has trailing bytes")
+        index.finish_bulk()
+        return index^
 
     def _append_slot(mut self, id: Int) raises -> Int:
         var ordinal = len(self._ids)

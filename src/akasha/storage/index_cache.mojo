@@ -1,8 +1,11 @@
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
+    crc32,
     crc32_range,
 )
+from akasha.document.codec import encode_payload
+from akasha.storage.memtable import MemTable
 from akasha.storage.filesystem import (
     atomic_replace,
     path_exists,
@@ -161,6 +164,26 @@ def load_cache_payload(
         return Optional(artifact.payload.copy())
     except:
         return Optional[List[UInt8]]()
+
+
+def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
+    """Fingerprint dense vectors, sequences, tombstones, and typed fields."""
+    var writer = BinaryWriter()
+    writer.write_u32(UInt32(memtable.dimension))
+    writer.write_u32(UInt32(memtable.slot_count()))
+    for ordinal in range(memtable.slot_count()):
+        var entry = memtable.entry_at(ordinal)
+        writer.write_i64(Int64(entry.id))
+        writer.write_u64(entry.sequence)
+        writer.write_u8(UInt8(1) if entry.tombstone else UInt8(0))
+        writer.write_u8(UInt8(0))
+        writer.write_u16(UInt16(0))
+        for value in entry.values:
+            writer.write_f32(value)
+        var fields = encode_payload(entry.fields)
+        writer.write_u32(UInt32(len(fields)))
+        writer.write_bytes(fields)
+    return crc32(writer.take_bytes())
 
 
 def _validate_header(kind: UInt8, dimension: Int, payload_length: Int) raises:

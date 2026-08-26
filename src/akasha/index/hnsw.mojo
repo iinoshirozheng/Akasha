@@ -5,6 +5,7 @@ from akasha.compute.simd import (
 )
 from akasha.compute.topk import BoundedTopK
 from akasha.index.flat import SearchResult
+from akasha.storage.checksum import BinaryReader, BinaryWriter
 from std.math import isfinite
 
 
@@ -101,6 +102,97 @@ struct HnswIndex:
                 if count > maximum:
                     maximum = count
         return maximum
+
+    def encode_cache_payload(self) raises -> List[UInt8]:
+        """Serialize this derived graph; the outer cache owns integrity."""
+        if self.m > Int(UInt16.MAX) or self.max_level > Int(UInt16.MAX):
+            raise Error("HNSW configuration exceeds cache format")
+        if len(self._nodes) > Int(UInt32.MAX):
+            raise Error("HNSW graph exceeds cache format")
+        var writer = BinaryWriter()
+        writer.write_u16(UInt16(self.m))
+        writer.write_u16(UInt16(self.max_level))
+        writer.write_u32(UInt32(len(self._nodes)))
+        writer.write_i64(Int64(self._entry_index))
+        writer.write_i64(Int64(self._entry_level))
+        for node_index in range(len(self._nodes)):
+            writer.write_i64(Int64(self._nodes[node_index].id))
+            writer.write_u16(UInt16(self._nodes[node_index].level))
+            writer.write_u16(UInt16(0))
+            for value in self._nodes[node_index].vector:
+                writer.write_f32(value)
+            for level in range(self._nodes[node_index].level + 1):
+                var count = len(
+                    self._nodes[node_index].neighbors[level].indices
+                )
+                if count > Int(UInt16.MAX):
+                    raise Error("HNSW neighbor list exceeds cache format")
+                writer.write_u16(UInt16(count))
+                writer.write_u16(UInt16(0))
+                for neighbor in self._nodes[
+                    node_index
+                ].neighbors[level].indices:
+                    if neighbor < 0 or neighbor > Int(UInt32.MAX):
+                        raise Error("HNSW neighbor ordinal exceeds cache format")
+                    writer.write_u32(UInt32(neighbor))
+        return writer.take_bytes()
+
+    @staticmethod
+    def decode_cache_payload(
+        dimension: Int, var payload: List[UInt8]
+    ) raises -> HnswIndex:
+        var reader = BinaryReader(payload^)
+        var m = Int(reader.read_u16())
+        var max_level = Int(reader.read_u16())
+        var point_count = Int(reader.read_u32())
+        if point_count > 10_000_000:
+            raise Error("HNSW cache point count exceeds limit")
+        var entry_index = Int(reader.read_i64())
+        var entry_level = Int(reader.read_i64())
+        var index = HnswIndex(dimension, m=m, max_level=max_level)
+        for node_index in range(point_count):
+            var id = Int(reader.read_i64())
+            for previous in range(node_index):
+                if index._nodes[previous].id == id:
+                    raise Error("HNSW cache contains duplicate point IDs")
+            var level = Int(reader.read_u16())
+            if reader.read_u16() != UInt16(0) or level > max_level:
+                raise Error("HNSW cache node header is invalid")
+            var vector = List[Float32](capacity=dimension)
+            for _ in range(dimension):
+                var value = reader.read_f32()
+                if not isfinite(value):
+                    raise Error("HNSW cache vector must be finite")
+                vector.append(value)
+            var node = _HnswNode(id, vector^, level)
+            for graph_level in range(level + 1):
+                var neighbor_count = Int(reader.read_u16())
+                if (
+                    reader.read_u16() != UInt16(0)
+                    or neighbor_count > m
+                ):
+                    raise Error("HNSW cache neighbor header is invalid")
+                for _ in range(neighbor_count):
+                    var neighbor = Int(reader.read_u32())
+                    if neighbor < 0 or neighbor >= point_count:
+                        raise Error("HNSW cache neighbor ordinal is invalid")
+                    node.neighbors[graph_level].indices.append(neighbor)
+            index._nodes.append(node^)
+        if reader.remaining() != 0:
+            raise Error("HNSW cache has trailing bytes")
+        if point_count == 0:
+            if entry_index != -1 or entry_level != -1:
+                raise Error("empty HNSW cache entry point is invalid")
+        elif (
+            entry_index < 0
+            or entry_index >= point_count
+            or entry_level < 0
+            or entry_level > index._nodes[entry_index].level
+        ):
+            raise Error("HNSW cache entry point is invalid")
+        index._entry_index = entry_index
+        index._entry_level = entry_level
+        return index^
 
     def add(mut self, id: Int, values: List[Float32]) raises:
         if len(values) != self.dimension:

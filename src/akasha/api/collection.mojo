@@ -29,6 +29,14 @@ from akasha.storage.maintenance import (
     MaintenanceController,
 )
 from akasha.storage.retired_files import RetiredFileQueue
+from akasha.storage.index_cache import (
+    authoritative_index_checksum,
+    CACHE_HNSW_KIND,
+    CACHE_METADATA_KIND,
+    CacheArtifact,
+    load_cache_payload,
+    publish_cache,
+)
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -98,6 +106,10 @@ struct PersistentCollection:
     var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
     var _maintenance: MaintenanceController
+    var _cache_generation: UInt64
+    var _source_checksum: UInt32
+    var _hnsw_cache_was_hit: Bool
+    var _metadata_cache_was_hit: Bool
 
     def __init__(
         out self,
@@ -111,6 +123,10 @@ struct PersistentCollection:
         var sparse_pending: List[SparseWalRecord],
         var metadata: MetadataIndex,
         maintenance_library_path: String,
+        cache_generation: UInt64,
+        source_checksum: UInt32,
+        hnsw_cache_hit: Bool,
+        metadata_cache_hit: Bool,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
@@ -136,6 +152,10 @@ struct PersistentCollection:
             self._retired,
             maintenance_library_path,
         )
+        self._cache_generation = cache_generation
+        self._source_checksum = source_checksum
+        self._hnsw_cache_was_hit = hnsw_cache_hit
+        self._metadata_cache_was_hit = metadata_cache_hit
 
     @staticmethod
     def open(
@@ -152,9 +172,11 @@ struct PersistentCollection:
 
         var memtable = MemTable(dimension)
         var snapshot_sequence = UInt64(0)
+        var cache_generation = UInt64(0)
         var manifest_path = path + "/manifest.bin"
         if path_exists(manifest_path):
             var manifest = load_manifest(path, dimension)
+            cache_generation = manifest.generation
             for segment_index in range(len(manifest.segments)):
                 var snapshot = read_segment(
                     path + "/" + manifest.segments[segment_index].name,
@@ -325,11 +347,27 @@ struct PersistentCollection:
             if not Bool(memtable.get(recovered_sparse[index].id)):
                 sparse.delete(recovered_sparse[index].id)
 
-        # HNSW is a derived cache. Rebuilding it eagerly makes collection open
-        # quadratic in the number of recovered points; the first approximate
-        # query rebuilds it through `_ensure_hnsw()` instead.
-        var hnsw = HnswIndex(dimension)
-        var metadata = _build_metadata(memtable)
+        var source_checksum = authoritative_index_checksum(memtable)
+        var hnsw_load = _load_hnsw_cache(
+            path,
+            dimension,
+            cache_generation,
+            last_sequence,
+            source_checksum,
+            memtable,
+        )
+        var hnsw_cache_hit = hnsw_load.hit
+        var hnsw = hnsw_load.take_index()
+        var metadata_load = _load_or_build_metadata_cache(
+            path,
+            dimension,
+            cache_generation,
+            last_sequence,
+            source_checksum,
+            memtable,
+        )
+        var metadata_cache_hit = metadata_load.hit
+        var metadata = metadata_load.take_index()
         var recovered_point_count = memtable.entry_count()
         var collection = PersistentCollection(
             path,
@@ -342,8 +380,12 @@ struct PersistentCollection:
             sparse_pending^,
             metadata^,
             maintenance_library_path,
+            cache_generation,
+            source_checksum,
+            hnsw_cache_hit,
+            metadata_cache_hit,
         )
-        collection._hnsw_dirty = recovered_point_count > 0
+        collection._hnsw_dirty = recovered_point_count > 0 and not hnsw_cache_hit
         return collection^
 
     def close(mut self) raises:
@@ -390,6 +432,16 @@ struct PersistentCollection:
             self._ensure_open()
             return evaluate_expression(self._metadata, expression).count()
 
+    def hnsw_cache_hit(self) raises -> Bool:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw_cache_was_hit
+
+    def metadata_cache_hit(self) raises -> Bool:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._metadata_cache_was_hit
+
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -425,6 +477,7 @@ struct PersistentCollection:
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._hnsw_dirty = True
+        self._invalidate_cache_hits()
 
     def upsert_document(
         mut self,
@@ -455,6 +508,7 @@ struct PersistentCollection:
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._hnsw_dirty = True
+        self._invalidate_cache_hits()
 
     def apply_batch(
         mut self, mutations: List[BatchMutation]
@@ -524,6 +578,7 @@ struct PersistentCollection:
         var last_sequence = first_sequence + UInt64(len(mutations) - 1)
         self._last_sequence = last_sequence
         self._hnsw_dirty = True
+        self._invalidate_cache_hits()
         return BatchWriteResult(first_sequence, last_sequence, len(mutations))
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
@@ -549,6 +604,7 @@ struct PersistentCollection:
         self._sparse.upsert(id, elements)
         self._sparse_pending.append(record.clone())
         self._last_sequence = sequence
+        self._invalidate_cache_hits()
 
     def delete(mut self, id: Int) raises:
         with BlockingScopedLock(self._writer_lock[]):
@@ -564,6 +620,7 @@ struct PersistentCollection:
         self._sparse.delete(id)
         self._last_sequence = sequence
         self._hnsw_dirty = True
+        self._invalidate_cache_hits()
 
     def search_dot(
         self, query: List[Float32], k: Int
@@ -892,6 +949,7 @@ struct PersistentCollection:
                 rotate_wal(self.path)
                 rotate_sparse_wal(self.path)
                 self._sparse_pending = List[SparseWalRecord]()
+                self._publish_index_caches_best_effort()
                 return
             if previous_manifest.format_version == 2:
                 if previous_manifest.generation == UInt64.MAX:
@@ -972,6 +1030,7 @@ struct PersistentCollection:
         rotate_wal(self.path)
         rotate_sparse_wal(self.path)
         self._sparse_pending = List[SparseWalRecord]()
+        self._publish_index_caches_best_effort()
         var policy = CompactionPolicy(4)
         if policy.should_compact(manifest):
             if self._maintenance.enabled():
@@ -1054,6 +1113,8 @@ struct PersistentCollection:
             descriptors^,
         )
         publish_manifest(self.path, compacted)
+
+        self._publish_index_caches_best_effort()
 
         self._retire_or_reclaim(previous, segment_name, sparse_name)
 
@@ -1326,6 +1387,46 @@ struct PersistentCollection:
         var rebuilt = _build_hnsw(self._memtable, self.dimension)
         self._hnsw = rebuilt^
         self._hnsw_dirty = False
+        self._publish_index_caches_best_effort()
+
+    def _invalidate_cache_hits(mut self):
+        self._hnsw_cache_was_hit = False
+        self._metadata_cache_was_hit = False
+
+    def _publish_index_caches_best_effort(mut self):
+        try:
+            var generation = UInt64(0)
+            if path_exists(self.path + "/manifest.bin"):
+                generation = load_manifest(
+                    self.path, self.dimension
+                ).generation
+            var checksum = authoritative_index_checksum(self._memtable)
+            var metadata_payload = self._metadata.encode_cache_payload()
+            var metadata_artifact = CacheArtifact(
+                CACHE_METADATA_KIND,
+                self.dimension,
+                generation,
+                self._last_sequence,
+                checksum,
+                metadata_payload^,
+            )
+            publish_cache(self.path, "metadata.cache", metadata_artifact)
+            if not self._hnsw_dirty:
+                var hnsw_payload = self._hnsw.encode_cache_payload()
+                var hnsw_artifact = CacheArtifact(
+                    CACHE_HNSW_KIND,
+                    self.dimension,
+                    generation,
+                    self._last_sequence,
+                    checksum,
+                    hnsw_payload^,
+                )
+                publish_cache(self.path, "hnsw.cache", hnsw_artifact)
+            self._cache_generation = generation
+            self._source_checksum = checksum
+        except:
+            # Derived cache publication cannot affect query/write correctness.
+            pass
 
     def _next_sequence(self) raises -> UInt64:
         if self._last_sequence == UInt64.MAX:
@@ -1362,3 +1463,111 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     if index.slot_count() != memtable.slot_count():
         raise Error("metadata index and memtable slot alignment failed")
     return index^
+
+
+struct _HnswCacheLoad(Movable):
+    var index: HnswIndex
+    var hit: Bool
+
+    def __init__(out self, var index: HnswIndex, hit: Bool):
+        self.index = index^
+        self.hit = hit
+
+    def take_index(mut self) raises -> HnswIndex:
+        var dimension = self.index.dimension
+        var replacement = HnswIndex(dimension)
+        var result = self.index^
+        self.index = replacement^
+        return result^
+
+
+struct _MetadataCacheLoad(Movable):
+    var index: MetadataIndex
+    var hit: Bool
+
+    def __init__(out self, var index: MetadataIndex, hit: Bool):
+        self.index = index^
+        self.hit = hit
+
+    def take_index(mut self) raises -> MetadataIndex:
+        var replacement = MetadataIndex()
+        var result = self.index^
+        self.index = replacement^
+        return result^
+
+
+def _load_hnsw_cache(
+    path: String,
+    dimension: Int,
+    generation: UInt64,
+    sequence: UInt64,
+    source_checksum: UInt32,
+    memtable: MemTable,
+) raises -> _HnswCacheLoad:
+    var cached = load_cache_payload(
+        path + "/hnsw.cache",
+        CACHE_HNSW_KIND,
+        dimension,
+        generation,
+        sequence,
+        source_checksum,
+    )
+    if Bool(cached):
+        try:
+            var payload = cached.value().copy()
+            var decoded = HnswIndex.decode_cache_payload(
+                dimension, payload^
+            )
+            if decoded.point_count() != len(memtable.live_entries()):
+                raise Error("HNSW cache live point count mismatch")
+            return _HnswCacheLoad(decoded^, True)
+        except:
+            pass
+    var empty = HnswIndex(dimension)
+    return _HnswCacheLoad(empty^, False)
+
+
+def _load_or_build_metadata_cache(
+    path: String,
+    dimension: Int,
+    generation: UInt64,
+    sequence: UInt64,
+    source_checksum: UInt32,
+    memtable: MemTable,
+) raises -> _MetadataCacheLoad:
+    var cached = load_cache_payload(
+        path + "/metadata.cache",
+        CACHE_METADATA_KIND,
+        dimension,
+        generation,
+        sequence,
+        source_checksum,
+    )
+    if Bool(cached):
+        try:
+            var payload = cached.value().copy()
+            var decoded = MetadataIndex.decode_cache_payload(payload^)
+            if (
+                decoded.slot_count() != memtable.slot_count()
+                or decoded.live_count() != len(memtable.live_entries())
+            ):
+                raise Error("metadata cache slot alignment mismatch")
+            return _MetadataCacheLoad(decoded^, True)
+        except:
+            pass
+
+    var rebuilt = _build_metadata(memtable)
+    try:
+        var payload = rebuilt.encode_cache_payload()
+        var artifact = CacheArtifact(
+            CACHE_METADATA_KIND,
+            dimension,
+            generation,
+            sequence,
+            source_checksum,
+            payload^,
+        )
+        publish_cache(path, "metadata.cache", artifact)
+    except:
+        pass
+    return _MetadataCacheLoad(rebuilt^, False)
