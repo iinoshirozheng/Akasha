@@ -9,6 +9,15 @@ from std.testing import (
 )
 
 
+def _unchecked_without_raises(
+    dispatcher: MetricDispatcher,
+    lhs: List[Float32],
+    rhs: List[Float32],
+) -> Float32:
+    """Compile-time proof that the prepared hot path is non-raising."""
+    return dispatcher.canonical_prepared_unchecked(lhs, rhs)
+
+
 def test_canonical_distance_is_lower_better_for_every_metric() raises:
     var lhs: List[Float32] = [1.0, 2.0]
     var rhs: List[Float32] = [4.0, 6.0]
@@ -106,8 +115,40 @@ def test_cosine_preparation_normalizes_once_for_prepared_hot_path() raises:
         atol=1.0e-6,
     )
     assert_almost_equal(
-        dispatcher.canonical_prepared_unchecked(prepared_lhs, prepared_rhs),
+        _unchecked_without_raises(dispatcher, prepared_lhs, prepared_rhs),
         0.2,
+        atol=1.0e-6,
+    )
+
+
+def test_unchecked_prepared_matches_checked_for_every_f32_metric() raises:
+    var raw_lhs: List[Float32] = [3.0, 4.0]
+    var raw_rhs: List[Float32] = [-4.0, 3.0]
+
+    var l2 = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var l2_lhs = l2.prepare_query(raw_lhs)
+    var l2_rhs = l2.prepare_graph_vector(raw_rhs)
+    assert_almost_equal(
+        _unchecked_without_raises(l2, l2_lhs, l2_rhs),
+        l2.canonical_prepared(l2_lhs, l2_rhs),
+        atol=1.0e-6,
+    )
+
+    var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 2)
+    var dot_lhs = dot.prepare_query(raw_lhs)
+    var dot_rhs = dot.prepare_graph_vector(raw_rhs)
+    assert_almost_equal(
+        _unchecked_without_raises(dot, dot_lhs, dot_rhs),
+        dot.canonical_prepared(dot_lhs, dot_rhs),
+        atol=1.0e-6,
+    )
+
+    var cosine = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
+    var cosine_lhs = cosine.prepare_query(raw_lhs)
+    var cosine_rhs = cosine.prepare_graph_vector(raw_rhs)
+    assert_almost_equal(
+        _unchecked_without_raises(cosine, cosine_lhs, cosine_rhs),
+        cosine.canonical_prepared(cosine_lhs, cosine_rhs),
         atol=1.0e-6,
     )
 
@@ -138,7 +179,13 @@ def test_compact_scalar_backends_are_representable_but_not_executable() raises:
     with assert_raises():
         _ = f16.canonical(values, values)
     with assert_raises():
-        _ = i8.canonical_prepared_unchecked(values, values)
+        _ = i8.canonical_prepared(values, values)
+    with assert_raises():
+        bf16.require_supported_backend()
+    with assert_raises():
+        f16.require_supported_backend()
+    with assert_raises():
+        i8.require_supported_backend()
 
 
 def main() raises:

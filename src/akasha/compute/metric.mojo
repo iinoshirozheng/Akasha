@@ -67,14 +67,14 @@ struct MetricDispatcher(Copyable, Movable):
             self._require_nonzero_norm(values)
 
     def prepare_query(self, values: List[Float32]) raises -> List[Float32]:
-        self._require_f32_backend()
+        self.require_supported_backend()
         self.validate_query(values)
         return self._prepare_validated(values)
 
     def prepare_graph_vector(
         self, values: List[Float32]
     ) raises -> List[Float32]:
-        self._require_f32_backend()
+        self.require_supported_backend()
         self.validate_vector(values)
         return self._prepare_validated(values)
 
@@ -82,7 +82,7 @@ struct MetricDispatcher(Copyable, Movable):
         self, lhs: List[Float32], rhs: List[Float32]
     ) raises -> Float32:
         """Return lower-is-better distance for raw public vectors."""
-        self._require_f32_backend()
+        self.require_supported_backend()
         self.validate_query(lhs)
         self.validate_vector(rhs)
 
@@ -96,15 +96,23 @@ struct MetricDispatcher(Copyable, Movable):
         var rhs_norm_squared = simd_dot_product_unchecked(rhs, rhs)
         return 1.0 - product / sqrt(lhs_norm_squared * rhs_norm_squared)
 
-    def canonical_prepared_unchecked(
+    def canonical_prepared(
         self, lhs: List[Float32], rhs: List[Float32]
     ) raises -> Float32:
+        """Check backend support, then score already-prepared vectors."""
+        self.require_supported_backend()
+        return self.canonical_prepared_unchecked(lhs, rhs)
+
+    def canonical_prepared_unchecked(
+        self, lhs: List[Float32], rhs: List[Float32]
+    ) -> Float32:
         """Return canonical distance for prevalidated, prepared vectors.
 
-        This method does not inspect vector dimensions, values, or cosine
-        norms. For cosine, both inputs must already be unit-normalized.
+        The dispatcher must use the F32 backend. Both inputs must be
+        equal-length vectors prepared for this dispatcher; cosine inputs must
+        be unit-normalized. This method performs no validation, allocation, or
+        norm calculation.
         """
-        self._require_f32_backend()
         if self._metric == MetricKind.l2():
             return simd_l2_squared_unchecked(lhs, rhs)
         if self._metric == MetricKind.dot():
@@ -119,7 +127,8 @@ struct MetricDispatcher(Copyable, Movable):
             return -canonical_distance
         return 1.0 - canonical_distance
 
-    def _require_f32_backend(self) raises:
+    def require_supported_backend(self) raises:
+        """Validate the backend once before entering a distance hot loop."""
         if self._scalar != ScalarKind.f32():
             raise Error("scalar backend not implemented")
 
