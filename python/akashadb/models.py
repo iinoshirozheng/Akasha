@@ -43,6 +43,42 @@ class Document:
 
 
 @dataclass(frozen=True, slots=True)
+class BatchMutation:
+    operation: Literal["upsert", "delete"]
+    id: int
+    vector: list[float] | None = None
+    fields: list[PayloadField] = field(default_factory=list)
+
+    @classmethod
+    def upsert(
+        cls,
+        id: int,
+        vector: list[float],
+        fields: list[PayloadField] | None = None,
+    ) -> "BatchMutation":
+        return cls("upsert", id, vector, [] if fields is None else fields)
+
+    @classmethod
+    def delete(cls, id: int) -> "BatchMutation":
+        return cls("delete", id)
+
+    def to_kernel(self) -> dict[str, object]:
+        return {
+            "operation": self.operation,
+            "id": self.id,
+            "vector": [] if self.vector is None else self.vector,
+            "fields": [item.to_kernel() for item in self.fields],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BatchWriteResult:
+    first_sequence: int
+    last_sequence: int
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
 class SearchRequest:
     metric: Metric
     k: int

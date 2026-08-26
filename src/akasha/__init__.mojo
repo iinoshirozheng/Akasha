@@ -1,4 +1,10 @@
-from .api import DatabaseConfig, PersistentCollection, ReadSnapshot
+from .api import (
+    BatchMutation,
+    BatchWriteResult,
+    DatabaseConfig,
+    PersistentCollection,
+    ReadSnapshot,
+)
 from .compute import (
     cosine_similarity,
     dot_product,

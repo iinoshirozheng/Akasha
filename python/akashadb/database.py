@@ -5,6 +5,8 @@ from typing import Any, Protocol
 
 from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_error
 from .models import (
+    BatchMutation,
+    BatchWriteResult,
     Document,
     PayloadField,
     SearchRequest,
@@ -20,6 +22,9 @@ class KernelCollection(Protocol):
     def upsert_document(
         self, id: int, vector: list[float], fields: list[dict[str, object]]
     ) -> None: ...
+    def apply_batch(
+        self, mutations: list[dict[str, object]]
+    ) -> dict[str, int]: ...
     def upsert_sparse(self, id: int, elements: list[dict[str, object]]) -> None: ...
     def delete(self, id: int) -> None: ...
     def flush(self) -> None: ...
@@ -110,6 +115,16 @@ class Collection:
 
     def upsert_sparse(self, id: int, elements: list[SparseElement]) -> None:
         self._call("upsert_sparse", id, [item.to_kernel() for item in elements])
+
+    def apply_batch(self, mutations: list[BatchMutation]) -> BatchWriteResult:
+        raw = self._call(
+            "apply_batch", [mutation.to_kernel() for mutation in mutations]
+        )
+        return BatchWriteResult(
+            first_sequence=int(raw["first_sequence"]),
+            last_sequence=int(raw["last_sequence"]),
+            count=int(raw["count"]),
+        )
 
     def delete(self, id: int) -> None:
         self._call("delete", id)

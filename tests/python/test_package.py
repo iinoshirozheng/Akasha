@@ -82,6 +82,34 @@ def test_copying_arrow_compatible_columns(tmp_path) -> None:
     collection.close()
 
 
+def test_compiled_kernel_applies_typed_atomic_batch(tmp_path) -> None:
+    path = tmp_path / "batch"
+    collection = akashadb.Collection(path, 2)
+    collection.upsert(9, [9.0, 0.0])
+    committed = collection.apply_batch(
+        [
+            akashadb.BatchMutation.upsert(1, [1.0, 0.0]),
+            akashadb.BatchMutation.upsert(
+                2,
+                [0.0, 2.0],
+                [akashadb.PayloadField("chunk", "string", "python batch")],
+            ),
+            akashadb.BatchMutation.delete(9),
+        ]
+    )
+
+    assert committed == akashadb.BatchWriteResult(2, 4, 3)
+    assert collection.get(1).vector == [1.0, 0.0]
+    assert collection.get(2).fields[0].value == "python batch"
+    assert collection.get(9) is None
+    collection.close()
+
+    reopened = akashadb.Collection(path, 2)
+    assert reopened.last_sequence == 4
+    assert reopened.get(2).fields[0].value == "python batch"
+    reopened.close()
+
+
 def test_compiled_kernel_rebuilds_nested_metadata_index_on_reopen(tmp_path) -> None:
     path = tmp_path / "indexed"
     collection = akashadb.Collection(path, 1)

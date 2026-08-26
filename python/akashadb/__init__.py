@@ -9,6 +9,8 @@ from .exceptions import (
     ValidationError,
 )
 from .models import (
+    BatchMutation,
+    BatchWriteResult,
     Document,
     PayloadField,
     SearchRequest,
@@ -20,6 +22,8 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AkashaError",
+    "BatchMutation",
+    "BatchWriteResult",
     "Collection",
     "CollectionAlreadyOpenError",
     "CollectionClosedError",

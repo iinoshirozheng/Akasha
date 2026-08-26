@@ -1,4 +1,5 @@
 from akasha import (
+    BatchMutation,
     DocumentField,
     FilterCondition,
     FilterExpression,
@@ -74,6 +75,33 @@ struct BoundCollection(Movable, Writable):
         var mojo_fields = _document_fields(fields)
         self[].inner.value().upsert_document(Int(py=id), values^, mojo_fields^)
         return Python.none()
+
+    @staticmethod
+    def apply_batch(
+        py_self: PythonObject, mutations: PythonObject
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var batch = List[BatchMutation](capacity=len(mutations))
+        for item in mutations:
+            var operation = String(py=item["operation"])
+            var id = Int(py=item["id"])
+            if operation == "delete":
+                batch.append(BatchMutation.delete(id))
+            elif operation == "upsert":
+                var values = _float_vector(item["vector"])
+                var fields = _document_fields(item.get("fields", Python.list()))
+                batch.append(
+                    BatchMutation.document_upsert(id, values^, fields^)
+                )
+            else:
+                raise Error("unknown batch mutation operation")
+        var committed = self[].inner.value().apply_batch(batch)
+        return Python.dict(
+            first_sequence=PythonObject(committed.first_sequence),
+            last_sequence=PythonObject(committed.last_sequence),
+            count=PythonObject(committed.count),
+        )
 
     @staticmethod
     def upsert_sparse(
@@ -489,6 +517,7 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.last_sequence]("last_sequence")
             .def_method[BoundCollection.upsert]("upsert")
             .def_method[BoundCollection.upsert_document]("upsert_document")
+            .def_method[BoundCollection.apply_batch]("apply_batch")
             .def_method[BoundCollection.upsert_sparse]("upsert_sparse")
             .def_method[BoundCollection.delete]("delete")
             .def_method[BoundCollection.flush]("flush")

@@ -4,10 +4,12 @@ from akasha.compute.simd import (
     simd_l2_squared_distance,
 )
 from akasha.compute.topk import BoundedTopK
+from akasha.api.batch import BatchMutation, BatchWriteResult
 from akasha.document.record import (
     clone_fields,
     DocumentField,
     DocumentRecord,
+    validate_fields,
 )
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
@@ -55,7 +57,13 @@ from akasha.storage.sparse_store import (
     SparseWalRecord,
     write_sparse_segment,
 )
-from akasha.storage.wal import append_wal, recover_wal, rotate_wal, WalRecord
+from akasha.storage.wal import (
+    append_wal,
+    append_wal_batch,
+    recover_wal,
+    rotate_wal,
+    WalRecord,
+)
 from std.math import isfinite
 from std.memory import ArcPointer
 
@@ -396,6 +404,70 @@ struct PersistentCollection:
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._hnsw_dirty = True
+
+    def apply_batch(
+        mut self, mutations: List[BatchMutation]
+    ) raises -> BatchWriteResult:
+        """Validate and durably apply one all-or-nothing dense mutation batch.
+        """
+        self._ensure_open()
+        if len(mutations) == 0:
+            raise Error("mutation batch cannot be empty")
+        if len(mutations) > 65_536:
+            raise Error("mutation batch record count is too large")
+        if self._last_sequence > UInt64.MAX - UInt64(len(mutations)):
+            raise Error("collection sequence exhausted")
+
+        for index in range(len(mutations)):
+            if mutations[index].is_delete:
+                if (
+                    len(mutations[index].values) != 0
+                    or len(mutations[index].fields) != 0
+                ):
+                    raise Error("batch delete cannot contain values or fields")
+                continue
+            self._validate_vector(mutations[index].values)
+            validate_fields(mutations[index].fields)
+
+        var first_sequence = self._last_sequence + 1
+        var records = List[WalRecord](capacity=len(mutations))
+        var staged_memtable = self._memtable.clone()
+        for index in range(len(mutations)):
+            var sequence = first_sequence + UInt64(index)
+            if mutations[index].is_delete:
+                records.append(WalRecord.delete(sequence, mutations[index].id))
+                staged_memtable.apply_delete(mutations[index].id, sequence)
+                continue
+            var wal_values = _clone_vector(mutations[index].values)
+            var wal_fields = clone_fields(mutations[index].fields)
+            records.append(
+                WalRecord.document_upsert(
+                    sequence,
+                    mutations[index].id,
+                    wal_values^,
+                    wal_fields^,
+                )
+            )
+            var staged_values = _clone_vector(mutations[index].values)
+            var staged_fields = clone_fields(mutations[index].fields)
+            staged_memtable.apply_document_upsert(
+                mutations[index].id,
+                sequence,
+                staged_values^,
+                staged_fields^,
+            )
+        var staged_metadata = _build_metadata(staged_memtable)
+
+        append_wal_batch(self._wal_path, self.dimension, records)
+        self._memtable = staged_memtable^
+        self._metadata = staged_metadata^
+        for index in range(len(mutations)):
+            if mutations[index].is_delete:
+                self._sparse.delete(mutations[index].id)
+        var last_sequence = first_sequence + UInt64(len(mutations) - 1)
+        self._last_sequence = last_sequence
+        self._hnsw_dirty = True
+        return BatchWriteResult(first_sequence, last_sequence, len(mutations))
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
         self._ensure_open()
