@@ -22,6 +22,7 @@ from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import PqIndex, Sq8Index
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
+from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
@@ -150,6 +151,21 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+
+    def search_dot_controlled(
+        self, query: List[Float32], k: Int, control: QueryControl
+    ) raises -> List[SearchResult]:
+        return self._search_controlled(query, k, _DOT_METRIC, control)
+
+    def search_l2_controlled(
+        self, query: List[Float32], k: Int, control: QueryControl
+    ) raises -> List[SearchResult]:
+        return self._search_controlled(query, k, _L2_METRIC, control)
+
+    def search_cosine_controlled(
+        self, query: List[Float32], k: Int, control: QueryControl
+    ) raises -> List[SearchResult]:
+        return self._search_controlled(query, k, _COSINE_METRIC, control)
 
     def search_dot_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
@@ -741,6 +757,39 @@ struct ReadSnapshot(Movable):
         expression.validate()
         var candidates = evaluate_expression(self._metadata, expression)
         return self._search_candidates(query, k, metric, candidates)
+
+    def _search_controlled(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        control: QueryControl,
+    ) raises -> List[SearchResult]:
+        self._validate_query(query, k)
+        var entries = self._memtable.live_entries()
+        control.validate_candidate_count(len(entries))
+        control.checkpoint(0)
+        if len(entries) == 0:
+            return List[SearchResult]()
+        var topk = BoundedTopK(
+            min(k, len(entries)), smaller_is_better=metric == _L2_METRIC
+        )
+        for index in range(len(entries)):
+            control.checkpoint(index)
+            var score: Float32
+            if metric == _DOT_METRIC:
+                score = simd_dot_product(query, entries[index].values)
+            elif metric == _L2_METRIC:
+                score = simd_l2_squared_distance(query, entries[index].values)
+            else:
+                score = simd_cosine_similarity(query, entries[index].values)
+            topk.offer(entries[index].id, score)
+        control.checkpoint(0)
+        var retained = topk.sorted_entries()
+        var results = List[SearchResult](capacity=len(retained))
+        for entry in retained:
+            results.append(SearchResult(entry.id, entry.score))
+        return results^
 
     def _search_parallel(
         self,

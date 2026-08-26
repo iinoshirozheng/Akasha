@@ -31,4 +31,4 @@ from .index import (
     SparseIndex,
     SparseRecord,
 )
-from .query import FilterCondition, FilterExpression
+from .query import CancellationToken, FilterCondition, FilterExpression, QueryControl
