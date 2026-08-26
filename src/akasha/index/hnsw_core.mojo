@@ -1,9 +1,10 @@
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_heap import HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
-from akasha.index.hnsw_stats import HnswSearchStats
+from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
 from std.collections import Dict
+from std.math import isfinite
 
 
 struct HnswGreedyResult(Copyable, Movable):
@@ -55,6 +56,129 @@ def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     if lhs.id != rhs.id:
         return lhs.id < rhs.id
     return lhs.slot < rhs.slot
+
+
+def _sort_neighbor_candidates(mut candidates: List[HnswHeapItem]):
+    """Insertion-sort build candidates by the complete stable graph key."""
+    for index in range(1, len(candidates)):
+        var current = index
+        while current > 0 and _search_item_better(
+            candidates[current], candidates[current - 1]
+        ):
+            candidates.swap_elements(current, current - 1)
+            current -= 1
+
+
+def select_neighbors_heuristic(
+    graph: HnswStorage,
+    dispatcher: MetricDispatcher,
+    candidates: List[HnswHeapItem],
+    excluded_slot: Optional[UInt32],
+    capacity: Int,
+    keep_pruned_connections: Bool,
+    mut stats: HnswBuildStats,
+) raises -> List[UInt32]:
+    """Select deterministic, geometrically diverse current graph slots.
+
+    Candidate distances are caller-cached canonical query-to-candidate
+    distances and are never recomputed here. Inputs are first validated and
+    ordered by ``(distance, public ID, slot)``. Duplicate slots and the
+    optional query/self slot are then removed. Historical (deleted or
+    replaced) candidates are rejected at this construction boundary rather
+    than silently linked into new adjacency.
+
+    A candidate is diverse when no already-selected neighbor is strictly
+    closer to it than the query is. Equality is deliberately accepted. Pair
+    distances read the storage's flat vector tape directly, without creating
+    per-pair vector lists. Evaluation increments are accumulated locally and
+    committed to ``stats`` only after a successful selection, so validation
+    and corrupt-distance failures leave all build counters unchanged.
+    """
+    if capacity < 0:
+        raise Error("HNSW neighbor selection capacity cannot be negative")
+    dispatcher.require_supported_backend()
+    if graph.dimension <= 0 or graph.m <= 0 or graph.m0 <= 0:
+        raise Error("HNSW graph configuration is invalid")
+    if dispatcher.dimension() != graph.dimension:
+        raise Error("metric dispatcher dimension does not match HNSW graph")
+
+    var has_excluded = Bool(excluded_slot)
+    var excluded = UInt32(0)
+    if has_excluded:
+        excluded = excluded_slot.value()
+        _ = graph.id_at(excluded)
+
+    var metric_name = dispatcher.metric_name()
+    var validated = List[HnswHeapItem](capacity=len(candidates))
+    for index in range(len(candidates)):
+        var candidate = candidates[index].copy()
+        var stored_id = graph.id_at(candidate.slot)
+        if candidate.id != stored_id:
+            raise Error("HNSW candidate public ID does not match graph slot")
+        if not graph.is_current(candidate.slot):
+            raise Error("HNSW neighbor selection requires current candidates")
+        if not isfinite(candidate.distance):
+            raise Error("HNSW candidate distance must be finite")
+        if metric_name != "dot" and candidate.distance < 0.0:
+            raise Error("L2 and cosine candidate distances cannot be negative")
+        if has_excluded and candidate.slot == excluded:
+            continue
+        validated.append(candidate.copy())
+
+    _sort_neighbor_candidates(validated)
+
+    # Sort before deduplication so malformed duplicate cached distances still
+    # resolve deterministically to the nearest occurrence, independent of
+    # caller input order.
+    var ordered = List[HnswHeapItem](capacity=len(validated))
+    var seen = Dict[Int, Bool]()
+    for index in range(len(validated)):
+        var candidate = validated[index].copy()
+        var key = Int(candidate.slot)
+        if key in seen:
+            continue
+        seen[key] = True
+        ordered.append(candidate.copy())
+
+    var result_capacity = capacity
+    if result_capacity > len(ordered):
+        result_capacity = len(ordered)
+    var selected = List[UInt32](capacity=result_capacity)
+    if capacity == 0 or len(ordered) == 0:
+        return selected^
+
+    var pruned = List[UInt32](capacity=len(ordered))
+    var evaluation_count = 0
+    for candidate_index in range(len(ordered)):
+        if len(selected) >= capacity:
+            break
+        var candidate = ordered[candidate_index].copy()
+        var diverse = True
+        for selected_index in range(len(selected)):
+            var pair_distance = graph.distance_between(
+                dispatcher, candidate.slot, selected[selected_index]
+            )
+            evaluation_count += 1
+            if not isfinite(pair_distance):
+                raise Error("HNSW neighbor-pair distance must be finite")
+            if metric_name != "dot" and pair_distance < 0.0:
+                raise Error("L2 and cosine pair distances cannot be negative")
+            if pair_distance < candidate.distance:
+                diverse = False
+                break
+        if diverse:
+            selected.append(candidate.slot)
+        elif keep_pruned_connections:
+            pruned.append(candidate.slot)
+
+    if keep_pruned_connections:
+        for index in range(len(pruned)):
+            if len(selected) >= capacity:
+                break
+            selected.append(pruned[index])
+
+    stats.distance_evaluations += evaluation_count
+    return selected^
 
 
 def _validate_search_boundary(
