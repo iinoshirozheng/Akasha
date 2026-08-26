@@ -1,5 +1,5 @@
 from akasha.compute.metric import MetricDispatcher
-from akasha.index.hnsw_heap import HnswHeapItem
+from akasha.index.hnsw_heap import CandidateMinHeap, HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -58,17 +58,6 @@ def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     return lhs.slot < rhs.slot
 
 
-def _sort_neighbor_candidates(mut candidates: List[HnswHeapItem]):
-    """Insertion-sort build candidates by the complete stable graph key."""
-    for index in range(1, len(candidates)):
-        var current = index
-        while current > 0 and _search_item_better(
-            candidates[current], candidates[current - 1]
-        ):
-            candidates.swap_elements(current, current - 1)
-            current -= 1
-
-
 def select_neighbors_heuristic(
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
@@ -108,8 +97,14 @@ def select_neighbors_heuristic(
         excluded = excluded_slot.value()
         _ = graph.id_at(excluded)
 
+    # Resolve the metric classification once. `metric_name` is the current
+    # dispatcher seam until Task 27 introduces enum-backed one-time distance
+    # dispatch; the candidate and pair loops use only these cheap booleans.
     var metric_name = dispatcher.metric_name()
-    var validated = List[HnswHeapItem](capacity=len(candidates))
+    var is_dot = metric_name == "dot"
+    var is_cosine = metric_name == "cosine"
+    var ordered_heap = CandidateMinHeap()
+    ordered_heap.reserve(len(candidates))
     for index in range(len(candidates)):
         var candidate = candidates[index].copy()
         var stored_id = graph.id_at(candidate.slot)
@@ -119,26 +114,27 @@ def select_neighbors_heuristic(
             raise Error("HNSW neighbor selection requires current candidates")
         if not isfinite(candidate.distance):
             raise Error("HNSW candidate distance must be finite")
-        if metric_name != "dot" and candidate.distance < 0.0:
+        if not is_dot and candidate.distance < 0.0:
             raise Error("L2 and cosine candidate distances cannot be negative")
+        if is_cosine and candidate.distance > 2.0:
+            raise Error("cosine candidate distance cannot exceed two")
         if has_excluded and candidate.slot == excluded:
             continue
-        validated.append(candidate.copy())
+        ordered_heap.push(candidate)
 
-    _sort_neighbor_candidates(validated)
-
-    # Sort before deduplication so malformed duplicate cached distances still
-    # resolve deterministically to the nearest occurrence, independent of
-    # caller input order.
-    var ordered = List[HnswHeapItem](capacity=len(validated))
+    # Drain the total-key min-heap before deduplication, giving O(n log n)
+    # deterministic ordering and ensuring malformed duplicate cached
+    # distances still resolve to the nearest occurrence independent of input
+    # order.
+    var ordered = List[HnswHeapItem](capacity=len(candidates))
     var seen = Dict[Int, Bool]()
-    for index in range(len(validated)):
-        var candidate = validated[index].copy()
+    while not ordered_heap.is_empty():
+        var candidate = ordered_heap.pop()
         var key = Int(candidate.slot)
         if key in seen:
             continue
         seen[key] = True
-        ordered.append(candidate.copy())
+        ordered.append(candidate^)
 
     var result_capacity = capacity
     if result_capacity > len(ordered):
@@ -161,8 +157,10 @@ def select_neighbors_heuristic(
             evaluation_count += 1
             if not isfinite(pair_distance):
                 raise Error("HNSW neighbor-pair distance must be finite")
-            if metric_name != "dot" and pair_distance < 0.0:
+            if not is_dot and pair_distance < 0.0:
                 raise Error("L2 and cosine pair distances cannot be negative")
+            if is_cosine and pair_distance > 2.0:
+                raise Error("cosine neighbor-pair distance cannot exceed two")
             if pair_distance < candidate.distance:
                 diverse = False
                 break

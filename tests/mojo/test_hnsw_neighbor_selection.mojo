@@ -228,6 +228,66 @@ def test_input_permutations_have_identical_deterministic_output() raises:
     assert_equal(second_stats.distance_evaluations, 3)
 
 
+def test_duplicate_slot_keeps_smallest_cached_distance_independent_of_order(
+) raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 4, 8)
+    var duplicate = _append(graph, metric, 10, 1.0, 0.0)
+    var other = _append(graph, metric, 20, 0.0, 1.0)
+    var first: List[HnswHeapItem] = [
+        HnswHeapItem(duplicate, 10, 9.0),
+        HnswHeapItem(other, 20, 1.0),
+        HnswHeapItem(duplicate, 10, 0.5),
+    ]
+    var second: List[HnswHeapItem] = [
+        HnswHeapItem(duplicate, 10, 0.5),
+        HnswHeapItem(other, 20, 1.0),
+        HnswHeapItem(duplicate, 10, 9.0),
+    ]
+    var first_stats = HnswBuildStats()
+    var second_stats = HnswBuildStats()
+    var first_selected = select_neighbors_heuristic(
+        graph, metric, first, _none(), 2, False, first_stats
+    )
+    var second_selected = select_neighbors_heuristic(
+        graph, metric, second, _none(), 2, False, second_stats
+    )
+
+    var expected: List[UInt32] = [duplicate, other]
+    _assert_slots(first_selected, expected)
+    _assert_slots(second_selected, expected)
+    assert_equal(first_stats.distance_evaluations, 1)
+    assert_equal(second_stats.distance_evaluations, 1)
+
+
+def test_large_reverse_candidate_stream_matches_total_order_oracle() raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 8, 16)
+    var count = 512
+    var candidates = List[HnswHeapItem](capacity=count)
+    for index in range(count):
+        var id = count - index
+        var slot = _append(
+            graph, metric, id, Float32(index), Float32(index % 7)
+        )
+        # Cached zero distances make every candidate diverse. The incoming
+        # stream has descending IDs, so the selected slots must be its exact
+        # reverse under the complete (distance, ID, slot) key.
+        candidates.append(HnswHeapItem(slot, id, 0.0))
+
+    var stats = HnswBuildStats()
+    var selected = select_neighbors_heuristic(
+        graph, metric, candidates, _none(), count, False, stats
+    )
+
+    assert_equal(len(selected), count)
+    for index in range(count):
+        assert_equal(selected[index], UInt32(count - index - 1))
+    assert_equal(
+        stats.distance_evaluations, count * (count - 1) // 2
+    )
+
+
 def test_candidate_order_uses_public_id_then_slot_ties() raises:
     var lower_id = HnswHeapItem(UInt32(9), 10, 1.0)
     var higher_id = HnswHeapItem(UInt32(0), 20, 1.0)
@@ -377,6 +437,36 @@ def test_prepared_cosine_uses_same_canonical_heuristic() raises:
     var expected: List[UInt32] = [same_direction, orthogonal]
     _assert_slots(selected, expected)
     assert_equal(stats.distance_evaluations, 1)
+
+
+def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two(
+) raises:
+    var metric = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 4, 8)
+    var same = _append(graph, metric, 10, 1.0, 0.0)
+    var opposite = _append(graph, metric, 20, -1.0, 0.0)
+    var boundaries: List[HnswHeapItem] = [
+        HnswHeapItem(same, 10, 0.0),
+        HnswHeapItem(opposite, 20, 2.0),
+    ]
+    var boundary_stats = HnswBuildStats()
+    var selected = select_neighbors_heuristic(
+        graph, metric, boundaries, _none(), 2, False, boundary_stats
+    )
+    var expected: List[UInt32] = [same, opposite]
+    _assert_slots(selected, expected)
+    assert_equal(boundary_stats.distance_evaluations, 1)
+
+    var above_two: List[HnswHeapItem] = [
+        HnswHeapItem(same, 10, 2.0001)
+    ]
+    var invalid_stats = HnswBuildStats()
+    invalid_stats.distance_evaluations = 19
+    with assert_raises():
+        _ = select_neighbors_heuristic(
+            graph, metric, above_two, _none(), 1, False, invalid_stats
+        )
+    assert_equal(invalid_stats.distance_evaluations, 19)
 
 
 def main() raises:
