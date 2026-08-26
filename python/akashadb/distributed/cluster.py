@@ -386,17 +386,34 @@ class DistributedCluster:
         results: list[SearchResult] = []
         for shard_id in range(self.metadata.shard_count):
             placement = self.metadata.shards[shard_id]
-            node = self._query_replica(
-                placement, require_index=placement.committed_index
-            )
-            raw = self._rpc(
-                node,
-                {"operation": "query", "shard_id": shard_id, "request": wire},
-            )
+            raw = self._query_shard(placement, wire)
             results.extend(
                 SearchResult(int(item["id"]), float(item["score"])) for item in raw
             )
         return results
+
+    def _query_shard(
+        self, placement: ShardPlacement, request: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        ordered = [placement.leader] + [
+            node for node in placement.replicas if node != placement.leader
+        ]
+        for node in ordered:
+            try:
+                status = self._status(node, placement.shard_id)
+                if int(status["applied_index"]) < placement.committed_index:
+                    continue
+                return self._rpc(
+                    node,
+                    {
+                        "operation": "query",
+                        "shard_id": placement.shard_id,
+                        "request": request,
+                    },
+                )
+            except (ReplicaUnavailable, StaleEpochError, ProtocolError):
+                continue
+        raise QuorumUnavailable("distributed query has no caught-up replica")
 
     def _search_hybrid(self, request: SearchRequest, epoch: int) -> list[SearchResult]:
         if request.vector is None or not request.sparse:
@@ -497,6 +514,15 @@ class DistributedCluster:
             self._rpc(
                 node,
                 {"operation": "fault", "drop_commit_responses": count},
+            )
+
+    def inject_drop_query_response(self, node: str, count: int = 1) -> None:
+        if count < 0:
+            raise ValueError("fault count cannot be negative")
+        with self._lock:
+            self._rpc(
+                node,
+                {"operation": "fault", "drop_query_responses": count},
             )
 
     def rebalance_add_replica(self, shard_id: int, node: str) -> None:

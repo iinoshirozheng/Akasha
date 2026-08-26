@@ -161,6 +161,12 @@ def test_snapshot_tail_rebalancing_precedes_new_replica_ownership(tmp_path) -> N
             "n3", {"operation": "get", "shard_id": 0, "id": 11}
         )["vector"] == [11.0, 1.0]
 
+        cluster.inject_drop_query_response(placement.leader)
+        retried = cluster.search(
+            akashadb.SearchRequest("dot", 3, vector=[1.0, 0.0])
+        )
+        assert [item.id for item in retried] == [11, 10, 9]
+
         leader = placement.leader
         cluster.stop_node(leader)
         results = cluster.search(

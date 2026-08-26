@@ -13,6 +13,7 @@ build-python = "mojo build --emit shared-lib -I src src/bindings/python_module.m
 test-python = { cmd = "pytest tests/python -q", depends-on = ["build-python", "build-native-worker"], env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
 test-crash = "bash -c 'for test_file in tests/crash/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
+test-distributed = { cmd = "pytest tests/distributed -q", depends-on = ["build-python", "build-native-worker"], env = { PYTHONPATH = "python:." } }
 build-mojo = { cmd = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent", depends-on = ["build-native-worker"] }
 build = { depends-on = ["build-mojo", "build-python"] }
 smoke = "mojo run -I src examples/smoke.mojo"

@@ -99,4 +99,17 @@ records.
 - Atomicity is collection-local; there are no cross-collection transactions.
 - Live approximate queries are mutable collection operations; callers needing a
   stable long read use the immutable exact/sparse/hybrid snapshot APIs.
-- There is no replication or distributed consistency yet.
+- The embedded `Collection` remains single-node. Distributed guarantees apply
+  only when mutations and reads use `DistributedCluster` consistently.
+
+## Distributed consistency
+
+A shard mutation is acknowledged only after identical checksummed entries reach
+prepare and commit quorums. Replicas reject stale terms/placements, conflicting
+duplicate indexes, and corrupt journals. Persistent request IDs make coordinator
+retry idempotent even when commit responses are lost after replicas apply.
+
+Leader failover requires a live quorum and chooses the highest applied index.
+Minority partitions cannot acknowledge. Queries read replicas at or beyond the
+metadata committed index and fail if the metadata epoch changes mid-query.
+Rebalancing publishes ownership only after snapshot and committed-tail install.

@@ -11,6 +11,7 @@ from .operations import (
     quarantine_orphans,
     restore_storage,
 )
+from .distributed import DistributedCluster, ProtocolError, QuorumUnavailable
 from .exceptions import (
     AkashaError,
     CollectionAlreadyOpenError,
@@ -46,9 +47,12 @@ __all__ = [
     "CollectionClosedError",
     "CollectionNotFoundError",
     "Document",
+    "DistributedCluster",
     "LocalDatabase",
     "PayloadField",
     "Projection",
+    "ProtocolError",
+    "QuorumUnavailable",
     "MetricsSnapshot",
     "ResourceLimits",
     "SearchRequest",

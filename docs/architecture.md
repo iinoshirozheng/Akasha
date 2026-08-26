@@ -146,7 +146,11 @@ planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Distributed execution remains explicit Phase 16 work.
+Phase 16 adds an authenticated multi-process reference cluster. Each replica
+process owns independent Mojo WAL/segment/manifest state plus a checksummed
+replicated journal. Versioned cluster metadata selects shard leaders and
+placements. The coordinator performs quorum prepare/commit, failover, catch-up,
+snapshot-plus-tail rebalancing, fan-out, and deterministic global Top-K/RRF.
 
 ## Implemented adapter boundary
 

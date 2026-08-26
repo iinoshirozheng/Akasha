@@ -316,6 +316,10 @@ Implemented:
 - Generation-pinned online backup, manifest-last restore, strict format/checksum
   inspection, logical export/import, conservative orphan quarantine, bounded
   cancellable queries, safe metrics/traces, and graceful server shutdown.
+- Versioned shard routing, checksummed replicated journals, quorum prepare/commit,
+  leader failover, replica catch-up, snapshot-plus-tail rebalancing, and
+  deterministic distributed dense/sparse/hybrid/filtered query merge across
+  independent Mojo replica processes.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
@@ -337,4 +341,6 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Distributed execution remains Phase 16 work.
+Phases 10–16 are implemented. The distributed transport is a loopback,
+authenticated reference deployment; see
+[`docs/distributed.md`](docs/distributed.md) for production boundary details.

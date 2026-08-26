@@ -260,6 +260,7 @@ def replica_server_main(
     shards: dict[int, ReplicaShard] = {}
     partitioned = False
     drop_commit_responses = 0
+    drop_query_responses = 0
     listener = Listener(("127.0.0.1", 0), authkey=authkey)
     ready.send(listener.address)
     ready.close()
@@ -276,7 +277,11 @@ def replica_server_main(
                 result: Any = {"partitioned": partitioned}
             elif operation == "fault":
                 drop_commit_responses = int(request.get("drop_commit_responses", 0))
-                result = {"drop_commit_responses": drop_commit_responses}
+                drop_query_responses = int(request.get("drop_query_responses", 0))
+                result = {
+                    "drop_commit_responses": drop_commit_responses,
+                    "drop_query_responses": drop_query_responses,
+                }
             elif operation == "shutdown":
                 result = {"stopped": True}
                 running = False
@@ -324,6 +329,10 @@ def replica_server_main(
                         raise ProtocolError("unknown replica RPC operation")
             if operation == "commit" and drop_commit_responses > 0:
                 drop_commit_responses -= 1
+                connection.close()
+                continue
+            if operation == "query" and drop_query_responses > 0:
+                drop_query_responses -= 1
                 connection.close()
                 continue
             connection.send({"ok": True, "result": result})
