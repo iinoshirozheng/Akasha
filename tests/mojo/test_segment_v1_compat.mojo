@@ -1,5 +1,8 @@
 from akasha.storage.checksum import BinaryWriter, crc32_range
-from akasha.storage.segment import decode_segment_bytes
+from akasha.storage.segment import (
+    decode_segment_bytes,
+    SEGMENT_KIND_BASE,
+)
 from std.testing import assert_equal, TestSuite
 
 
@@ -31,6 +34,9 @@ def test_v1_segment_recovers_vector_with_empty_payload() raises:
 
     var snapshot = decode_segment_bytes(bytes^, 2)
 
+    assert_equal(snapshot.format_version, 1)
+    assert_equal(snapshot.kind, SEGMENT_KIND_BASE)
+    assert_equal(snapshot.min_sequence, UInt64(0))
     assert_equal(snapshot.last_sequence, UInt64(7))
     assert_equal(len(snapshot.entries), 1)
     assert_equal(snapshot.entries[0].id, 42)

@@ -1,12 +1,16 @@
 from akasha.document import DocumentField, PayloadValue
 from akasha.storage.checksum import crc32_range
 from akasha.storage.filesystem import remove_file_if_exists
-from akasha.storage.memtable import MemTable
+from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.segment import (
     decode_segment_bytes,
     encode_segment,
+    encode_segment_v3,
     read_segment,
+    SEGMENT_KIND_BASE,
+    SEGMENT_KIND_DELTA,
     write_segment,
+    write_segment_v3,
 )
 from std.testing import assert_equal, assert_raises, TestSuite
 
@@ -27,6 +31,9 @@ def test_segment_round_trip_preserves_sorted_live_snapshot() raises:
     var snapshot = decode_segment_bytes(bytes^, 2)
 
     assert_equal(snapshot.dimension, 2)
+    assert_equal(snapshot.format_version, 2)
+    assert_equal(snapshot.kind, SEGMENT_KIND_BASE)
+    assert_equal(snapshot.min_sequence, UInt64(0))
     assert_equal(snapshot.last_sequence, UInt64(3))
     assert_equal(len(snapshot.entries), 2)
     assert_equal(snapshot.entries[0].id, 10)
@@ -50,6 +57,66 @@ def test_segment_file_round_trip() raises:
     assert_equal(snapshot.last_sequence, UInt64(4))
     assert_equal(snapshot.entries[0].id, 7)
     remove_file_if_exists(path)
+
+
+def test_segment_v3_base_round_trip_preserves_live_records() raises:
+    var table = MemTable(2)
+    table.apply_upsert(5, 1, [1.0, 2.0])
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("chunk", PayloadValue.string("base")))
+    table.apply_document_upsert(9, 3, [3.0, 4.0], fields^)
+    var entries = table.live_entries()
+    var bytes = encode_segment_v3(2, SEGMENT_KIND_BASE, 0, 3, entries)
+    var snapshot = decode_segment_bytes(bytes^, 2)
+
+    assert_equal(snapshot.format_version, 3)
+    assert_equal(snapshot.kind, SEGMENT_KIND_BASE)
+    assert_equal(snapshot.min_sequence, UInt64(0))
+    assert_equal(snapshot.last_sequence, UInt64(3))
+    assert_equal(len(snapshot.entries), 2)
+    assert_equal(snapshot.entries[1].id, 9)
+    assert_equal(snapshot.entries[1].fields[0].value.as_string(), "base")
+
+
+def test_segment_v3_delta_round_trips_upsert_and_tombstone() raises:
+    var entries = List[MemTableEntry]()
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("kind", PayloadValue.string("delta")))
+    entries.append(MemTableEntry.with_fields(10, 4, False, [4.0], fields^))
+    entries.append(MemTableEntry(20, 5, True, List[Float32]()))
+    var path = String("/tmp/akasha-phase10-delta-segment.bin")
+    remove_file_if_exists(path)
+
+    _ = write_segment_v3(path, 1, SEGMENT_KIND_DELTA, 4, 5, entries)
+    var snapshot = read_segment(path, 1)
+
+    assert_equal(snapshot.format_version, 3)
+    assert_equal(snapshot.kind, SEGMENT_KIND_DELTA)
+    assert_equal(snapshot.min_sequence, UInt64(4))
+    assert_equal(snapshot.last_sequence, UInt64(5))
+    assert_equal(len(snapshot.entries), 2)
+    assert_equal(snapshot.entries[0].tombstone, False)
+    assert_equal(snapshot.entries[0].fields[0].value.as_string(), "delta")
+    assert_equal(snapshot.entries[1].id, 20)
+    assert_equal(snapshot.entries[1].tombstone, True)
+    assert_equal(len(snapshot.entries[1].values), 0)
+    remove_file_if_exists(path)
+
+
+def test_segment_v3_rejects_invalid_kind_ranges_and_base_tombstones() raises:
+    var tombstones = List[MemTableEntry]()
+    tombstones.append(MemTableEntry(1, 2, True, List[Float32]()))
+    with assert_raises():
+        _ = encode_segment_v3(1, SEGMENT_KIND_BASE, 0, 2, tombstones)
+
+    var live = List[MemTableEntry]()
+    live.append(MemTableEntry(1, 2, False, [1.0]))
+    with assert_raises():
+        _ = encode_segment_v3(1, 99, 1, 2, live)
+    with assert_raises():
+        _ = encode_segment_v3(1, SEGMENT_KIND_DELTA, 3, 2, live)
+    with assert_raises():
+        _ = encode_segment_v3(1, SEGMENT_KIND_DELTA, 3, 4, live)
 
 
 def test_segment_rejects_truncation_and_checksum_corruption() raises:
