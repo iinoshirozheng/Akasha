@@ -10,8 +10,8 @@ from akasha.document.record import (
     DocumentRecord,
 )
 from akasha.index.flat import SearchResult
-from akasha.query.evaluator import matches_all
-from akasha.query.filter_ast import FilterCondition
+from akasha.query.evaluator import matches_all, matches_expression
+from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -185,6 +185,30 @@ struct PersistentCollection:
     ) raises -> List[SearchResult]:
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
 
+    def search_dot_where(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_where(query, k, _DOT_METRIC, expression)
+
+    def search_l2_where(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_where(query, k, _L2_METRIC, expression)
+
+    def search_cosine_where(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_where(query, k, _COSINE_METRIC, expression)
+
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
         var entries = self._memtable.live_entries()
@@ -231,6 +255,45 @@ struct PersistentCollection:
         )
         for index in range(len(entries)):
             if not matches_all(entries[index].fields, conditions):
+                continue
+            var score: Float32
+            if metric == _DOT_METRIC:
+                score = simd_dot_product(query, entries[index].values)
+            elif metric == _L2_METRIC:
+                score = simd_l2_squared_distance(query, entries[index].values)
+            else:
+                score = simd_cosine_similarity(query, entries[index].values)
+            topk.offer(entries[index].id, score)
+
+        var retained = topk.sorted_entries()
+        var results = List[SearchResult](capacity=len(retained))
+        for entry in retained:
+            results.append(SearchResult(entry.id, entry.score))
+        return results^
+
+    def _search_where(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._validate_vector(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        expression.validate()
+        var entries = self._memtable.live_entries()
+        if len(entries) == 0:
+            return List[SearchResult]()
+
+        var result_count = k
+        if result_count > len(entries):
+            result_count = len(entries)
+        var topk = BoundedTopK(
+            result_count, smaller_is_better=metric == _L2_METRIC
+        )
+        for index in range(len(entries)):
+            if not matches_expression(entries[index].fields, expression):
                 continue
             var score: Float32
             if metric == _DOT_METRIC:

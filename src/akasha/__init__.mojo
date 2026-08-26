@@ -9,4 +9,4 @@ from .compute import (
 )
 from .document import DocumentField, DocumentRecord, PayloadValue
 from .index import FlatIndex, SearchResult
-from .query import FilterCondition
+from .query import FilterCondition, FilterExpression

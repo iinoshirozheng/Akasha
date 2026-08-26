@@ -2,6 +2,7 @@ from akasha import (
     DocumentField,
     dot_product,
     FilterCondition,
+    FilterExpression,
     FlatIndex,
     PayloadValue,
     simd_dot_product,
@@ -33,6 +34,14 @@ def test_root_package_exports_filter_condition() raises:
 
     assert_equal(condition.name, "page")
     assert_equal(condition.value.as_int(), Int64(7))
+
+
+def test_root_package_exports_filter_expression() raises:
+    var expression = FilterExpression.condition(
+        FilterCondition.equal("page", PayloadValue.integer(7))
+    )
+
+    assert_equal(expression.kind(), FilterExpression.CONDITION)
 
 
 def main() raises:

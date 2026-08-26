@@ -1,1 +1,1 @@
-from .filter_ast import FilterCondition
+from .filter_ast import FilterCondition, FilterExpression
