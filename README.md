@@ -169,6 +169,18 @@ pixi run test-gpu
 pixi run bench-phase13-gpu
 ```
 
+Operational validation and recovery are available through:
+
+```bash
+pixi run build-python
+PYTHONPATH=python:. python -m akashadb.admin scan ./data/demo 384
+PYTHONPATH=python:. python -m akashadb.admin backup ./data/demo 384 ./backups/demo
+```
+
+See [`docs/operations.md`](docs/operations.md) for backup/restore, logical
+NDJSON export/import, conservative orphan quarantine, limits, cancellation,
+metrics, tracing, and graceful shutdown semantics.
+
 `test-gpu` is an actual-device gate, not a skip-capable portability test. Apple
 silicon requires Xcode 16+ and may require
 `xcodebuild -downloadComponent MetalToolchain`. The regular `pixi run test`
@@ -301,6 +313,9 @@ Implemented:
   fallback for disabled, unavailable, small, memory-rejected, or failed work.
 - Projected point reads plus Arrow C Data batch ingest for fixed-size dense
   vectors, aligned sparse lists, and typed payload columns with one-shot leases.
+- Generation-pinned online backup, manifest-last restore, strict format/checksum
+  inspection, logical export/import, conservative orphan quarantine, bounded
+  cancellable queries, safe metrics/traces, and graceful server shutdown.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
@@ -322,4 +337,4 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Operations tooling and distributed execution remain Phase 15–16 work.
+Distributed execution remains Phase 16 work.

@@ -79,6 +79,15 @@ allocation happen after snapshot capture; any device rejection or runtime
 failure recomputes the whole batch through the exact CPU executor. There is no
 partially device-produced result, mutation, or durability side effect.
 
+Online backup first checkpoints accepted WAL state, pins that committed manifest
+generation, validates and copies every referenced immutable file, and publishes
+the destination manifest last. A failed copy has no committed target manifest.
+Restore repeats strict source validation and the same manifest-last rule.
+
+Logical import parses and validates every dense, payload, and sparse value before
+allocating the dense batch sequence range. Orphan quarantine consults only the
+committed manifest and never treats directory scanning as authoritative state.
+
 If a crash occurs after manifest publication but before WAL replacement,
 recovery may see the new snapshot and the pre-checkpoint WAL. Records at or
 before the manifest sequence are skipped, so each mutation is restored once.

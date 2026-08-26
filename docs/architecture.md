@@ -146,7 +146,7 @@ planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Operations tooling and distributed execution remain explicit Phase 15–16 work.
+Distributed execution remains explicit Phase 16 work.
 
 ## Implemented adapter boundary
 

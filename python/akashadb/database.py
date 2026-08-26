@@ -149,7 +149,7 @@ class Collection:
         self._total_duration_ns += duration_ns
         if method.startswith(("search", "get")):
             self._queries += 1
-        if method.startswith(("upsert", "delete", "apply")):
+        if status == "ok" and method.startswith(("upsert", "delete", "apply")):
             self._writes += 1
         if status == "error":
             self._failures += 1
