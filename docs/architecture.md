@@ -26,21 +26,21 @@ validate vector + flat typed fields
    -> exact SIMD search
 
 flush
-   -> complete live vector-plus-payload segment v2 + fsync
-   -> atomic segment rename + directory fsync
-   -> atomic manifest publish + directory fsync
+   -> changed dense/sparse records into paired base-or-delta segments + fsync
+   -> atomic segment renames + directory fsync
+   -> atomic Manifest v2 generation publish + directory fsync
    -> atomic empty WAL replacement + directory fsync
-   -> previous manifest segment removal + directory fsync
+   -> threshold compaction may publish one full-coverage base
 ```
 
 ## Initial read path
 
 ```text
-manifest -> v1/v2 snapshot -> newer v1/v2 WAL replay -> MemTable
-                                                         |
+manifest -> ordered v1/v2/v3 base+deltas -> newer WAL replay -> MemTable
+                                                               |
 query -> typed AND filter -> SIMD metric -> bounded Top-K IDs
-                                                         |
-                              get(ID) -> owned document <-+
+                                                               |
+                                    get(ID) -> owned document <-+
 ```
 
 Approximate dense queries use a derived in-memory HNSW graph. Point IDs produce
@@ -53,10 +53,11 @@ fill `k`. Recovered WAL/segment state remains authoritative; no graph bytes are
 stored in the durable formats.
 
 Sparse vectors are a companion durable state keyed by the same point IDs. A
-checksummed sparse WAL shares the collection sequence space, and a complete
-`sparse-<sequence>.bin` sidecar is fsynced before manifest publication. Open
-requires a present sidecar's sequence to equal the manifest, replays newer
-sparse WAL records, and removes sparse records whose dense point is not live.
+checksummed sparse WAL shares the collection sequence space, and every
+Manifest v2 descriptor pairs its dense base/delta with a sparse base/delta.
+Both are fsynced before manifest publication. Open replays paired descriptors
+in sequence order, then newer sparse WAL records, and removes sparse records
+whose dense point is not live.
 The in-memory inverted index accumulates only query posting lists. Hybrid search
 runs dense and sparse retrieval independently and fuses ranks with RRF; raw
 scores from the two modalities are never compared.
@@ -72,20 +73,22 @@ modules under `src/akasha/storage` and `src/akasha/api`. Recovery accepts only a
 incomplete final WAL record; it truncates that tail before another append.
 Complete checksum corruption fails open.
 
-WAL and segment writers emit version 2 records that store the vector and its
-encoded payload as one checksummed unit. Readers also accept Phase 3 version 1
-vector-only records and expose them with an empty field list; a later flush
-publishes a version 2 snapshot. Payloads are flat ordered fields with unique,
+WAL writers emit version 2 records and incremental segment writers emit version
+3 base/delta records that store vectors and encoded payloads as one checksummed
+unit. Readers also accept Phase 3 Segment v1/v2 vector-only or snapshot records;
+a later flush upgrades them into the current generation model. Payloads are
+flat ordered fields with unique,
 non-empty names. Supported values are String, Int64, finite Float64, and Bool,
 with a maximum of 1,024 fields and 16 MiB encoded payload per document.
 
-Segments are full live-state snapshots. A flush is an ordered checkpoint: it
-publishes the new segment and manifest, atomically replaces the WAL with an
-empty durable file, then removes only the segment named by the previous valid
-manifest. Recovery remains safe if a crash retains the old WAL after the new
-manifest because replay ignores sequence numbers already covered by the
-snapshot. Incremental segments, leveled compaction, and snapshot-isolated
-concurrent readers remain future storage work.
+The first checkpoint publishes paired dense/sparse base segments; later flushes
+append only the latest changed states as paired L0 deltas. Recovery validates
+and applies descriptors in manifest order, then ignores WAL sequence numbers
+already covered by the committed generation. Four L0 generations trigger a
+full-coverage synchronous compaction that atomically replaces all inputs with
+one L1 base and safely drops covered tombstones. Exact old files are reclaimed
+only after the manifest commit. Snapshot-isolated concurrent readers and a
+long-lived background maintenance worker remain Phase 11 work.
 
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
@@ -106,8 +109,8 @@ planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Incremental compaction, trusted zero-copy Arrow C Data interchange, GPU kernels,
-and distributed execution remain explicit future work.
+Trusted zero-copy Arrow C Data interchange, persisted/quantized indexes, GPU
+kernels, and distributed execution remain explicit Phase 12–16 work.
 
 ## Implemented adapter boundary
 

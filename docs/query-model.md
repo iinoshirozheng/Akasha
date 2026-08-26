@@ -42,5 +42,5 @@ HNSW and sparse/hybrid paths use the same point-ID membership set.
 For one condition, lookup is proportional to keyword posting discovery or
 `O(log N + M)` numeric range discovery plus bitmap materialization, where `M`
 is the number of matches. Boolean set operations are linear in bitmap words.
-Projection, incremental compaction, persisted indexes, and distributed query
+Projection, persisted/quantized indexes, GPU execution, and distributed query
 execution remain future work.

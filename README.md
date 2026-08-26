@@ -3,7 +3,7 @@
 AkashaDB is an experimental embedded vector database kernel written in Mojo. It
 provides validated CPU-SIMD `Float32` exact search and a crash-recoverable,
 single-writer storage engine built from a binary WAL, latest-state MemTable,
-immutable snapshot segments, and an atomic manifest.
+immutable base/delta segments, generation manifests, and crash-safe compaction.
 
 ## Requirements
 
@@ -108,8 +108,8 @@ exact scan for collections smaller than 64 live points and for selective
 filters. Otherwise it searches a deterministic, bounded in-memory HNSW graph,
 filters and exact-reranks over-fetched candidates, and falls back to exact
 filtered search if it cannot fill the requested result count. The graph is a
-derived cache rebuilt from durable live state after recovery or before the
-first approximate query following a mutation.
+derived cache lazily rebuilt from durable live state before the first
+approximate query after recovery or a mutation.
 
 Caller-provided sparse vectors use ascending `(term_id, weight)` elements:
 
@@ -137,6 +137,8 @@ Run the exact-search microbenchmarks:
 pixi run bench-distance
 pixi run bench-flat
 pixi run bench-hnsw
+pixi run bench-metadata
+pixi run bench-compaction
 ```
 
 Use the compiled in-process Python adapter:
@@ -187,10 +189,11 @@ Implemented:
 - Flat typed document fields for chunk text, image URIs, MIME types, and scalar
   metadata.
 - Versioned little-endian WAL, segment, and manifest formats with CRC32.
-- WAL append fsync, immutable snapshot publication, and atomic manifest commit.
+- WAL append fsync, immutable base/delta publication, and atomic generation
+  manifest commit.
 - Enforced single-writer collection ownership with deterministic `close()`.
-- Ordered checkpoints that rotate the WAL and reclaim the previous committed
-  snapshot segment without weakening crash recovery.
+- Ordered incremental checkpoints that rotate the WAL only after all paired
+  dense/sparse segment files and the new manifest generation are durable.
 - WAL-only and snapshot-plus-WAL recovery, including torn-tail repair.
 - Backward-compatible WAL and segment readers for Phase 3 version 1 data;
   subsequent writes and snapshots use payload-aware version 2 formats.
@@ -206,11 +209,16 @@ Implemented:
   fallback.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
+- Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
+  L0 delta recovery for both dense and sparse state.
+- Threshold-triggered full-coverage compaction that publishes one new base,
+  drops covered tombstones, and reclaims only files removed from the manifest.
 - A compiled Mojo Python extension, typed Python facade and errors, functional
   FastAPI routes, and copying Arrow-compatible batch columns.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Incremental compaction, trusted zero-copy Arrow C Data interchange, GPU kernels,
-and distributed execution remain deferred.
+Snapshot-isolated readers and the engine-owned background maintenance worker,
+trusted zero-copy Arrow C Data interchange, quantized/persisted indexes, GPU
+kernels, and distributed execution remain deferred to Phases 11–16.

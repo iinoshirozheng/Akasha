@@ -1,6 +1,6 @@
 # Consistency model
 
-Status: Phase 5 implemented.
+Status: Phase 10 incremental storage core implemented.
 
 ## Mutation visibility and durability
 
@@ -17,21 +17,29 @@ visible to searches on that handle.
 
 ## Flush and recovery
 
-Flush writes a complete live snapshot to a temporary segment, fsyncs it,
-atomically renames it, and fsyncs the directory. It then performs the same
-protocol for the manifest. The manifest rename is the snapshot commit point.
-When sparse state is enabled, a complete checksummed sparse sidecar with the
-same checkpoint sequence is fsynced before the dense manifest is published.
-Only after that commit is durable does flush atomically replace the WAL with an
-empty fsynced file, applies the same rotation to `sparse.wal`, and syncs the
-directory. Finally it removes the dense segment and sparse sidecar named by the
-previous valid manifest sequence, then syncs the directory again. Unrelated
-orphan files are not deleted.
+The first flush writes a complete base; later flushes write only the latest
+dense and sparse states newer than the committed checkpoint as paired L0 delta
+segments. Each temporary segment is fsynced, atomically renamed, and followed
+by a directory fsync before the new Manifest v2 generation is published. The
+manifest rename is the checkpoint commit point. Only after that commit is
+durable does flush atomically replace the dense and sparse WALs with empty
+fsynced files and sync the directory.
 
-Open validates the manifest and segment, restores live records, and replays WAL
-records newer than the snapshot sequence. A final incomplete WAL record is
-treated as a torn write and durably removed before another append. Any complete
-record with an invalid checksum or structural field fails recovery.
+When four L0 generations accumulate, the same foreground maintenance boundary
+performs full-coverage compaction. It flushes pending mutations, writes paired
+base segments from authoritative live state, publishes a generation containing
+only that base, then removes exactly the old files no longer referenced by the
+committed manifest. Covered tombstones are discarded; unrelated orphan files
+are not deleted. `compact()` and `maintenance()` expose the same deterministic
+synchronous path.
+
+Open validates every ordered manifest descriptor and its dense/sparse checksum
+and sequence interval, applies base and delta records in manifest order, and
+then replays WAL records newer than the checkpoint sequence. A final incomplete
+WAL record is treated as a torn write and durably removed before another append.
+Any complete record with an invalid checksum or structural field fails
+recovery. Legacy Manifest v1 and Segment v1/v2 collections remain readable and
+upgrade on their next flush.
 
 If a crash occurs after manifest publication but before WAL replacement,
 recovery may see the new snapshot and the pre-checkpoint WAL. Records at or
@@ -43,4 +51,6 @@ records.
 
 - No long-lived snapshot reader API yet.
 - No transactions spanning multiple mutations.
-- No incremental/leveled compaction, replication, or distributed consistency.
+- No engine-owned background maintenance worker yet; threshold compaction runs
+  synchronously at the end of `flush()`.
+- No replication or distributed consistency yet.

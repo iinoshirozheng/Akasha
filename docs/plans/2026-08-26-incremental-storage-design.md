@@ -52,10 +52,11 @@ is fsynced, a new manifest generation atomically replaces the input descriptors,
 and input files are deleted only after publication and snapshot-pin checks.
 
 The initial scheduler exposes deterministic synchronous `compact()` and
-`maintenance()` operations. The automatic worker calls the same operations,
-records failures for the next public operation to surface, and joins during
-`close()`. Disabling automatic maintenance keeps tests and embedded deployments
-fully deterministic.
+`maintenance()` operations, and `flush()` invokes the same operation after four
+L0 generations. The long-lived worker is coupled to Phase 11 snapshot pinning
+and concurrency ownership: it must call the same operations, surface failures
+through public operations, and join during `close()` without reclaiming a
+reader-pinned generation.
 
 ## Validation
 
@@ -69,3 +70,14 @@ fully deterministic.
 - Compaction never removes stray or currently referenced files.
 - Existing exact, HNSW, metadata, sparse, hybrid, Python, and HTTP tests remain
   green.
+
+## Measured development baseline
+
+`pixi run bench-compaction` generates paired 10K/100K base-plus-1%-delta
+workloads and measures the production segment codec, real
+`PersistentCollection.open()`, and compacted-base rewrite. On the Phase 10
+development machine, delta/base encoded bytes were 1.009% at 10K and 1.001% at
+100K. Reopen cost was about 0.69 microseconds per recovered record at both
+sizes after recovery switched to linear ID-ordered MemTable merging and HNSW
+became a lazy derived cache. The benchmark fails if delta amplification reaches
+5% or 100K per-record reopen cost exceeds eight times the 10K baseline.

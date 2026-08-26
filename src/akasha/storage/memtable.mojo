@@ -176,6 +176,61 @@ struct MemTable:
                 cursor -= 1
         return result^
 
+    def apply_recovered_entries(mut self, entries: List[MemTableEntry]) raises:
+        """Linearly merge one ID-ordered immutable segment during recovery."""
+        var previous_id = 0
+        for index in range(len(entries)):
+            if index > 0 and entries[index].id <= previous_id:
+                raise Error("recovered point IDs must increase")
+            previous_id = entries[index].id
+            if entries[index].sequence == 0:
+                raise Error("recovered sequence must be positive")
+            if entries[index].tombstone:
+                if len(entries[index].values) != 0:
+                    raise Error("recovered tombstone cannot contain a vector")
+            elif len(entries[index].values) != self.dimension:
+                raise Error(
+                    "recovered vector dimension does not match memtable"
+                )
+            self._advance_sequence(entries[index].sequence)
+
+        for index in range(1, len(self._entries)):
+            if self._entries[index].id <= self._entries[index - 1].id:
+                raise Error("recovered memtable state must be ID ordered")
+
+        var merged = List[MemTableEntry](
+            capacity=len(self._entries) + len(entries)
+        )
+        var current_index = 0
+        var incoming_index = 0
+        while current_index < len(self._entries) and incoming_index < len(
+            entries
+        ):
+            if self._entries[current_index].id < entries[incoming_index].id:
+                merged.append(self._entries[current_index].clone())
+                current_index += 1
+            elif entries[incoming_index].id < self._entries[current_index].id:
+                merged.append(entries[incoming_index].clone())
+                incoming_index += 1
+            else:
+                if (
+                    entries[incoming_index].sequence
+                    > self._entries[current_index].sequence
+                ):
+                    merged.append(entries[incoming_index].clone())
+                else:
+                    merged.append(self._entries[current_index].clone())
+                current_index += 1
+                incoming_index += 1
+
+        while current_index < len(self._entries):
+            merged.append(self._entries[current_index].clone())
+            current_index += 1
+        while incoming_index < len(entries):
+            merged.append(entries[incoming_index].clone())
+            incoming_index += 1
+        self._entries = merged^
+
     def _find_index(self, id: Int) -> Int:
         for index in range(len(self._entries)):
             if self._entries[index].id == id:

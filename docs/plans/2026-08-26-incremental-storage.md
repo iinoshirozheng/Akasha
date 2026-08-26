@@ -10,6 +10,13 @@ Flush appends changed entries as a delta and compaction atomically replaces a
 covered set with a merged base. WAL and MemTable remain authoritative, and old
 files are reclaimed only after manifest publication.
 
+**Implementation status:** Tasks 1–7 are implemented. Threshold-triggered
+automatic compaction uses the same deterministic foreground boundary as
+`compact()` and `maintenance()`. The long-lived worker portion of Task 8 is
+coupled to Phase 11 snapshot ownership and concurrency so it cannot reclaim a
+generation pinned by a reader. Task 9 includes the committed 10K/100K
+segment-generation benchmark and the full validation gate.
+
 **Tech Stack:** Mojo stable, Pixi, versioned binary codecs, CRC32, filesystem
 fsync/rename, Mojo TestSuite, subprocess crash tests.
 

@@ -145,25 +145,7 @@ struct PersistentCollection:
                     and snapshot.kind != SEGMENT_KIND_BASE
                 ):
                     raise Error("compacted manifest entry must be a base")
-                for entry_index in range(len(snapshot.entries)):
-                    if snapshot.entries[entry_index].tombstone:
-                        memtable.apply_delete(
-                            snapshot.entries[entry_index].id,
-                            snapshot.entries[entry_index].sequence,
-                        )
-                        continue
-                    var values = _clone_vector(
-                        snapshot.entries[entry_index].values
-                    )
-                    var fields = clone_fields(
-                        snapshot.entries[entry_index].fields
-                    )
-                    memtable.apply_document_upsert(
-                        snapshot.entries[entry_index].id,
-                        snapshot.entries[entry_index].sequence,
-                        values^,
-                        fields^,
-                    )
+                memtable.apply_recovered_entries(snapshot.entries)
             snapshot_sequence = manifest.last_sequence
 
         var records = recover_wal(path + "/wal.bin", dimension)
@@ -306,9 +288,13 @@ struct PersistentCollection:
             if not Bool(memtable.get(recovered_sparse[index].id)):
                 sparse.delete(recovered_sparse[index].id)
 
-        var hnsw = _build_hnsw(memtable, dimension)
+        # HNSW is a derived cache. Rebuilding it eagerly makes collection open
+        # quadratic in the number of recovered points; the first approximate
+        # query rebuilds it through `_ensure_hnsw()` instead.
+        var hnsw = HnswIndex(dimension)
         var metadata = _build_metadata(memtable)
-        return PersistentCollection(
+        var recovered_point_count = memtable.entry_count()
+        var collection = PersistentCollection(
             path,
             dimension,
             memtable^,
@@ -319,6 +305,8 @@ struct PersistentCollection:
             sparse_pending^,
             metadata^,
         )
+        collection._hnsw_dirty = recovered_point_count > 0
+        return collection^
 
     def close(mut self) raises:
         """Release this collection's single-writer ownership."""

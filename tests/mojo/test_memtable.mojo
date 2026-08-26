@@ -1,5 +1,5 @@
 from akasha.document import DocumentField, PayloadValue
-from akasha.storage.memtable import MemTable
+from akasha.storage.memtable import MemTable, MemTableEntry
 from std.testing import (
     assert_equal,
     assert_false,
@@ -144,6 +144,29 @@ def test_memtable_entries_after_allows_global_checkpoint_beyond_dense_state() ra
     table.apply_upsert(1, 1, [1.0])
 
     assert_equal(len(table.entries_after(2)), 0)
+
+
+def test_memtable_linearly_merges_ordered_recovered_segments() raises:
+    var table = MemTable(1)
+    var base = List[MemTableEntry]()
+    base.append(MemTableEntry(1, 1, False, [1.0]))
+    base.append(MemTableEntry(3, 3, False, [3.0]))
+    table.apply_recovered_entries(base)
+
+    var delta = List[MemTableEntry]()
+    delta.append(MemTableEntry(1, 4, True, List[Float32]()))
+    delta.append(MemTableEntry(2, 5, False, [2.0]))
+    delta.append(MemTableEntry(3, 2, False, [99.0]))
+    table.apply_recovered_entries(delta)
+
+    assert_equal(table.slot_count(), 3)
+    assert_equal(table.entry_at(0).id, 1)
+    assert_true(table.entry_at(0).tombstone)
+    assert_equal(table.entry_at(1).id, 2)
+    assert_equal(table.entry_at(1).values[0], Float32(2.0))
+    assert_equal(table.entry_at(2).id, 3)
+    assert_equal(table.entry_at(2).values[0], Float32(3.0))
+    assert_equal(table.last_sequence, UInt64(5))
 
 
 def main() raises:
