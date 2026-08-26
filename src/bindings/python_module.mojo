@@ -1,1 +1,342 @@
-# Planned: narrow Python extension module entry point.
+from akasha import (
+    DocumentField,
+    PayloadValue,
+    PersistentCollection,
+    SparseElement,
+)
+from akasha.index.flat import SearchResult
+from std.os import abort
+from std.python import Python, PythonObject
+from std.python.bindings import PythonModuleBuilder
+
+
+struct BoundCollection(Movable, Writable):
+    var inner: Optional[PersistentCollection]
+
+    def __init__(out self):
+        self.inner = Optional[PersistentCollection]()
+
+    def write_to(self, mut writer: Some[Writer]):
+        writer.write("AkashaCollection")
+
+    def write_repr_to(self, mut writer: Some[Writer]):
+        writer.write("AkashaCollection()")
+
+    @staticmethod
+    def py_init(
+        out self: BoundCollection,
+        args: PythonObject,
+        kwargs: PythonObject,
+    ) raises:
+        self = BoundCollection()
+        if len(args) != 2:
+            raise Error("Collection(path, dimension) requires two arguments")
+        var path = String(py=args[0])
+        var dimension = Int(py=args[1])
+        self.inner = Optional(PersistentCollection.open(path, dimension))
+
+    @staticmethod
+    def close(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        if Bool(self[].inner):
+            self[].inner.value().close()
+            self[].inner = Optional[PersistentCollection]()
+        return Python.none()
+
+    @staticmethod
+    def last_sequence(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        return PythonObject(self[].inner.value().last_sequence())
+
+    @staticmethod
+    def upsert(
+        py_self: PythonObject, id: PythonObject, vector: PythonObject
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var values = _float_vector(vector)
+        self[].inner.value().upsert(Int(py=id), values^)
+        return Python.none()
+
+    @staticmethod
+    def upsert_document(
+        py_self: PythonObject,
+        id: PythonObject,
+        vector: PythonObject,
+        fields: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var values = _float_vector(vector)
+        var mojo_fields = _document_fields(fields)
+        self[].inner.value().upsert_document(Int(py=id), values^, mojo_fields^)
+        return Python.none()
+
+    @staticmethod
+    def upsert_sparse(
+        py_self: PythonObject, id: PythonObject, elements: PythonObject
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var sparse = _sparse_vector(elements)
+        self[].inner.value().upsert_sparse(Int(py=id), sparse^)
+        return Python.none()
+
+    @staticmethod
+    def delete(py_self: PythonObject, id: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        self[].inner.value().delete(Int(py=id))
+        return Python.none()
+
+    @staticmethod
+    def flush(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        self[].inner.value().flush()
+        return Python.none()
+
+    @staticmethod
+    def get(py_self: PythonObject, id: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var record = self[].inner.value().get(Int(py=id))
+        if not Bool(record):
+            return Python.none()
+        var fields = Python.list()
+        for index in range(len(record.value().fields)):
+            fields.append(_field_to_python(record.value().fields[index]))
+        var vector = Python.list()
+        for value in record.value().vector:
+            vector.append(value)
+        return Python.dict(
+            id=PythonObject(record.value().id),
+            sequence=PythonObject(record.value().sequence),
+            vector=vector,
+            fields=fields,
+        )
+
+    @staticmethod
+    def search_dot(
+        py_self: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var values = _float_vector(query)
+        return _results_to_python(
+            self[].inner.value().search_dot(values, Int(py=k))
+        )
+
+    @staticmethod
+    def search_l2(
+        py_self: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var values = _float_vector(query)
+        return _results_to_python(
+            self[].inner.value().search_l2(values, Int(py=k))
+        )
+
+    @staticmethod
+    def search_cosine(
+        py_self: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var values = _float_vector(query)
+        return _results_to_python(
+            self[].inner.value().search_cosine(values, Int(py=k))
+        )
+
+    @staticmethod
+    def search_approx(
+        py_self: PythonObject,
+        metric: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+        ef_search: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var values = _float_vector(query)
+        var count = Int(py=k)
+        var ef = Int(py=ef_search)
+        if metric_name == "dot":
+            return _results_to_python(
+                self[].inner.value().search_dot_approx(values, count, ef)
+            )
+        if metric_name == "l2":
+            return _results_to_python(
+                self[].inner.value().search_l2_approx(values, count, ef)
+            )
+        if metric_name == "cosine":
+            return _results_to_python(
+                self[].inner.value().search_cosine_approx(values, count, ef)
+            )
+        raise Error("unknown dense metric")
+
+    @staticmethod
+    def search_sparse(
+        py_self: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var sparse = _sparse_vector(query)
+        return _results_to_python(
+            self[].inner.value().search_sparse_dot(sparse, Int(py=k))
+        )
+
+    @staticmethod
+    def search_hybrid(
+        py_self: PythonObject,
+        metric: PythonObject,
+        dense_query: PythonObject,
+        sparse_query: PythonObject,
+        options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var dense = _float_vector(dense_query)
+        var sparse = _sparse_vector(sparse_query)
+        var k = Int(py=options["k"])
+        var fetch_k = Int(py=options["fetch_k"])
+        var rank_constant = Int(py=options["rank_constant"])
+        if metric_name == "dot":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_dot(dense, sparse, k, fetch_k, rank_constant)
+            )
+        if metric_name == "l2":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_l2(dense, sparse, k, fetch_k, rank_constant)
+            )
+        if metric_name == "cosine":
+            return _results_to_python(
+                self[]
+                .inner.value()
+                .search_hybrid_cosine(dense, sparse, k, fetch_k, rank_constant)
+            )
+        raise Error("unknown dense metric")
+
+
+def _ensure_open(collection: BoundCollection) raises:
+    if not Bool(collection.inner):
+        raise Error("collection is closed")
+
+
+def _float_vector(value: PythonObject) raises -> List[Float32]:
+    var result = List[Float32](capacity=len(value))
+    for item in value:
+        result.append(Float32(py=item))
+    return result^
+
+
+def _sparse_vector(value: PythonObject) raises -> List[SparseElement]:
+    var result = List[SparseElement](capacity=len(value))
+    for item in value:
+        result.append(
+            SparseElement(Int(py=item["term_id"]), Float32(py=item["weight"]))
+        )
+    return result^
+
+
+def _document_fields(value: PythonObject) raises -> List[DocumentField]:
+    var result = List[DocumentField](capacity=len(value))
+    for item in value:
+        var name = String(py=item["name"])
+        var kind = String(py=item["type"])
+        var raw = item["value"]
+        if kind == "string":
+            result.append(
+                DocumentField(name, PayloadValue.string(String(py=raw)))
+            )
+        elif kind == "int":
+            result.append(
+                DocumentField(name, PayloadValue.integer(Int64(py=raw)))
+            )
+        elif kind == "float":
+            result.append(
+                DocumentField(name, PayloadValue.floating(Float64(py=raw)))
+            )
+        elif kind == "bool":
+            result.append(
+                DocumentField(name, PayloadValue.boolean(Bool(py=raw)))
+            )
+        else:
+            raise Error("unknown payload value type")
+    return result^
+
+
+def _field_to_python(field: DocumentField) raises -> PythonObject:
+    var kind: String
+    var value: PythonObject
+    if field.value.is_string():
+        kind = "string"
+        value = PythonObject(field.value.as_string())
+    elif field.value.is_integer():
+        kind = "int"
+        value = PythonObject(field.value.as_int())
+    elif field.value.is_floating():
+        kind = "float"
+        value = PythonObject(field.value.as_float())
+    else:
+        kind = "bool"
+        value = PythonObject(field.value.as_bool())
+    return Python.dict(
+        name=PythonObject(field.name),
+        type=PythonObject(kind),
+        value=value,
+    )
+
+
+def _results_to_python(results: List[SearchResult]) raises -> PythonObject:
+    var output = Python.list()
+    for result in results:
+        output.append(
+            Python.dict(
+                id=PythonObject(result.id), score=PythonObject(result.score)
+            )
+        )
+    return output
+
+
+@export
+def PyInit__kernel() abi("C") -> PythonObject:
+    try:
+        var module = PythonModuleBuilder("_kernel")
+        _ = (
+            module.add_type[BoundCollection]("Collection")
+            .def_py_init[BoundCollection.py_init]()
+            .def_method[BoundCollection.close]("close")
+            .def_method[BoundCollection.last_sequence]("last_sequence")
+            .def_method[BoundCollection.upsert]("upsert")
+            .def_method[BoundCollection.upsert_document]("upsert_document")
+            .def_method[BoundCollection.upsert_sparse]("upsert_sparse")
+            .def_method[BoundCollection.delete]("delete")
+            .def_method[BoundCollection.flush]("flush")
+            .def_method[BoundCollection.get]("get")
+            .def_method[BoundCollection.search_dot]("search_dot")
+            .def_method[BoundCollection.search_l2]("search_l2")
+            .def_method[BoundCollection.search_cosine]("search_cosine")
+            .def_method[BoundCollection.search_approx]("search_approx")
+            .def_method[BoundCollection.search_sparse]("search_sparse")
+            .def_method[BoundCollection.search_hybrid]("search_hybrid")
+        )
+        return module.finalize()
+    except error:
+        abort(String("failed to create Akasha Python module: ", error))
