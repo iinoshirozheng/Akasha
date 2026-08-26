@@ -19,6 +19,8 @@ from .index import (
     FlatIndex,
     HnswIndex,
     MetadataIndex,
+    Sq8Codebook,
+    Sq8Index,
     SearchResult,
     SparseElement,
     SparseIndex,
