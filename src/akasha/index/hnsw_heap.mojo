@@ -1,5 +1,5 @@
 struct HnswHeapItem(Copyable, Movable, Writable):
-    """One graph candidate ordered by canonical distance and public point ID."""
+    """Candidate ordered by canonical distance, public ID, then graph slot."""
 
     var slot: UInt32
     var id: Int
@@ -13,9 +13,11 @@ struct HnswHeapItem(Copyable, Movable, Writable):
 
 def _is_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     """Return whether lhs precedes rhs in deterministic best-first order."""
-    if lhs.distance == rhs.distance:
+    if lhs.distance != rhs.distance:
+        return lhs.distance < rhs.distance
+    if lhs.id != rhs.id:
         return lhs.id < rhs.id
-    return lhs.distance < rhs.distance
+    return lhs.slot < rhs.slot
 
 
 def _is_worse(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
@@ -154,7 +156,7 @@ struct ResultMaxHeap(Sized):
         return worst^
 
     def take_sorted_best(mut self) raises -> List[HnswHeapItem]:
-        """Drain retained items into ``(distance ASC, id ASC)`` order."""
+        """Drain into ``(distance ASC, id ASC, slot ASC)`` order."""
         var result_count = len(self._heap)
         var results = List[HnswHeapItem](
             length=result_count,

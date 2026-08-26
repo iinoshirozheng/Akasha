@@ -174,6 +174,70 @@ def test_radius_termination_does_not_expand_far_branch() raises:
     assert_equal(stats.retained_candidates, 2)
 
 
+def test_equal_radius_neighbor_is_admitted_to_frontier_as_bridge() raises:
+    var graph = HnswStorage(1, 4, 8)
+    _ = _append(graph, 10, 1.0)
+    _ = _append(graph, 20, -1.0)
+    _ = _append(graph, 5, 0.0)
+    var entry: List[UInt32] = [UInt32(1)]
+    var bridge: List[UInt32] = [UInt32(0), UInt32(2)]
+    var target: List[UInt32] = [UInt32(1)]
+    _set(graph, 0, 0, entry^)
+    _set(graph, 1, 0, bridge^)
+    _set(graph, 2, 0, target^)
+
+    var metric = _metric()
+    var query = _query(0.0)
+    var admission = HnswSearchAdmission()
+    var scratch = HnswSearchScratch()
+    var stats = HnswSearchStats()
+    var results = search_layer(
+        graph, metric, query, UInt32(0), 0, 1, 1, admission, scratch, stats
+    )
+
+    # Slot one is tied with the retained radius but has a worse public ID. It
+    # must still enter the frontier so its strictly closer neighbor is found.
+    assert_equal(len(results), 1)
+    _assert_item(results, 0, 2, 5, 0.0)
+    assert_equal(stats.base_visited, 3)
+    assert_equal(stats.distance_evaluations, 3)
+    assert_equal(stats.retained_candidates, 1)
+
+
+def test_equal_radius_candidate_is_not_stopped_by_worse_id() raises:
+    var graph = HnswStorage(1, 4, 8)
+    _ = _append(graph, 10, 0.0)
+    _ = _append(graph, 30, 1.0)
+    _ = _append(graph, 20, -1.0)
+    _ = _append(graph, 5, 0.0)
+    var entry: List[UInt32] = [UInt32(1), UInt32(2)]
+    var bridge: List[UInt32] = [UInt32(0), UInt32(3)]
+    var better_tie: List[UInt32] = [UInt32(0)]
+    var target: List[UInt32] = [UInt32(1)]
+    _set(graph, 0, 0, entry^)
+    _set(graph, 1, 0, bridge^)
+    _set(graph, 2, 0, better_tie^)
+    _set(graph, 3, 0, target^)
+
+    var metric = _metric()
+    var query = _query(0.0)
+    var admission = HnswSearchAdmission()
+    var scratch = HnswSearchScratch()
+    var stats = HnswSearchStats()
+    var results = search_layer(
+        graph, metric, query, UInt32(0), 0, 2, 2, admission, scratch, stats
+    )
+
+    # Slot one was queued before the result radius became the equal-distance
+    # slot two. A larger ID cannot terminate its traversal at equal distance.
+    assert_equal(len(results), 2)
+    _assert_item(results, 0, 3, 5, 0.0)
+    _assert_item(results, 1, 0, 10, 0.0)
+    assert_equal(stats.base_visited, 4)
+    assert_equal(stats.distance_evaluations, 4)
+    assert_equal(stats.retained_candidates, 2)
+
+
 def test_disconnected_slots_are_not_visited() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 1, 1.0)

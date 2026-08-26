@@ -27,9 +27,11 @@ def _assert_item(
 
 
 def _is_model_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
-    if lhs.distance == rhs.distance:
+    if lhs.distance != rhs.distance:
+        return lhs.distance < rhs.distance
+    if lhs.id != rhs.id:
         return lhs.id < rhs.id
-    return lhs.distance < rhs.distance
+    return lhs.slot < rhs.slot
 
 
 def _sort_model_best_first(mut values: List[HnswHeapItem]):
@@ -118,6 +120,26 @@ def test_result_offer_retains_only_best_capacity() raises:
     _assert_item(sorted[2], 10, 10, 5.0)
     # take_sorted_best intentionally drains the heap for scratch reuse.
     assert_true(heap.is_empty())
+
+
+def test_heaps_use_slot_as_tertiary_key_for_duplicate_public_ids() raises:
+    var candidates = CandidateMinHeap()
+    candidates.push(_item(9, 7, 1.0))
+    candidates.push(_item(2, 7, 1.0))
+    candidates.push(_item(5, 7, 1.0))
+    _assert_item(candidates.pop(), 2, 7, 1.0)
+    _assert_item(candidates.pop(), 5, 7, 1.0)
+    _assert_item(candidates.pop(), 9, 7, 1.0)
+
+    var results = ResultMaxHeap()
+    results.offer(_item(2, 7, 1.0), 3)
+    results.offer(_item(9, 7, 1.0), 3)
+    results.offer(_item(5, 7, 1.0), 3)
+    _assert_item(results.peek_worst(), 9, 7, 1.0)
+    var sorted = results.take_sorted_best()
+    _assert_item(sorted[0], 2, 7, 1.0)
+    _assert_item(sorted[1], 5, 7, 1.0)
+    _assert_item(sorted[2], 9, 7, 1.0)
 
 
 def test_result_offer_rejects_non_positive_capacity() raises:

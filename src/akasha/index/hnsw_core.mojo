@@ -57,10 +57,6 @@ def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     return lhs.slot < rhs.slot
 
 
-def _search_item_worse(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
-    return _search_item_better(rhs, lhs)
-
-
 def _validate_search_boundary(
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
@@ -192,8 +188,10 @@ def search_layer(
     Every first-seen slot is scored exactly once. Current/filter eligibility
     controls only result admission: rejected and inactive slots can still
     traverse the graph. Frontier growth follows the standard retained-radius
-    rule and terminates when its best unexplored tuple is strictly worse than
-    the worst retained tuple. ``base_visited`` and ``distance_evaluations``
+    rule and terminates only when its best unexplored distance is strictly
+    greater than the worst retained distance. Equal-distance items remain
+    traversable regardless of their deterministic result-order ID/slot ties.
+    ``base_visited`` and ``distance_evaluations``
     increase once per first-seen scored slot, including the entry. A first-seen
     non-current slot increments only ``inactive_rejections``; a current but
     disallowed slot increments only ``filtered_rejections``. The final top-k
@@ -220,8 +218,9 @@ def search_layer(
 
     while not scratch.candidates.is_empty():
         var candidate = scratch.candidates.pop()
-        if len(scratch.results) >= ef and _search_item_worse(
-            candidate, scratch.results.peek_worst()
+        if (
+            len(scratch.results) >= ef
+            and candidate.distance > scratch.results.peek_worst().distance
         ):
             break
 
@@ -242,8 +241,9 @@ def search_layer(
                 graph, admission, item, ef, scratch, stats
             )
 
-            if len(scratch.results) < ef or not _search_item_worse(
-                item, scratch.results.peek_worst()
+            if (
+                len(scratch.results) < ef
+                or item.distance <= scratch.results.peek_worst().distance
             ):
                 scratch.candidates.push(item)
 
