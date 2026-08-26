@@ -43,6 +43,7 @@ struct HnswStorage:
     var neighbor_counts: List[UInt32]
     var neighbor_slots: List[UInt32]
     var _current_slots: Dict[Int, UInt32]
+    var _valid: Bool
 
     def __init__(out self, dimension: Int, m: Int, m0: Int) raises:
         if dimension <= 0:
@@ -68,6 +69,15 @@ struct HnswStorage:
         self.neighbor_counts = List[UInt32]()
         self.neighbor_slots = List[UInt32]()
         self._current_slots = Dict[Int, UInt32]()
+        self._valid = True
+
+    def is_valid(self) -> Bool:
+        """Whether this graph may be exposed to approximate search."""
+        return self._valid
+
+    def mark_invalid(mut self):
+        """Permanently quarantine a graph after an interrupted link update."""
+        self._valid = False
 
     def slot_count(self) -> Int:
         return len(self.ids)

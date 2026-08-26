@@ -179,6 +179,230 @@ def select_neighbors_heuristic(
     return selected^
 
 
+def _slot_in_list(values: List[UInt32], slot: UInt32) -> Bool:
+    for value in values:
+        if value == slot:
+            return True
+    return False
+
+
+def _adjacency_with_candidate(
+    graph: HnswStorage,
+    dispatcher: MetricDispatcher,
+    center: UInt32,
+    candidate: UInt32,
+    level: Int,
+    mut stats: HnswBuildStats,
+) raises -> List[UInt32]:
+    """Return the bounded adjacency obtained by considering one new edge."""
+    var count = graph.neighbor_count(center, level)
+    var values = List[UInt32](capacity=count + 1)
+    for index in range(count):
+        values.append(graph.neighbor_at(center, level, index))
+    if not _slot_in_list(values, candidate):
+        values.append(candidate)
+
+    var capacity = graph.level_capacity(center, level)
+    if len(values) <= capacity:
+        return values^
+
+    var candidates = List[HnswHeapItem](capacity=len(values))
+    for value in values:
+        candidates.append(
+            HnswHeapItem(
+                value,
+                graph.id_at(value),
+                graph.distance_between(dispatcher, center, value),
+            )
+        )
+        stats.distance_evaluations += 1
+    var no_exclusion = Optional[UInt32]()
+    return select_neighbors_heuristic(
+        graph,
+        dispatcher,
+        candidates,
+        no_exclusion,
+        capacity,
+        True,
+        stats,
+    )
+
+
+def _copy_adjacency(
+    graph: HnswStorage, center: UInt32, level: Int
+) raises -> List[UInt32]:
+    var count = graph.neighbor_count(center, level)
+    var values = List[UInt32](capacity=count)
+    for index in range(count):
+        values.append(graph.neighbor_at(center, level, index))
+    return values^
+
+
+def _removed_neighbors(
+    graph: HnswStorage,
+    center: UInt32,
+    level: Int,
+    retained: List[UInt32],
+) raises -> List[UInt32]:
+    """Snapshot removed edges before packed adjacency is overwritten."""
+    var removed = List[UInt32]()
+    var count = graph.neighbor_count(center, level)
+    for index in range(count):
+        var neighbor = graph.neighbor_at(center, level, index)
+        if not _slot_in_list(retained, neighbor):
+            removed.append(neighbor)
+    return removed^
+
+
+def _validate_link_level(
+    graph: HnswStorage, slot: UInt32, level: Int
+) raises:
+    if level < 0 or level > graph.level(slot):
+        raise Error("HNSW node does not own touched graph level")
+    var count = graph.neighbor_count(slot, level)
+    if count > graph.level_capacity(slot, level):
+        raise Error("HNSW touched adjacency exceeds level capacity")
+    for edge_index in range(count):
+        var neighbor = graph.neighbor_at(slot, level, edge_index)
+        if graph.level(neighbor) < level:
+            raise Error("HNSW edge target does not own graph level")
+        if not graph.contains_neighbor(neighbor, level, slot):
+            raise Error("HNSW graph contains an asymmetric edge")
+
+
+def validate_bidirectional_links(graph: HnswStorage) raises:
+    """Audit packed structure, level ownership, and edge symmetry."""
+    if not graph.is_valid():
+        raise Error("HNSW graph is marked invalid")
+    graph.validate_structure()
+    for index in range(graph.slot_count()):
+        var slot = UInt32(index)
+        for level in range(graph.level(slot) + 1):
+            _validate_link_level(graph, slot, level)
+
+
+def connect_bidirectional(
+    mut graph: HnswStorage,
+    dispatcher: MetricDispatcher,
+    endpoint: UInt32,
+    level: Int,
+    selected_neighbors: List[UInt32],
+    mut stats: HnswBuildStats,
+) raises:
+    """Connect selected slots while preserving bounded symmetric adjacency.
+
+    Every overflowing endpoint is re-selected around its own vector. Removed
+    edges are snapshotted before replacing the packed list, then removed from
+    their reverse endpoints without recursive pruning. Caller errors are fully
+    validated before mutation. Any later failure quarantines the graph so a
+    collection can route around the partially updated derived index.
+    """
+    if not graph.is_valid():
+        raise Error("cannot mutate an invalid HNSW graph")
+    dispatcher.require_supported_backend()
+    if dispatcher.dimension() != graph.dimension:
+        raise Error("metric dispatcher dimension does not match HNSW graph")
+    _ = graph.level_capacity(endpoint, level)
+    if not graph.is_current(endpoint):
+        raise Error("HNSW link endpoint must be current")
+
+    # Validate and deduplicate the complete proposal set before any mutation.
+    var proposals = List[UInt32](capacity=len(selected_neighbors))
+    var seen = Dict[Int, Bool]()
+    for neighbor in selected_neighbors:
+        _ = graph.id_at(neighbor)
+        if neighbor == endpoint:
+            raise Error("HNSW self edges are not allowed")
+        if graph.level(neighbor) < level:
+            raise Error("HNSW edge target does not own graph level")
+        if not graph.is_current(neighbor):
+            raise Error("HNSW link neighbor must be current")
+        var key = Int(neighbor)
+        if key not in seen:
+            seen[key] = True
+            proposals.append(neighbor)
+
+    var local_stats = HnswBuildStats()
+    var directed_edge_delta = 0
+    var mutation_started = False
+    try:
+        for neighbor in proposals:
+            var endpoint_original = _copy_adjacency(
+                graph, endpoint, level
+            )
+            var neighbor_original = _copy_adjacency(
+                graph, neighbor, level
+            )
+            var endpoint_final = _adjacency_with_candidate(
+                graph,
+                dispatcher,
+                endpoint,
+                neighbor,
+                level,
+                local_stats,
+            )
+            var neighbor_final = _adjacency_with_candidate(
+                graph,
+                dispatcher,
+                neighbor,
+                endpoint,
+                level,
+                local_stats,
+            )
+
+            # An edge is visible only if both endpoint-centered selections keep
+            # it. This prevents either pruning decision from creating a one-way
+            # adjacency.
+            var keep_edge = _slot_in_list(endpoint_final, neighbor)
+            keep_edge = keep_edge and _slot_in_list(neighbor_final, endpoint)
+            if not keep_edge:
+                # A proposal rejected by either endpoint never happened. Keep
+                # both prior bounded lists instead of losing unrelated edges
+                # selected out only while the rejected edge was considered.
+                endpoint_final = endpoint_original^
+                neighbor_final = neighbor_original^
+
+            var removed_from_endpoint = _removed_neighbors(
+                graph, endpoint, level, endpoint_final
+            )
+            var removed_from_neighbor = _removed_neighbors(
+                graph, neighbor, level, neighbor_final
+            )
+
+            mutation_started = True
+            var endpoint_before = graph.neighbor_count(endpoint, level)
+            graph.set_neighbors(endpoint, level, endpoint_final^)
+            directed_edge_delta += (
+                graph.neighbor_count(endpoint, level) - endpoint_before
+            )
+            var neighbor_before = graph.neighbor_count(neighbor, level)
+            graph.set_neighbors(neighbor, level, neighbor_final^)
+            directed_edge_delta += (
+                graph.neighbor_count(neighbor, level) - neighbor_before
+            )
+
+            for removed in removed_from_endpoint:
+                if graph.remove_neighbor(removed, level, endpoint):
+                    directed_edge_delta -= 1
+            for removed in removed_from_neighbor:
+                if graph.remove_neighbor(removed, level, neighbor):
+                    directed_edge_delta -= 1
+
+            _validate_link_level(graph, endpoint, level)
+            _validate_link_level(graph, neighbor, level)
+            for removed in removed_from_endpoint:
+                _validate_link_level(graph, removed, level)
+            for removed in removed_from_neighbor:
+                _validate_link_level(graph, removed, level)
+    except error:
+        if mutation_started:
+            graph.mark_invalid()
+        raise Error(String(error))
+
+    stats.distance_evaluations += local_stats.distance_evaluations
+    stats.directed_edges += directed_edge_delta
+
+
 def _validate_search_boundary(
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
@@ -187,6 +411,8 @@ def _validate_search_boundary(
     level: Int,
 ) raises:
     """Validate all caller-owned state before scratch or stats are mutated."""
+    if not graph.is_valid():
+        raise Error("cannot search an invalid HNSW graph")
     dispatcher.require_supported_backend()
     if graph.slot_count() <= 0:
         raise Error("cannot search an empty HNSW graph")
