@@ -66,6 +66,7 @@ from akasha.storage.wal import (
 )
 from std.math import isfinite
 from std.memory import ArcPointer
+from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
 comptime _DOT_METRIC = 0
@@ -106,6 +107,7 @@ struct PersistentCollection:
     var _metadata: MetadataIndex
     var _pins: ArcPointer[GenerationPinRegistry]
     var _retired: List[_RetiredGeneration]
+    var _writer_lock: ArcPointer[BlockingSpinLock]
 
     def __init__(
         out self,
@@ -134,6 +136,7 @@ struct PersistentCollection:
         self._metadata = metadata^
         self._pins = ArcPointer(GenerationPinRegistry())
         self._retired = List[_RetiredGeneration]()
+        self._writer_lock = ArcPointer(BlockingSpinLock())
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -340,25 +343,33 @@ struct PersistentCollection:
 
     def close(mut self) raises:
         """Release this collection's single-writer ownership."""
-        if self._closed:
-            return
-        self._lock.close()
-        self._closed = True
+        with BlockingScopedLock(self._writer_lock[]):
+            if self._closed:
+                return
+            self._lock.close()
+            self._closed = True
 
     def last_sequence(self) raises -> UInt64:
-        self._ensure_open()
-        return self._last_sequence
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._last_sequence
 
     def metadata_live_count(self) raises -> Int:
-        self._ensure_open()
-        return self._metadata.live_count()
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._metadata.live_count()
 
     def metadata_match_count(self, expression: FilterExpression) raises -> Int:
-        self._ensure_open()
-        return evaluate_expression(self._metadata, expression).count()
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return evaluate_expression(self._metadata, expression).count()
 
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._snapshot_unlocked()
+
+    def _snapshot_unlocked(self) raises -> ReadSnapshot:
         self._ensure_open()
         var generation = UInt64(0)
         if path_exists(self.path + "/manifest.bin"):
@@ -372,6 +383,10 @@ struct PersistentCollection:
         )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._upsert_unlocked(id, values^)
+
+    def _upsert_unlocked(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()
         self._validate_vector(values)
         var sequence = self._next_sequence()
@@ -385,6 +400,15 @@ struct PersistentCollection:
         self._hnsw_dirty = True
 
     def upsert_document(
+        mut self,
+        id: Int,
+        var values: List[Float32],
+        var fields: List[DocumentField],
+    ) raises:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._upsert_document_unlocked(id, values^, fields^)
+
+    def _upsert_document_unlocked(
         mut self,
         id: Int,
         var values: List[Float32],
@@ -410,6 +434,12 @@ struct PersistentCollection:
     ) raises -> BatchWriteResult:
         """Validate and durably apply one all-or-nothing dense mutation batch.
         """
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._apply_batch_unlocked(mutations)
+
+    def _apply_batch_unlocked(
+        mut self, mutations: List[BatchMutation]
+    ) raises -> BatchWriteResult:
         self._ensure_open()
         if len(mutations) == 0:
             raise Error("mutation batch cannot be empty")
@@ -470,10 +500,17 @@ struct PersistentCollection:
         return BatchWriteResult(first_sequence, last_sequence, len(mutations))
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
-        self._ensure_open()
-        return self._memtable.get(id)
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._memtable.get(id)
 
     def upsert_sparse(mut self, id: Int, elements: List[SparseElement]) raises:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._upsert_sparse_unlocked(id, elements)
+
+    def _upsert_sparse_unlocked(
+        mut self, id: Int, elements: List[SparseElement]
+    ) raises:
         self._ensure_open()
         validate_sparse(elements)
         if not Bool(self._memtable.get(id)):
@@ -487,6 +524,10 @@ struct PersistentCollection:
         self._last_sequence = sequence
 
     def delete(mut self, id: Int) raises:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._delete_unlocked(id)
+
+    def _delete_unlocked(mut self, id: Int) raises:
         self._ensure_open()
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
@@ -765,6 +806,10 @@ struct PersistentCollection:
 
     def flush(mut self) raises:
         """Atomically append an immutable incremental checkpoint."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._flush_unlocked()
+
+    def _flush_unlocked(mut self) raises:
         self._ensure_open()
         self._reclaim_retired()
         var previous_sequence = UInt64(0)
@@ -867,8 +912,12 @@ struct PersistentCollection:
 
     def compact(mut self) raises:
         """Replace the committed segment set with one complete live base."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._compact_unlocked()
+
+    def _compact_unlocked(mut self) raises:
         self._ensure_open()
-        self.flush()
+        self._flush_unlocked()
         if not path_exists(self.path + "/manifest.bin"):
             return
         var previous = load_manifest(self.path, self.dimension)
@@ -941,9 +990,13 @@ struct PersistentCollection:
 
     def maintenance(mut self) raises -> Bool:
         """Run synchronous compaction when the default L0 threshold is met."""
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._maintenance_unlocked()
+
+    def _maintenance_unlocked(mut self) raises -> Bool:
         self._ensure_open()
         self._reclaim_retired()
-        self.flush()
+        self._flush_unlocked()
         if not path_exists(self.path + "/manifest.bin"):
             return False
         var manifest = load_manifest(self.path, self.dimension)
