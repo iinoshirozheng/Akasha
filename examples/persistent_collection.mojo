@@ -72,6 +72,9 @@ def main() raises:
     )
     var expression = FilterExpression.any(alternatives^)
     var results = reopened.search_cosine_where(query, 2, expression)
+    var approximate = reopened.search_cosine_approx_where(
+        query, 2, 32, expression
+    )
     var nearest = reopened.get(results[0].id)
 
     print(
@@ -79,6 +82,8 @@ def main() raises:
         reopened.last_sequence(),
         "nearest ID",
         results[0].id,
+        "approximate ID",
+        approximate[0].id,
         "chunk",
         nearest.value().get_field("chunk_text").value().as_string(),
     )

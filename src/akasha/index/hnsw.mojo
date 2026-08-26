@@ -42,9 +42,7 @@ struct _HnswNode(Movable):
     var level: Int
     var neighbors: List[_NeighborLevel]
 
-    def __init__(
-        out self, id: Int, var vector: List[Float32], level: Int
-    ):
+    def __init__(out self, id: Int, var vector: List[Float32], level: Int):
         self.id = id
         self.vector = vector^
         self.level = level
@@ -193,7 +191,9 @@ struct HnswIndex:
                 var links = self._nodes[current].neighbors[level].indices.copy()
                 for neighbor in links:
                     var score = self._score(metric, query, neighbor)
-                    if self._better(metric, score, neighbor, current_score, current):
+                    if self._better(
+                        metric, score, neighbor, current_score, current
+                    ):
                         current = neighbor
                         current_score = score
                         changed = True
@@ -240,9 +240,7 @@ struct HnswIndex:
             result_count, smaller_is_better=metric == _L2_METRIC
         )
         for candidate in candidates:
-            topk.offer(
-                self._nodes[candidate.node_index].id, candidate.score
-            )
+            topk.offer(self._nodes[candidate.node_index].id, candidate.score)
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
         for entry in retained:

@@ -99,11 +99,22 @@ Empty All matches and empty Any does not. Expressions are limited to 16 levels
 and 256 nodes. The Phase 4.2 `search_*_filtered` AND-list methods remain
 supported.
 
+Approximate dense search is available through `search_dot_approx`,
+`search_l2_approx`, and `search_cosine_approx`; each accepts `ef_search` after
+`k`. Boolean-filtered variants use the `_approx_where` suffix. The planner uses
+exact scan for collections smaller than 64 live points and for selective
+filters. Otherwise it searches a deterministic, bounded in-memory HNSW graph,
+filters and exact-reranks over-fetched candidates, and falls back to exact
+filtered search if it cannot fill the requested result count. The graph is a
+derived cache rebuilt from durable live state after recovery or before the
+first approximate query following a mutation.
+
 Run the exact-search microbenchmarks:
 
 ```bash
 pixi run bench-distance
 pixi run bench-flat
+pixi run bench-hnsw
 ```
 
 Run the development-only HTTP adapter:
@@ -141,9 +152,11 @@ Implemented:
 - Strict typed AND metadata filters evaluated before exact SIMD scoring for all
   three vector metrics.
 - Bounded Boolean All/Any/Negate filter expressions with pre-score evaluation.
+- Deterministic bounded HNSW approximate search with configurable `ef_search`,
+  lazy graph refresh, and filter-aware exact fallback.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Metadata indexes, incremental compaction, HNSW, hybrid retrieval, Arrow
+Metadata indexes, incremental compaction, hybrid retrieval, Arrow
 interchange, GPU kernels, and distributed execution remain deferred.

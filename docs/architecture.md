@@ -43,6 +43,15 @@ query -> typed AND filter -> SIMD metric -> bounded Top-K IDs
                               get(ID) -> owned document <-+
 ```
 
+Approximate dense queries use a derived in-memory HNSW graph. Point IDs produce
+deterministic bounded levels; insertion connects bounded nearest neighbors,
+then search performs greedy upper-layer descent and best-first layer-zero
+expansion. The planner keeps small or selective queries on exact scan. Filtered
+HNSW search over-fetches, evaluates the Boolean expression, retains exact metric
+scores, and falls back to exact filtered scan when the graph candidates cannot
+fill `k`. Recovered WAL/segment state remains authoritative; no graph bytes are
+stored in the durable formats.
+
 ## Implemented storage boundary
 
 `PersistentCollection` is an embedded, single-writer engine. Opening a

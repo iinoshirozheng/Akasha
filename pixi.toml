@@ -16,6 +16,7 @@ example-persistent = "mojo run -I src examples/persistent_collection.mojo"
 serve = { cmd = "uvicorn apps.server.main:app --reload", env = { PYTHONPATH = "python:." } }
 bench-distance = "mojo run -I src benchmarks/mojo/distance_bench.mojo"
 bench-flat = "mojo run -I src benchmarks/mojo/flat_bench.mojo"
+bench-hnsw = "mojo run -I src benchmarks/mojo/hnsw_bench.mojo"
 
 [dependencies]
 mojo = ">=1.0.0,<2"

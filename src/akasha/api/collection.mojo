@@ -404,13 +404,9 @@ struct PersistentCollection:
         var entries = self._memtable.live_entries()
         var matched_count = 0
         for entry_index in range(len(entries)):
-            if matches_expression(
-                entries[entry_index].fields, expression
-            ):
+            if matches_expression(entries[entry_index].fields, expression):
                 matched_count += 1
-        if not QueryPlanner.use_hnsw(
-            len(entries), k, matched_count, True
-        ):
+        if not QueryPlanner.use_hnsw(len(entries), k, matched_count, True):
             return self._search_where(query, k, metric, expression)
 
         var overfetch = ef_search
@@ -424,9 +420,7 @@ struct PersistentCollection:
         elif metric == _L2_METRIC:
             candidates = self._hnsw.search_l2(query, overfetch, ef_search)
         else:
-            candidates = self._hnsw.search_cosine(
-                query, overfetch, ef_search
-            )
+            candidates = self._hnsw.search_cosine(query, overfetch, ef_search)
 
         var target = k
         if target > matched_count:
@@ -434,7 +428,9 @@ struct PersistentCollection:
         var accepted = List[SearchResult](capacity=target)
         for candidate in candidates:
             for entry_index in range(len(entries)):
-                if entries[entry_index].id == candidate.id and matches_expression(
+                if entries[
+                    entry_index
+                ].id == candidate.id and matches_expression(
                     entries[entry_index].fields, expression
                 ):
                     accepted.append(candidate)
@@ -518,7 +514,5 @@ def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:
     var index = HnswIndex(dimension)
     var entries = memtable.live_entries()
     for entry_index in range(len(entries)):
-        index.add(
-            entries[entry_index].id, entries[entry_index].values
-        )
+        index.add(entries[entry_index].id, entries[entry_index].values)
     return index^

@@ -24,4 +24,6 @@ struct QueryPlanner:
             return True
         if matched_count <= k * 2:
             return False
-        return matched_count * QueryPlanner.SELECTIVITY_DENOMINATOR >= total_count
+        return (
+            matched_count * QueryPlanner.SELECTIVITY_DENOMINATOR >= total_count
+        )

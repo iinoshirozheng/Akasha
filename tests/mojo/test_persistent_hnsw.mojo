@@ -59,18 +59,14 @@ def test_filtered_approximate_search_falls_back_for_selective_match() raises:
     for id in range(1, 81):
         var fields = List[DocumentField]()
         fields.append(
-            DocumentField(
-                "keep", PayloadValue.boolean(id == 1 or id == 2)
-            )
+            DocumentField("keep", PayloadValue.boolean(id == 1 or id == 2))
         )
         collection.upsert_document(id, [Float32(id)], fields^)
 
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
     )
-    var result = collection.search_dot_approx_where(
-        [1.0], 2, 4, expression
-    )
+    var result = collection.search_dot_approx_where([1.0], 2, 4, expression)
     assert_equal(len(result), 2)
     assert_equal(result[0].id, 2)
     assert_equal(result[1].id, 1)
