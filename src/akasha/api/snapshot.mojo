@@ -8,6 +8,7 @@ from akasha.document.record import clone_fields, DocumentRecord
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.metadata import MetadataIndex
+from akasha.index.quantization import Sq8Index
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
@@ -128,6 +129,22 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+
+    def search_sq8_dot(
+        self, query: List[Float32], k: Int, *, rerank_k: Int = 0
+    ) raises -> List[SearchResult]:
+        """Search an immutable SQ8 view and optionally exact-rerank candidates."""
+        return self._search_sq8(query, k, rerank_k, _DOT_METRIC)
+
+    def search_sq8_l2(
+        self, query: List[Float32], k: Int, *, rerank_k: Int = 0
+    ) raises -> List[SearchResult]:
+        return self._search_sq8(query, k, rerank_k, _L2_METRIC)
+
+    def search_sq8_cosine(
+        self, query: List[Float32], k: Int, *, rerank_k: Int = 0
+    ) raises -> List[SearchResult]:
+        return self._search_sq8(query, k, rerank_k, _COSINE_METRIC)
 
     def search_dot_batch(
         self,
@@ -399,6 +416,62 @@ struct ReadSnapshot(Movable):
             conditions[index].validate()
         var candidates = evaluate_all(self._metadata, conditions)
         return self._search_candidates(query, k, metric, candidates)
+
+    def _search_sq8(
+        self, query: List[Float32], k: Int, rerank_k: Int, metric: Int
+    ) raises -> List[SearchResult]:
+        self._validate_query(query, k)
+        if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
+            raise Error("SQ8 rerank candidate count must be zero or at least k")
+        var entries = self._memtable.live_entries()
+        if len(entries) == 0:
+            return List[SearchResult]()
+        var ids = List[Int](capacity=len(entries))
+        var vectors = List[List[Float32]](capacity=len(entries))
+        for index in range(len(entries)):
+            ids.append(entries[index].id)
+            vectors.append(entries[index].values.copy())
+        var sq8 = Sq8Index.build(ids, vectors)
+        var candidate_count = k if rerank_k == 0 else rerank_k
+        candidate_count = min(candidate_count, len(entries))
+        var candidates: List[SearchResult]
+        if metric == _DOT_METRIC:
+            candidates = sq8.search_dot(query, candidate_count)
+        elif metric == _L2_METRIC:
+            candidates = sq8.search_l2(query, candidate_count)
+        else:
+            candidates = sq8.search_cosine(query, candidate_count)
+        if rerank_k == 0:
+            return candidates^
+
+        var topk = BoundedTopK(
+            min(k, len(candidates)),
+            smaller_is_better=metric == _L2_METRIC,
+        )
+        for candidate in candidates:
+            for entry_index in range(len(entries)):
+                if entries[entry_index].id != candidate.id:
+                    continue
+                var score: Float32
+                if metric == _DOT_METRIC:
+                    score = simd_dot_product(
+                        query, entries[entry_index].values
+                    )
+                elif metric == _L2_METRIC:
+                    score = simd_l2_squared_distance(
+                        query, entries[entry_index].values
+                    )
+                else:
+                    score = simd_cosine_similarity(
+                        query, entries[entry_index].values
+                    )
+                topk.offer(entries[entry_index].id, score)
+                break
+        var retained = topk.sorted_entries()
+        var output = List[SearchResult](capacity=len(retained))
+        for entry in retained:
+            output.append(SearchResult(entry.id, entry.score))
+        return output^
 
     def _search_where(
         self,
