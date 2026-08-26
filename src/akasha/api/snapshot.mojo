@@ -8,7 +8,7 @@ from akasha.document.record import clone_fields, DocumentRecord
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.metadata import MetadataIndex
-from akasha.index.quantization import Sq8Index
+from akasha.index.quantization import PqIndex, Sq8Index
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
@@ -145,6 +145,66 @@ struct ReadSnapshot(Movable):
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_sq8(query, k, rerank_k, _COSINE_METRIC)
+
+    def search_pq_dot(
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        subquantizers: Int,
+        centroids: Int,
+        rerank_k: Int = 0,
+        iterations: Int = 8,
+    ) raises -> List[SearchResult]:
+        return self._search_pq(
+            query,
+            k,
+            subquantizers,
+            centroids,
+            rerank_k,
+            iterations,
+            _DOT_METRIC,
+        )
+
+    def search_pq_l2(
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        subquantizers: Int,
+        centroids: Int,
+        rerank_k: Int = 0,
+        iterations: Int = 8,
+    ) raises -> List[SearchResult]:
+        return self._search_pq(
+            query,
+            k,
+            subquantizers,
+            centroids,
+            rerank_k,
+            iterations,
+            _L2_METRIC,
+        )
+
+    def search_pq_cosine(
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        subquantizers: Int,
+        centroids: Int,
+        rerank_k: Int = 0,
+        iterations: Int = 8,
+    ) raises -> List[SearchResult]:
+        return self._search_pq(
+            query,
+            k,
+            subquantizers,
+            centroids,
+            rerank_k,
+            iterations,
+            _COSINE_METRIC,
+        )
 
     def search_dot_batch(
         self,
@@ -443,6 +503,58 @@ struct ReadSnapshot(Movable):
             candidates = sq8.search_cosine(query, candidate_count)
         if rerank_k == 0:
             return candidates^
+
+        return self._exact_rerank(query, k, metric, candidates, entries)
+
+    def _search_pq(
+        self,
+        query: List[Float32],
+        k: Int,
+        subquantizers: Int,
+        centroids: Int,
+        rerank_k: Int,
+        iterations: Int,
+        metric: Int,
+    ) raises -> List[SearchResult]:
+        self._validate_query(query, k)
+        if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
+            raise Error("PQ rerank candidate count must be zero or at least k")
+        var entries = self._memtable.live_entries()
+        if len(entries) == 0:
+            return List[SearchResult]()
+        var ids = List[Int](capacity=len(entries))
+        var vectors = List[List[Float32]](capacity=len(entries))
+        for index in range(len(entries)):
+            ids.append(entries[index].id)
+            vectors.append(entries[index].values.copy())
+        var pq = PqIndex.build(
+            ids,
+            vectors,
+            subquantizers,
+            centroids,
+            iterations=iterations,
+        )
+        var candidate_count = k if rerank_k == 0 else rerank_k
+        candidate_count = min(candidate_count, len(entries))
+        var candidates: List[SearchResult]
+        if metric == _DOT_METRIC:
+            candidates = pq.search_dot(query, candidate_count)
+        elif metric == _L2_METRIC:
+            candidates = pq.search_l2(query, candidate_count)
+        else:
+            candidates = pq.search_cosine(query, candidate_count)
+        if rerank_k == 0:
+            return candidates^
+        return self._exact_rerank(query, k, metric, candidates, entries)
+
+    def _exact_rerank(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        candidates: List[SearchResult],
+        entries: List[MemTableEntry],
+    ) raises -> List[SearchResult]:
 
         var topk = BoundedTopK(
             min(k, len(candidates)),
