@@ -3,7 +3,9 @@ from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     connect_bidirectional,
     greedy_descent,
+    HnswValidationStats,
     validate_bidirectional_links,
+    validate_bidirectional_links_with_stats,
 )
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -194,6 +196,22 @@ def test_validation_detects_asymmetry() raises:
 
     with assert_raises():
         validate_bidirectional_links(graph)
+
+
+def test_validation_visits_only_owned_levels_in_sparse_high_level_graph() raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 1, 1)
+    _ = _append(graph, metric, 1, 0.0, 0.0, Int(UInt16.MAX))
+    for id in range(2, 34):
+        _ = _append(graph, metric, id, Float32(id), 0.0)
+    var stats = HnswValidationStats()
+
+    validate_bidirectional_links_with_stats(graph, stats)
+
+    # One 65,536-level slot plus 32 base-only slots. A max-level-by-slot
+    # implementation would instead visit more than two million empty cells.
+    assert_equal(stats.owned_level_cells, 65_568)
+    assert_equal(stats.directed_edges, 0)
 
 
 def test_prewrite_internal_failure_marks_invalid_and_preserves_stats() raises:

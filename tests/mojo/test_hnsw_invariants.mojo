@@ -188,6 +188,26 @@ def test_cache_preflight_rejects_maximum_degree_allocation_amplification() raise
     )
 
 
+def test_cache_encoder_obeys_decoder_allocation_policy() raises:
+    var round_trippable = HnswIndex(1, m=500, max_level=0)
+    round_trippable.add(7, [3.0])
+    var payload = round_trippable.encode_cache_payload()
+    var reopened = HnswIndex.decode_cache_payload(1, payload^)
+    assert_equal(reopened.search_l2([3.0], 1, 1)[0].id, 7)
+
+    var amplified = HnswIndex(1, m=600, max_level=0)
+    amplified.add(7, [3.0])
+    var message = String()
+    try:
+        _ = amplified.encode_cache_payload()
+    except error:
+        message = String(error)
+    assert_equal(
+        message,
+        "HNSW cache estimated allocation exceeds amplification limit",
+    )
+
+
 def test_cache_preflight_rejects_maximum_level_before_append() raises:
     var writer = BinaryWriter()
     writer.write_u16(UInt16(1))

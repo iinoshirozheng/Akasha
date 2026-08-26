@@ -490,9 +490,18 @@ struct HnswIndex:
         else:
             writer.write_i64(Int64(-1))
         writer.write_i64(Int64(self.entry_level))
+        var level_cells = UInt64(0)
+        var neighbor_cells = UInt64(0)
         for slot_index in range(self.graph.slot_count()):
             var slot = UInt32(slot_index)
             var level = self.graph.level(slot)
+            level_cells = _checked_add_u64(
+                level_cells, UInt64(level) + UInt64(1)
+            )
+            neighbor_cells = _checked_add_u64(
+                neighbor_cells,
+                UInt64(self.graph.allocated_neighbor_slot_count(slot)),
+            )
             writer.write_i64(Int64(self.graph.id_at(slot)))
             writer.write_u16(UInt16(level))
             writer.write_u16(UInt16(0))
@@ -508,7 +517,15 @@ struct HnswIndex:
                     writer.write_u32(
                         self.graph.neighbor_at(slot, graph_level, edge_index)
                     )
-        return writer.take_bytes()
+        var payload = writer.take_bytes()
+        _validate_cache_allocation(
+            len(payload),
+            self.graph.slot_count(),
+            self.dimension,
+            level_cells,
+            neighbor_cells,
+        )
+        return payload^
 
     @staticmethod
     def decode_cache_payload(

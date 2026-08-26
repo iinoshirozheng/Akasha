@@ -49,6 +49,17 @@ struct HnswSearchAdmission(Movable):
         return self._allowed_slots[Int(slot)]
 
 
+struct HnswValidationStats(Copyable, Movable):
+    """Actual packed cells inspected by a bidirectional-link audit."""
+
+    var owned_level_cells: Int
+    var directed_edges: Int
+
+    def __init__(out self):
+        self.owned_level_cells = 0
+        self.directed_edges = 0
+
+
 def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     """Deterministic strict ordering by distance, public ID, then slot."""
     if lhs.distance != rhs.distance:
@@ -298,46 +309,74 @@ def _validate_link_level(
             raise Error("HNSW graph contains an asymmetric edge")
 
 
-def validate_bidirectional_links(graph: HnswStorage) raises:
-    """Audit packed structure, level ownership, and edge symmetry."""
+def validate_bidirectional_links_with_stats(
+    graph: HnswStorage, mut stats: HnswValidationStats
+) raises:
+    """Audit links in O(actual owned levels + directed edges)."""
     if not graph.is_valid():
         raise Error("HNSW graph is marked invalid")
     graph.validate_structure()
-    var maximum_level = -1
+
+    # Give every actually owned (slot, level) cell a dense UInt32 ordinal.
+    # This avoids scanning every slot for every level when one sparse node has
+    # a hostile high level, while retaining compact exact UInt64 edge keys.
+    var level_groups = Dict[UInt64, UInt32]()
+    var owned_level_cells = 0
     for index in range(graph.slot_count()):
         var slot = UInt32(index)
-        var level = graph.level(slot)
-        if level > maximum_level:
-            maximum_level = level
-    # Validate one level at a time. UInt32 slot pairs pack injectively into a
-    # UInt64 key, avoiding both quadratic reverse scans and per-edge strings.
-    for level in range(maximum_level + 1):
-        var edges = Dict[UInt64, Bool]()
-        for index in range(graph.slot_count()):
-            var slot = UInt32(index)
-            if graph.level(slot) < level:
-                continue
+        for level in range(graph.level(slot) + 1):
+            if UInt64(owned_level_cells) >= UInt64(UInt32.MAX):
+                raise Error(
+                    "HNSW owned level count exceeds validation address space"
+                )
+            var group_key = (
+                (UInt64(level) << UInt64(32)) | UInt64(slot)
+            )
+            level_groups[group_key] = UInt32(owned_level_cells)
+            owned_level_cells += 1
+
+    var edges = Dict[UInt64, Bool]()
+    var required_reverse_edges = List[UInt64]()
+    var directed_edges = 0
+    for index in range(graph.slot_count()):
+        var slot = UInt32(index)
+        for level in range(graph.level(slot) + 1):
             var count = graph.neighbor_count(slot, level)
             if count > graph.level_capacity(slot, level):
                 raise Error("HNSW touched adjacency exceeds level capacity")
+            var source_group_key = (
+                (UInt64(level) << UInt64(32)) | UInt64(slot)
+            )
+            var source_group = level_groups[source_group_key]
             for edge_index in range(count):
                 var neighbor = graph.neighbor_at(slot, level, edge_index)
                 if graph.level(neighbor) < level:
                     raise Error("HNSW edge target does not own graph level")
-                var key = (UInt64(slot) << UInt64(32)) | UInt64(neighbor)
-                edges[key] = True
-        for index in range(graph.slot_count()):
-            var slot = UInt32(index)
-            if graph.level(slot) < level:
-                continue
-            var count = graph.neighbor_count(slot, level)
-            for edge_index in range(count):
-                var neighbor = graph.neighbor_at(slot, level, edge_index)
-                var reverse = (
-                    (UInt64(neighbor) << UInt64(32)) | UInt64(slot)
+                var edge_key = (
+                    (UInt64(source_group) << UInt64(32)) | UInt64(neighbor)
                 )
-                if reverse not in edges:
-                    raise Error("HNSW graph contains an asymmetric edge")
+                edges[edge_key] = True
+                var target_group_key = (
+                    (UInt64(level) << UInt64(32)) | UInt64(neighbor)
+                )
+                var target_group = level_groups[target_group_key]
+                required_reverse_edges.append(
+                    (UInt64(target_group) << UInt64(32)) | UInt64(slot)
+                )
+                directed_edges += 1
+
+    for reverse in required_reverse_edges:
+        if reverse not in edges:
+            raise Error("HNSW graph contains an asymmetric edge")
+
+    stats.owned_level_cells = owned_level_cells
+    stats.directed_edges = directed_edges
+
+
+def validate_bidirectional_links(graph: HnswStorage) raises:
+    """Audit packed structure, level ownership, and edge symmetry."""
+    var stats = HnswValidationStats()
+    validate_bidirectional_links_with_stats(graph, stats)
 
 
 def connect_bidirectional(

@@ -76,8 +76,15 @@ def test_legacy_constructor_is_l2_only_and_rejects_metric_mismatch() raises:
         message,
         "HNSW metric mismatch: graph is bound to l2 but search requested dot",
     )
-    with assert_raises():
+    message = ""
+    try:
         _ = index.search_cosine([1.0], 1, 8)
+    except error:
+        message = String(error)
+    assert_equal(
+        message,
+        "HNSW metric mismatch: graph is bound to l2 but search requested cosine",
+    )
 
 
 def test_deterministic_public_id_ties_and_duplicate_rejection() raises:
