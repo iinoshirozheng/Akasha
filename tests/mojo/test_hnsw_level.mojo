@@ -1,5 +1,6 @@
 from akasha.index.hnsw_level import (
     _id_bits,
+    _sample_level_from_hash,
     _uniform_open01_from_hash,
     sample_level,
     splitmix64,
@@ -31,6 +32,57 @@ def test_uniform_mapping_is_strictly_inside_open_interval() raises:
     assert_true(from_zero < 1.0)
     assert_true(from_maximum > 0.0)
     assert_true(from_maximum < 1.0)
+
+
+def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
+    # For M=16, level >= 1 iff 2*top53+1 <= 2^54/16.
+    var last_level_one_bucket = (UInt64(1) << UInt64(49)) - UInt64(1)
+    var first_level_zero_bucket = UInt64(1) << UInt64(49)
+    assert_equal(
+        _sample_level_from_hash(
+            last_level_one_bucket << UInt64(11), 16, 8
+        ),
+        1,
+    )
+    assert_equal(
+        _sample_level_from_hash(
+            first_level_zero_bucket << UInt64(11), 16, 8
+        ),
+        0,
+    )
+
+    # The next exact threshold is 2^54/(16^2).
+    var last_level_two_bucket = (UInt64(1) << UInt64(45)) - UInt64(1)
+    var first_level_one_bucket = UInt64(1) << UInt64(45)
+    assert_equal(
+        _sample_level_from_hash(
+            last_level_two_bucket << UInt64(11), 16, 8
+        ),
+        2,
+    )
+    assert_equal(
+        _sample_level_from_hash(
+            first_level_one_bucket << UInt64(11), 16, 8
+        ),
+        1,
+    )
+    assert_equal(_sample_level_from_hash(UInt64(0), 16, 8), 8)
+    assert_equal(_sample_level_from_hash(UInt64(0), 65_535, 63), 3)
+    assert_equal(
+        _sample_level_from_hash(UInt64(0), Int.MAX, Int.MAX), 0
+    )
+
+
+def test_sample_level_matches_full_pipeline_golden_vectors() raises:
+    var seed = UInt64(0x123456789ABCDEF0)
+    assert_equal(sample_level(0, seed, 2, 63), 3)
+    assert_equal(sample_level(0, seed, 3, 63), 2)
+    assert_equal(sample_level(0, seed, 16, 63), 0)
+    assert_equal(sample_level(29, seed, 2, 63), 5)
+    assert_equal(sample_level(29, seed, 3, 63), 3)
+    assert_equal(sample_level(29, seed, 16, 63), 1)
+    assert_equal(sample_level(165, seed, 2, 63), 14)
+    assert_equal(sample_level(165, seed, 2, 3), 3)
 
 
 def test_sample_level_is_deterministic_and_seed_sensitive() raises:
@@ -94,6 +146,7 @@ def test_default_distribution_is_geometric_and_bounded() raises:
     var level_zero = 0
     var level_one = 0
     var level_two = 0
+    var level_three_or_higher = 0
     var seed = UInt64(0xA5A5A5A5A5A5A5A5)
 
     for id in range(100_000):
@@ -105,10 +158,17 @@ def test_default_distribution_is_geometric_and_bounded() raises:
             level_one += 1
         elif level == 2:
             level_two += 1
+        else:
+            level_three_or_higher += 1
 
-    assert_true(level_zero > 50_000)
-    assert_true(level_zero > level_one)
-    assert_true(level_one > level_two)
+    # Broad deterministic bands around N*(15/16), N*(15/16^2), and
+    # N*(15/16^3). They reject a materially different geometric base while
+    # avoiding brittle exact-bucket assertions.
+    assert_true(level_zero >= 92_750 and level_zero <= 94_750)
+    assert_true(level_one >= 5_200 and level_one <= 6_500)
+    assert_true(level_two >= 200 and level_two <= 550)
+    assert_true(level_three_or_higher > 0)
+    assert_true(level_three_or_higher < 100)
 
 
 def main() raises:
