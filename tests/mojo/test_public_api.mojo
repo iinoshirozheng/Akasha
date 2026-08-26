@@ -16,7 +16,7 @@ from akasha import (
     SparseIndex,
     ScalarKind,
 )
-from akasha.storage.filesystem import remove_file_if_exists
+from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from std.ffi import c_int, external_call
 from std.testing import assert_almost_equal, assert_equal, TestSuite
 
@@ -77,10 +77,25 @@ def test_root_package_exports_metadata_index_types() raises:
 
 def test_root_package_preserves_two_argument_collection_open() raises:
     var process_id = external_call["getpid", c_int]()
-    var path = String("/tmp/akasha-public-api-", Int(process_id))
+    var path = String(
+        "/tmp/akasha-public-api-", Int(process_id), "-two-argument-open"
+    )
+    ensure_directory(path)
     remove_file_if_exists(path + "/collection.bin")
     remove_file_if_exists(path + "/collection.bin.tmp")
     remove_file_if_exists(path + "/wal.bin")
+    remove_file_if_exists(path + "/wal.bin.tmp")
+    remove_file_if_exists(path + "/manifest.bin")
+    remove_file_if_exists(path + "/manifest.bin.tmp")
+    remove_file_if_exists(path + "/sparse.wal")
+    remove_file_if_exists(path + "/sparse.wal.tmp")
+    for sequence in range(3):
+        remove_file_if_exists(
+            path + "/segment-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            path + "/sparse-" + String(sequence) + ".bin"
+        )
     var collection = PersistentCollection.open(path, 3)
 
     assert_equal(collection.dimension, 3)

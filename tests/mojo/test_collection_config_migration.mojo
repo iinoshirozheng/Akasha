@@ -3,6 +3,7 @@ from akasha import (
     MetricKind,
     PersistentCollection,
     ScalarKind,
+    SparseElement,
 )
 from akasha.storage import collection_config_exists, load_collection_config
 from akasha.storage.filesystem import (
@@ -10,7 +11,9 @@ from akasha.storage.filesystem import (
     path_exists,
     read_file_bytes,
     remove_file_if_exists,
+    write_file_sync,
 )
+from akasha.storage.lock import CollectionLock
 from std.ffi import c_int, external_call
 from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
@@ -42,12 +45,30 @@ def _reset(directory: String) raises:
         remove_file_if_exists(
             directory + "/sparse-" + String(sequence) + ".bin"
         )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-base-" + String(sequence) + ".bin"
+        )
 
 
 def _assert_bytes_equal(lhs: List[UInt8], rhs: List[UInt8]) raises:
     assert_equal(len(lhs), len(rhs))
     for index in range(len(lhs)):
         assert_equal(lhs[index], rhs[index])
+
+
+def _corrupt_last_byte(path: String) raises -> List[UInt8]:
+    var bytes = read_file_bytes(path)
+    bytes[len(bytes) - 1] ^= UInt8(1)
+    write_file_sync(path, bytes)
+    return bytes^
+
+
+def _assert_lock_released(path: String) raises:
+    var lock = CollectionLock.acquire(path + "/collection.lock")
+    lock.close()
 
 
 def _non_default_config(dimension: Int) -> CollectionConfig:
@@ -170,6 +191,33 @@ def test_existing_identity_rejects_every_immutable_field_mismatch() raises:
     reopened.close()
 
 
+def test_config_mismatch_reports_field_and_both_fingerprints() raises:
+    var path = _test_directory("mismatch-message")
+    _reset(path)
+    var persisted = CollectionConfig.defaults(3)
+    var collection = PersistentCollection.open_with_config(path, persisted)
+    collection.close()
+    var requested = persisted.copy()
+    requested.ann_metric = MetricKind.cosine()
+    var message = String()
+
+    try:
+        _ = PersistentCollection.open_with_config(path, requested)
+    except error:
+        message = String(error)
+
+    assert_equal(
+        message,
+        String(
+            "collection configuration mismatch: ann_metric",
+            " persisted_fingerprint=",
+            persisted.fingerprint(),
+            " requested_fingerprint=",
+            requested.fingerprint(),
+        ),
+    )
+
+
 def test_wal_only_legacy_migration_preserves_wal_and_recovers_records() raises:
     var path = _test_directory("legacy-wal")
     _reset(path)
@@ -198,7 +246,7 @@ def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
     legacy.close()
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
-    var before_segment = read_file_bytes(path + "/segment-1.bin")
+    var before_segment = read_file_bytes(path + "/segment-base-1.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
 
     var migrated = PersistentCollection.open(path, 2)
@@ -208,7 +256,7 @@ def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
         read_file_bytes(path + "/manifest.bin"), before_manifest
     )
     _assert_bytes_equal(
-        read_file_bytes(path + "/segment-1.bin"), before_segment
+        read_file_bytes(path + "/segment-base-1.bin"), before_segment
     )
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     assert_equal(migrated.get(1).value().vector[0], Float32(1.0))
@@ -247,7 +295,7 @@ def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
     legacy.close()
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
-    var before_segment = read_file_bytes(path + "/segment-1.bin")
+    var before_segment = read_file_bytes(path + "/segment-base-1.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
 
     with assert_raises():
@@ -258,7 +306,7 @@ def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
         read_file_bytes(path + "/manifest.bin"), before_manifest
     )
     _assert_bytes_equal(
-        read_file_bytes(path + "/segment-1.bin"), before_segment
+        read_file_bytes(path + "/segment-base-1.bin"), before_segment
     )
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     var compatible = PersistentCollection.open(path, 2)
@@ -266,6 +314,127 @@ def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
     assert_equal(compatible.get(31).value().vector[0], Float32(3.0))
     assert_equal(compatible.get(32).value().vector[1], Float32(2.0))
     compatible.close()
+
+
+def test_corrupt_legacy_segment_fails_before_config_publication() raises:
+    var path = _test_directory("legacy-corrupt-segment")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(41, [1.0, 4.0])
+    legacy.flush()
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var corrupt_segment = _corrupt_last_byte(path + "/segment-base-1.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-base-1.bin"), corrupt_segment
+    )
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    _assert_lock_released(path)
+
+
+def test_corrupt_legacy_sparse_snapshot_fails_before_config_publication(
+) raises:
+    var path = _test_directory("legacy-corrupt-sparse-snapshot")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(51, [1.0, 5.0])
+    legacy.upsert_sparse(51, [SparseElement(7, 2.0)])
+    legacy.flush()
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var before_segment = read_file_bytes(path + "/segment-base-2.bin")
+    var corrupt_sparse = _corrupt_last_byte(path + "/sparse-base-2.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-base-2.bin"), before_segment
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/sparse-base-2.bin"), corrupt_sparse
+    )
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    _assert_lock_released(path)
+
+
+def test_corrupt_legacy_sparse_wal_fails_before_config_publication() raises:
+    var path = _test_directory("legacy-corrupt-sparse-wal")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(61, [1.0, 6.0])
+    legacy.upsert_sparse(61, [SparseElement(8, 3.0)])
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+    var corrupt_sparse_wal = _corrupt_last_byte(path + "/sparse.wal")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/sparse.wal"), corrupt_sparse_wal
+    )
+    _assert_lock_released(path)
+
+
+def test_late_legacy_preflight_failure_preserves_every_source() raises:
+    var path = _test_directory("legacy-late-preflight")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(71, [1.0, 7.0])
+    legacy.upsert_sparse(71, [SparseElement(9, 4.0)])
+    legacy.flush()
+    legacy.upsert(72, [2.0, 7.0])
+    legacy.upsert_sparse(72, [SparseElement(10, 5.0)])
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var before_segment = read_file_bytes(path + "/segment-base-2.bin")
+    var before_sparse_snapshot = read_file_bytes(path + "/sparse-base-2.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+    before_wal.append(0x41)
+    before_wal.append(0x4B)
+    before_wal.append(0x57)
+    write_file_sync(path + "/wal.bin", before_wal)
+    var corrupt_sparse_wal = _corrupt_last_byte(path + "/sparse.wal")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-base-2.bin"), before_segment
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/sparse-base-2.bin"), before_sparse_snapshot
+    )
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/sparse.wal"), corrupt_sparse_wal
+    )
+    _assert_lock_released(path)
 
 
 def test_non_default_config_is_rejected_for_legacy_data_without_mutation(

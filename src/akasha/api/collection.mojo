@@ -71,9 +71,10 @@ from akasha.storage.segment import (
 from akasha.storage.sparse_store import (
     append_sparse_wal,
     latest_sparse_records,
+    preflight_sparse_wal,
     read_sparse_segment,
     read_sparse_snapshot,
-    recover_sparse_wal,
+    repair_sparse_wal_tail,
     rotate_sparse_wal,
     SPARSE_SEGMENT_KIND_BASE,
     SPARSE_SEGMENT_KIND_DELTA,
@@ -83,8 +84,8 @@ from akasha.storage.sparse_store import (
 from akasha.storage.wal import (
     append_wal,
     append_wal_batch,
-    recover_wal,
-    replay_wal,
+    preflight_wal,
+    repair_wal_tail,
     rotate_wal,
     WalRecord,
 )
@@ -96,6 +97,17 @@ from std.utils import BlockingScopedLock, BlockingSpinLock
 comptime _DOT_METRIC = 0
 comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
+
+
+struct _ResolvedCollectionConfig(Movable):
+    var config: CollectionConfig
+    var needs_publication: Bool
+
+    def __init__(
+        out self, config: CollectionConfig, needs_publication: Bool
+    ):
+        self.config = config.copy()
+        self.needs_publication = needs_publication
 
 
 struct PersistentCollection:
@@ -162,7 +174,7 @@ struct PersistentCollection:
         self._writer_lock = ArcPointer(BlockingSpinLock())
         self._maintenance = MaintenanceController.start(
             path,
-            dimension,
+            config.dimension,
             self._writer_lock,
             self._pins,
             self._retired,
@@ -198,7 +210,8 @@ struct PersistentCollection:
         requested.validate()
         _ = ensure_durable_directory(path)
         var lock = CollectionLock.acquire(path + "/collection.lock")
-        var config = _load_or_migrate_config(path, requested)
+        var resolved = _resolve_collection_config(path, requested)
+        var config = resolved.config.copy()
         var dimension = config.dimension
 
         var memtable = MemTable(dimension)
@@ -238,25 +251,26 @@ struct PersistentCollection:
                 memtable.apply_recovered_entries(snapshot.entries)
             snapshot_sequence = manifest.last_sequence
 
-        var records = recover_wal(path + "/wal.bin", dimension)
+        var dense_wal = preflight_wal(path + "/wal.bin", dimension)
         var last_sequence = snapshot_sequence
-        for index in range(len(records)):
-            if records[index].sequence <= snapshot_sequence:
+        for index in range(len(dense_wal.records)):
+            if dense_wal.records[index].sequence <= snapshot_sequence:
                 continue
-            if records[index].is_delete:
+            if dense_wal.records[index].is_delete:
                 memtable.apply_delete(
-                    records[index].id, records[index].sequence
+                    dense_wal.records[index].id,
+                    dense_wal.records[index].sequence,
                 )
             else:
-                var values = _clone_vector(records[index].values)
-                var fields = clone_fields(records[index].fields)
+                var values = _clone_vector(dense_wal.records[index].values)
+                var fields = clone_fields(dense_wal.records[index].fields)
                 memtable.apply_document_upsert(
-                    records[index].id,
-                    records[index].sequence,
+                    dense_wal.records[index].id,
+                    dense_wal.records[index].sequence,
                     values^,
                     fields^,
                 )
-            last_sequence = records[index].sequence
+            last_sequence = dense_wal.records[index].sequence
 
         var sparse = SparseIndex()
         if path_exists(manifest_path):
@@ -362,21 +376,32 @@ struct PersistentCollection:
                                 sparse_segment.records[record_index].elements,
                             )
         var sparse_pending = List[SparseWalRecord]()
-        var sparse_wal = recover_sparse_wal(path + "/sparse.wal")
-        for index in range(len(sparse_wal)):
-            if sparse_wal[index].sequence <= snapshot_sequence:
+        var sparse_wal = preflight_sparse_wal(path + "/sparse.wal")
+        for index in range(len(sparse_wal.records)):
+            if sparse_wal.records[index].sequence <= snapshot_sequence:
                 continue
-            if sparse_wal[index].is_delete:
-                sparse.delete(sparse_wal[index].id)
+            if sparse_wal.records[index].is_delete:
+                sparse.delete(sparse_wal.records[index].id)
             else:
-                sparse.upsert(sparse_wal[index].id, sparse_wal[index].elements)
-            sparse_pending.append(sparse_wal[index].clone())
-            if sparse_wal[index].sequence > last_sequence:
-                last_sequence = sparse_wal[index].sequence
+                sparse.upsert(
+                    sparse_wal.records[index].id,
+                    sparse_wal.records[index].elements,
+                )
+            sparse_pending.append(sparse_wal.records[index].clone())
+            if sparse_wal.records[index].sequence > last_sequence:
+                last_sequence = sparse_wal.records[index].sequence
         var recovered_sparse = sparse.records()
         for index in range(len(recovered_sparse)):
             if not Bool(memtable.get(recovered_sparse[index].id)):
                 sparse.delete(recovered_sparse[index].id)
+
+        # Publishing the immutable identity is the migration commit point.
+        # Every authoritative dense and sparse source has been decoded above,
+        # without truncating a torn WAL tail. Repair happens only afterward.
+        if resolved.needs_publication:
+            publish_collection_config(path, config)
+        repair_wal_tail(path + "/wal.bin", dense_wal)
+        repair_sparse_wal_tail(path + "/sparse.wal", sparse_wal)
 
         var source_checksum = authoritative_index_checksum(memtable)
         var hnsw_load = _load_hnsw_cache(
@@ -1579,38 +1604,30 @@ def _clone_vector(values: List[Float32]) -> List[Float32]:
     return result^
 
 
-def _load_or_migrate_config(
+def _resolve_collection_config(
     path: String, requested: CollectionConfig
-) raises -> CollectionConfig:
-    """Load an existing identity or atomically publish a compatible one.
+) raises -> _ResolvedCollectionConfig:
+    """Resolve durable identity without publishing or repairing payloads.
 
     The caller owns the collection lock. Existing authoritative files are
-    detected before publication so an explicit non-default identity can never
-    reinterpret a legacy L2/F32 collection.
+    detected so an explicit non-default identity cannot reinterpret a legacy
+    L2/F32 collection. The caller publishes only after full recovery preflight.
     """
     if collection_config_exists(path):
         var existing = load_collection_config(path)
         _require_matching_config(existing, requested)
-        return existing^
+        return _ResolvedCollectionConfig(existing, False)
 
     var has_legacy_data = (
         path_exists(path + "/manifest.bin")
         or path_exists(path + "/wal.bin")
         or path_exists(path + "/sparse.wal")
+        or path_exists(path + "/sparse-0.bin")
     )
     if has_legacy_data:
         var legacy = CollectionConfig.defaults(requested.dimension)
         _require_matching_config(legacy, requested)
-        # Validate identity through existing codecs without repairing or
-        # truncating authoritative files. Publication is the commit point of
-        # migration and must follow every available dense identity check.
-        if path_exists(path + "/manifest.bin"):
-            _ = load_manifest(path, requested.dimension)
-        if path_exists(path + "/wal.bin"):
-            _ = replay_wal(path + "/wal.bin", requested.dimension)
-
-    publish_collection_config(path, requested)
-    return requested.copy()
+    return _ResolvedCollectionConfig(requested, True)
 
 
 def _require_matching_config(
@@ -1618,34 +1635,51 @@ def _require_matching_config(
 ) raises:
     """Reject the first immutable identity mismatch with a useful message."""
     if existing.dimension != requested.dimension:
-        raise Error("collection configuration mismatch: dimension")
+        _raise_config_mismatch("dimension", existing, requested)
     if existing.ann_metric != requested.ann_metric:
-        raise Error("collection configuration mismatch: ann_metric")
+        _raise_config_mismatch("ann_metric", existing, requested)
     if existing.scalar_kind != requested.scalar_kind:
-        raise Error("collection configuration mismatch: scalar_kind")
+        _raise_config_mismatch("scalar_kind", existing, requested)
     if existing.m != requested.m:
-        raise Error("collection configuration mismatch: m")
+        _raise_config_mismatch("m", existing, requested)
     if existing.m0 != requested.m0:
-        raise Error("collection configuration mismatch: m0")
+        _raise_config_mismatch("m0", existing, requested)
     if existing.ef_construction != requested.ef_construction:
-        raise Error("collection configuration mismatch: ef_construction")
+        _raise_config_mismatch("ef_construction", existing, requested)
     if existing.default_ef_search != requested.default_ef_search:
-        raise Error("collection configuration mismatch: default_ef_search")
+        _raise_config_mismatch("default_ef_search", existing, requested)
     if existing.max_ef_search != requested.max_ef_search:
-        raise Error("collection configuration mismatch: max_ef_search")
+        _raise_config_mismatch("max_ef_search", existing, requested)
     if existing.max_level != requested.max_level:
-        raise Error("collection configuration mismatch: max_level")
+        _raise_config_mismatch("max_level", existing, requested)
     if (
         existing.rebuild_inactive_percent
         != requested.rebuild_inactive_percent
     ):
-        raise Error(
-            "collection configuration mismatch: rebuild_inactive_percent"
+        _raise_config_mismatch(
+            "rebuild_inactive_percent", existing, requested
         )
     if existing.delta_max_points != requested.delta_max_points:
-        raise Error("collection configuration mismatch: delta_max_points")
+        _raise_config_mismatch("delta_max_points", existing, requested)
     if existing.level_seed != requested.level_seed:
-        raise Error("collection configuration mismatch: level_seed")
+        _raise_config_mismatch("level_seed", existing, requested)
+
+
+def _raise_config_mismatch(
+    field: String,
+    persisted: CollectionConfig,
+    requested: CollectionConfig,
+) raises:
+    raise Error(
+        String(
+            "collection configuration mismatch: ",
+            field,
+            " persisted_fingerprint=",
+            persisted.fingerprint(),
+            " requested_fingerprint=",
+            requested.fingerprint(),
+        )
+    )
 
 
 def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:

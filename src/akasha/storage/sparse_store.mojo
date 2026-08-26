@@ -246,6 +246,33 @@ def read_sparse_segment(path: String) raises -> SparseSegment:
     )
 
 
+struct SparseWalReplayState(Movable):
+    """One read-only sparse-WAL decode plus accepted-tail repair bytes."""
+
+    var records: List[SparseWalRecord]
+    var valid_prefix: List[UInt8]
+    var valid_length: Int
+    var source_length: Int
+
+    def __init__(
+        out self,
+        var records: List[SparseWalRecord],
+        var valid_prefix: List[UInt8],
+        valid_length: Int,
+        source_length: Int,
+    ):
+        self.records = records^
+        self.valid_prefix = valid_prefix^
+        self.valid_length = valid_length
+        self.source_length = source_length
+
+    def needs_repair(self) -> Bool:
+        return self.valid_length < self.source_length
+
+    def take_records(deinit self) -> List[SparseWalRecord]:
+        return self.records^
+
+
 def write_sparse_snapshot(
     path: String, last_sequence: UInt64, records: List[SparseRecord]
 ) raises -> UInt32:
@@ -347,19 +374,38 @@ def encode_sparse_wal_record(record: SparseWalRecord) raises -> List[UInt8]:
 
 
 def recover_sparse_wal(path: String) raises -> List[SparseWalRecord]:
+    var replay = preflight_sparse_wal(path)
+    repair_sparse_wal_tail(path, replay)
+    return replay^.take_records()
+
+
+def preflight_sparse_wal(path: String) raises -> SparseWalReplayState:
+    """Decode once without modifying a missing file or accepted torn tail."""
     if not path_exists(path):
-        return List[SparseWalRecord]()
+        return SparseWalReplayState(
+            List[SparseWalRecord](), List[UInt8](), 0, 0
+        )
     var bytes = read_file_bytes(path)
     var records = decode_sparse_wal_bytes(bytes)
     var valid_length = 0
     for index in range(len(records)):
         valid_length += _WAL_FIXED_SIZE + len(records[index].elements) * 12
+    var prefix = List[UInt8]()
     if valid_length < len(bytes):
-        var prefix = List[UInt8](capacity=valid_length)
+        prefix = List[UInt8](capacity=valid_length)
         for index in range(valid_length):
             prefix.append(bytes[index])
-        write_file_sync(path, prefix)
-    return records^
+    return SparseWalReplayState(
+        records^, prefix^, valid_length, len(bytes)
+    )
+
+
+def repair_sparse_wal_tail(
+    path: String, replay: SparseWalReplayState
+) raises:
+    """Apply only the repair established by ``preflight_sparse_wal``."""
+    if replay.needs_repair():
+        write_file_sync(path, replay.valid_prefix)
 
 
 def decode_sparse_wal_bytes(bytes: List[UInt8]) raises -> List[SparseWalRecord]:
