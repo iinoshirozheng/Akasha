@@ -44,14 +44,16 @@ query -> immutable read snapshot -> typed filter -> SIMD -> bounded Top-K IDs
                                     get(ID) -> owned document <-+
 ```
 
-Approximate dense queries use a derived in-memory HNSW graph. Point IDs produce
+Approximate dense queries use a derived HNSW graph. Point IDs produce
 deterministic bounded levels; insertion connects bounded nearest neighbors,
 then search performs greedy upper-layer descent and best-first layer-zero
 expansion. The planner keeps small or selective queries on exact scan. Filtered
 HNSW search over-fetches, evaluates the Boolean expression, retains exact metric
 scores, and falls back to exact filtered scan when the graph candidates cannot
-fill `k`. Recovered WAL/segment state remains authoritative; no graph bytes are
-stored in the durable formats.
+fill `k`. Recovered WAL/segment state remains authoritative. A versioned CRC32
+`hnsw.cache` stores graph bytes only as a rebuildable acceleration artifact;
+generation, sequence, source fingerprint, payload structure, or checksum
+mismatch becomes a cache miss.
 
 Sparse vectors are a companion durable state keyed by the same point IDs. A
 checksummed sparse WAL shares the collection sequence space, and every
@@ -108,6 +110,13 @@ Batch queries capture one snapshot, then use the public scoped MAX worker pool
 with one deterministic Top-K heap and output ordinal per query. No private Mojo
 async API is used.
 
+Phase 12 single-query parallel scan splits stable snapshot ordinals into fixed
+contiguous ranges, scores one bounded local heap per range, then merges ranges
+in ordinal order. SQ8 stores one affine byte per dimension. Product
+quantization stores one centroid byte per configured subvector. Both preserve
+the scalar/SIMD implementation as the correctness oracle and optionally exact
+rerank an expanded candidate set against owned Float32 vectors.
+
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
 to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
@@ -119,16 +128,17 @@ Missing fields and type mismatches do not match, including inequality.
 
 Document writes incrementally remove old postings and add new postings after
 the authoritative WAL and MemTable mutation succeeds. Deletes clear the live
-universe bit. Recovery bulk-loads and heap-sorts the complete derived index from
-stable MemTable slots after Segment and WAL replay, so WAL, Segment, and
-Manifest formats remain unchanged. Exact filtered execution scans bitmap words
+universe bit. Recovery may load a checksummed `metadata.cache`; otherwise it
+bulk-loads and heap-sorts the complete derived index from stable MemTable slots
+after Segment and WAL replay. WAL, Segment, and Manifest formats remain
+unchanged. Exact filtered execution scans bitmap words
 and scores only selected ordinals. Approximate
 planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Trusted zero-copy Arrow C Data interchange, persisted/quantized indexes, GPU
-kernels, and distributed execution remain explicit Phase 12–16 work.
+Trusted zero-copy Arrow C Data interchange, GPU kernels, operations tooling,
+and distributed execution remain explicit Phase 13–16 work.
 
 ## Implemented adapter boundary
 

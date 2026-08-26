@@ -55,6 +55,7 @@ def test_pq_index_searches_all_metrics() raises:
     assert_true(len(index.search_dot(query, 3)) == 3)
     assert_true(len(index.search_cosine(query, 3)) == 3)
     assert_equal(index.encoded_bytes(), len(vectors) * 2)
+    assert_true(index.estimated_bytes() > index.encoded_bytes())
 
 
 def test_pq_snapshot_rerank_matches_exact_oracle() raises:

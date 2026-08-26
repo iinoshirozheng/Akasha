@@ -44,6 +44,7 @@ def test_sq8_index_searches_all_metrics_with_stable_ties() raises:
     assert_equal(cosine[1].id, 2)
     assert_equal(cosine[2].id, 3)
     assert_equal(index.encoded_bytes(), 8)
+    assert_true(index.estimated_bytes() < len(vectors) * 2 * 4 + 64)
 
 
 def test_sq8_rejects_invalid_training_and_queries() raises:

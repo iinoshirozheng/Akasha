@@ -158,6 +158,9 @@ struct Sq8Index(Movable):
     def encoded_bytes(self) -> Int:
         return len(self._codes)
 
+    def estimated_bytes(self) -> Int:
+        return len(self._codes) + len(self._ids) * 8 + self.dimension() * 8
+
     def search_dot(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
@@ -468,6 +471,15 @@ struct PqIndex(Movable):
 
     def encoded_bytes(self) -> Int:
         return len(self._codes)
+
+    def estimated_bytes(self) -> Int:
+        return (
+            len(self._codes)
+            + len(self._ids) * 8
+            + self._codebook.dimension()
+            * self._codebook.centroid_count()
+            * 4
+        )
 
     def search_dot(
         self, query: List[Float32], k: Int

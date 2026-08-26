@@ -1,7 +1,7 @@
 # Consistency model
 
-Status: Phase 11 snapshot, batch, concurrency, and maintenance model
-implemented.
+Status: Phase 12 single-node durability, snapshots, concurrency, quantized
+execution, and rebuildable derived-cache model implemented.
 
 ## Mutation visibility and durability
 
@@ -60,6 +60,19 @@ WAL record is treated as a torn write and durably removed before another append.
 Any complete record with an invalid checksum or structural field fails
 recovery. Legacy Manifest v1 and Segment v1/v2 collections remain readable and
 upgrade on their next flush.
+
+HNSW and metadata cache files are outside the acknowledgement and recovery
+boundary. They are atomically published and keyed by manifest generation,
+accepted sequence, dimension, and a checksum of authoritative dense vectors,
+tombstones, sequences, and payloads. Missing, stale, truncated, structurally
+invalid, or CRC-corrupt cache files are cache misses: open or the next
+approximate query rebuilds them from recovered state. Cache publication failure
+is ignored and cannot fail an otherwise valid query or acknowledged write.
+
+Quantized and parallel execution run only over owned read-snapshot state. SQ8
+and PQ may change candidate recall and approximate scores, but exact rerank uses
+the same Float32 SIMD metric oracle. Parallel range scheduling cannot change
+visible snapshot state or deterministic tie order.
 
 If a crash occurs after manifest publication but before WAL replacement,
 recovery may see the new snapshot and the pre-checkpoint WAL. Records at or

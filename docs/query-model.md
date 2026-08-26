@@ -1,7 +1,7 @@
 # Query model
 
-Status: exact and approximate dense retrieval, sparse/hybrid retrieval, bounded
-Boolean metadata indexing, and point document lookup implemented.
+Status: exact, parallel, quantized, and HNSW dense retrieval; sparse/hybrid
+retrieval; bounded Boolean metadata indexing; and point lookup implemented.
 
 The current Mojo API exposes exact dot-product, squared-L2, and cosine Top-K
 searches through `FlatIndex` and `PersistentCollection`. Scores remain in their
@@ -31,10 +31,10 @@ Empty All is true, empty Any is false, and Negate contains exactly one child.
 The flat arena representation is bounded to 16 levels and 256 nodes and is
 validated again at the query boundary.
 
-The metadata index is derived and never persisted. It is maintained after each
-successful collection mutation and bulk-rebuilt in `O(N log N)` from stable
-MemTable slots after WAL/Segment recovery, so v1/v2 storage compatibility is
-unchanged. Cached
+The metadata index is derived and never authoritative. It is maintained after
+each successful collection mutation and either loaded from a validated derived
+cache or bulk-rebuilt in `O(N log N)` from stable MemTable slots after
+WAL/Segment recovery, so v1/v2 storage compatibility is unchanged. Cached
 bitmap cardinality lets the planner choose filtered exact execution or HNSW
 without first scanning all payloads. Exact execution iterates selected slots;
 HNSW and sparse/hybrid paths use the same point-ID membership set.
@@ -52,8 +52,18 @@ ordering and ascending-ID tie rules are identical to the sequential methods.
 Small batches retain a sequential path. Python exposes the same behavior as
 `Collection.search_batch(..., filters=[...])`.
 
+Snapshots expose `search_*_parallel` and `search_*_where_parallel` for exact
+single-query CPU parallelism. Fixed ordinal ranges and range-ordered heap merge
+produce the same IDs, raw scores, and ascending-ID ties as scalar execution.
+
+`search_sq8_*` builds a per-dimension scalar codebook; `search_pq_*` accepts a
+subquantizer and centroid count and trains deterministic bounded-iteration
+centroids. With `rerank_k=0`, returned scores are reconstructed/centroid
+approximations. With `rerank_k >= k`, the approximate index selects candidates
+and original Float32 vectors produce final metric scores. A larger candidate
+set improves recall at extra CPU cost.
+
 For one condition, lookup is proportional to keyword posting discovery or
 `O(log N + M)` numeric range discovery plus bitmap materialization, where `M`
 is the number of matches. Boolean set operations are linear in bitmap words.
-Projection, persisted/quantized indexes, GPU execution, and distributed query
-execution remain future work.
+Projection, GPU execution, and distributed query execution remain future work.

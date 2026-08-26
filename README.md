@@ -110,7 +110,26 @@ filters. Otherwise it searches a deterministic, bounded in-memory HNSW graph,
 filters and exact-reranks over-fetched candidates, and falls back to exact
 filtered search if it cannot fill the requested result count. The graph is a
 derived cache lazily rebuilt from durable live state before the first
-approximate query after recovery or a mutation.
+approximate query after recovery or a mutation. A versioned, checksummed
+`hnsw.cache` speeds reopen; stale or damaged cache bytes are ignored and rebuilt
+from WAL/segments.
+
+Immutable snapshots also expose deterministic Phase 12 execution paths:
+
+```mojo
+var snapshot = collection.snapshot()
+var parallel = snapshot.search_l2_parallel(query, 10)
+var sq8 = snapshot.search_sq8_l2(query, 10, rerank_k=50)
+var pq = snapshot.search_pq_l2(
+    query, 10, subquantizers=4, centroids=16, rerank_k=50
+)
+```
+
+SQ8 uses per-dimension affine byte codes. PQ uses deterministically trained
+subvector centroids. `rerank_k=0` returns approximate scores; a value at least
+`k` rescores those candidates against the snapshot's original Float32 vectors.
+Single-query parallel scan uses fixed ordinal ranges and deterministic heap
+merge, so worker scheduling cannot alter ties.
 
 Caller-provided sparse vectors use ascending `(term_id, weight)` elements:
 
@@ -142,6 +161,7 @@ pixi run bench-metadata
 pixi run bench-compaction
 pixi run bench-batch
 pixi run bench-phase11
+pixi run bench-phase12
 ```
 
 Use the compiled in-process Python adapter:
@@ -236,6 +256,13 @@ Implemented:
 - Deterministic bounded HNSW approximate search with configurable `ef_search`,
   lazy graph refresh, bitmap-cardinality planning, and filter-aware exact
   fallback.
+- Versioned SQ8 and product quantization with deterministic codebooks,
+  approximate dot/L2/cosine scoring, and optional exact rerank.
+- Fixed-range single-query parallel exact scan with deterministic local-heap
+  merge for unfiltered and Boolean-filtered snapshots.
+- Checksummed HNSW and metadata derived caches keyed by manifest generation,
+  accepted sequence, and authoritative live-state fingerprint; any cache
+  failure safely rebuilds.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
@@ -257,6 +284,5 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Trusted zero-copy Arrow C Data interchange, quantized/persisted indexes, GPU
-kernels, operations tooling, and distributed execution remain Phase 12–16
-work.
+Trusted zero-copy Arrow C Data interchange, GPU kernels, operations tooling,
+and distributed execution remain Phase 13–16 work.
