@@ -6,7 +6,8 @@ struct HnswSearchScratch(Movable):
 
     A normal query reset advances ``epoch`` in O(1). The visited words are
     scanned only when the UInt32 epoch wraps, so repeated searches do not pay
-    an O(slot_count) clear or allocate fresh heaps.
+    an O(slot_count) clear or allocate fresh heaps. This mutable scratch is
+    single-owner state and must not be shared by concurrent searches.
     """
 
     var visited_epochs: List[UInt32]
@@ -29,7 +30,7 @@ struct HnswSearchScratch(Movable):
         if ef <= 0:
             raise Error("HNSW scratch ef must be positive")
 
-        self.ensure_slot_count(slot_count)
+        self._ensure_slot_count(slot_count)
         # A begin may intentionally expose fewer slots than retained capacity.
         self._prepared_slot_count = slot_count
         if self.epoch == UInt32.MAX:
@@ -42,7 +43,7 @@ struct HnswSearchScratch(Movable):
         self.candidates.reserve(ef)
         self.results.reserve(ef)
 
-    def ensure_slot_count(mut self, new_count: Int) raises:
+    def _ensure_slot_count(mut self, new_count: Int) raises:
         """Grow visit storage without changing the current query epoch."""
         if new_count < 0:
             raise Error("HNSW scratch slot count cannot be negative")
@@ -55,16 +56,18 @@ struct HnswSearchScratch(Movable):
 
     def visit(mut self, slot: UInt32) raises -> Bool:
         """Mark ``slot`` visited and report whether this is its first visit."""
-        var ordinal = Int(slot)
-        if ordinal >= self._prepared_slot_count:
+        if self.epoch == UInt32(0):
+            raise Error("HNSW scratch begin must be called before visit")
+        if UInt64(slot) >= UInt64(self._prepared_slot_count):
             raise Error("HNSW scratch slot is outside the prepared range")
+        var ordinal = Int(slot)
         if self.visited_epochs[ordinal] == self.epoch:
             return False
         self.visited_epochs[ordinal] = self.epoch
         return True
 
     def _force_epoch_for_test(mut self, epoch: UInt32):
-        """Set the epoch so tests can exercise the otherwise rare wrap path."""
+        """Unexported test-only seam for exercising the rare wrap path."""
         self.epoch = epoch
 
     def _reset_wrapped_epochs(mut self):

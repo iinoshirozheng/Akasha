@@ -53,8 +53,16 @@ def test_new_begin_makes_previous_marks_logically_unvisited() raises:
 
 def test_zero_slots_and_invalid_inputs_are_checked() raises:
     var scratch = HnswSearchScratch()
+    with assert_raises():
+        _ = scratch.visit(UInt32(0))
+
+    # Internal growth alone does not start a query or make epoch zero valid.
+    scratch._ensure_slot_count(1)
+    with assert_raises():
+        _ = scratch.visit(UInt32(0))
+
     scratch.begin(0, 1)
-    assert_equal(len(scratch.visited_epochs), 0)
+    assert_equal(len(scratch.visited_epochs), 1)
     with assert_raises():
         _ = scratch.visit(UInt32(0))
     with assert_raises():
@@ -64,7 +72,7 @@ def test_zero_slots_and_invalid_inputs_are_checked() raises:
     with assert_raises():
         scratch.begin(1, -1)
     with assert_raises():
-        scratch.ensure_slot_count(-1)
+        scratch._ensure_slot_count(-1)
 
 
 def test_growth_preserves_marks_and_does_not_shrink() raises:
@@ -73,14 +81,14 @@ def test_growth_preserves_marks_and_does_not_shrink() raises:
     assert_true(scratch.visit(UInt32(1)))
     var current_epoch = scratch.epoch
 
-    scratch.ensure_slot_count(4)
+    scratch._ensure_slot_count(4)
     assert_equal(len(scratch.visited_epochs), 4)
     assert_equal(scratch.epoch, current_epoch)
     assert_false(scratch.visit(UInt32(1)))
     assert_true(scratch.visit(UInt32(2)))
     assert_true(scratch.visit(UInt32(3)))
 
-    scratch.ensure_slot_count(2)
+    scratch._ensure_slot_count(2)
     assert_equal(len(scratch.visited_epochs), 4)
     assert_equal(scratch.epoch, current_epoch)
     assert_false(scratch.visit(UInt32(3)))
@@ -101,6 +109,25 @@ def test_epoch_wrap_clears_words_once_and_restarts_at_one() raises:
     assert_true(scratch.visit(UInt32(0)))
     assert_false(scratch.visit(UInt32(0)))
     assert_true(scratch.visit(UInt32(2)))
+
+
+def test_epoch_wrap_clears_hidden_capacity_before_regrowth() raises:
+    var scratch = HnswSearchScratch()
+    scratch.begin(8, 4)
+    assert_true(scratch.visit(UInt32(7)))
+
+    # Retain eight words but expose only the first four for this query.
+    scratch.begin(4, 4)
+    assert_equal(len(scratch.visited_epochs), 8)
+    with assert_raises():
+        _ = scratch.visit(UInt32(7))
+
+    scratch._force_epoch_for_test(UInt32.MAX)
+    scratch.begin(4, 4)
+    scratch._ensure_slot_count(8)
+    assert_equal(scratch.epoch, UInt32(1))
+    assert_true(scratch.visit(UInt32(7)))
+    assert_false(scratch.visit(UInt32(7)))
 
 
 def test_begin_clears_and_reuses_both_heaps() raises:
