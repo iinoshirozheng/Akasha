@@ -108,6 +108,31 @@ def test_full_reverse_adjacency_prunes_both_halves_of_evicted_edge() raises:
     _assert_symmetric_and_bounded(graph)
 
 
+def test_overflow_pruning_preserves_selected_inactive_traversal_bridge() raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 2, 2)
+    var center = _append(graph, metric, 10, 0.0, 0.0)
+    var evicted = _append(graph, metric, 20, 2.0, 0.0)
+    var bridge = _append(graph, metric, 30, -1.0, 0.0)
+    var newcomer = _append(graph, metric, 40, 1.0, 0.0)
+    var stats = HnswBuildStats()
+    var initial: List[UInt32] = [evicted, bridge]
+    _connect(graph, metric, center, 0, initial^, stats)
+    assert_true(graph.mark_deleted(30))
+    assert_false(graph.is_current(bridge))
+
+    var proposal: List[UInt32] = [center]
+    _connect(graph, metric, newcomer, 0, proposal^, stats)
+
+    assert_true(graph.is_valid())
+    assert_true(graph.contains_neighbor(center, 0, bridge))
+    assert_true(graph.contains_neighbor(bridge, 0, center))
+    assert_true(graph.contains_neighbor(center, 0, newcomer))
+    assert_false(graph.contains_neighbor(center, 0, evicted))
+    assert_false(graph.contains_neighbor(evicted, 0, center))
+    _assert_symmetric_and_bounded(graph)
+
+
 def test_upper_levels_use_m_and_require_both_endpoints_to_own_level() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 1, 3)
@@ -171,6 +196,32 @@ def test_validation_detects_asymmetry() raises:
         validate_bidirectional_links(graph)
 
 
+def test_prewrite_internal_failure_marks_invalid_and_preserves_stats() raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 2, 2)
+    var source = _append(graph, metric, 10, 0.0, 0.0)
+    var first = _append(graph, metric, 20, 1.0, 0.0)
+    var second = _append(graph, metric, 30, 0.0, 1.0)
+    var newcomer = _append(graph, metric, 40, -1.0, 0.0)
+    var initial: List[UInt32] = [first, second]
+    var setup_stats = HnswBuildStats()
+    _connect(graph, metric, source, 0, initial^, setup_stats)
+    # Corrupt one packed existing edge so endpoint-centered selection raises
+    # after public proposal validation but before its first set_neighbors.
+    graph.neighbor_slots[graph.neighbor_bases[Int(source)]] = UInt32(99)
+    var stats = HnswBuildStats()
+    stats.distance_evaluations = 17
+    stats.directed_edges = 23
+    var proposal: List[UInt32] = [newcomer]
+
+    with assert_raises():
+        _connect(graph, metric, source, 0, proposal^, stats)
+
+    assert_false(graph.is_valid())
+    assert_equal(stats.distance_evaluations, 17)
+    assert_equal(stats.directed_edges, 23)
+
+
 def test_failed_touched_level_validation_marks_graph_invalid() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 2, 3)
@@ -181,11 +232,15 @@ def test_failed_touched_level_validation_marks_graph_invalid() raises:
     graph.set_neighbors(source, 0, one_way^)
     var proposal: List[UInt32] = [newcomer]
     var stats = HnswBuildStats()
+    stats.distance_evaluations = 29
+    stats.directed_edges = 31
 
     with assert_raises():
         _connect(graph, metric, source, 0, proposal^, stats)
 
     assert_false(graph.is_valid())
+    assert_equal(stats.distance_evaluations, 29)
+    assert_equal(stats.directed_edges, 31)
     var raw_query = _vector(0.0, 0.0)
     var query = metric.prepare_query(raw_query^)
     var search_stats = HnswSearchStats()

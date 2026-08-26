@@ -58,23 +58,25 @@ def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     return lhs.slot < rhs.slot
 
 
-def select_neighbors_heuristic(
+def _select_neighbors_heuristic(
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
     candidates: List[HnswHeapItem],
     excluded_slot: Optional[UInt32],
     capacity: Int,
     keep_pruned_connections: Bool,
+    require_current_candidates: Bool,
     mut stats: HnswBuildStats,
 ) raises -> List[UInt32]:
-    """Select deterministic, geometrically diverse current graph slots.
+    """Select deterministic, geometrically diverse graph slots.
 
     Candidate distances are caller-cached canonical query-to-candidate
     distances and are never recomputed here. Inputs are first validated and
     ordered by ``(distance, public ID, slot)``. Duplicate slots and the
-    optional query/self slot are then removed. Historical (deleted or
-    replaced) candidates are rejected at this construction boundary rather
-    than silently linked into new adjacency.
+    optional query/self slot are then removed. Public construction calls set
+    ``require_current_candidates`` so historical candidates cannot silently
+    become new links. Internal pruning may clear it to retain structurally
+    valid historical adjacency as navigation bridges.
 
     A candidate is diverse when no already-selected neighbor is strictly
     closer to it than the query is. Equality is deliberately accepted. Pair
@@ -110,7 +112,7 @@ def select_neighbors_heuristic(
         var stored_id = graph.id_at(candidate.slot)
         if candidate.id != stored_id:
             raise Error("HNSW candidate public ID does not match graph slot")
-        if not graph.is_current(candidate.slot):
+        if require_current_candidates and not graph.is_current(candidate.slot):
             raise Error("HNSW neighbor selection requires current candidates")
         if not isfinite(candidate.distance):
             raise Error("HNSW candidate distance must be finite")
@@ -179,6 +181,28 @@ def select_neighbors_heuristic(
     return selected^
 
 
+def select_neighbors_heuristic(
+    graph: HnswStorage,
+    dispatcher: MetricDispatcher,
+    candidates: List[HnswHeapItem],
+    excluded_slot: Optional[UInt32],
+    capacity: Int,
+    keep_pruned_connections: Bool,
+    mut stats: HnswBuildStats,
+) raises -> List[UInt32]:
+    """Select current construction candidates using the HNSW heuristic."""
+    return _select_neighbors_heuristic(
+        graph,
+        dispatcher,
+        candidates,
+        excluded_slot,
+        capacity,
+        keep_pruned_connections,
+        True,
+        stats,
+    )
+
+
 def _slot_in_list(values: List[UInt32], slot: UInt32) -> Bool:
     for value in values:
         if value == slot:
@@ -217,13 +241,17 @@ def _adjacency_with_candidate(
         )
         stats.distance_evaluations += 1
     var no_exclusion = Optional[UInt32]()
-    return select_neighbors_heuristic(
+    # Existing adjacency may intentionally retain inactive historical nodes as
+    # navigation bridges. The public construction selector remains strict;
+    # this internal pruning path alone accepts those structurally valid slots.
+    return _select_neighbors_heuristic(
         graph,
         dispatcher,
         candidates,
         no_exclusion,
         capacity,
         True,
+        False,
         stats,
     )
 
@@ -324,7 +352,6 @@ def connect_bidirectional(
 
     var local_stats = HnswBuildStats()
     var directed_edge_delta = 0
-    var mutation_started = False
     try:
         for neighbor in proposals:
             var endpoint_original = _copy_adjacency(
@@ -369,7 +396,6 @@ def connect_bidirectional(
                 graph, neighbor, level, neighbor_final
             )
 
-            mutation_started = True
             var endpoint_before = graph.neighbor_count(endpoint, level)
             graph.set_neighbors(endpoint, level, endpoint_final^)
             directed_edge_delta += (
@@ -395,8 +421,10 @@ def connect_bidirectional(
             for removed in removed_from_neighbor:
                 _validate_link_level(graph, removed, level)
     except error:
-        if mutation_started:
-            graph.mark_invalid()
+        # All public validation finished before entering this transaction.
+        # Any remaining failure means internal graph state or link processing
+        # is unsafe, even when it happened before the first packed write.
+        graph.mark_invalid()
         raise Error(String(error))
 
     stats.distance_evaluations += local_stats.distance_evaluations
