@@ -734,6 +734,9 @@ struct PersistentCollection:
         rotate_wal(self.path)
         rotate_sparse_wal(self.path)
         self._sparse_pending = List[SparseWalRecord]()
+        var policy = CompactionPolicy(4)
+        if policy.should_compact(manifest):
+            self._compact_committed(manifest^)
 
     def compact(mut self) raises:
         """Replace the committed segment set with one complete live base."""
@@ -744,6 +747,9 @@ struct PersistentCollection:
         var previous = load_manifest(self.path, self.dimension)
         if len(previous.segments) <= 1:
             return
+        self._compact_committed(previous^)
+
+    def _compact_committed(mut self, var previous: Manifest) raises:
         if previous.generation == UInt64.MAX:
             raise Error("manifest generation exhausted")
 
@@ -828,7 +834,7 @@ struct PersistentCollection:
         var policy = CompactionPolicy(4)
         if not policy.should_compact(manifest):
             return False
-        self.compact()
+        self._compact_committed(manifest^)
         return True
 
     def _search_filtered(

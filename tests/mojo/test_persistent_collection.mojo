@@ -345,7 +345,7 @@ def test_full_compaction_replaces_segments_and_preserves_query_results() raises:
     assert_equal(Bool(reopened.get(1)), False)
 
 
-def test_maintenance_compacts_at_default_level_zero_threshold() raises:
+def test_flush_automatically_compacts_at_default_level_zero_threshold() raises:
     var path = String("/tmp/akasha-phase10-maintenance-threshold")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
@@ -355,7 +355,6 @@ def test_maintenance_compacts_at_default_level_zero_threshold() raises:
         collection.upsert(id, [Float32(id)])
         collection.flush()
 
-    assert_equal(collection.maintenance(), True)
     assert_equal(len(load_manifest(path, 1).segments), 1)
     assert_equal(collection.maintenance(), False)
 
