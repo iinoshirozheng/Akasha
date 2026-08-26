@@ -4,6 +4,8 @@ from akasha.compute.simd import (
     simd_l2_squared_distance,
 )
 from akasha.compute.topk import BoundedTopK
+from akasha.compute.gpu.flat_scan import DeviceBatchResult
+from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.api.batch import BatchMutation, BatchWriteResult
 from akasha.document.record import (
     clone_fields,
@@ -670,6 +672,39 @@ struct PersistentCollection:
         var snapshot = self.snapshot()
         return snapshot.search_cosine_batch(queries, k, num_workers=num_workers)
 
+    def search_device_dot_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_dot_batch[use_accelerator](
+            queries, k, options
+        )
+
+    def search_device_l2_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_l2_batch[use_accelerator](
+            queries, k, options
+        )
+
+    def search_device_cosine_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_cosine_batch[use_accelerator](
+            queries, k, options
+        )
+
     def search_dot_where_batch(
         self,
         queries: List[List[Float32]],
@@ -707,6 +742,42 @@ struct PersistentCollection:
         var snapshot = self.snapshot()
         return snapshot.search_cosine_where_batch(
             queries, expressions, k, num_workers=num_workers
+        )
+
+    def search_device_dot_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_dot_where_batch[use_accelerator](
+            queries, expressions, k, options
+        )
+
+    def search_device_l2_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_l2_where_batch[use_accelerator](
+            queries, expressions, k, options
+        )
+
+    def search_device_cosine_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        var snapshot = self.snapshot()
+        return snapshot.search_device_cosine_where_batch[use_accelerator](
+            queries, expressions, k, options
         )
 
     def search_dot_approx(

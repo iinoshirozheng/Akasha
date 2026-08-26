@@ -4,6 +4,12 @@ from akasha.compute.simd import (
     simd_l2_squared_distance,
 )
 from akasha.compute.topk import BoundedTopK
+from akasha.compute.gpu.flat_scan import (
+    DeviceBatchResult,
+    execute_device_batch,
+    execute_device_candidate_batch,
+)
+from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.document.record import clone_fields, DocumentRecord
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
@@ -268,6 +274,36 @@ struct ReadSnapshot(Movable):
             self._memtable, queries, k, BATCH_COSINE_METRIC, num_workers
         )
 
+    def search_device_dot_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_batch[use_accelerator](
+            queries, k, BATCH_DOT_METRIC, options
+        )
+
+    def search_device_l2_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_batch[use_accelerator](
+            queries, k, BATCH_L2_METRIC, options
+        )
+
+    def search_device_cosine_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_batch[use_accelerator](
+            queries, k, BATCH_COSINE_METRIC, options
+        )
+
     def search_dot_where_batch(
         self,
         queries: List[List[Float32]],
@@ -302,6 +338,39 @@ struct ReadSnapshot(Movable):
     ) raises -> List[List[SearchResult]]:
         return self._search_where_batch(
             queries, expressions, k, BATCH_COSINE_METRIC, num_workers
+        )
+
+    def search_device_dot_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_where_batch[use_accelerator](
+            queries, expressions, k, BATCH_DOT_METRIC, options
+        )
+
+    def search_device_l2_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_where_batch[use_accelerator](
+            queries, expressions, k, BATCH_L2_METRIC, options
+        )
+
+    def search_device_cosine_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        return self._search_device_where_batch[use_accelerator](
+            queries, expressions, k, BATCH_COSINE_METRIC, options
         )
 
     def search_dot_filtered(
@@ -714,6 +783,38 @@ struct ReadSnapshot(Movable):
             k,
             metric,
             num_workers,
+        )
+
+    def _search_device_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        metric: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        self._ensure_open()
+        return execute_device_batch[use_accelerator](
+            self._memtable, queries, k, metric, options
+        )
+
+    def _search_device_where_batch[use_accelerator: Bool](
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        metric: Int,
+        options: GpuExecutionOptions,
+    ) raises -> DeviceBatchResult:
+        self._ensure_open()
+        if len(queries) != len(expressions):
+            raise Error("batch query and filter counts must match")
+        var candidates = List[List[MemTableEntry]](capacity=len(queries))
+        for index in range(len(expressions)):
+            expressions[index].validate()
+            var bitmap = evaluate_expression(self._metadata, expressions[index])
+            candidates.append(candidate_entries(self._memtable, bitmap))
+        return execute_device_candidate_batch[use_accelerator](
+            self._dimension, queries, candidates, k, metric, options
         )
 
     def _search_candidates(

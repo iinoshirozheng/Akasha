@@ -7,7 +7,10 @@ from .api import (
 )
 from .compute import (
     cosine_similarity,
+    DeviceBatchResult,
     dot_product,
+    GpuExecutionOptions,
+    GpuPlan,
     l2_squared_distance,
     simd_cosine_similarity,
     simd_dot_product,
