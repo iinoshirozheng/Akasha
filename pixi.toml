@@ -6,12 +6,13 @@ platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
-test-mojo = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
+build-native-worker = "bash -c 'mkdir -p .build/native; if [ \"$(uname -s)\" = Darwin ]; then clang -std=c11 -Wall -Wextra -Werror -dynamiclib native/maintenance_worker.c -o .build/native/libakasha_worker.so; else cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -pthread native/maintenance_worker.c -o .build/native/libakasha_worker.so; fi'"
+test-mojo = { cmd = "bash -c 'for test_file in tests/mojo/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'", depends-on = ["build-native-worker"] }
 build-python = "mojo build --emit shared-lib -I src src/bindings/python_module.mojo -o python/akashadb/_kernel.so"
-test-python = { cmd = "pytest tests/python -q", depends-on = ["build-python"], env = { PYTHONPATH = "python:." } }
+test-python = { cmd = "pytest tests/python -q", depends-on = ["build-python", "build-native-worker"], env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
 test-crash = "bash -c 'for test_file in tests/crash/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
-build-mojo = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent"
+build-mojo = { cmd = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent", depends-on = ["build-native-worker"] }
 build = { depends-on = ["build-mojo", "build-python"] }
 smoke = "mojo run -I src examples/smoke.mojo"
 example-persistent = "mojo run -I src examples/persistent_collection.mojo"

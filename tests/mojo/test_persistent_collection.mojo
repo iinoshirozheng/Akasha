@@ -355,8 +355,10 @@ def test_flush_automatically_compacts_at_default_level_zero_threshold() raises:
         collection.upsert(id, [Float32(id)])
         collection.flush()
 
+    _ = collection.wait_for_maintenance()
     assert_equal(len(load_manifest(path, 1).segments), 1)
     assert_equal(collection.maintenance(), False)
+    collection.close()
 
 
 def main() raises:

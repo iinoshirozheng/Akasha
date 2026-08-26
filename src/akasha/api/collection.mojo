@@ -24,11 +24,15 @@ from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.maintenance import (
+    DEFAULT_MAINTENANCE_LIBRARY,
+    MaintenanceController,
+)
+from akasha.storage.retired_files import RetiredFileQueue
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
     path_exists,
-    remove_file_if_exists,
     sync_directory,
 )
 from akasha.storage.manifest import (
@@ -74,21 +78,6 @@ comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
 
 
-struct _RetiredGeneration(Movable):
-    var maximum_generation: UInt64
-    var files: List[String]
-
-    def __init__(out self, maximum_generation: UInt64, var files: List[String]):
-        self.maximum_generation = maximum_generation
-        self.files = files^
-
-    def clone(self) -> _RetiredGeneration:
-        var files = List[String](capacity=len(self.files))
-        for index in range(len(self.files)):
-            files.append(String(copy=self.files[index]))
-        return _RetiredGeneration(self.maximum_generation, files^)
-
-
 struct PersistentCollection:
     """A durable, single-writer exact vector collection."""
 
@@ -106,8 +95,9 @@ struct PersistentCollection:
     var _sparse_pending: List[SparseWalRecord]
     var _metadata: MetadataIndex
     var _pins: ArcPointer[GenerationPinRegistry]
-    var _retired: List[_RetiredGeneration]
+    var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
+    var _maintenance: MaintenanceController
 
     def __init__(
         out self,
@@ -120,6 +110,7 @@ struct PersistentCollection:
         var sparse: SparseIndex,
         var sparse_pending: List[SparseWalRecord],
         var metadata: MetadataIndex,
+        maintenance_library_path: String,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
@@ -135,11 +126,24 @@ struct PersistentCollection:
         self._sparse_pending = sparse_pending^
         self._metadata = metadata^
         self._pins = ArcPointer(GenerationPinRegistry())
-        self._retired = List[_RetiredGeneration]()
+        self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
+        self._maintenance = MaintenanceController.start(
+            path,
+            dimension,
+            self._writer_lock,
+            self._pins,
+            self._retired,
+            maintenance_library_path,
+        )
 
     @staticmethod
-    def open(path: String, dimension: Int) raises -> PersistentCollection:
+    def open(
+        path: String,
+        dimension: Int,
+        *,
+        maintenance_library_path: String = DEFAULT_MAINTENANCE_LIBRARY,
+    ) raises -> PersistentCollection:
         """Create or recover a persistent collection at ``path``."""
         if dimension <= 0:
             raise Error("collection dimension must be positive")
@@ -337,6 +341,7 @@ struct PersistentCollection:
             sparse^,
             sparse_pending^,
             metadata^,
+            maintenance_library_path,
         )
         collection._hnsw_dirty = recovered_point_count > 0
         return collection^
@@ -346,8 +351,29 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
-            self._lock.close()
             self._closed = True
+        var maintenance_error = String()
+        try:
+            self._maintenance.close()
+        except error:
+            maintenance_error = String(error)
+        with BlockingScopedLock(self._writer_lock[]):
+            self._lock.close()
+        if maintenance_error.byte_length() > 0:
+            raise Error(maintenance_error)
+
+    def background_maintenance_enabled(self) -> Bool:
+        return self._maintenance.enabled()
+
+    def schedule_maintenance(mut self) raises -> Bool:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._maintenance.request()
+
+    def wait_for_maintenance(mut self) raises -> Bool:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+        return self._maintenance.wait()
 
     def last_sequence(self) raises -> UInt64:
         with BlockingScopedLock(self._writer_lock[]):
@@ -909,7 +935,10 @@ struct PersistentCollection:
         self._sparse_pending = List[SparseWalRecord]()
         var policy = CompactionPolicy(4)
         if policy.should_compact(manifest):
-            self._compact_committed(manifest^)
+            if self._maintenance.enabled():
+                _ = self._maintenance.request()
+            else:
+                self._compact_committed(manifest^)
 
     def compact(mut self) raises:
         """Replace the committed segment set with one complete live base."""
@@ -1025,32 +1054,12 @@ struct PersistentCollection:
                     self.path + "/" + previous.segments[index].sparse_name
                 )
 
-        if self._pins[].has_pin_at_or_before(previous.generation):
-            self._retired.append(
-                _RetiredGeneration(previous.generation, removed^)
-            )
-            return
-        for index in range(len(removed)):
-            remove_file_if_exists(removed[index])
-        sync_directory(self.path)
+        self._retired[].retire_or_reclaim(
+            self.path, previous.generation, removed, self._pins
+        )
 
     def _reclaim_retired(mut self) raises:
-        if len(self._retired) == 0:
-            return
-        var retained = List[_RetiredGeneration]()
-        var removed_any = False
-        for index in range(len(self._retired)):
-            if self._pins[].has_pin_at_or_before(
-                self._retired[index].maximum_generation
-            ):
-                retained.append(self._retired[index].clone())
-                continue
-            for file_index in range(len(self._retired[index].files)):
-                remove_file_if_exists(self._retired[index].files[file_index])
-            removed_any = True
-        self._retired = retained^
-        if removed_any:
-            sync_directory(self.path)
+        self._retired[].reclaim(self.path, self._pins)
 
     def _search_filtered(
         self,
