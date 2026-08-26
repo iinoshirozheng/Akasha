@@ -1,160 +1,475 @@
-from akasha.compute.simd import (
-    simd_cosine_similarity,
-    simd_dot_product,
-    simd_l2_squared_distance,
-)
-from akasha.compute.topk import BoundedTopK
+from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
+from akasha.compute.metric import MetricDispatcher
 from akasha.index.flat import SearchResult
+from akasha.index.hnsw_core import (
+    HnswSearchAdmission,
+    connect_bidirectional,
+    greedy_descent,
+    search_layer,
+    select_neighbors_heuristic,
+    validate_bidirectional_links,
+)
+from akasha.index.hnsw_level import sample_level
+from akasha.index.hnsw_scratch import HnswSearchScratch
+from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
+from akasha.index.hnsw_storage import HnswStorage
 from akasha.storage.checksum import BinaryReader, BinaryWriter
 from std.math import isfinite
 
 
-comptime _DOT_METRIC = 0
-comptime _L2_METRIC = 1
-comptime _COSINE_METRIC = 2
+comptime _MAX_CACHE_POINTS = 10_000_000
+comptime _UINT16_MAX_AS_INT = 65_535
 
 
-def deterministic_level(id: Int, maximum: Int) -> Int:
-    """Generate a stable geometric-like level from the point ID."""
-    if maximum <= 0:
-        return 0
-    var value = id
-    if value < 0:
-        value = -(value + 1)
-    var level = 0
-    while level < maximum and value % 2 == 0:
-        level += 1
-        value = value // 2
-        if value == 0:
-            break
-    return level
-
-
-struct _NeighborLevel(Movable):
-    var indices: List[Int]
-
-    def __init__(out self):
-        self.indices = List[Int]()
-
-
-struct _HnswNode(Movable):
-    var id: Int
-    var vector: List[Float32]
-    var level: Int
-    var neighbors: List[_NeighborLevel]
-
-    def __init__(out self, id: Int, var vector: List[Float32], level: Int):
-        self.id = id
-        self.vector = vector^
-        self.level = level
-        self.neighbors = List[_NeighborLevel](capacity=level + 1)
-        for _ in range(level + 1):
-            self.neighbors.append(_NeighborLevel())
-
-
-struct _Candidate(TrivialRegisterPassable, Writable):
-    var node_index: Int
-    var score: Float32
-    var expanded: Bool
-
-    def __init__(out self, node_index: Int, score: Float32):
-        self.node_index = node_index
-        self.score = score
-        self.expanded = False
+def _legacy_config(
+    dimension: Int, m: Int, max_level: Int
+) -> CollectionConfig:
+    """Build the temporary L2/F32 identity used by the legacy initializer."""
+    var config = CollectionConfig.defaults(dimension)
+    config.ann_metric = MetricKind.l2()
+    config.scalar_kind = ScalarKind.f32()
+    config.m = m
+    config.m0 = m
+    if config.ef_construction < m:
+        config.ef_construction = m
+    config.max_level = max_level
+    return config^
 
 
 struct HnswIndex:
-    """Deterministic in-memory hierarchical navigable small-world graph."""
+    """Metric-bound standard HNSW over flat packed graph storage.
 
+    Construction and public traversal share the same canonical-distance core.
+    The compatibility initializer binds an L2/F32 graph; legacy metric-named
+    search methods are retained only to validate that their name matches the
+    graph's immutable metric.
+    """
+
+    var config: CollectionConfig
+    var metric: MetricDispatcher
+    var graph: HnswStorage
+    var scratch: HnswSearchScratch
+    var _construction_scratch: HnswSearchScratch
+    var entry_slot: Optional[UInt32]
+    var entry_level: Int
+    var valid: Bool
+    var build_stats: HnswBuildStats
+    var last_search_stats: HnswSearchStats
+
+    # Compatibility fields used by the collection cache wrapper and older
+    # direct callers. They mirror the bound configuration and are immutable.
     var dimension: Int
     var m: Int
     var max_level: Int
-    var _nodes: List[_HnswNode]
-    var _entry_index: Int
-    var _entry_level: Int
+    var _legacy_cache_bound: Int
+
+    def __init__(out self, config: CollectionConfig) raises:
+        config.validate()
+        var owned = config.copy()
+        self.config = owned.copy()
+        self.metric = MetricDispatcher(
+            owned.ann_metric, owned.scalar_kind, owned.dimension
+        )
+        self.graph = HnswStorage(owned.dimension, owned.m, owned.m0)
+        self.scratch = HnswSearchScratch()
+        self._construction_scratch = HnswSearchScratch()
+        self.entry_slot = Optional[UInt32]()
+        self.entry_level = -1
+        self.valid = True
+        self.build_stats = HnswBuildStats()
+        self.build_stats.maximum_level = -1
+        self.last_search_stats = HnswSearchStats()
+        self.dimension = owned.dimension
+        self.m = owned.m
+        self.max_level = owned.max_level
+        self._legacy_cache_bound = 0
 
     def __init__(
         out self, dimension: Int, *, m: Int = 8, max_level: Int = 12
     ) raises:
-        if dimension <= 0:
-            raise Error("HNSW dimension must be positive")
-        if m <= 0:
-            raise Error("HNSW neighbor bound must be positive")
-        if max_level < 0:
-            raise Error("HNSW maximum level cannot be negative")
-        self.dimension = dimension
-        self.m = m
-        self.max_level = max_level
-        self._nodes = List[_HnswNode]()
-        self._entry_index = -1
-        self._entry_level = -1
+        var owned = _legacy_config(dimension, m, max_level)
+        owned.validate()
+        self.config = owned.copy()
+        self.metric = MetricDispatcher(
+            owned.ann_metric, owned.scalar_kind, owned.dimension
+        )
+        self.graph = HnswStorage(owned.dimension, owned.m, owned.m0)
+        self.scratch = HnswSearchScratch()
+        self._construction_scratch = HnswSearchScratch()
+        self.entry_slot = Optional[UInt32]()
+        self.entry_level = -1
+        self.valid = True
+        self.build_stats = HnswBuildStats()
+        self.build_stats.maximum_level = -1
+        self.last_search_stats = HnswSearchStats()
+        self.dimension = owned.dimension
+        self.m = owned.m
+        self.max_level = owned.max_level
+        self._legacy_cache_bound = 0
 
     def point_count(self) -> Int:
-        return len(self._nodes)
+        return self.graph.slot_count()
 
-    def maximum_neighbor_count(self) -> Int:
+    def entry_point_level(self) -> Int:
+        return self.entry_level
+
+    def entry_point_id(self) raises -> Int:
+        if not Bool(self.entry_slot):
+            raise Error("empty HNSW index has no entry point")
+        return self.graph.id_at(self.entry_slot.value())
+
+    def maximum_neighbor_count(self, level: Int = -1) raises -> Int:
         var maximum = 0
-        for node_index in range(len(self._nodes)):
-            for level in range(len(self._nodes[node_index].neighbors)):
-                var count = len(
-                    self._nodes[node_index].neighbors[level].indices
-                )
+        for slot_index in range(self.graph.slot_count()):
+            var slot = UInt32(slot_index)
+            var first_level = 0
+            var last_level = self.graph.level(slot)
+            if level >= 0:
+                if level > last_level:
+                    continue
+                first_level = level
+                last_level = level
+            for graph_level in range(first_level, last_level + 1):
+                var count = self.graph.neighbor_count(slot, graph_level)
                 if count > maximum:
                     maximum = count
         return maximum
 
-    def encode_cache_payload(self) raises -> List[UInt8]:
-        """Serialize this derived graph; the outer cache owns integrity."""
-        if self.m > Int(UInt16.MAX) or self.max_level > Int(UInt16.MAX):
-            raise Error("HNSW configuration exceeds cache format")
-        if len(self._nodes) > Int(UInt32.MAX):
-            raise Error("HNSW graph exceeds cache format")
-        var writer = BinaryWriter()
-        writer.write_u16(UInt16(self.m))
-        writer.write_u16(UInt16(self.max_level))
-        writer.write_u32(UInt32(len(self._nodes)))
-        writer.write_i64(Int64(self._entry_index))
-        writer.write_i64(Int64(self._entry_level))
-        for node_index in range(len(self._nodes)):
-            writer.write_i64(Int64(self._nodes[node_index].id))
-            writer.write_u16(UInt16(self._nodes[node_index].level))
-            writer.write_u16(UInt16(0))
-            for value in self._nodes[node_index].vector:
-                writer.write_f32(value)
-            for level in range(self._nodes[node_index].level + 1):
-                var count = len(
-                    self._nodes[node_index].neighbors[level].indices
+    def maximum_upper_neighbor_count(self) raises -> Int:
+        var maximum = 0
+        for slot_index in range(self.graph.slot_count()):
+            var slot = UInt32(slot_index)
+            for level in range(1, self.graph.level(slot) + 1):
+                var count = self.graph.neighbor_count(slot, level)
+                if count > maximum:
+                    maximum = count
+        return maximum
+
+    def build_slot_count(self) -> Int:
+        return self.build_stats.slot_count
+
+    def build_distance_evaluations(self) -> Int:
+        return self.build_stats.distance_evaluations
+
+    def last_search_distance_evaluations(self) -> Int:
+        return self.last_search_stats.distance_evaluations
+
+    def last_search_visited(self) -> Int:
+        return (
+            self.last_search_stats.upper_visited
+            + self.last_search_stats.base_visited
+        )
+
+    def last_search_effective_ef(self) -> Int:
+        return self.last_search_stats.effective_ef
+
+    def validate_structure(self) raises:
+        if not self.valid or not self.graph.is_valid():
+            raise Error("HNSW index is marked invalid")
+        validate_bidirectional_links(self.graph)
+        var count = self.graph.slot_count()
+        if count == 0:
+            if Bool(self.entry_slot) or self.entry_level != -1:
+                raise Error("empty HNSW entry point is invalid")
+        else:
+            if not Bool(self.entry_slot):
+                raise Error("non-empty HNSW index has no entry point")
+            var entry = self.entry_slot.value()
+            if self.entry_level != self.graph.level(entry):
+                raise Error("HNSW entry level does not match entry slot")
+        if self.build_stats.slot_count != count:
+            raise Error("HNSW build statistics slot count is inconsistent")
+        if self.build_stats.maximum_level != self.entry_level:
+            raise Error("HNSW build statistics maximum level is inconsistent")
+
+    def add(mut self, id: Int, values: List[Float32]) raises:
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot mutate an invalid HNSW index")
+        # Complete every caller-controlled validation before append. The
+        # current-slot map makes duplicate rejection O(1).
+        if Bool(self.graph.current_slot(id)):
+            raise Error("HNSW point IDs must be unique")
+        var prepared = self.metric.prepare_graph_vector(values)
+        var new_level = sample_level(
+            id,
+            self.config.level_seed,
+            self.config.m,
+            self.config.max_level,
+        )
+
+        if not Bool(self.entry_slot):
+            var first = self.graph.append(id, prepared^, new_level)
+            self.entry_slot = Optional(first)
+            self.entry_level = new_level
+            self.build_stats.slot_count = 1
+            self.build_stats.maximum_level = new_level
+            return
+
+        var current = self.entry_slot.value()
+        var construction_stats = HnswSearchStats()
+        var upper_level = self.entry_level
+        while upper_level > new_level:
+            var descended = greedy_descent(
+                self.graph,
+                self.metric,
+                prepared,
+                current,
+                upper_level,
+                construction_stats,
+            )
+            current = descended.slot
+            upper_level -= 1
+
+        # The new slot is unreachable until its first reciprocal link is
+        # published, so construction searches still observe only old nodes.
+        var stored = prepared.copy()
+        var new_slot = self.graph.append(id, stored^, new_level)
+        var shared_level = new_level
+        if shared_level > self.entry_level:
+            shared_level = self.entry_level
+        var admission = HnswSearchAdmission()
+        while shared_level >= 0:
+            var candidates = search_layer(
+                self.graph,
+                self.metric,
+                prepared,
+                current,
+                shared_level,
+                self.config.ef_construction,
+                self.config.ef_construction,
+                admission,
+                self._construction_scratch,
+                construction_stats,
+            )
+            var next_entry = current
+            if len(candidates) > 0:
+                next_entry = candidates[0].slot
+            var excluded = Optional(new_slot)
+            var selected = select_neighbors_heuristic(
+                self.graph,
+                self.metric,
+                candidates,
+                excluded,
+                self.graph.level_capacity(new_slot, shared_level),
+                True,
+                self.build_stats,
+            )
+            try:
+                connect_bidirectional(
+                    self.graph,
+                    self.metric,
+                    new_slot,
+                    shared_level,
+                    selected^,
+                    self.build_stats,
                 )
-                if count > Int(UInt16.MAX):
+            except error:
+                self.valid = False
+                raise Error(String(error))
+            current = next_entry
+            shared_level -= 1
+
+        self.build_stats.distance_evaluations += (
+            construction_stats.distance_evaluations
+        )
+        self.build_stats.slot_count = self.graph.slot_count()
+        if new_level > self.entry_level:
+            self.entry_slot = Optional(new_slot)
+            self.entry_level = new_level
+            self.build_stats.maximum_level = new_level
+
+    def search(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        *,
+        ef_search: Int = -1,
+    ) raises -> List[SearchResult]:
+        var requested = ef_search
+        if requested < 0:
+            requested = self.config.default_ef_search
+        return self._search_bound(query, k, requested)
+
+    def search_dot(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        self._require_metric("dot")
+        return self._search_bound(query, k, ef_search)
+
+    def search_l2(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        self._require_metric("l2")
+        return self._search_bound(query, k, ef_search)
+
+    def search_cosine(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        self._require_metric("cosine")
+        return self._search_bound(query, k, ef_search)
+
+    def _require_metric(self, requested: String) raises:
+        var bound = self.metric.metric_name()
+        if bound != requested:
+            raise Error(
+                String(
+                    "HNSW metric mismatch: graph is bound to ",
+                    bound,
+                    " but search requested ",
+                    requested,
+                )
+            )
+
+    def _search_bound(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot search an invalid HNSW index")
+        if k <= 0:
+            raise Error("HNSW search k must be positive")
+        if ef_search <= 0:
+            raise Error("HNSW search ef must be positive")
+        if ef_search > self.config.max_ef_search:
+            raise Error("HNSW search ef exceeds collection maximum")
+        var prepared = self.metric.prepare_query(query)
+        var effective_ef = ef_search
+        if effective_ef < k:
+            effective_ef = k
+
+        var stats = HnswSearchStats()
+        stats.requested_ef = ef_search
+        stats.effective_ef = effective_ef
+        stats.backend_name = self.metric.backend_name()
+        stats.metric_name = self.metric.metric_name()
+        stats.scalar_name = self.metric.scalar_name()
+        stats.storage_name = "packed-f32"
+        if not Bool(self.entry_slot):
+            self.last_search_stats = stats^
+            return List[SearchResult]()
+
+        var current = self.entry_slot.value()
+        var level = self.entry_level
+        while level > 0:
+            var descended = greedy_descent(
+                self.graph,
+                self.metric,
+                prepared,
+                current,
+                level,
+                stats,
+            )
+            current = descended.slot
+            level -= 1
+
+        var admission = HnswSearchAdmission()
+        var candidates = search_layer(
+            self.graph,
+            self.metric,
+            prepared,
+            current,
+            0,
+            k,
+            effective_ef,
+            admission,
+            self.scratch,
+            stats,
+        )
+        var results = List[SearchResult](capacity=len(candidates))
+        for candidate in candidates:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    self.metric.public_score(candidate.distance),
+                )
+            )
+        self.last_search_stats = stats^
+        return results^
+
+    def encode_cache_payload(self) raises -> List[UInt8]:
+        """Encode the prototype payload layout against packed storage."""
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot serialize an invalid HNSW index")
+        var legacy_bound = self.graph.m
+        if self.graph.m0 > legacy_bound:
+            legacy_bound = self.graph.m0
+        if self._legacy_cache_bound > 0:
+            legacy_bound = self._legacy_cache_bound
+        if legacy_bound > _UINT16_MAX_AS_INT:
+            raise Error("HNSW configuration exceeds cache format")
+        if self.max_level > _UINT16_MAX_AS_INT:
+            raise Error("HNSW configuration exceeds cache format")
+        if self.graph.slot_count() > Int(UInt32.MAX):
+            raise Error("HNSW graph exceeds cache format")
+
+        var writer = BinaryWriter()
+        writer.write_u16(UInt16(legacy_bound))
+        writer.write_u16(UInt16(self.max_level))
+        writer.write_u32(UInt32(self.graph.slot_count()))
+        if Bool(self.entry_slot):
+            writer.write_i64(Int64(self.entry_slot.value()))
+        else:
+            writer.write_i64(Int64(-1))
+        writer.write_i64(Int64(self.entry_level))
+        for slot_index in range(self.graph.slot_count()):
+            var slot = UInt32(slot_index)
+            var level = self.graph.level(slot)
+            writer.write_i64(Int64(self.graph.id_at(slot)))
+            writer.write_u16(UInt16(level))
+            writer.write_u16(UInt16(0))
+            for component in range(self.dimension):
+                writer.write_f32(self.graph.vector_value(slot, component))
+            for graph_level in range(level + 1):
+                var count = self.graph.neighbor_count(slot, graph_level)
+                if count > legacy_bound:
                     raise Error("HNSW neighbor list exceeds cache format")
                 writer.write_u16(UInt16(count))
                 writer.write_u16(UInt16(0))
-                for neighbor in self._nodes[
-                    node_index
-                ].neighbors[level].indices:
-                    if neighbor < 0 or neighbor > Int(UInt32.MAX):
-                        raise Error("HNSW neighbor ordinal exceeds cache format")
-                    writer.write_u32(UInt32(neighbor))
+                for edge_index in range(count):
+                    writer.write_u32(
+                        self.graph.neighbor_at(slot, graph_level, edge_index)
+                    )
         return writer.take_bytes()
 
     @staticmethod
     def decode_cache_payload(
         dimension: Int, var payload: List[UInt8]
     ) raises -> HnswIndex:
+        var serialized_bytes = len(payload)
         var reader = BinaryReader(payload^)
         var m = Int(reader.read_u16())
         var max_level = Int(reader.read_u16())
+        if m <= 0:
+            raise Error("HNSW cache neighbor bound must be positive")
         var point_count = Int(reader.read_u32())
-        if point_count > 10_000_000:
+        if point_count > _MAX_CACHE_POINTS:
             raise Error("HNSW cache point count exceeds limit")
         var entry_index = Int(reader.read_i64())
         var entry_level = Int(reader.read_i64())
-        var index = HnswIndex(dimension, m=m, max_level=max_level)
-        for node_index in range(point_count):
+        # The prototype accepted m=1, max_level=0, and max_level values above
+        # the durable CollectionConfig range. Use the nearest legal standard
+        # identity while retaining the original header for byte-compatible
+        # re-encoding; decoded adjacency remains bounded by the old header.
+        var standard_m = m
+        if standard_m < 2:
+            standard_m = 2
+        var standard_max_level = max_level
+        if standard_max_level < 1:
+            standard_max_level = 1
+        elif standard_max_level > 63:
+            standard_max_level = 63
+        var index = HnswIndex(
+            dimension, m=standard_m, max_level=standard_max_level
+        )
+        index.m = m
+        index.max_level = max_level
+        index._legacy_cache_bound = m
+        var edge_counts = List[Int]()
+        var edge_slots = List[UInt32]()
+
+        for _ in range(point_count):
             var id = Int(reader.read_i64())
-            for previous in range(node_index):
-                if index._nodes[previous].id == id:
-                    raise Error("HNSW cache contains duplicate point IDs")
+            if Bool(index.graph.current_slot(id)):
+                raise Error("HNSW cache contains duplicate point IDs")
             var level = Int(reader.read_u16())
             if reader.read_u16() != UInt16(0) or level > max_level:
                 raise Error("HNSW cache node header is invalid")
@@ -164,22 +479,37 @@ struct HnswIndex:
                 if not isfinite(value):
                     raise Error("HNSW cache vector must be finite")
                 vector.append(value)
-            var node = _HnswNode(id, vector^, level)
-            for graph_level in range(level + 1):
+            var prepared = index.metric.prepare_graph_vector(vector^)
+            _ = index.graph.append(id, prepared^, level)
+            if level > index.build_stats.maximum_level:
+                index.build_stats.maximum_level = level
+            for _ in range(level + 1):
                 var neighbor_count = Int(reader.read_u16())
-                if (
-                    reader.read_u16() != UInt16(0)
-                    or neighbor_count > m
-                ):
+                if reader.read_u16() != UInt16(0) or neighbor_count > m:
                     raise Error("HNSW cache neighbor header is invalid")
+                edge_counts.append(neighbor_count)
                 for _ in range(neighbor_count):
                     var neighbor = Int(reader.read_u32())
                     if neighbor < 0 or neighbor >= point_count:
                         raise Error("HNSW cache neighbor ordinal is invalid")
-                    node.neighbors[graph_level].indices.append(neighbor)
-            index._nodes.append(node^)
+                    edge_slots.append(UInt32(neighbor))
+
         if reader.remaining() != 0:
             raise Error("HNSW cache has trailing bytes")
+        var count_offset = 0
+        var edge_offset = 0
+        for slot_index in range(point_count):
+            var slot = UInt32(slot_index)
+            for level in range(index.graph.level(slot) + 1):
+                var count = edge_counts[count_offset]
+                count_offset += 1
+                var neighbors = List[UInt32](capacity=count)
+                for _ in range(count):
+                    neighbors.append(edge_slots[edge_offset])
+                    edge_offset += 1
+                index.graph.set_neighbors(slot, level, neighbors^)
+                index.build_stats.directed_edges += count
+
         if point_count == 0:
             if entry_index != -1 or entry_level != -1:
                 raise Error("empty HNSW cache entry point is invalid")
@@ -187,211 +517,12 @@ struct HnswIndex:
             entry_index < 0
             or entry_index >= point_count
             or entry_level < 0
-            or entry_level > index._nodes[entry_index].level
+            or entry_level > index.graph.level(UInt32(entry_index))
         ):
             raise Error("HNSW cache entry point is invalid")
-        index._entry_index = entry_index
-        index._entry_level = entry_level
+        else:
+            index.entry_slot = Optional(UInt32(entry_index))
+            index.entry_level = entry_level
+        index.build_stats.slot_count = point_count
+        index.build_stats.serialized_bytes = serialized_bytes
         return index^
-
-    def add(mut self, id: Int, values: List[Float32]) raises:
-        if len(values) != self.dimension:
-            raise Error("vector dimension does not match HNSW index")
-        for value in values:
-            if not isfinite(value):
-                raise Error("HNSW vectors must contain only finite values")
-        if self._find_index(id) >= 0:
-            raise Error("HNSW point IDs must be unique")
-
-        var owned = _clone_vector(values)
-        var level = deterministic_level(id, self.max_level)
-        var new_index = len(self._nodes)
-        self._nodes.append(_HnswNode(id, owned^, level))
-
-        for graph_level in range(level + 1):
-            var candidate_count = 0
-            for existing in range(new_index):
-                if self._nodes[existing].level >= graph_level:
-                    candidate_count += 1
-            if candidate_count == 0:
-                continue
-            var capacity = self.m
-            if capacity > candidate_count:
-                capacity = candidate_count
-            var nearest = BoundedTopK(capacity, smaller_is_better=True)
-            for existing in range(new_index):
-                if self._nodes[existing].level < graph_level:
-                    continue
-                nearest.offer(
-                    existing,
-                    simd_l2_squared_distance(
-                        self._nodes[new_index].vector,
-                        self._nodes[existing].vector,
-                    ),
-                )
-            var selected = nearest.sorted_entries()
-            for candidate in selected:
-                var existing = candidate.id
-                self._nodes[new_index].neighbors[graph_level].indices.append(
-                    existing
-                )
-                self._nodes[existing].neighbors[graph_level].indices.append(
-                    new_index
-                )
-                self._prune_neighbors(existing, graph_level)
-
-        if self._entry_index < 0 or level > self._entry_level:
-            self._entry_index = new_index
-            self._entry_level = level
-
-    def search_dot(
-        self, query: List[Float32], k: Int, ef_search: Int
-    ) raises -> List[SearchResult]:
-        return self._search(query, k, ef_search, _DOT_METRIC)
-
-    def search_l2(
-        self, query: List[Float32], k: Int, ef_search: Int
-    ) raises -> List[SearchResult]:
-        return self._search(query, k, ef_search, _L2_METRIC)
-
-    def search_cosine(
-        self, query: List[Float32], k: Int, ef_search: Int
-    ) raises -> List[SearchResult]:
-        return self._search(query, k, ef_search, _COSINE_METRIC)
-
-    def _search(
-        self, query: List[Float32], k: Int, ef_search: Int, metric: Int
-    ) raises -> List[SearchResult]:
-        if len(query) != self.dimension:
-            raise Error("query dimension does not match HNSW index")
-        if k <= 0:
-            raise Error("k must be positive")
-        if ef_search <= 0:
-            raise Error("ef_search must be positive")
-        if len(self._nodes) == 0:
-            return List[SearchResult]()
-
-        var current = self._entry_index
-        var current_score = self._score(metric, query, current)
-        var level = self._entry_level
-        while level > 0:
-            var changed = True
-            while changed:
-                changed = False
-                if self._nodes[current].level < level:
-                    break
-                var links = self._nodes[current].neighbors[level].indices.copy()
-                for neighbor in links:
-                    var score = self._score(metric, query, neighbor)
-                    if self._better(
-                        metric, score, neighbor, current_score, current
-                    ):
-                        current = neighbor
-                        current_score = score
-                        changed = True
-            level -= 1
-
-        var visited = List[Bool](length=len(self._nodes), fill=False)
-        var candidates = List[_Candidate]()
-        visited[current] = True
-        candidates.append(_Candidate(current, current_score))
-        var breadth = ef_search
-        if breadth < k:
-            breadth = k
-        var expansions = 0
-        while expansions < breadth:
-            var best = -1
-            for index in range(len(candidates)):
-                if candidates[index].expanded:
-                    continue
-                if best < 0 or self._better(
-                    metric,
-                    candidates[index].score,
-                    candidates[index].node_index,
-                    candidates[best].score,
-                    candidates[best].node_index,
-                ):
-                    best = index
-            if best < 0:
-                break
-            candidates[best].expanded = True
-            expansions += 1
-            var node_index = candidates[best].node_index
-            for neighbor in self._nodes[node_index].neighbors[0].indices:
-                if visited[neighbor]:
-                    continue
-                visited[neighbor] = True
-                candidates.append(
-                    _Candidate(neighbor, self._score(metric, query, neighbor))
-                )
-
-        var result_count = k
-        if result_count > len(candidates):
-            result_count = len(candidates)
-        var topk = BoundedTopK(
-            result_count, smaller_is_better=metric == _L2_METRIC
-        )
-        for candidate in candidates:
-            topk.offer(self._nodes[candidate.node_index].id, candidate.score)
-        var retained = topk.sorted_entries()
-        var results = List[SearchResult](capacity=len(retained))
-        for entry in retained:
-            results.append(SearchResult(entry.id, entry.score))
-        return results^
-
-    def _prune_neighbors(mut self, node_index: Int, level: Int) raises:
-        var links = self._nodes[node_index].neighbors[level].indices.copy()
-        if len(links) <= self.m:
-            return
-        var nearest = BoundedTopK(self.m, smaller_is_better=True)
-        for neighbor in links:
-            nearest.offer(
-                neighbor,
-                simd_l2_squared_distance(
-                    self._nodes[node_index].vector,
-                    self._nodes[neighbor].vector,
-                ),
-            )
-        var retained = nearest.sorted_entries()
-        var pruned = List[Int](capacity=len(retained))
-        for entry in retained:
-            pruned.append(entry.id)
-        self._nodes[node_index].neighbors[level].indices = pruned^
-
-    def _score(
-        self, metric: Int, query: List[Float32], node_index: Int
-    ) raises -> Float32:
-        if metric == _DOT_METRIC:
-            return simd_dot_product(query, self._nodes[node_index].vector)
-        if metric == _L2_METRIC:
-            return simd_l2_squared_distance(
-                query, self._nodes[node_index].vector
-            )
-        return simd_cosine_similarity(query, self._nodes[node_index].vector)
-
-    def _better(
-        self,
-        metric: Int,
-        lhs_score: Float32,
-        lhs_index: Int,
-        rhs_score: Float32,
-        rhs_index: Int,
-    ) -> Bool:
-        if lhs_score == rhs_score:
-            return self._nodes[lhs_index].id < self._nodes[rhs_index].id
-        if metric == _L2_METRIC:
-            return lhs_score < rhs_score
-        return lhs_score > rhs_score
-
-    def _find_index(self, id: Int) -> Int:
-        for index in range(len(self._nodes)):
-            if self._nodes[index].id == id:
-                return index
-        return -1
-
-
-def _clone_vector(values: List[Float32]) -> List[Float32]:
-    var result = List[Float32](capacity=len(values))
-    for value in values:
-        result.append(value)
-    return result^

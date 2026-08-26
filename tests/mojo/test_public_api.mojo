@@ -58,7 +58,7 @@ def test_root_package_exports_filter_expression() raises:
 def test_root_package_exports_hnsw_index() raises:
     var index = HnswIndex(1)
     index.add(1, [1.0])
-    assert_equal(index.search_dot([1.0], 1, 8)[0].id, 1)
+    assert_equal(index.search_l2([1.0], 1, 8)[0].id, 1)
 
 
 def test_root_package_exports_sparse_index() raises:

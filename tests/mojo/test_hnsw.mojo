@@ -1,31 +1,89 @@
+from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.hnsw import HnswIndex
-from std.testing import assert_equal, assert_raises, assert_true, TestSuite
+from std.testing import (
+    assert_almost_equal,
+    assert_equal,
+    assert_raises,
+    TestSuite,
+)
 
 
-def test_graph_bounds_neighbors_and_rejects_duplicate_ids() raises:
+def _config(dimension: Int, metric: MetricKind) -> CollectionConfig:
+    var config = CollectionConfig.defaults(dimension)
+    config.ann_metric = metric.copy()
+    config.m = 4
+    config.m0 = 8
+    config.ef_construction = 24
+    config.default_ef_search = 16
+    config.max_ef_search = 128
+    config.max_level = 12
+    config.level_seed = UInt64(0x123456789ABCDEF0)
+    return config^
+
+
+def test_config_constructor_binds_dot_and_returns_public_scores() raises:
+    var index = HnswIndex(_config(2, MetricKind.dot()))
+    index.add(20, [2.0, 0.0])
+    index.add(10, [1.0, 0.0])
+    index.add(30, [-1.0, 0.0])
+
+    var results = index.search([1.0, 0.0], 3, ef_search=16)
+    assert_equal(results[0].id, 20)
+    assert_almost_equal(results[0].score, 2.0, atol=1.0e-6)
+    assert_equal(results[1].id, 10)
+    assert_almost_equal(results[1].score, 1.0, atol=1.0e-6)
+
+
+def test_config_constructor_binds_l2_and_returns_public_scores() raises:
+    var index = HnswIndex(_config(1, MetricKind.l2()))
+    index.add(20, [2.0])
+    index.add(10, [1.0])
+    index.add(30, [-1.0])
+
+    var results = index.search([1.25], 3, ef_search=16)
+    assert_equal(results[0].id, 10)
+    assert_almost_equal(results[0].score, 0.0625, atol=1.0e-6)
+    assert_equal(results[1].id, 20)
+    assert_almost_equal(results[1].score, 0.5625, atol=1.0e-6)
+
+
+def test_config_constructor_binds_cosine_and_returns_public_scores() raises:
+    var index = HnswIndex(_config(2, MetricKind.cosine()))
+    index.add(30, [-1.0, 0.0])
+    index.add(20, [0.0, 2.0])
+    index.add(10, [4.0, 0.0])
+
+    var results = index.search([2.0, 0.0], 3, ef_search=16)
+    assert_equal(results[0].id, 10)
+    assert_almost_equal(results[0].score, 1.0, atol=1.0e-5)
+    assert_equal(results[1].id, 20)
+    assert_almost_equal(results[1].score, 0.0, atol=1.0e-5)
+
+
+def test_legacy_constructor_is_l2_only_and_rejects_metric_mismatch() raises:
     var index = HnswIndex(1, m=2, max_level=4)
-    for id in range(12):
-        index.add(id, [Float32(id)])
+    index.add(1, [1.0])
+    index.add(2, [2.0])
 
-    assert_equal(index.point_count(), 12)
-    assert_true(index.maximum_neighbor_count() <= 2)
+    assert_equal(index.search_l2([1.1], 1, 8)[0].id, 1)
     with assert_raises():
-        index.add(3, [3.0])
+        _ = index.search_dot([1.0], 1, 8)
+    with assert_raises():
+        _ = index.search_cosine([1.0], 1, 8)
 
 
-def test_hnsw_search_finds_nearest_points_for_all_metrics() raises:
-    var index = HnswIndex(2, m=4, max_level=6)
-    for id in range(1, 41):
-        index.add(id, [Float32(id), 0.0])
+def test_deterministic_public_id_ties_and_duplicate_rejection() raises:
+    var index = HnswIndex(_config(1, MetricKind.l2()))
+    index.add(20, [1.0])
+    index.add(10, [-1.0])
+    index.add(30, [3.0])
 
-    var l2 = index.search_l2([19.2, 0.0], 3, 32)
-    var dot = index.search_dot([1.0, 0.0], 2, 32)
-    var cosine = index.search_cosine([1.0, 0.0], 2, 32)
-
-    assert_equal(l2[0].id, 19)
-    assert_equal(dot[0].id, 40)
-    assert_equal(cosine[0].id, 1)
-    assert_equal(cosine[1].id, 2)
+    var results = index.search([0.0], 2, ef_search=16)
+    assert_equal(results[0].id, 10)
+    assert_equal(results[1].id, 20)
+    with assert_raises():
+        index.add(10, [0.0])
+    assert_equal(index.point_count(), 3)
 
 
 def test_hnsw_validates_configuration_vectors_and_search() raises:
@@ -44,6 +102,11 @@ def test_hnsw_validates_configuration_vectors_and_search() raises:
         _ = index.search_l2([1.0, 0.0], 0, 8)
     with assert_raises():
         _ = index.search_l2([1.0, 0.0], 1, 0)
+
+
+def test_empty_standard_index_is_structurally_valid() raises:
+    var index = HnswIndex(_config(2, MetricKind.l2()))
+    index.validate_structure()
 
 
 def main() raises:
