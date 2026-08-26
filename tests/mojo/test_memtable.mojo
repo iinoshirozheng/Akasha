@@ -121,5 +121,31 @@ def test_memtable_slots_are_stable_and_include_tombstones() raises:
     assert_equal(table.entry_at(2).id, 30)
 
 
+def test_memtable_entries_after_returns_changed_latest_states_in_id_order() raises:
+    var table = MemTable(1)
+    table.apply_upsert(20, 1, [1.0])
+    table.apply_upsert(10, 2, [2.0])
+    table.apply_delete(20, 3)
+    table.apply_upsert(30, 4, [3.0])
+
+    var changed = table.entries_after(2)
+
+    assert_equal(len(changed), 2)
+    assert_equal(changed[0].id, 20)
+    assert_equal(changed[0].sequence, UInt64(3))
+    assert_true(changed[0].tombstone)
+    assert_equal(changed[1].id, 30)
+    assert_equal(changed[1].values[0], Float32(3.0))
+    assert_equal(len(table.entries_after(4)), 0)
+
+
+def test_memtable_entries_after_rejects_future_checkpoint() raises:
+    var table = MemTable(1)
+    table.apply_upsert(1, 1, [1.0])
+
+    with assert_raises():
+        _ = table.entries_after(2)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

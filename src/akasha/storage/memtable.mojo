@@ -159,6 +159,25 @@ struct MemTable:
                 cursor -= 1
         return result^
 
+    def entries_after(
+        self, checkpoint_sequence: UInt64
+    ) raises -> List[MemTableEntry]:
+        """Return owned latest states newer than a checkpoint, including deletes.
+        """
+        if checkpoint_sequence > self.last_sequence:
+            raise Error("checkpoint sequence is newer than memtable")
+        var result = List[MemTableEntry]()
+        for index in range(len(self._entries)):
+            if self._entries[index].sequence > checkpoint_sequence:
+                result.append(self._entries[index].clone())
+
+        for index in range(1, len(result)):
+            var cursor = index
+            while cursor > 0 and result[cursor].id < result[cursor - 1].id:
+                result.swap_elements(cursor, cursor - 1)
+                cursor -= 1
+        return result^
+
     def _find_index(self, id: Int) -> Int:
         for index in range(len(self._entries)):
             if self._entries[index].id == id:
