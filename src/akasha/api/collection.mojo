@@ -11,8 +11,10 @@ from akasha.document.record import (
 )
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.evaluator import matches_all, matches_expression
 from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.planner import QueryPlanner
 from akasha.storage.filesystem import (
     atomic_replace,
@@ -25,6 +27,14 @@ from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
 from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import read_segment, write_segment
+from akasha.storage.sparse_store import (
+    append_sparse_wal,
+    read_sparse_snapshot,
+    recover_sparse_wal,
+    rotate_sparse_wal,
+    SparseWalRecord,
+    write_sparse_snapshot,
+)
 from akasha.storage.wal import append_wal, recover_wal, rotate_wal, WalRecord
 from std.math import isfinite
 
@@ -46,6 +56,8 @@ struct PersistentCollection:
     var _closed: Bool
     var _hnsw: HnswIndex
     var _hnsw_dirty: Bool
+    var _sparse: SparseIndex
+    var _sparse_wal_path: String
 
     def __init__(
         out self,
@@ -55,6 +67,7 @@ struct PersistentCollection:
         last_sequence: UInt64,
         var lock: CollectionLock,
         var hnsw: HnswIndex,
+        var sparse: SparseIndex,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
@@ -65,6 +78,8 @@ struct PersistentCollection:
         self._closed = False
         self._hnsw = hnsw^
         self._hnsw_dirty = False
+        self._sparse = sparse^
+        self._sparse_wal_path = path + "/sparse.wal"
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -117,9 +132,43 @@ struct PersistentCollection:
                 )
             last_sequence = records[index].sequence
 
+        var sparse = SparseIndex()
+        var sparse_snapshot_path = (
+            path + "/sparse-" + String(snapshot_sequence) + ".bin"
+        )
+        if path_exists(sparse_snapshot_path):
+            var sparse_records = read_sparse_snapshot(
+                sparse_snapshot_path, snapshot_sequence
+            )
+            for index in range(len(sparse_records)):
+                sparse.upsert(
+                    sparse_records[index].id,
+                    sparse_records[index].elements,
+                )
+        var sparse_wal = recover_sparse_wal(path + "/sparse.wal")
+        for index in range(len(sparse_wal)):
+            if sparse_wal[index].sequence <= snapshot_sequence:
+                continue
+            if sparse_wal[index].is_delete:
+                sparse.delete(sparse_wal[index].id)
+            else:
+                sparse.upsert(sparse_wal[index].id, sparse_wal[index].elements)
+            if sparse_wal[index].sequence > last_sequence:
+                last_sequence = sparse_wal[index].sequence
+        var recovered_sparse = sparse.records()
+        for index in range(len(recovered_sparse)):
+            if not Bool(memtable.get(recovered_sparse[index].id)):
+                sparse.delete(recovered_sparse[index].id)
+
         var hnsw = _build_hnsw(memtable, dimension)
         return PersistentCollection(
-            path, dimension, memtable^, last_sequence, lock^, hnsw^
+            path,
+            dimension,
+            memtable^,
+            last_sequence,
+            lock^,
+            hnsw^,
+            sparse^,
         )
 
     def close(mut self) raises:
@@ -167,12 +216,27 @@ struct PersistentCollection:
         self._ensure_open()
         return self._memtable.get(id)
 
+    def upsert_sparse(mut self, id: Int, elements: List[SparseElement]) raises:
+        self._ensure_open()
+        validate_sparse(elements)
+        if not Bool(self._memtable.get(id)):
+            raise Error("sparse vectors require an existing live point")
+        var sequence = self._next_sequence()
+        var wal_elements = elements.copy()
+        append_sparse_wal(
+            self._sparse_wal_path,
+            SparseWalRecord.upsert(sequence, id, wal_elements^),
+        )
+        self._sparse.upsert(id, elements)
+        self._last_sequence = sequence
+
     def delete(mut self, id: Int) raises:
         self._ensure_open()
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_delete(id, sequence)
+        self._sparse.delete(id)
         self._last_sequence = sequence
         self._hnsw_dirty = True
 
@@ -290,15 +354,148 @@ struct PersistentCollection:
             query, k, ef_search, _COSINE_METRIC, expression
         )
 
+    def search_sparse_dot(
+        self, query: List[SparseElement], k: Int
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        return self._sparse.search_dot(query, k)
+
+    def search_sparse_dot_where(
+        self,
+        query: List[SparseElement],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_sparse_where(query, k, expression)
+
+    def search_hybrid_dot(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _DOT_METRIC,
+        )
+
+    def search_hybrid_l2(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _L2_METRIC,
+        )
+
+    def search_hybrid_cosine(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _COSINE_METRIC,
+        )
+
+    def search_hybrid_dot_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _DOT_METRIC,
+            expression,
+        )
+
+    def search_hybrid_l2_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _L2_METRIC,
+            expression,
+        )
+
+    def search_hybrid_cosine_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _COSINE_METRIC,
+            expression,
+        )
+
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
         self._ensure_open()
         var previous_segment = String()
+        var previous_sequence = UInt64(0)
         var has_previous_segment = False
         if path_exists(self.path + "/manifest.bin"):
             var previous_manifest = load_manifest(self.path, self.dimension)
             previous_segment = String(copy=previous_manifest.segment_name)
+            previous_sequence = previous_manifest.last_sequence
             has_previous_segment = True
+
+        var sparse_name = "sparse-" + String(self._last_sequence) + ".bin"
+        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_records = self._sparse.records()
+        _ = write_sparse_snapshot(
+            sparse_temporary, self._last_sequence, sparse_records
+        )
+        atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
+        sync_directory(self.path)
 
         var entries = self._memtable.live_entries()
         var segment_name = "segment-" + String(self._last_sequence) + ".bin"
@@ -320,8 +517,12 @@ struct PersistentCollection:
         )
         publish_manifest(self.path, manifest)
         rotate_wal(self.path)
+        rotate_sparse_wal(self.path)
         if has_previous_segment and previous_segment != segment_name:
             remove_file_if_exists(self.path + "/" + previous_segment)
+            remove_file_if_exists(
+                self.path + "/sparse-" + String(previous_sequence) + ".bin"
+            )
             sync_directory(self.path)
 
     def _search_filtered(
@@ -478,6 +679,87 @@ struct PersistentCollection:
         for entry in retained:
             results.append(SearchResult(entry.id, entry.score))
         return results^
+
+    def _search_sparse_where(
+        self,
+        query: List[SparseElement],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        validate_sparse(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        expression.validate()
+        var count = self._sparse.point_count()
+        if count == 0:
+            return List[SearchResult]()
+        var candidates = self._sparse.search_dot(query, count)
+        var result = List[SearchResult]()
+        for candidate in candidates:
+            var document = self._memtable.get(candidate.id)
+            if Bool(document) and matches_expression(
+                document.value().fields, expression
+            ):
+                result.append(candidate)
+                if len(result) == k:
+                    break
+        return result^
+
+    def _search_hybrid(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        metric: Int,
+    ) raises -> List[SearchResult]:
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        var conditions = List[FilterCondition]()
+        var dense = self._search_filtered(
+            dense_query, fetch_k, metric, conditions
+        )
+        var sparse = self._sparse.search_dot(sparse_query, fetch_k)
+        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
+
+    def _search_hybrid_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        metric: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        expression.validate()
+        var dense = self._search_where(dense_query, fetch_k, metric, expression)
+        var sparse = self._search_sparse_where(
+            sparse_query, fetch_k, expression
+        )
+        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
+
+    def _validate_hybrid(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+    ) raises:
+        self._ensure_open()
+        self._validate_vector(dense_query)
+        validate_sparse(sparse_query)
+        if k <= 0 or fetch_k < k:
+            raise Error("hybrid fetch_k must be at least positive k")
+        if rank_constant <= 0:
+            raise Error("RRF rank constant must be positive")
 
     def _validate_vector(self, values: List[Float32]) raises:
         if len(values) != self.dimension:

@@ -8,5 +8,12 @@ from .compute import (
     simd_l2_squared_distance,
 )
 from .document import DocumentField, DocumentRecord, PayloadValue
-from .index import FlatIndex, HnswIndex, SearchResult
+from .index import (
+    FlatIndex,
+    HnswIndex,
+    SearchResult,
+    SparseElement,
+    SparseIndex,
+    SparseRecord,
+)
 from .query import FilterCondition, FilterExpression
