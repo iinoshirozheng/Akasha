@@ -18,6 +18,7 @@ from akasha.storage.segment import (
     SEGMENT_KIND_DELTA,
     write_segment_v3,
 )
+from std.ffi import c_int, external_call
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -32,6 +33,8 @@ def _reset(directory: String) raises:
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/manifest.bin.tmp")
     remove_file_if_exists(directory + "/wal.bin.tmp")
+    remove_file_if_exists(directory + "/collection.bin")
+    remove_file_if_exists(directory + "/collection.bin.tmp")
     remove_file_if_exists(directory + "/segment-stray.bin")
     remove_file_if_exists(directory + "/segment-base-2.bin")
     remove_file_if_exists(directory + "/segment-delta-4.bin")
@@ -57,8 +60,18 @@ def _reset(directory: String) raises:
         )
 
 
+def _test_directory(suffix: String) -> String:
+    var process_id = external_call["getpid", c_int]()
+    return String(
+        "/tmp/akasha-persistent-collection-",
+        Int(process_id),
+        "-",
+        suffix,
+    )
+
+
 def test_collection_upsert_replace_delete_and_exact_search() raises:
-    var path = String("/tmp/akasha-phase3-collection-live")
+    var path = _test_directory("live")
     _reset(path)
     var collection = PersistentCollection.open(path, 2)
     collection.upsert(10, [1.0, 0.0])
@@ -81,7 +94,7 @@ def test_collection_upsert_replace_delete_and_exact_search() raises:
 
 
 def test_wal_only_recovery() raises:
-    var path = String("/tmp/akasha-phase3-collection-wal")
+    var path = _test_directory("wal")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
@@ -98,7 +111,7 @@ def test_wal_only_recovery() raises:
 
 
 def test_flush_and_reopen_restores_complete_live_snapshot() raises:
-    var path = String("/tmp/akasha-phase3-collection-flush")
+    var path = _test_directory("flush")
     _reset(path)
     var collection = PersistentCollection.open(path, 2)
     collection.upsert(1, [1.0, 0.0])
@@ -117,7 +130,7 @@ def test_flush_and_reopen_restores_complete_live_snapshot() raises:
 
 
 def test_reopen_combines_snapshot_with_newer_wal_records() raises:
-    var path = String("/tmp/akasha-phase3-collection-mixed")
+    var path = _test_directory("mixed")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
@@ -136,7 +149,7 @@ def test_reopen_combines_snapshot_with_newer_wal_records() raises:
 
 
 def test_existing_collection_rejects_dimension_mismatch() raises:
-    var path = String("/tmp/akasha-phase3-collection-dimension")
+    var path = _test_directory("dimension")
     _reset(path)
     var collection = PersistentCollection.open(path, 2)
     collection.upsert(1, [1.0, 0.0])
@@ -147,7 +160,7 @@ def test_existing_collection_rejects_dimension_mismatch() raises:
 
 
 def test_collection_rejects_second_live_owner_and_reopens_after_close() raises:
-    var path = String("/tmp/akasha-phase5-collection-owner")
+    var path = _test_directory("owner")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
 
@@ -160,7 +173,7 @@ def test_collection_rejects_second_live_owner_and_reopens_after_close() raises:
 
 
 def test_closed_collection_rejects_data_operations() raises:
-    var path = String("/tmp/akasha-phase5-collection-closed")
+    var path = _test_directory("closed")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.close()
@@ -178,7 +191,7 @@ def test_closed_collection_rejects_data_operations() raises:
 
 
 def test_flush_rotates_wal_and_reopen_uses_snapshot() raises:
-    var path = String("/tmp/akasha-phase5-flush-rotates-wal")
+    var path = _test_directory("flush-rotates-wal")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [2.0])
@@ -222,7 +235,7 @@ def test_later_flush_appends_delta_and_preserves_referenced_base() raises:
 
 
 def test_recovery_skips_retained_pre_checkpoint_wal() raises:
-    var path = String("/tmp/akasha-phase5-checkpoint-crash-window")
+    var path = _test_directory("checkpoint-crash-window")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(7, [3.0])

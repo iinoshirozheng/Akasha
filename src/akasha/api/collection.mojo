@@ -7,6 +7,7 @@ from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import DeviceBatchResult
 from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.api.batch import BatchMutation, BatchWriteResult
+from akasha.common.config import CollectionConfig, MetricKind
 from akasha.document.record import (
     clone_fields,
     DocumentField,
@@ -46,6 +47,11 @@ from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
     sync_directory,
+)
+from akasha.storage.collection_config import (
+    collection_config_exists,
+    load_collection_config,
+    publish_collection_config,
 )
 from akasha.storage.manifest import (
     load_manifest,
@@ -96,6 +102,7 @@ struct PersistentCollection:
 
     var path: String
     var dimension: Int
+    var _config: CollectionConfig
     var _wal_path: String
     var _memtable: MemTable
     var _last_sequence: UInt64
@@ -119,7 +126,7 @@ struct PersistentCollection:
     def __init__(
         out self,
         path: String,
-        dimension: Int,
+        config: CollectionConfig,
         var memtable: MemTable,
         last_sequence: UInt64,
         var lock: CollectionLock,
@@ -134,7 +141,8 @@ struct PersistentCollection:
         metadata_cache_hit: Bool,
     ):
         self.path = String(copy=path)
-        self.dimension = dimension
+        self.dimension = config.dimension
+        self._config = config.copy()
         self._wal_path = path + "/wal.bin"
         self._memtable = memtable^
         self._last_sequence = last_sequence
@@ -169,11 +177,26 @@ struct PersistentCollection:
         *,
         maintenance_library_path: String = DEFAULT_MAINTENANCE_LIBRARY,
     ) raises -> PersistentCollection:
-        """Create or recover a persistent collection at ``path``."""
-        if dimension <= 0:
-            raise Error("collection dimension must be positive")
+        """Create or recover a collection with the legacy default identity."""
+        return PersistentCollection.open_with_config(
+            path,
+            CollectionConfig.defaults(dimension),
+            maintenance_library_path=maintenance_library_path,
+        )
+
+    @staticmethod
+    def open_with_config(
+        path: String,
+        requested: CollectionConfig,
+        *,
+        maintenance_library_path: String = DEFAULT_MAINTENANCE_LIBRARY,
+    ) raises -> PersistentCollection:
+        """Create or recover a collection bound to one durable ANN identity."""
+        requested.validate()
         ensure_directory(path)
         var lock = CollectionLock.acquire(path + "/collection.lock")
+        var config = _load_or_migrate_config(path, requested)
+        var dimension = config.dimension
 
         var memtable = MemTable(dimension)
         var snapshot_sequence = UInt64(0)
@@ -376,7 +399,7 @@ struct PersistentCollection:
         var recovered_point_count = memtable.entry_count()
         var collection = PersistentCollection(
             path,
-            dimension,
+            config,
             memtable^,
             last_sequence,
             lock^,
@@ -392,6 +415,14 @@ struct PersistentCollection:
         )
         collection._hnsw_dirty = recovered_point_count > 0 and not hnsw_cache_hit
         return collection^
+
+    def collection_config(self) -> CollectionConfig:
+        """Return a defensive copy of this collection's durable identity."""
+        return self._config.copy()
+
+    def ann_metric(self) -> MetricKind:
+        """Return the metric to which the future ANN graph is bound."""
+        return self._config.ann_metric.copy()
 
     def close(mut self) raises:
         """Release this collection's single-writer ownership."""
@@ -1537,6 +1568,68 @@ def _clone_vector(values: List[Float32]) -> List[Float32]:
     for value in values:
         result.append(value)
     return result^
+
+
+def _load_or_migrate_config(
+    path: String, requested: CollectionConfig
+) raises -> CollectionConfig:
+    """Load an existing identity or atomically publish a compatible one.
+
+    The caller owns the collection lock. Existing authoritative files are
+    detected before publication so an explicit non-default identity can never
+    reinterpret a legacy L2/F32 collection.
+    """
+    if collection_config_exists(path):
+        var existing = load_collection_config(path)
+        _require_matching_config(existing, requested)
+        return existing^
+
+    var has_legacy_data = (
+        path_exists(path + "/manifest.bin")
+        or path_exists(path + "/wal.bin")
+        or path_exists(path + "/sparse.wal")
+    )
+    if has_legacy_data:
+        var legacy = CollectionConfig.defaults(requested.dimension)
+        _require_matching_config(legacy, requested)
+
+    publish_collection_config(path, requested)
+    return requested.copy()
+
+
+def _require_matching_config(
+    existing: CollectionConfig, requested: CollectionConfig
+) raises:
+    """Reject the first immutable identity mismatch with a useful message."""
+    if existing.dimension != requested.dimension:
+        raise Error("collection configuration mismatch: dimension")
+    if existing.ann_metric != requested.ann_metric:
+        raise Error("collection configuration mismatch: ann_metric")
+    if existing.scalar_kind != requested.scalar_kind:
+        raise Error("collection configuration mismatch: scalar_kind")
+    if existing.m != requested.m:
+        raise Error("collection configuration mismatch: m")
+    if existing.m0 != requested.m0:
+        raise Error("collection configuration mismatch: m0")
+    if existing.ef_construction != requested.ef_construction:
+        raise Error("collection configuration mismatch: ef_construction")
+    if existing.default_ef_search != requested.default_ef_search:
+        raise Error("collection configuration mismatch: default_ef_search")
+    if existing.max_ef_search != requested.max_ef_search:
+        raise Error("collection configuration mismatch: max_ef_search")
+    if existing.max_level != requested.max_level:
+        raise Error("collection configuration mismatch: max_level")
+    if (
+        existing.rebuild_inactive_percent
+        != requested.rebuild_inactive_percent
+    ):
+        raise Error(
+            "collection configuration mismatch: rebuild_inactive_percent"
+        )
+    if existing.delta_max_points != requested.delta_max_points:
+        raise Error("collection configuration mismatch: delta_max_points")
+    if existing.level_seed != requested.level_seed:
+        raise Error("collection configuration mismatch: level_seed")
 
 
 def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:

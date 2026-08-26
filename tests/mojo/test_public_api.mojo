@@ -1,5 +1,6 @@
 from akasha import (
     Bitmap,
+    CollectionConfig,
     DocumentField,
     dot_product,
     FilterCondition,
@@ -7,11 +8,16 @@ from akasha import (
     FlatIndex,
     HnswIndex,
     MetadataIndex,
+    MetricKind,
     PayloadValue,
+    PersistentCollection,
     simd_dot_product,
     SparseElement,
     SparseIndex,
+    ScalarKind,
 )
+from akasha.storage.filesystem import remove_file_if_exists
+from std.ffi import c_int, external_call
 from std.testing import assert_almost_equal, assert_equal, TestSuite
 
 
@@ -67,6 +73,21 @@ def test_root_package_exports_metadata_index_types() raises:
     index.upsert(1, List[DocumentField]())
     assert_equal(bitmap.count(), 2)
     assert_equal(index.live_count(), 1)
+
+
+def test_root_package_preserves_two_argument_collection_open() raises:
+    var process_id = external_call["getpid", c_int]()
+    var path = String("/tmp/akasha-public-api-", Int(process_id))
+    remove_file_if_exists(path + "/collection.bin")
+    remove_file_if_exists(path + "/collection.bin.tmp")
+    remove_file_if_exists(path + "/wal.bin")
+    var collection = PersistentCollection.open(path, 3)
+
+    assert_equal(collection.dimension, 3)
+    assert_equal(collection.ann_metric(), MetricKind.l2())
+    assert_equal(collection.collection_config(), CollectionConfig.defaults(3))
+    assert_equal(ScalarKind.f32().name(), "f32")
+    collection.close()
 
 
 def main() raises:
