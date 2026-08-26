@@ -1,6 +1,8 @@
 from akasha import (
     BatchMutation,
     DocumentField,
+    DocumentRecord,
+    FieldProjection,
     FilterCondition,
     FilterExpression,
     PayloadValue,
@@ -146,6 +148,100 @@ struct BoundCollection(Movable, Writable):
             vector=vector,
             fields=fields,
         )
+
+    @staticmethod
+    def get_projected(
+        py_self: PythonObject,
+        id: PythonObject,
+        projection: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var names = List[String]()
+        for item in projection["fields"]:
+            names.append(String(py=item))
+        var requested = FieldProjection(
+            Bool(py=projection["include_vector"]),
+            Bool(py=projection["all_fields"]),
+            names^,
+        )
+        var record = self[].inner.value().get_projected(Int(py=id), requested)
+        return _document_to_python(record)
+
+    @staticmethod
+    def apply_arrow_batch(
+        py_self: PythonObject, descriptor: PythonObject
+    ) raises -> PythonObject:
+        """Consume validated Arrow-owned buffers without Python list staging."""
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var row_count = Int(py=descriptor["row_count"])
+        if row_count <= 0 or row_count > 65_536:
+            raise Error("Arrow batch row count is invalid")
+        var ids = descriptor["ids"]
+        var vectors = descriptor["vectors"]
+        var dimension = self[].inner.value().dimension
+        if len(ids) != row_count or len(vectors) != row_count * dimension:
+            raise Error("Arrow primitive buffer length mismatch")
+
+        var mutations = List[BatchMutation](capacity=row_count)
+        var sparse_rows = List[List[SparseElement]](capacity=row_count)
+        var has_sparse = Bool(py=descriptor["has_sparse"])
+        var sparse_offsets = descriptor["sparse_offsets"]
+        var sparse_terms = descriptor["sparse_terms"]
+        var sparse_weights = descriptor["sparse_weights"]
+        var sparse_value_base = Int(py=descriptor["sparse_value_base"])
+        if has_sparse and len(sparse_offsets) != row_count + 1:
+            raise Error("Arrow sparse offsets length mismatch")
+
+        for row in range(row_count):
+            var vector = List[Float32](capacity=dimension)
+            for column in range(dimension):
+                vector.append(Float32(py=vectors[row * dimension + column]))
+            var fields = List[DocumentField]()
+            for payload in descriptor["payloads"]:
+                var raw = payload["values"][row].as_py()
+                if Bool(py=raw == Python.none()):
+                    continue
+                fields.append(
+                    DocumentField(
+                        String(py=payload["name"]),
+                        _payload_value(String(py=payload["type"]), raw),
+                    )
+                )
+            mutations.append(
+                BatchMutation.document_upsert(
+                    Int(py=ids[row]), vector^, fields^
+                )
+            )
+
+            var sparse = List[SparseElement]()
+            if has_sparse:
+                var begin = Int(py=sparse_offsets[row]) - sparse_value_base
+                var end = Int(py=sparse_offsets[row + 1]) - sparse_value_base
+                if begin < 0 or end < begin or end > len(sparse_terms):
+                    raise Error("Arrow sparse offsets are invalid")
+                if len(sparse_terms) != len(sparse_weights):
+                    raise Error("Arrow sparse value buffers are misaligned")
+                for index in range(begin, end):
+                    sparse.append(
+                        SparseElement(
+                            Int(py=sparse_terms[index]),
+                            Float32(py=sparse_weights[index]),
+                        )
+                    )
+            sparse_rows.append(sparse^)
+
+        # PersistentCollection performs complete batch validation before WAL
+        # sequence allocation. Sparse rows have also been fully materialized.
+        _ = self[].inner.value().apply_batch(mutations)
+        if has_sparse:
+            for row in range(row_count):
+                if len(sparse_rows[row]) != 0:
+                    self[].inner.value().upsert_sparse(
+                        Int(py=ids[row]), sparse_rows[row]
+                    )
+        return PythonObject(row_count)
 
     @staticmethod
     def search_dot(
@@ -601,6 +697,25 @@ def _field_to_python(field: DocumentField) raises -> PythonObject:
     )
 
 
+def _document_to_python(
+    record: Optional[DocumentRecord]
+) raises -> PythonObject:
+    if not Bool(record):
+        return Python.none()
+    var fields = Python.list()
+    for index in range(len(record.value().fields)):
+        fields.append(_field_to_python(record.value().fields[index]))
+    var vector = Python.list()
+    for value in record.value().vector:
+        vector.append(value)
+    return Python.dict(
+        id=PythonObject(record.value().id),
+        sequence=PythonObject(record.value().sequence),
+        vector=vector,
+        fields=fields,
+    )
+
+
 def _results_to_python(results: List[SearchResult]) raises -> PythonObject:
     var output = Python.list()
     for result in results:
@@ -628,6 +743,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.delete]("delete")
             .def_method[BoundCollection.flush]("flush")
             .def_method[BoundCollection.get]("get")
+            .def_method[BoundCollection.get_projected]("get_projected")
+            .def_method[BoundCollection.apply_arrow_batch]("apply_arrow_batch")
             .def_method[BoundCollection.search_dot]("search_dot")
             .def_method[BoundCollection.search_l2]("search_l2")
             .def_method[BoundCollection.search_cosine]("search_cosine")

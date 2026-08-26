@@ -146,8 +146,7 @@ planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
 
-Trusted zero-copy Arrow C Data interchange, operations tooling, and distributed
-execution remain explicit Phase 14–16 work.
+Operations tooling and distributed execution remain explicit Phase 15–16 work.
 
 ## Implemented adapter boundary
 
@@ -155,14 +154,17 @@ execution remain explicit Phase 14–16 work.
 with Mojo's `PythonModuleBuilder`. Its bound collection owns the real
 `PersistentCollection`; Python performs only explicit value conversion and
 exception mapping. `python/akashadb` adds typed dataclasses, a named local
-registry, and copying Arrow-compatible columns. FastAPI routes obtain that same
-registry from application state and contain no scoring, filtering, or storage
-logic.
+registry, copying Arrow-compatible columns, and an owned Arrow C Data path.
+FastAPI routes obtain that same registry from application state and contain no
+scoring, filtering, or storage logic.
 
 Boolean filter dictionaries are converted into bounded Mojo
 `FilterExpression` values before exact, approximate, sparse, or hybrid search.
 Dense batch calls accept one filter dictionary per query and retain input
 ordinal order across parallel execution.
-The current Arrow adapter always copies Python/NumPy/PyArrow-compatible
-sequences. A zero-copy C Data bridge remains disabled until its ownership ABI
-can be expressed and tested safely.
+The compatibility Arrow adapter always copies Python/NumPy/PyArrow-compatible
+sequences. The C Data path imports producer capsules into a one-shot consumer
+lease, validates Arrow-owned buffer views, and keeps owners alive through the
+synchronous compiled-kernel call. It creates no intermediate Python list;
+accepted values are copied only at the engine ownership boundary into the
+WAL/MemTable. Premature release and invalid schemas fail before mutation.

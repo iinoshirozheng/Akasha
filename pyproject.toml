@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "An embedded document and vector database kernel written in Mojo."
 requires-python = ">=3.11"
 license = "Apache-2.0"
+dependencies = ["pyarrow>=21,<22"]
 
 [tool.pytest.ini_options]
 pythonpath = ["python", "."]

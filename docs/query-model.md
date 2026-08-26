@@ -52,6 +52,12 @@ ordering and ascending-ID tie rules are identical to the sequential methods.
 Small batches retain a sequential path. Python exposes the same behavior as
 `Collection.search_batch(..., filters=[...])`.
 
+`FieldProjection` is applied inside the Mojo snapshot/collection read boundary.
+It independently selects the dense vector and all, none, or named payload
+fields. Named results preserve stored field order and clone only requested
+values. Existing `get` remains the full compatibility read; `get_projected`
+avoids moving omitted embeddings and payloads across an adapter boundary.
+
 Snapshots expose `search_*_parallel` and `search_*_where_parallel` for exact
 single-query CPU parallelism. Fixed ordinal ranges and range-ordered heap merge
 produce the same IDs, raw scores, and ascending-ID ties as scalar execution.
@@ -74,4 +80,4 @@ hosts without an optional device compiler.
 For one condition, lookup is proportional to keyword posting discovery or
 `O(log N + M)` numeric range discovery plus bitmap materialization, where `M`
 is the number of matches. Boolean set operations are linear in bitmap words.
-Projection and distributed query execution remain future work.
+Distributed query execution remains future work.

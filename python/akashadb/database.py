@@ -9,6 +9,7 @@ from .models import (
     BatchWriteResult,
     Document,
     PayloadField,
+    Projection,
     SearchRequest,
     SearchResult,
     SparseElement,
@@ -29,6 +30,10 @@ class KernelCollection(Protocol):
     def delete(self, id: int) -> None: ...
     def flush(self) -> None: ...
     def get(self, id: int) -> dict[str, Any] | None: ...
+    def get_projected(
+        self, id: int, projection: dict[str, object]
+    ) -> dict[str, Any] | None: ...
+    def apply_arrow_batch(self, descriptor: dict[str, object]) -> int: ...
     def search_dot(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
     def search_l2(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
     def search_cosine(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
@@ -147,8 +152,12 @@ class Collection:
     def flush(self) -> None:
         self._call("flush")
 
-    def get(self, id: int) -> Document | None:
-        raw = self._call("get", id)
+    def get(self, id: int, *, projection: Projection | None = None) -> Document | None:
+        raw = (
+            self._call("get", id)
+            if projection is None
+            else self._call("get_projected", id, projection.to_kernel())
+        )
         if raw is None:
             return None
         return Document(

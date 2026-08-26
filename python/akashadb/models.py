@@ -43,6 +43,26 @@ class Document:
 
 
 @dataclass(frozen=True, slots=True)
+class Projection:
+    """Select vector and payload fields returned by a projected point read."""
+
+    include_vector: bool = True
+    fields: tuple[str, ...] | None = None
+
+    def to_kernel(self) -> dict[str, object]:
+        if self.fields is not None:
+            if any(not name for name in self.fields):
+                raise ValueError("projection field name cannot be empty")
+            if len(set(self.fields)) != len(self.fields):
+                raise ValueError("projection field names must be unique")
+        return {
+            "include_vector": self.include_vector,
+            "all_fields": self.fields is None,
+            "fields": [] if self.fields is None else list(self.fields),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class BatchMutation:
     operation: Literal["upsert", "delete"]
     id: int

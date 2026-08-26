@@ -66,5 +66,17 @@ results = collection.search_batch(
 each dictionary uses the same bounded condition/all/any/negate shape as
 `SearchRequest.filter`. Result lists remain aligned to input vectors.
 
-The current `akashadb.arrow` helpers validate column-shaped Python data and
-copy it into Mojo. They are not a zero-copy Arrow C Data interface.
+`upsert_columns` validates column-shaped Python data and copies it through
+Python values. It is not a zero-copy Arrow C Data interface.
+
+`upsert_record_batch` imports a producer's Arrow C Data schema/array capsules
+into a one-shot `ArrowBatchLease`, validates the complete schema and offsets,
+and keeps the imported owner alive through the synchronous Mojo call. Primitive
+buffers reach the compiled binding without an intermediate Python list.
+Persistence still copies accepted values once into WAL/MemTable-owned memory.
+`results_to_record_batch` returns an independently owned `int64` ID / `float32`
+score batch.
+
+Projected reads use `Collection.get(id, projection=Projection(...))`.
+`include_vector=False` omits the embedding, `fields=None` selects every payload
+field, and a tuple selects only named fields.

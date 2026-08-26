@@ -222,9 +222,32 @@ pixi run serve
 ```
 
 It exposes `/health`, collection open/close/flush, point upsert/delete/get, and
-exact/approximate/sparse/hybrid search. The Arrow-compatible adapter in
-`akashadb.arrow` accepts and returns column dictionaries by validated copy; the
-project does not claim zero-copy Arrow C Data ownership.
+exact/approximate/sparse/hybrid search. `akashadb.arrow` keeps its copying column
+helpers and adds an owned Arrow C Data `RecordBatch` path with explicit leases.
+
+### Arrow C Data batch ingest
+
+```python
+import pyarrow as pa
+from akashadb import Collection, upsert_record_batch
+
+collection = Collection("./data/demo", 3)
+batch = pa.record_batch(
+    [
+        pa.array([1], type=pa.int64()),
+        pa.FixedSizeListArray.from_arrays(
+            pa.array([0.1, 0.2, 0.3], type=pa.float32()), 3
+        ),
+        pa.array(["first chunk"], type=pa.string()),
+    ],
+    names=["id", "vector", "payload.chunk"],
+)
+upsert_record_batch(collection, batch)
+```
+
+The adapter imports Arrow C Data capsules and does not materialize intermediate
+Python lists. Arrow owns input buffers through the synchronous call; accepted
+values are then copied once into Akasha's durable WAL/MemTable ownership domain.
 
 ## Architecture
 
@@ -276,6 +299,8 @@ Implemented:
 - Batched Mojo GPU dot/L2/cosine scoring and deterministic GPU Top-K for Apple,
   NVIDIA, or AMD accelerators, with device-memory planning and exact CPU
   fallback for disabled, unavailable, small, memory-rejected, or failed work.
+- Projected point reads plus Arrow C Data batch ingest for fixed-size dense
+  vectors, aligned sparse lists, and typed payload columns with one-shot leases.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
@@ -297,5 +322,4 @@ Implemented:
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Trusted zero-copy Arrow C Data interchange, operations tooling, and distributed
-execution remain Phase 14–16 work.
+Operations tooling and distributed execution remain Phase 15–16 work.
