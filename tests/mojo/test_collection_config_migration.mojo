@@ -51,6 +51,12 @@ def _reset(directory: String) raises:
         remove_file_if_exists(
             directory + "/sparse-base-" + String(sequence) + ".bin"
         )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-delta-" + String(sequence) + ".bin"
+        )
 
 
 def _assert_bytes_equal(lhs: List[UInt8], rhs: List[UInt8]) raises:
@@ -393,6 +399,80 @@ def test_corrupt_legacy_sparse_wal_fails_before_config_publication() raises:
     _assert_bytes_equal(
         read_file_bytes(path + "/sparse.wal"), corrupt_sparse_wal
     )
+    _assert_lock_released(path)
+
+
+def test_corrupt_legacy_dense_delta_blocks_identity_publication() raises:
+    var path = _test_directory("legacy-corrupt-dense-delta")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(81, [1.0, 8.0])
+    legacy.flush()
+    legacy.upsert(82, [2.0, 8.0])
+    legacy.flush()
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var before_base = read_file_bytes(path + "/segment-base-1.bin")
+    var corrupt_delta = _corrupt_last_byte(path + "/segment-delta-2.bin")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-base-1.bin"), before_base
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-delta-2.bin"), corrupt_delta
+    )
+    _assert_lock_released(path)
+
+
+def test_late_sparse_delta_failure_does_not_repair_dense_wal() raises:
+    var path = _test_directory("legacy-corrupt-sparse-delta")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(91, [1.0, 9.0])
+    legacy.upsert_sparse(91, [SparseElement(9, 1.0)])
+    legacy.flush()
+    legacy.upsert(92, [2.0, 9.0])
+    legacy.upsert_sparse(92, [SparseElement(10, 2.0)])
+    legacy.flush()
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var before_dense_delta = read_file_bytes(path + "/segment-delta-4.bin")
+    var corrupt_sparse_delta = _corrupt_last_byte(
+        path + "/sparse-delta-4.bin"
+    )
+    # This is an accepted torn dense-WAL suffix. Recovery may identify it
+    # during preflight, but must not repair it before later sparse validation.
+    var torn_wal = read_file_bytes(path + "/wal.bin")
+    torn_wal.append(UInt8(0x41))
+    torn_wal.append(UInt8(0x4B))
+    torn_wal.append(UInt8(0x57))
+    write_file_sync(path + "/wal.bin", torn_wal)
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 2)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-delta-4.bin"), before_dense_delta
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/sparse-delta-4.bin"),
+        corrupt_sparse_delta,
+    )
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), torn_wal)
     _assert_lock_released(path)
 
 
