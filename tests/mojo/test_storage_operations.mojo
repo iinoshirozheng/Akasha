@@ -1,4 +1,12 @@
-from akasha import DocumentField, PayloadValue, PersistentCollection, SparseElement
+from akasha import (
+    CollectionConfig,
+    DocumentField,
+    MetricKind,
+    PayloadValue,
+    PersistentCollection,
+    SparseElement,
+)
+from akasha.storage.collection_config import load_collection_config
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -15,6 +23,8 @@ def _reset(path: String) raises:
     for name in [
         "manifest.bin",
         "manifest.bin.tmp",
+        "collection.bin",
+        "collection.bin.tmp",
         "wal.bin",
         "sparse.wal",
         "segment-base-2.bin",
@@ -82,6 +92,33 @@ def test_corrupt_source_never_publishes_backup_manifest() raises:
     assert_false(path_exists(target + "/manifest.bin"))
     with assert_raises():
         _ = inspect_storage(source, 1)
+
+
+def test_backup_and_restore_preserve_non_default_collection_identity() raises:
+    var source = String("/tmp/akasha-phase15-ops-config-source")
+    var backup = String("/tmp/akasha-phase15-ops-config-backup")
+    var restored = String("/tmp/akasha-phase15-ops-config-restored")
+    _reset(source)
+    _reset(backup)
+    _reset(restored)
+
+    var config = CollectionConfig.defaults(2)
+    config.ann_metric = MetricKind.cosine()
+    var collection = PersistentCollection.open_with_config(source, config)
+    collection.upsert(1, [1.0, 0.0])
+    collection.flush()
+    _ = collection.backup_to(backup)
+    collection.close()
+
+    assert_true(path_exists(backup + "/collection.bin"))
+    assert_equal(load_collection_config(backup), config)
+    _ = restore_storage(backup, restored, 2)
+    assert_equal(load_collection_config(restored), config)
+
+    var reopened = PersistentCollection.open_with_config(restored, config)
+    assert_equal(reopened.collection_config(), config)
+    assert_equal(reopened.get(1).value().vector[0], Float32(1.0))
+    reopened.close()
 
 
 def main() raises:

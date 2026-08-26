@@ -1,3 +1,8 @@
+from akasha.storage.collection_config import (
+    collection_config_exists,
+    load_collection_config,
+    publish_collection_config,
+)
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -125,6 +130,16 @@ def backup_storage(
         raise Error("backup target already contains a committed manifest")
     var report = inspect_storage(source, expected_dimension)
     var manifest = load_manifest(source, expected_dimension)
+    if collection_config_exists(source):
+        var config = load_collection_config(source)
+        if config.dimension != expected_dimension:
+            raise Error("collection config dimension mismatch")
+        # The immutable identity must reach the backup before its manifest
+        # commit point. Publication is idempotent for a retry with the same
+        # identity and rejects a stale target with a different identity.
+        publish_collection_config(target, config)
+    elif collection_config_exists(target):
+        raise Error("backup target identity is absent from legacy source")
     for name in report.segment_names:
         _copy_immutable(source, target, name)
     for name in report.sparse_names:
