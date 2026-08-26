@@ -52,6 +52,15 @@ scores, and falls back to exact filtered scan when the graph candidates cannot
 fill `k`. Recovered WAL/segment state remains authoritative; no graph bytes are
 stored in the durable formats.
 
+Sparse vectors are a companion durable state keyed by the same point IDs. A
+checksummed sparse WAL shares the collection sequence space, and a complete
+`sparse-<sequence>.bin` sidecar is fsynced before manifest publication. Open
+requires a present sidecar's sequence to equal the manifest, replays newer
+sparse WAL records, and removes sparse records whose dense point is not live.
+The in-memory inverted index accumulates only query posting lists. Hybrid search
+runs dense and sparse retrieval independently and fuses ranks with RRF; raw
+scores from the two modalities are never compared.
+
 ## Implemented storage boundary
 
 `PersistentCollection` is an embedded, single-writer engine. Opening a

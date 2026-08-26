@@ -82,9 +82,7 @@ struct SparseIndex:
     def contains(self, id: Int) -> Bool:
         return self._find_record(id) >= 0
 
-    def upsert(
-        mut self, id: Int, elements: List[SparseElement]
-    ) raises:
+    def upsert(mut self, id: Int, elements: List[SparseElement]) raises:
         validate_sparse(elements)
         self.delete(id)
         var owned = elements.copy()
@@ -109,9 +107,7 @@ struct SparseIndex:
             var term_index = self._find_term(element.term_id)
             if term_index < 0:
                 continue
-            for posting_index in range(
-                len(self._terms[term_index].postings)
-            ):
+            for posting_index in range(len(self._terms[term_index].postings)):
                 if self._terms[term_index].postings[posting_index].id == id:
                     self._terms[term_index].postings.swap_elements(
                         posting_index,

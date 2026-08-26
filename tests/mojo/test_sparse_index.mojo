@@ -1,5 +1,10 @@
 from akasha.index.sparse import SparseElement, SparseIndex
-from std.testing import assert_almost_equal, assert_equal, assert_raises, TestSuite
+from std.testing import (
+    assert_almost_equal,
+    assert_equal,
+    assert_raises,
+    TestSuite,
+)
 
 
 def test_sparse_dot_search_accumulates_postings_and_stable_ties() raises:

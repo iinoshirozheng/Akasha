@@ -46,9 +46,7 @@ def _accumulate(
     rank_constant: Int,
 ):
     for index in range(len(ranking)):
-        var contribution = Float32(
-            1.0 / Float64(rank_constant + index + 1)
-        )
+        var contribution = Float32(1.0 / Float64(rank_constant + index + 1))
         var found = -1
         for score_index in range(len(scores)):
             if scores[score_index].id == ranking[index].id:

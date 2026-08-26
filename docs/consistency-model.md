@@ -20,10 +20,13 @@ visible to searches on that handle.
 Flush writes a complete live snapshot to a temporary segment, fsyncs it,
 atomically renames it, and fsyncs the directory. It then performs the same
 protocol for the manifest. The manifest rename is the snapshot commit point.
+When sparse state is enabled, a complete checksummed sparse sidecar with the
+same checkpoint sequence is fsynced before the dense manifest is published.
 Only after that commit is durable does flush atomically replace the WAL with an
-empty fsynced file and sync the directory. Finally it removes the segment named
-by the previous valid manifest and syncs the directory again. Unrelated orphan
-files are not deleted.
+empty fsynced file, applies the same rotation to `sparse.wal`, and syncs the
+directory. Finally it removes the dense segment and sparse sidecar named by the
+previous valid manifest sequence, then syncs the directory again. Unrelated
+orphan files are not deleted.
 
 Open validates the manifest and segment, restores live records, and replays WAL
 records newer than the snapshot sequence. A final incomplete WAL record is
@@ -33,6 +36,8 @@ record with an invalid checksum or structural field fails recovery.
 If a crash occurs after manifest publication but before WAL replacement,
 recovery may see the new snapshot and the pre-checkpoint WAL. Records at or
 before the manifest sequence are skipped, so each mutation is restored once.
+The same rule applies independently to retained pre-checkpoint sparse WAL
+records.
 
 ## Current limits
 

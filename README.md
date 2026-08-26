@@ -37,6 +37,7 @@ from akasha import (
     FilterExpression,
     PayloadValue,
     PersistentCollection,
+    SparseElement,
 )
 
 var collection = PersistentCollection.open("/tmp/my-vectors", 3)
@@ -109,6 +110,26 @@ filtered search if it cannot fill the requested result count. The graph is a
 derived cache rebuilt from durable live state after recovery or before the
 first approximate query following a mutation.
 
+Caller-provided sparse vectors use ascending `(term_id, weight)` elements:
+
+```mojo
+collection.upsert_sparse(
+    42, [SparseElement(7, 1.0), SparseElement(99, 0.5)]
+)
+var sparse = collection.search_sparse_dot(
+    [SparseElement(7, 0.8)], 10
+)
+var hybrid = collection.search_hybrid_cosine(
+    query, [SparseElement(7, 0.8)], 10, 50
+)
+```
+
+Sparse state has its own checksummed WAL and a full sidecar committed at the
+dense manifest sequence. Hybrid search retrieves dense and sparse rankings
+independently and combines them with deterministic reciprocal-rank fusion.
+`search_sparse_dot_where` and `search_hybrid_*_where` evaluate Boolean metadata
+before candidates enter their rankings.
+
 Run the exact-search microbenchmarks:
 
 ```bash
@@ -154,9 +175,11 @@ Implemented:
 - Bounded Boolean All/Any/Negate filter expressions with pre-score evaluation.
 - Deterministic bounded HNSW approximate search with configurable `ef_search`,
   lazy graph refresh, and filter-aware exact fallback.
+- Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
+  and deterministic dense/sparse RRF hybrid search.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Metadata indexes, incremental compaction, hybrid retrieval, Arrow
+Metadata indexes, incremental compaction, Arrow
 interchange, GPU kernels, and distributed execution remain deferred.

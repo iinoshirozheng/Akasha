@@ -4,6 +4,7 @@ from akasha import (
     FilterExpression,
     PayloadValue,
     PersistentCollection,
+    SparseElement,
 )
 
 
@@ -43,6 +44,10 @@ def main() raises:
     image_fields.append(DocumentField("verified", PayloadValue.boolean(True)))
     collection.upsert_document(202, [0.8, 0.2, 0.0], image_fields^)
     collection.upsert(303, [0.0, 1.0, 0.0])
+    collection.upsert_sparse(
+        101, [SparseElement(7, 1.0), SparseElement(42, 0.5)]
+    )
+    collection.upsert_sparse(202, [SparseElement(7, 0.3)])
     collection.flush()
     collection.close()
 
@@ -75,6 +80,9 @@ def main() raises:
     var approximate = reopened.search_cosine_approx_where(
         query, 2, 32, expression
     )
+    var hybrid = reopened.search_hybrid_cosine(
+        query, [SparseElement(7, 1.0)], 2, 3
+    )
     var nearest = reopened.get(results[0].id)
 
     print(
@@ -84,6 +92,8 @@ def main() raises:
         results[0].id,
         "approximate ID",
         approximate[0].id,
+        "hybrid ID",
+        hybrid[0].id,
         "chunk",
         nearest.value().get_field("chunk_text").value().as_string(),
     )

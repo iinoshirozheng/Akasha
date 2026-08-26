@@ -5,10 +5,14 @@ from std.testing import assert_equal, assert_raises, TestSuite
 
 def test_rrf_combines_dense_and_sparse_ranks() raises:
     var dense: List[SearchResult] = [
-        SearchResult(1, 9.0), SearchResult(2, 8.0), SearchResult(3, 7.0)
+        SearchResult(1, 9.0),
+        SearchResult(2, 8.0),
+        SearchResult(3, 7.0),
     ]
     var sparse: List[SearchResult] = [
-        SearchResult(3, 5.0), SearchResult(2, 4.0), SearchResult(4, 3.0)
+        SearchResult(3, 5.0),
+        SearchResult(2, 4.0),
+        SearchResult(4, 3.0),
     ]
 
     var fused = reciprocal_rank_fusion(dense, sparse, 4, 60)

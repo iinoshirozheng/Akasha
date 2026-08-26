@@ -7,6 +7,8 @@ from akasha import (
     HnswIndex,
     PayloadValue,
     simd_dot_product,
+    SparseElement,
+    SparseIndex,
 )
 from std.testing import assert_almost_equal, assert_equal, TestSuite
 
@@ -49,6 +51,12 @@ def test_root_package_exports_hnsw_index() raises:
     var index = HnswIndex(1)
     index.add(1, [1.0])
     assert_equal(index.search_dot([1.0], 1, 8)[0].id, 1)
+
+
+def test_root_package_exports_sparse_index() raises:
+    var index = SparseIndex()
+    index.upsert(1, [SparseElement(7, 2.0)])
+    assert_equal(index.search_dot([SparseElement(7, 1.0)], 1)[0].id, 1)
 
 
 def main() raises:
