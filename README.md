@@ -34,6 +34,7 @@ document through a search result ID:
 from akasha import (
     DocumentField,
     FilterCondition,
+    FilterExpression,
     PayloadValue,
     PersistentCollection,
 )
@@ -71,6 +72,31 @@ before vector scoring. String and Bool support `==` and `!=`; Int64 and finite
 Float64 additionally support `<`, `<=`, `>`, and `>=`. Missing fields and type
 mismatches do not match, including inequality. Phase 4.2 performs a linear
 payload scan without a metadata index.
+
+For Boolean logic, build a bounded expression and use `search_*_where`:
+
+```mojo
+var alternatives = List[FilterExpression]()
+alternatives.append(
+    FilterExpression.condition(
+        FilterCondition.equal("kind", PayloadValue.string("article"))
+    )
+)
+alternatives.append(
+    FilterExpression.negate(
+        FilterExpression.condition(
+            FilterCondition.equal("archived", PayloadValue.boolean(True))
+        )
+    )
+)
+var expression = FilterExpression.any(alternatives^)
+var results = reopened.search_cosine_where(query, 10, expression)
+```
+
+`FilterExpression.all`, `any`, and `negate` form an owned flat-arena tree.
+Empty All matches and empty Any does not. Expressions are limited to 16 levels
+and 256 nodes. The Phase 4.2 `search_*_filtered` AND-list methods remain
+supported.
 
 Run the exact-search microbenchmarks:
 
@@ -110,10 +136,10 @@ Implemented:
   subsequent writes and snapshots use payload-aware version 2 formats.
 - Strict typed AND metadata filters evaluated before exact SIMD scoring for all
   three vector metrics.
+- Bounded Boolean All/Any/Negate filter expressions with pre-score evaluation.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-OR/NOT expressions, metadata indexes, WAL rotation, compaction, HNSW, hybrid
-retrieval, Arrow interchange, GPU kernels, and distributed execution remain
-deferred.
+Metadata indexes, WAL rotation, compaction, HNSW, hybrid retrieval, Arrow
+interchange, GPU kernels, and distributed execution remain deferred.

@@ -60,10 +60,12 @@ Segments are full live-state snapshots in Phase 3. WAL rotation, obsolete
 segment cleanup, incremental segments, compaction, multi-process locking, and
 snapshot-isolated concurrent readers remain future storage work.
 
-Phase 4.2 evaluates strict typed AND conditions against each live payload before
-SIMD scoring. Missing fields and type mismatches do not match. There is no
-metadata index yet, so a filtered exact query scans live documents and performs
-linear field lookup; WAL, Segment, and Manifest formats are unchanged. Search
-returns lightweight IDs and scores, and `get` resolves the latest owned payload.
-OR/NOT expressions, metadata indexes, HNSW, hybrid search, Arrow interchange,
-GPU kernels, and distributed execution remain explicit future work.
+Phase 4.2 evaluates strict typed conditions against each live payload before
+SIMD scoring. Phase 4.3 composes them as bounded All/Any/Negate expressions,
+stored in a flat node arena to keep Mojo ownership explicit. Missing fields and
+type mismatches do not match at the condition level. There is no metadata index
+yet, so a filtered exact query scans live documents and performs linear field
+lookup; WAL, Segment, and Manifest formats are unchanged. Search returns
+lightweight IDs and scores, and `get` resolves the latest owned payload.
+Metadata indexes, HNSW, hybrid search, Arrow interchange, GPU kernels, and
+distributed execution remain explicit future work.

@@ -1,6 +1,7 @@
 from akasha import (
     DocumentField,
     FilterCondition,
+    FilterExpression,
     PayloadValue,
     PersistentCollection,
 )
@@ -46,14 +47,30 @@ def main() raises:
 
     var reopened = PersistentCollection.open(path, 3)
     var query: List[Float32] = [1.0, 0.0, 0.0]
-    var conditions = List[FilterCondition]()
-    conditions.append(
-        FilterCondition.equal("document_type", PayloadValue.string("chunk"))
+    var chunk_conditions = List[FilterExpression]()
+    chunk_conditions.append(
+        FilterExpression.condition(
+            FilterCondition.equal("document_type", PayloadValue.string("chunk"))
+        )
     )
-    conditions.append(
-        FilterCondition.greater_or_equal("source_page", PayloadValue.integer(5))
+    chunk_conditions.append(
+        FilterExpression.negate(
+            FilterExpression.condition(
+                FilterCondition.less_than(
+                    "source_page", PayloadValue.integer(5)
+                )
+            )
+        )
     )
-    var results = reopened.search_cosine_filtered(query, 2, conditions)
+    var alternatives = List[FilterExpression]()
+    alternatives.append(FilterExpression.all(chunk_conditions^))
+    alternatives.append(
+        FilterExpression.condition(
+            FilterCondition.equal("document_type", PayloadValue.string("note"))
+        )
+    )
+    var expression = FilterExpression.any(alternatives^)
+    var results = reopened.search_cosine_where(query, 2, expression)
     var nearest = reopened.get(results[0].id)
 
     print(
