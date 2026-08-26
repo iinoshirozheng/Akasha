@@ -216,6 +216,58 @@ def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
     migrated.close()
 
 
+def test_wrong_dimension_does_not_poison_wal_only_legacy_identity() raises:
+    var path = _test_directory("legacy-wal-wrong-dimension")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(21, [1.0, 2.0])
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 3)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    var compatible = PersistentCollection.open(path, 2)
+    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(compatible.get(21).value().vector[1], Float32(2.0))
+    compatible.close()
+
+
+def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
+    var path = _test_directory("legacy-snapshot-wrong-dimension")
+    _reset(path)
+    var legacy = PersistentCollection.open(path, 2)
+    legacy.upsert(31, [3.0, 1.0])
+    legacy.flush()
+    # Retain a complete post-checkpoint WAL record as a second identity source.
+    legacy.upsert(32, [4.0, 2.0])
+    legacy.close()
+    remove_file_if_exists(path + "/collection.bin")
+    var before_manifest = read_file_bytes(path + "/manifest.bin")
+    var before_segment = read_file_bytes(path + "/segment-1.bin")
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 3)
+
+    assert_equal(collection_config_exists(path), False)
+    _assert_bytes_equal(
+        read_file_bytes(path + "/manifest.bin"), before_manifest
+    )
+    _assert_bytes_equal(
+        read_file_bytes(path + "/segment-1.bin"), before_segment
+    )
+    _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
+    var compatible = PersistentCollection.open(path, 2)
+    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(compatible.get(31).value().vector[0], Float32(3.0))
+    assert_equal(compatible.get(32).value().vector[1], Float32(2.0))
+    compatible.close()
+
+
 def test_non_default_config_is_rejected_for_legacy_data_without_mutation(
 ) raises:
     var path = _test_directory("legacy-incompatible")

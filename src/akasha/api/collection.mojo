@@ -84,6 +84,7 @@ from akasha.storage.wal import (
     append_wal,
     append_wal_batch,
     recover_wal,
+    replay_wal,
     rotate_wal,
     WalRecord,
 )
@@ -1592,6 +1593,13 @@ def _load_or_migrate_config(
     if has_legacy_data:
         var legacy = CollectionConfig.defaults(requested.dimension)
         _require_matching_config(legacy, requested)
+        # Validate identity through existing codecs without repairing or
+        # truncating authoritative files. Publication is the commit point of
+        # migration and must follow every available dense identity check.
+        if path_exists(path + "/manifest.bin"):
+            _ = load_manifest(path, requested.dimension)
+        if path_exists(path + "/wal.bin"):
+            _ = replay_wal(path + "/wal.bin", requested.dimension)
 
     publish_collection_config(path, requested)
     return requested.copy()
