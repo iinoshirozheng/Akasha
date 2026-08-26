@@ -5,6 +5,7 @@ from .api import (
     PersistentCollection,
     ReadSnapshot,
 )
+from .common import CollectionConfig, MetricKind, ScalarKind
 from .compute import (
     cosine_similarity,
     DeviceBatchResult,
