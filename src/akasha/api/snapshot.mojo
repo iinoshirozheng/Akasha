@@ -14,6 +14,7 @@ from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
+from akasha.query.parallel_scan import execute_parallel_scan
 from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
     BATCH_DOT_METRIC,
@@ -129,6 +130,31 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+
+    def search_dot_parallel(
+        self, query: List[Float32], k: Int, *, num_workers: Int = 0
+    ) raises -> List[SearchResult]:
+        return self._search_parallel(
+            query, k, _DOT_METRIC, num_workers, self._memtable.live_entries()
+        )
+
+    def search_l2_parallel(
+        self, query: List[Float32], k: Int, *, num_workers: Int = 0
+    ) raises -> List[SearchResult]:
+        return self._search_parallel(
+            query, k, _L2_METRIC, num_workers, self._memtable.live_entries()
+        )
+
+    def search_cosine_parallel(
+        self, query: List[Float32], k: Int, *, num_workers: Int = 0
+    ) raises -> List[SearchResult]:
+        return self._search_parallel(
+            query,
+            k,
+            _COSINE_METRIC,
+            num_workers,
+            self._memtable.live_entries(),
+        )
 
     def search_sq8_dot(
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
@@ -325,6 +351,42 @@ struct ReadSnapshot(Movable):
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
         return self._search_where(query, k, _COSINE_METRIC, expression)
+
+    def search_dot_where_parallel(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[SearchResult]:
+        return self._search_where_parallel(
+            query, k, expression, _DOT_METRIC, num_workers
+        )
+
+    def search_l2_where_parallel(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[SearchResult]:
+        return self._search_where_parallel(
+            query, k, expression, _L2_METRIC, num_workers
+        )
+
+    def search_cosine_where_parallel(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[SearchResult]:
+        return self._search_where_parallel(
+            query, k, expression, _COSINE_METRIC, num_workers
+        )
 
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
@@ -596,6 +658,38 @@ struct ReadSnapshot(Movable):
         expression.validate()
         var candidates = evaluate_expression(self._metadata, expression)
         return self._search_candidates(query, k, metric, candidates)
+
+    def _search_parallel(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        num_workers: Int,
+        var entries: List[MemTableEntry],
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        var batch_metric = BATCH_DOT_METRIC
+        if metric == _L2_METRIC:
+            batch_metric = BATCH_L2_METRIC
+        elif metric == _COSINE_METRIC:
+            batch_metric = BATCH_COSINE_METRIC
+        return execute_parallel_scan(
+            self._dimension, entries, query, k, batch_metric, num_workers
+        )
+
+    def _search_where_parallel(
+        self,
+        query: List[Float32],
+        k: Int,
+        expression: FilterExpression,
+        metric: Int,
+        num_workers: Int,
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        expression.validate()
+        var bitmap = evaluate_expression(self._metadata, expression)
+        var entries = candidate_entries(self._memtable, bitmap)
+        return self._search_parallel(query, k, metric, num_workers, entries^)
 
     def _search_where_batch(
         self,
