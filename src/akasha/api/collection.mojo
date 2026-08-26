@@ -9,12 +9,15 @@ from akasha.document.record import (
     DocumentField,
     DocumentRecord,
 )
+from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.metadata import MetadataIndex
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
-from akasha.query.evaluator import matches_all, matches_expression
+from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
+from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.storage.filesystem import (
     atomic_replace,
@@ -58,6 +61,7 @@ struct PersistentCollection:
     var _hnsw_dirty: Bool
     var _sparse: SparseIndex
     var _sparse_wal_path: String
+    var _metadata: MetadataIndex
 
     def __init__(
         out self,
@@ -68,6 +72,7 @@ struct PersistentCollection:
         var lock: CollectionLock,
         var hnsw: HnswIndex,
         var sparse: SparseIndex,
+        var metadata: MetadataIndex,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
@@ -80,6 +85,7 @@ struct PersistentCollection:
         self._hnsw_dirty = False
         self._sparse = sparse^
         self._sparse_wal_path = path + "/sparse.wal"
+        self._metadata = metadata^
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -161,6 +167,7 @@ struct PersistentCollection:
                 sparse.delete(recovered_sparse[index].id)
 
         var hnsw = _build_hnsw(memtable, dimension)
+        var metadata = _build_metadata(memtable)
         return PersistentCollection(
             path,
             dimension,
@@ -169,6 +176,7 @@ struct PersistentCollection:
             lock^,
             hnsw^,
             sparse^,
+            metadata^,
         )
 
     def close(mut self) raises:
@@ -182,6 +190,14 @@ struct PersistentCollection:
         self._ensure_open()
         return self._last_sequence
 
+    def metadata_live_count(self) raises -> Int:
+        self._ensure_open()
+        return self._metadata.live_count()
+
+    def metadata_match_count(self, expression: FilterExpression) raises -> Int:
+        self._ensure_open()
+        return evaluate_expression(self._metadata, expression).count()
+
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()
         self._validate_vector(values)
@@ -190,6 +206,8 @@ struct PersistentCollection:
         var record = WalRecord.upsert(sequence, id, wal_values^)
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
+        var metadata_fields = List[DocumentField]()
+        self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._hnsw_dirty = True
 
@@ -204,11 +222,13 @@ struct PersistentCollection:
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
         var wal_fields = clone_fields(fields)
+        var metadata_fields = clone_fields(fields)
         var record = WalRecord.document_upsert(
             sequence, id, wal_values^, wal_fields^
         )
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
+        self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._hnsw_dirty = True
 
@@ -236,6 +256,7 @@ struct PersistentCollection:
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_delete(id, sequence)
+        self._metadata.delete(id)
         self._sparse.delete(id)
         self._last_sequence = sequence
         self._hnsw_dirty = True
@@ -538,33 +559,8 @@ struct PersistentCollection:
             raise Error("k must be positive")
         for index in range(len(conditions)):
             conditions[index].validate()
-        var entries = self._memtable.live_entries()
-        if len(entries) == 0:
-            return List[SearchResult]()
-
-        var result_count = k
-        if result_count > len(entries):
-            result_count = len(entries)
-        var topk = BoundedTopK(
-            result_count, smaller_is_better=metric == _L2_METRIC
-        )
-        for index in range(len(entries)):
-            if not matches_all(entries[index].fields, conditions):
-                continue
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entries[index].values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entries[index].values)
-            else:
-                score = simd_cosine_similarity(query, entries[index].values)
-            topk.offer(entries[index].id, score)
-
-        var retained = topk.sorted_entries()
-        var results = List[SearchResult](capacity=len(retained))
-        for entry in retained:
-            results.append(SearchResult(entry.id, entry.score))
-        return results^
+        var candidates = evaluate_all(self._metadata, conditions)
+        return self._search_candidates(query, k, metric, candidates)
 
     def _search_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int, metric: Int
@@ -602,19 +598,17 @@ struct PersistentCollection:
             raise Error("ef_search must be positive")
         expression.validate()
         self._ensure_hnsw()
-        var entries = self._memtable.live_entries()
-        var matched_count = 0
-        for entry_index in range(len(entries)):
-            if matches_expression(entries[entry_index].fields, expression):
-                matched_count += 1
-        if not QueryPlanner.use_hnsw(len(entries), k, matched_count, True):
+        var matched = evaluate_expression(self._metadata, expression)
+        var matched_count = matched.count()
+        var total_count = self._metadata.live_count()
+        if not QueryPlanner.use_hnsw(total_count, k, matched_count, True):
             return self._search_where(query, k, metric, expression)
 
         var overfetch = ef_search
         if overfetch < k * 4:
             overfetch = k * 4
-        if overfetch > len(entries):
-            overfetch = len(entries)
+        if overfetch > total_count:
+            overfetch = total_count
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
             candidates = self._hnsw.search_dot(query, overfetch, ef_search)
@@ -628,14 +622,8 @@ struct PersistentCollection:
             target = matched_count
         var accepted = List[SearchResult](capacity=target)
         for candidate in candidates:
-            for entry_index in range(len(entries)):
-                if entries[
-                    entry_index
-                ].id == candidate.id and matches_expression(
-                    entries[entry_index].fields, expression
-                ):
-                    accepted.append(candidate)
-                    break
+            if self._metadata.contains_id(matched, candidate.id):
+                accepted.append(candidate)
             if len(accepted) == target:
                 return accepted^
         return self._search_where(query, k, metric, expression)
@@ -652,19 +640,26 @@ struct PersistentCollection:
         if k <= 0:
             raise Error("k must be positive")
         expression.validate()
-        var entries = self._memtable.live_entries()
-        if len(entries) == 0:
-            return List[SearchResult]()
+        var candidates = evaluate_expression(self._metadata, expression)
+        return self._search_candidates(query, k, metric, candidates)
 
+    def _search_candidates(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        candidates: Bitmap,
+    ) raises -> List[SearchResult]:
+        if candidates.count() == 0:
+            return List[SearchResult]()
         var result_count = k
-        if result_count > len(entries):
-            result_count = len(entries)
+        if result_count > candidates.count():
+            result_count = candidates.count()
         var topk = BoundedTopK(
             result_count, smaller_is_better=metric == _L2_METRIC
         )
+        var entries = candidate_entries(self._memtable, candidates)
         for index in range(len(entries)):
-            if not matches_expression(entries[index].fields, expression):
-                continue
             var score: Float32
             if metric == _DOT_METRIC:
                 score = simd_dot_product(query, entries[index].values)
@@ -691,16 +686,14 @@ struct PersistentCollection:
         if k <= 0:
             raise Error("k must be positive")
         expression.validate()
+        var matched = evaluate_expression(self._metadata, expression)
         var count = self._sparse.point_count()
         if count == 0:
             return List[SearchResult]()
         var candidates = self._sparse.search_dot(query, count)
         var result = List[SearchResult]()
         for candidate in candidates:
-            var document = self._memtable.get(candidate.id)
-            if Bool(document) and matches_expression(
-                document.value().fields, expression
-            ):
+            if self._metadata.contains_id(matched, candidate.id):
                 result.append(candidate)
                 if len(result) == k:
                     break
@@ -797,4 +790,18 @@ def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:
     var entries = memtable.live_entries()
     for entry_index in range(len(entries)):
         index.add(entries[entry_index].id, entries[entry_index].values)
+    return index^
+
+
+def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
+    var index = MetadataIndex()
+    for ordinal in range(memtable.slot_count()):
+        var entry = memtable.entry_at(ordinal)
+        if entry.tombstone:
+            index.delete(entry.id)
+        else:
+            var fields = clone_fields(entry.fields)
+            index.upsert(entry.id, fields^)
+    if index.slot_count() != memtable.slot_count():
+        raise Error("metadata index and memtable slot alignment failed")
     return index^

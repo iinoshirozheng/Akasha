@@ -323,5 +323,31 @@ def test_where_search_excludes_deleted_documents() raises:
     assert_equal(len(collection.search_dot_where(query, 1, expression)), 0)
 
 
+def test_metadata_index_tracks_mutations_and_rebuilds_on_reopen() raises:
+    var path = String("/tmp/akasha-phase9-metadata-recovery")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert_document(1, [1.0], _fields("keep", 1))
+    collection.upsert_document(2, [2.0], _fields("keep", 8))
+    collection.upsert_document(3, [3.0], _fields("drop", 8))
+    var expression = _keep_or_late_page()
+    assert_equal(collection.metadata_live_count(), 3)
+    assert_equal(collection.metadata_match_count(expression), 3)
+
+    collection.upsert(1, [1.0])
+    collection.delete(3)
+    assert_equal(collection.metadata_live_count(), 2)
+    assert_equal(collection.metadata_match_count(expression), 1)
+    collection.flush()
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    assert_equal(reopened.metadata_live_count(), 2)
+    assert_equal(reopened.metadata_match_count(expression), 1)
+    var result = reopened.search_dot_where([1.0], 3, expression)
+    assert_equal(len(result), 1)
+    assert_equal(result[0].id, 2)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

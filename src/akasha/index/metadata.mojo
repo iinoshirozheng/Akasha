@@ -7,12 +7,14 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
+from std.collections import Dict
 
 
 struct MetadataIndex:
     """Derived typed metadata index addressed by stable point ordinals."""
 
     var _ids: List[Int]
+    var _ordinals: Dict[Int, Int]
     var _fields: List[List[DocumentField]]
     var _live: Bitmap
     var _keywords: KeywordIndex
@@ -20,6 +22,7 @@ struct MetadataIndex:
 
     def __init__(out self) raises:
         self._ids = List[Int]()
+        self._ordinals = Dict[Int, Int]()
         self._fields = List[List[DocumentField]]()
         self._live = Bitmap()
         self._keywords = KeywordIndex()
@@ -35,10 +38,9 @@ struct MetadataIndex:
         self._validate_ordinal(ordinal)
         return self._ids[ordinal]
 
-    def ordinal_for(self, id: Int) -> Int:
-        for ordinal in range(len(self._ids)):
-            if self._ids[ordinal] == id:
-                return ordinal
+    def ordinal_for(self, id: Int) raises -> Int:
+        if id in self._ordinals:
+            return self._ordinals[id]
         return -1
 
     def live_universe(self) raises -> Bitmap:
@@ -88,6 +90,7 @@ struct MetadataIndex:
     def _append_slot(mut self, id: Int) raises -> Int:
         var ordinal = len(self._ids)
         self._ids.append(id)
+        self._ordinals[id] = ordinal
         var empty = List[DocumentField]()
         self._fields.append(empty^)
         var size = len(self._ids)

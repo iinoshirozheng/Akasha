@@ -106,5 +106,20 @@ def test_older_document_write_cannot_restore_deleted_payload() raises:
     assert_false(Bool(table.get(5)))
 
 
+def test_memtable_slots_are_stable_and_include_tombstones() raises:
+    var table = MemTable(1)
+    table.apply_upsert(20, 1, [1.0])
+    table.apply_upsert(10, 2, [2.0])
+    table.apply_delete(20, 3)
+    table.apply_upsert(30, 4, [3.0])
+
+    assert_equal(table.slot_count(), 3)
+    assert_equal(table.entry_at(0).id, 20)
+    assert_true(table.entry_at(0).tombstone)
+    assert_equal(table.entry_at(1).id, 10)
+    assert_false(table.entry_at(1).tombstone)
+    assert_equal(table.entry_at(2).id, 30)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

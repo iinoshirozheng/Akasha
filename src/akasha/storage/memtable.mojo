@@ -70,6 +70,16 @@ struct MemTable:
     def entry_count(self) -> Int:
         return len(self._entries)
 
+    def slot_count(self) -> Int:
+        """Return stable ordinal slots, including tombstones."""
+        return len(self._entries)
+
+    def entry_at(self, ordinal: Int) raises -> MemTableEntry:
+        """Return an owned entry for one stable ordinal slot."""
+        if ordinal < 0 or ordinal >= len(self._entries):
+            raise Error("memtable ordinal out of bounds")
+        return self._entries[ordinal].clone()
+
     def apply_upsert(
         mut self, id: Int, sequence: UInt64, var values: List[Float32]
     ) raises:
