@@ -19,6 +19,18 @@ def _vector(a: Float32, b: Float32, c: Float32) -> List[Float32]:
     return values^
 
 
+def _valid_graph() raises -> HnswStorage:
+    var graph = HnswStorage(3, 2, 4)
+    var a = _vector(1.0, 2.0, 3.0)
+    var b = _vector(4.0, 5.0, 6.0)
+    _ = graph.append(1, a^, 0)
+    _ = graph.append(2, b^, 1)
+    var links: List[UInt32] = [UInt32(1)]
+    graph.set_neighbors(UInt32(0), 0, links^)
+    graph.validate_structure()
+    return graph^
+
+
 def test_append_uses_dense_slot_ordinals_and_flat_vectors() raises:
     var graph = HnswStorage(3, 2, 4)
     var first = _vector(1.0, 2.0, 3.0)
@@ -149,9 +161,58 @@ def test_flat_storage_distance_access_does_not_materialize_vectors() raises:
     )
 
 
+def test_flat_distances_match_dispatcher_for_prepared_vectors() raises:
+    var raw_query = _vector(3.0, 4.0, 0.0)
+    var raw_first = _vector(4.0, 0.0, 3.0)
+    var raw_second = _vector(-1.0, 2.0, 2.0)
+
+    var kinds: List[MetricKind] = [
+        MetricKind.l2(),
+        MetricKind.dot(),
+        MetricKind.cosine(),
+    ]
+    for metric in kinds:
+        var dispatcher = MetricDispatcher(metric, ScalarKind.f32(), 3)
+        var prepared_query = dispatcher.prepare_query(raw_query.copy())
+        var prepared_first = dispatcher.prepare_graph_vector(raw_first.copy())
+        var prepared_second = dispatcher.prepare_graph_vector(raw_second.copy())
+        var expected_query = dispatcher.canonical_prepared(
+            prepared_query.copy(), prepared_first.copy()
+        )
+        var expected_between = dispatcher.canonical_prepared(
+            prepared_first.copy(), prepared_second.copy()
+        )
+
+        var graph = HnswStorage(3, 2, 4)
+        _ = graph.append(1, prepared_first^, 0)
+        _ = graph.append(2, prepared_second^, 0)
+        assert_equal(
+            graph.distance_to_slot(dispatcher, prepared_query, UInt32(0)),
+            expected_query,
+        )
+        assert_equal(
+            graph.distance_between(dispatcher, UInt32(0), UInt32(1)),
+            expected_between,
+        )
+
+
+def test_flat_distance_rejects_unsupported_dispatcher_backend() raises:
+    var graph = HnswStorage(3, 2, 4)
+    var stored = _vector(1.0, 0.0, 0.0)
+    _ = graph.append(1, stored^, 0)
+    var query = _vector(1.0, 0.0, 0.0)
+    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.bf16(), 3)
+    with assert_raises():
+        _ = graph.distance_to_slot(dispatcher, query, UInt32(0))
+    with assert_raises():
+        _ = graph.distance_between(dispatcher, UInt32(0), UInt32(0))
+
+
 def test_constructor_append_and_access_bounds_are_checked() raises:
     with assert_raises():
         _ = HnswStorage(0, 2, 4)
+    with assert_raises():
+        _ = HnswStorage(4_294_967_296, 2, 4)
     with assert_raises():
         _ = HnswStorage(3, 0, 4)
     with assert_raises():
@@ -224,19 +285,65 @@ def test_append_slot_limit_reserves_uint32_max_as_sentinel() raises:
         _ = _validate_append_slot_count(UInt64(UInt32.MAX) + UInt64(1))
 
 
-def test_validate_structure_detects_flat_tape_corruption() raises:
-    var graph = HnswStorage(3, 2, 4)
-    var a = _vector(1.0, 2.0, 3.0)
-    var b = _vector(4.0, 5.0, 6.0)
-    _ = graph.append(1, a^, 0)
-    _ = graph.append(2, b^, 1)
-    var links: List[UInt32] = [UInt32(1)]
-    graph.set_neighbors(UInt32(0), 0, links^)
-    graph.validate_structure()
-
-    _ = graph.vector_scalars.pop()
+def test_validate_structure_rejects_every_truncated_or_extended_tape() raises:
+    var vector_truncated = _valid_graph()
+    _ = vector_truncated.vector_scalars.pop()
     with assert_raises():
-        graph.validate_structure()
+        vector_truncated.validate_structure()
+
+    var counts_truncated = _valid_graph()
+    _ = counts_truncated.neighbor_counts.pop()
+    with assert_raises():
+        counts_truncated.validate_structure()
+
+    var counts_extended = _valid_graph()
+    counts_extended.neighbor_counts.append(UInt32(0))
+    with assert_raises():
+        counts_extended.validate_structure()
+
+    var neighbors_truncated = _valid_graph()
+    _ = neighbors_truncated.neighbor_slots.pop()
+    with assert_raises():
+        neighbors_truncated.validate_structure()
+
+    var neighbors_extended = _valid_graph()
+    neighbors_extended.neighbor_slots.append(HNSW_EMPTY_NEIGHBOR)
+    with assert_raises():
+        neighbors_extended.validate_structure()
+
+
+def test_validate_structure_rejects_bad_bases_before_tape_indexing() raises:
+    var neighbor_base = _valid_graph()
+    neighbor_base.neighbor_bases[1] = Int.MAX
+    with assert_raises():
+        neighbor_base.validate_structure()
+
+    var count_base = _valid_graph()
+    count_base.neighbor_count_bases[1] = Int.MAX
+    with assert_raises():
+        count_base.validate_structure()
+
+
+def test_validate_structure_rejects_excessive_count_and_mutated_config() raises:
+    var excessive = _valid_graph()
+    excessive.neighbor_counts[0] = UInt32(5)
+    with assert_raises():
+        excessive.validate_structure()
+
+    var invalid_dimension = _valid_graph()
+    invalid_dimension.dimension = 0
+    with assert_raises():
+        invalid_dimension.validate_structure()
+
+    var invalid_m = _valid_graph()
+    invalid_m.m = 0
+    with assert_raises():
+        invalid_m.validate_structure()
+
+    var invalid_m0 = _valid_graph()
+    invalid_m0.m0 = 4_294_967_296
+    with assert_raises():
+        invalid_m0.validate_structure()
 
 
 def main() raises:

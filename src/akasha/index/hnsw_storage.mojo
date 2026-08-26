@@ -47,6 +47,8 @@ struct HnswStorage:
     def __init__(out self, dimension: Int, m: Int, m0: Int) raises:
         if dimension <= 0:
             raise Error("HNSW storage dimension must be positive")
+        if dimension > _UINT32_MAX_AS_INT:
+            raise Error("HNSW storage dimension must fit UInt32")
         if m <= 0 or m0 <= 0:
             raise Error("HNSW neighbor capacities must be positive")
         if m > _UINT32_MAX_AS_INT or m0 > _UINT32_MAX_AS_INT:
@@ -73,6 +75,14 @@ struct HnswStorage:
     def append(
         mut self, id: Int, var values: List[Float32], level: Int
     ) raises -> UInt32:
+        """Append a prepared graph vector and reserve its bounded edge cells.
+
+        ``values`` must already have been produced by
+        ``MetricDispatcher.prepare_graph_vector`` for the dispatcher used by
+        graph construction and search. In particular, cosine vectors must be
+        unit-normalized. This storage intentionally does not retain a metric
+        or re-prepare vectors on the graph hot path.
+        """
         if len(values) != self.dimension:
             raise Error("HNSW vector dimension mismatch")
         if level < 0 or level > _UINT16_MAX_AS_INT:
@@ -294,7 +304,24 @@ struct HnswStorage:
         )
 
     def validate_structure(self) raises:
+        """Validate all flat-tape bounds before reading either tape.
+
+        Phase one validates configuration, slot columns, packed bases, and
+        checked total lengths. Phase two may then safely index neighbor counts
+        and edge cells to validate their contents.
+        """
+        if self.dimension <= 0 or self.dimension > _UINT32_MAX_AS_INT:
+            raise Error("HNSW storage dimension is invalid")
+        if self.m <= 0 or self.m0 <= 0:
+            raise Error("HNSW neighbor capacities are invalid")
+        if self.m > _UINT32_MAX_AS_INT or self.m0 > _UINT32_MAX_AS_INT:
+            raise Error("HNSW neighbor capacities must fit UInt32")
+
+        # Phase one: prove every tape length and base offset before indexing
+        # neighbor_counts or neighbor_slots.
         var slots = len(self.ids)
+        if UInt64(slots) > UInt64(UInt32.MAX):
+            raise Error("HNSW slot count exceeds the UInt32 edge address space")
         if (
             len(self.levels) != slots
             or len(self.current_flags) != slots
@@ -304,7 +331,10 @@ struct HnswStorage:
             or len(self.neighbor_count_bases) != slots
         ):
             raise Error("HNSW slot columns have inconsistent lengths")
-        if len(self.vector_scalars) != slots * self.dimension:
+        if slots > 0 and self.dimension > Int.MAX // slots:
+            raise Error("HNSW flat vector tape length overflows Int")
+        var expected_vector_scalars = slots * self.dimension
+        if len(self.vector_scalars) != expected_vector_scalars:
             raise Error("HNSW flat vector tape has an invalid length")
 
         var expected_neighbor_base = 0
@@ -314,10 +344,30 @@ struct HnswStorage:
                 raise Error("HNSW neighbor base offsets are not packed")
             if self.neighbor_count_bases[index] != expected_count_base:
                 raise Error("HNSW neighbor count offsets are not packed")
+            var node_level = Int(self.levels[index])
+            if node_level < 0 or node_level > _UINT16_MAX_AS_INT:
+                raise Error("HNSW stored level does not fit UInt16")
+            if node_level > (Int.MAX - self.m0) // self.m:
+                raise Error("HNSW node neighbor allocation overflows Int")
+            var node_neighbor_cells = self.m0 + node_level * self.m
+            if node_neighbor_cells > Int.MAX - expected_neighbor_base:
+                raise Error("HNSW neighbor tape length overflows Int")
+            expected_neighbor_base += node_neighbor_cells
+            var node_count_cells = node_level + 1
+            if node_count_cells > Int.MAX - expected_count_base:
+                raise Error("HNSW neighbor count tape length overflows Int")
+            expected_count_base += node_count_cells
+
+        if expected_neighbor_base != len(self.neighbor_slots):
+            raise Error("HNSW flat neighbor tape has an invalid length")
+        if expected_count_base != len(self.neighbor_counts):
+            raise Error("HNSW flat neighbor count tape has an invalid length")
+
+        # Phase two: exact lengths and packed bases now make all tape indexing
+        # below safe. Validate lifecycle state, counts, and edge contents.
+        for index in range(slots):
             var slot = UInt32(index)
             var node_level = Int(self.levels[index])
-            expected_neighbor_base += self.m0 + node_level * self.m
-            expected_count_base += node_level + 1
 
             var state_count = Int(self.current_flags[index])
             state_count += Int(self.deleted_flags[index])
@@ -346,11 +396,6 @@ struct HnswStorage:
                                 )
                     elif neighbor != HNSW_EMPTY_NEIGHBOR:
                         raise Error("HNSW unused neighbor cell is not empty")
-
-        if expected_neighbor_base != len(self.neighbor_slots):
-            raise Error("HNSW flat neighbor tape has an invalid length")
-        if expected_count_base != len(self.neighbor_counts):
-            raise Error("HNSW flat neighbor count tape has an invalid length")
 
     def _slot_index(self, slot: UInt32) raises -> Int:
         if UInt64(slot) >= UInt64(len(self.ids)):
