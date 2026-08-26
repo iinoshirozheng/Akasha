@@ -5,6 +5,7 @@ from akasha import (
     PayloadValue,
     PersistentCollection,
     ReadSnapshot,
+    SparseElement,
 )
 from akasha.storage.filesystem import (
     ensure_directory,
@@ -178,6 +179,90 @@ def test_snapshot_raii_releases_generation_pin() raises:
 
     assert_false(path_exists(path + "/segment-base-1.bin"))
     assert_false(path_exists(path + "/sparse-base-1.bin"))
+    collection.close()
+
+
+def test_snapshot_freezes_sparse_hybrid_and_filtered_results() raises:
+    var path = String("/tmp/akasha-phase11-snapshot-sparse-hybrid")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    var first_fields = _fields("old", "first")
+    collection.upsert_document(1, [1.0, 0.0], first_fields^)
+    collection.upsert_sparse(1, [SparseElement(7, 2.0)])
+    var second_fields = _fields("other", "second")
+    collection.upsert_document(2, [0.0, 1.0], second_fields^)
+    collection.upsert_sparse(2, [SparseElement(7, 1.0)])
+    var snapshot = collection.snapshot()
+
+    collection.upsert_sparse(1, [SparseElement(7, 0.1)])
+    collection.delete(2)
+    collection.upsert(3, [10.0, 0.0])
+    collection.upsert_sparse(3, [SparseElement(7, 10.0)])
+
+    var sparse = snapshot.search_sparse_dot([SparseElement(7, 1.0)], 3)
+    assert_equal(len(sparse), 2)
+    assert_equal(sparse[0].id, 1)
+    assert_almost_equal(sparse[0].score, 2.0, atol=1.0e-6)
+    assert_equal(sparse[1].id, 2)
+
+    var filtered = snapshot.search_sparse_dot_where(
+        [SparseElement(7, 1.0)], 3, _old_group_expression()
+    )
+    assert_equal(len(filtered), 1)
+    assert_equal(filtered[0].id, 1)
+
+    var hybrid = snapshot.search_hybrid_dot(
+        [1.0, 0.0], [SparseElement(7, 1.0)], 2, 2
+    )
+    assert_equal(len(hybrid), 2)
+    assert_equal(hybrid[0].id, 1)
+    assert_equal(hybrid[1].id, 2)
+
+    var hybrid_filtered = snapshot.search_hybrid_dot_where(
+        [1.0, 0.0],
+        [SparseElement(7, 1.0)],
+        2,
+        2,
+        60,
+        _old_group_expression(),
+    )
+    assert_equal(len(hybrid_filtered), 1)
+    assert_equal(hybrid_filtered[0].id, 1)
+
+    var hybrid_l2 = snapshot.search_hybrid_l2(
+        [1.0, 0.0], [SparseElement(7, 1.0)], 2, 2
+    )
+    assert_equal(len(hybrid_l2), 2)
+    assert_equal(hybrid_l2[0].id, 1)
+    var hybrid_cosine = snapshot.search_hybrid_cosine(
+        [1.0, 0.0], [SparseElement(7, 1.0)], 2, 2
+    )
+    assert_equal(len(hybrid_cosine), 2)
+    assert_equal(hybrid_cosine[0].id, 1)
+    var hybrid_l2_filtered = snapshot.search_hybrid_l2_where(
+        [1.0, 0.0],
+        [SparseElement(7, 1.0)],
+        2,
+        2,
+        60,
+        _old_group_expression(),
+    )
+    assert_equal(len(hybrid_l2_filtered), 1)
+    assert_equal(hybrid_l2_filtered[0].id, 1)
+    var hybrid_cosine_filtered = snapshot.search_hybrid_cosine_where(
+        [1.0, 0.0],
+        [SparseElement(7, 1.0)],
+        2,
+        2,
+        60,
+        _old_group_expression(),
+    )
+    assert_equal(len(hybrid_cosine_filtered), 1)
+    assert_equal(hybrid_cosine_filtered[0].id, 1)
+
+    snapshot.close()
+    with assert_raises():
+        _ = snapshot.search_sparse_dot([SparseElement(7, 1.0)], 1)
     collection.close()
 
 

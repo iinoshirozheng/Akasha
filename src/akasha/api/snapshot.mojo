@@ -8,8 +8,10 @@ from akasha.document.record import clone_fields, DocumentRecord
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.metadata import MetadataIndex
+from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
@@ -37,6 +39,7 @@ struct ReadSnapshot(Movable):
     var _sequence: UInt64
     var _memtable: MemTable
     var _metadata: MetadataIndex
+    var _sparse: SparseIndex
     var _pins: ArcPointer[GenerationPinRegistry]
     var _closed: Bool
 
@@ -47,6 +50,7 @@ struct ReadSnapshot(Movable):
         sequence: UInt64,
         var memtable: MemTable,
         var metadata: MetadataIndex,
+        var sparse: SparseIndex,
         var pins: ArcPointer[GenerationPinRegistry],
     ):
         self._dimension = dimension
@@ -54,6 +58,7 @@ struct ReadSnapshot(Movable):
         self._sequence = sequence
         self._memtable = memtable^
         self._metadata = metadata^
+        self._sparse = sparse^
         self._pins = pins^
         self._closed = False
 
@@ -63,14 +68,16 @@ struct ReadSnapshot(Movable):
         generation: UInt64,
         sequence: UInt64,
         memtable: MemTable,
+        sparse: SparseIndex,
         pins: ArcPointer[GenerationPinRegistry],
     ) raises -> ReadSnapshot:
         if dimension <= 0 or memtable.dimension != dimension:
             raise Error("snapshot dimension mismatch")
-        if sequence != memtable.last_sequence:
-            raise Error("snapshot sequence does not match memtable")
+        if memtable.last_sequence > sequence:
+            raise Error("snapshot sequence precedes memtable")
         var owned = memtable.clone()
         var metadata = _build_metadata(owned)
+        var owned_sparse = sparse.clone()
         var owned_pins = pins
         owned_pins[].pin(generation)
         return ReadSnapshot(
@@ -79,6 +86,7 @@ struct ReadSnapshot(Movable):
             sequence,
             owned^,
             metadata^,
+            owned_sparse^,
             owned_pins^,
         )
 
@@ -241,6 +249,144 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         return self._search_where(query, k, _COSINE_METRIC, expression)
 
+    def search_sparse_dot(
+        self, query: List[SparseElement], k: Int
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        return self._sparse.search_dot(query, k)
+
+    def search_sparse_dot_where(
+        self,
+        query: List[SparseElement],
+        k: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        validate_sparse(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        expression.validate()
+        var matched = evaluate_expression(self._metadata, expression)
+        var count = self._sparse.point_count()
+        if count == 0:
+            return List[SearchResult]()
+        var candidates = self._sparse.search_dot(query, count)
+        var result = List[SearchResult]()
+        for candidate in candidates:
+            if self._metadata.contains_id(matched, candidate.id):
+                result.append(candidate)
+                if len(result) == k:
+                    break
+        return result^
+
+    def search_hybrid_dot(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _DOT_METRIC,
+        )
+
+    def search_hybrid_l2(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _L2_METRIC,
+        )
+
+    def search_hybrid_cosine(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int = 60,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _COSINE_METRIC,
+        )
+
+    def search_hybrid_dot_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _DOT_METRIC,
+            expression,
+        )
+
+    def search_hybrid_l2_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _L2_METRIC,
+            expression,
+        )
+
+    def search_hybrid_cosine_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_hybrid_where(
+            dense_query,
+            sparse_query,
+            k,
+            fetch_k,
+            rank_constant,
+            _COSINE_METRIC,
+            expression,
+        )
+
     def _search_filtered(
         self,
         query: List[Float32],
@@ -330,6 +476,62 @@ struct ReadSnapshot(Movable):
         for value in query:
             if not isfinite(value):
                 raise Error("query vector must contain only finite values")
+
+    def _validate_hybrid(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+    ) raises:
+        self._validate_query(dense_query, k)
+        validate_sparse(sparse_query)
+        if fetch_k < k:
+            raise Error("hybrid fetch_k must be at least positive k")
+        if rank_constant <= 0:
+            raise Error("RRF rank constant must be positive")
+
+    def _search_hybrid(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        metric: Int,
+    ) raises -> List[SearchResult]:
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        var conditions = List[FilterCondition]()
+        var dense = self._search_filtered(
+            dense_query, fetch_k, metric, conditions
+        )
+        var sparse = self._sparse.search_dot(sparse_query, fetch_k)
+        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
+
+    def _search_hybrid_where(
+        self,
+        dense_query: List[Float32],
+        sparse_query: List[SparseElement],
+        k: Int,
+        fetch_k: Int,
+        rank_constant: Int,
+        metric: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        expression.validate()
+        var dense = self._search_where(
+            dense_query, fetch_k, metric, expression
+        )
+        var sparse = self.search_sparse_dot_where(
+            sparse_query, fetch_k, expression
+        )
+        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _ensure_open(self) raises:
         if self._closed:

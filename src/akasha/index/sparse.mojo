@@ -79,6 +79,12 @@ struct SparseIndex:
     def point_count(self) -> Int:
         return len(self._records)
 
+    def clone(self) raises -> SparseIndex:
+        var result = SparseIndex()
+        for record in self.records():
+            result.upsert(record.id, record.elements)
+        return result^
+
     def contains(self, id: Int) -> Bool:
         return self._find_record(id) >= 0
 

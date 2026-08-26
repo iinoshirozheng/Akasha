@@ -379,6 +379,7 @@ struct PersistentCollection:
             generation,
             self._last_sequence,
             self._memtable,
+            self._sparse,
             self._pins,
         )
 
