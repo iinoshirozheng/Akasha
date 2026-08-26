@@ -97,4 +97,3 @@
    `pixi run smoke`, `pixi run example-persistent`, focused benchmark smoke,
    `mojo format`, and `git diff --check`.
 5. Commit `docs: complete metadata index phase` and stop for user review.
-

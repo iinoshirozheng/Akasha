@@ -81,4 +81,3 @@ Phase 9; all bitmap and metadata operations are CPU Mojo code.
 - A benchmark harness exercises 10,000 and 100,000 indexed documents.
 - Completion requires all Mojo/Python tests, crash tests, optimized builds,
   smoke examples, formatter, and `git diff --check`.
-
