@@ -1,2 +1,2 @@
-from .record import DocumentField, DocumentRecord
+from .record import DocumentField, DocumentRecord, FieldProjection
 from .value import PayloadValue

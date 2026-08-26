@@ -11,6 +11,8 @@ from akasha.document.record import (
     clone_fields,
     DocumentField,
     DocumentRecord,
+    FieldProjection,
+    project_document,
     validate_fields,
 )
 from akasha.index.bitmap import Bitmap
@@ -587,6 +589,16 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
             return self._memtable.get(id)
+
+    def get_projected(
+        self, id: Int, projection: FieldProjection
+    ) raises -> Optional[DocumentRecord]:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            var document = self._memtable.get(id)
+            if not Bool(document):
+                return Optional[DocumentRecord]()
+            return Optional(project_document(document.value(), projection))
 
     def upsert_sparse(mut self, id: Int, elements: List[SparseElement]) raises:
         with BlockingScopedLock(self._writer_lock[]):

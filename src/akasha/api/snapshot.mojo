@@ -10,7 +10,12 @@ from akasha.compute.gpu.flat_scan import (
     execute_device_candidate_batch,
 )
 from akasha.compute.gpu.planner import GpuExecutionOptions
-from akasha.document.record import clone_fields, DocumentRecord
+from akasha.document.record import (
+    clone_fields,
+    DocumentRecord,
+    FieldProjection,
+    project_document,
+)
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.metadata import MetadataIndex
@@ -118,6 +123,15 @@ struct ReadSnapshot(Movable):
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
         self._ensure_open()
         return self._memtable.get(id)
+
+    def get_projected(
+        self, id: Int, projection: FieldProjection
+    ) raises -> Optional[DocumentRecord]:
+        self._ensure_open()
+        var document = self._memtable.get(id)
+        if not Bool(document):
+            return Optional[DocumentRecord]()
+        return Optional(project_document(document.value(), projection))
 
     def search_dot(
         self, query: List[Float32], k: Int

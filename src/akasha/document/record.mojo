@@ -51,6 +51,68 @@ struct DocumentRecord(Movable):
         return DocumentRecord(self.id, self.sequence, vector^, fields^)
 
 
+struct FieldProjection(Movable):
+    """Controls which owned vector and payload fields cross a read boundary."""
+
+    var include_vector: Bool
+    var include_all_fields: Bool
+    var field_names: List[String]
+
+    def __init__(
+        out self,
+        include_vector: Bool,
+        include_all_fields: Bool,
+        var field_names: List[String],
+    ) raises:
+        if include_all_fields and len(field_names) != 0:
+            raise Error("all-fields projection cannot contain named fields")
+        for index in range(len(field_names)):
+            validate_field_name(field_names[index])
+            for previous in range(index):
+                if field_names[index] == field_names[previous]:
+                    raise Error("projection field names must be unique")
+        self.include_vector = include_vector
+        self.include_all_fields = include_all_fields
+        self.field_names = field_names^
+
+    @staticmethod
+    def all(include_vector: Bool = True) raises -> FieldProjection:
+        var names = List[String]()
+        return FieldProjection(include_vector, True, names^)
+
+    @staticmethod
+    def named(
+        include_vector: Bool, var field_names: List[String]
+    ) raises -> FieldProjection:
+        return FieldProjection(include_vector, False, field_names^)
+
+    @staticmethod
+    def metadata_only() raises -> FieldProjection:
+        var names = List[String]()
+        return FieldProjection(False, False, names^)
+
+    def includes_field(self, name: String) -> Bool:
+        if self.include_all_fields:
+            return True
+        for requested in self.field_names:
+            if requested == name:
+                return True
+        return False
+
+
+def project_document(
+    document: DocumentRecord, projection: FieldProjection
+) raises -> DocumentRecord:
+    var vector = List[Float32]()
+    if projection.include_vector:
+        vector = document.vector.copy()
+    var fields = List[DocumentField]()
+    for index in range(len(document.fields)):
+        if projection.includes_field(document.fields[index].name):
+            fields.append(document.fields[index].clone())
+    return DocumentRecord(document.id, document.sequence, vector^, fields^)
+
+
 def clone_fields(fields: List[DocumentField]) raises -> List[DocumentField]:
     var result = List[DocumentField](capacity=len(fields))
     for index in range(len(fields)):
