@@ -94,5 +94,22 @@ type mismatches do not match at the condition level. There is no metadata index
 yet, so a filtered exact query scans live documents and performs linear field
 lookup; WAL, Segment, and Manifest formats are unchanged. Search returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.
-Metadata indexes, HNSW, hybrid search, Arrow interchange, GPU kernels, and
-distributed execution remain explicit future work.
+Metadata indexes, incremental compaction, trusted zero-copy Arrow C Data
+interchange, GPU kernels, and distributed execution remain explicit future
+work.
+
+## Implemented adapter boundary
+
+`src/bindings/python_module.mojo` compiles to the `_kernel` CPython extension
+with Mojo's `PythonModuleBuilder`. Its bound collection owns the real
+`PersistentCollection`; Python performs only explicit value conversion and
+exception mapping. `python/akashadb` adds typed dataclasses, a named local
+registry, and copying Arrow-compatible columns. FastAPI routes obtain that same
+registry from application state and contain no scoring, filtering, or storage
+logic.
+
+Boolean filter dictionaries are converted into bounded Mojo
+`FilterExpression` values before exact, approximate, sparse, or hybrid search.
+The current Arrow adapter always copies Python/NumPy/PyArrow-compatible
+sequences. A zero-copy C Data bridge remains disabled until its ownership ABI
+can be expressed and tested safely.

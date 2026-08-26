@@ -17,6 +17,7 @@ immutable snapshot segments, and an atomic manifest.
 pixi install
 pixi run test
 pixi run build
+pixi run build-python
 pixi run smoke
 pixi run test-crash
 ```
@@ -138,11 +139,34 @@ pixi run bench-flat
 pixi run bench-hnsw
 ```
 
-Run the development-only HTTP adapter:
+Use the compiled in-process Python adapter:
+
+```python
+from akashadb import Collection, SearchRequest
+
+collection = Collection("/tmp/python-vectors", 3)
+collection.upsert(1, [1.0, 0.0, 0.0])
+results = collection.search(
+    SearchRequest("cosine", 10, vector=[1.0, 0.0, 0.0])
+)
+collection.close()
+```
+
+`pixi run build-python` compiles `src/bindings/python_module.mojo` into the
+ignored, platform-local `python/akashadb/_kernel.so`. Python models translate
+typed payload, sparse, Boolean-filter, approximate, and hybrid requests; the
+extension owns the Mojo collection and performs every database operation.
+
+Run the local HTTP adapter:
 
 ```bash
 pixi run serve
 ```
+
+It exposes `/health`, collection open/close/flush, point upsert/delete/get, and
+exact/approximate/sparse/hybrid search. The Arrow-compatible adapter in
+`akashadb.arrow` accepts and returns column dictionaries by validated copy; the
+project does not claim zero-copy Arrow C Data ownership.
 
 ## Architecture
 
@@ -177,9 +201,11 @@ Implemented:
   lazy graph refresh, and filter-aware exact fallback.
 - Durable caller-provided sparse vectors, inverted-index dot-product retrieval,
   and deterministic dense/sparse RRF hybrid search.
+- A compiled Mojo Python extension, typed Python facade and errors, functional
+  FastAPI routes, and copying Arrow-compatible batch columns.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Metadata indexes, incremental compaction, Arrow
+Metadata indexes, incremental compaction, trusted zero-copy Arrow C Data
 interchange, GPU kernels, and distributed execution remain deferred.

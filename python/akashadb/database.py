@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any, Protocol
 
-from .exceptions import CollectionNotFoundError, map_kernel_error
+from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_error
 from .models import (
     Document,
     PayloadField,
@@ -139,7 +139,7 @@ class Collection:
             )
         elif request.filter is not None and request.mode == "hybrid":
             if vector is None:
-                raise ValueError("hybrid search requires a dense vector")
+                raise ValidationError("hybrid search requires a dense vector")
             raw = self._call(
                 "search_hybrid_where",
                 request.metric,
@@ -154,7 +154,7 @@ class Collection:
             )
         elif request.filter is not None:
             if vector is None:
-                raise ValueError("dense search requires a vector")
+                raise ValidationError("dense search requires a vector")
             raw = self._call(
                 "search_dense_where",
                 request.metric,
@@ -170,7 +170,7 @@ class Collection:
             raw = self._call("search_sparse", sparse, request.k)
         elif request.mode == "hybrid":
             if vector is None:
-                raise ValueError("hybrid search requires a dense vector")
+                raise ValidationError("hybrid search requires a dense vector")
             raw = self._call(
                 "search_hybrid",
                 request.metric,
@@ -184,13 +184,13 @@ class Collection:
             )
         elif request.mode == "approx":
             if vector is None:
-                raise ValueError("approximate search requires a dense vector")
+                raise ValidationError("approximate search requires a dense vector")
             raw = self._call(
                 "search_approx", request.metric, vector, request.k, request.ef_search
             )
         else:
             if vector is None:
-                raise ValueError("exact search requires a dense vector")
+                raise ValidationError("exact search requires a dense vector")
             method = {
                 "dot": "search_dot",
                 "l2": "search_l2",
@@ -213,9 +213,12 @@ class LocalDatabase:
 
     def open(self, name: str, dimension: int) -> Collection:
         if not name or "/" in name or "\\" in name or name in {".", ".."}:
-            raise ValueError("collection name must be one safe path component")
+            raise ValidationError("collection name must be one safe path component")
         if name in self._collections:
-            return self._collections[name]
+            collection = self._collections[name]
+            if collection.dimension != dimension:
+                raise ValidationError("open collection dimension mismatch")
+            return collection
         collection = Collection(self.root / name, dimension)
         self._collections[name] = collection
         return collection

@@ -11,7 +11,8 @@ build-python = "mojo build --emit shared-lib -I src src/bindings/python_module.m
 test-python = { cmd = "pytest tests/python -q", depends-on = ["build-python"], env = { PYTHONPATH = "python:." } }
 test = { depends-on = ["test-mojo", "test-python"] }
 test-crash = "bash -c 'for test_file in tests/crash/test_*.mojo; do mojo run -I src \"$test_file\" || exit 1; done'"
-build = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent"
+build-mojo = "mkdir -p .build && mojo build -I src examples/smoke.mojo -o .build/akasha-smoke && mojo build -I src examples/persistent_collection.mojo -o .build/akasha-persistent"
+build = { depends-on = ["build-mojo", "build-python"] }
 smoke = "mojo run -I src examples/smoke.mojo"
 example-persistent = "mojo run -I src examples/persistent_collection.mojo"
 serve = { cmd = "uvicorn apps.server.main:app --reload", env = { PYTHONPATH = "python:." } }
