@@ -10,8 +10,10 @@ from akasha.document.record import (
     DocumentRecord,
 )
 from akasha.index.flat import SearchResult
+from akasha.index.hnsw import HnswIndex
 from akasha.query.evaluator import matches_all, matches_expression
 from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.planner import QueryPlanner
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -42,6 +44,8 @@ struct PersistentCollection:
     var _last_sequence: UInt64
     var _lock: CollectionLock
     var _closed: Bool
+    var _hnsw: HnswIndex
+    var _hnsw_dirty: Bool
 
     def __init__(
         out self,
@@ -50,6 +54,7 @@ struct PersistentCollection:
         var memtable: MemTable,
         last_sequence: UInt64,
         var lock: CollectionLock,
+        var hnsw: HnswIndex,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
@@ -58,6 +63,8 @@ struct PersistentCollection:
         self._last_sequence = last_sequence
         self._lock = lock^
         self._closed = False
+        self._hnsw = hnsw^
+        self._hnsw_dirty = False
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -110,8 +117,9 @@ struct PersistentCollection:
                 )
             last_sequence = records[index].sequence
 
+        var hnsw = _build_hnsw(memtable, dimension)
         return PersistentCollection(
-            path, dimension, memtable^, last_sequence, lock^
+            path, dimension, memtable^, last_sequence, lock^, hnsw^
         )
 
     def close(mut self) raises:
@@ -134,6 +142,7 @@ struct PersistentCollection:
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
         self._last_sequence = sequence
+        self._hnsw_dirty = True
 
     def upsert_document(
         mut self,
@@ -152,6 +161,7 @@ struct PersistentCollection:
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
         self._last_sequence = sequence
+        self._hnsw_dirty = True
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
         self._ensure_open()
@@ -164,6 +174,7 @@ struct PersistentCollection:
         append_wal(self._wal_path, self.dimension, record)
         self._memtable.apply_delete(id, sequence)
         self._last_sequence = sequence
+        self._hnsw_dirty = True
 
     def search_dot(
         self, query: List[Float32], k: Int
@@ -182,6 +193,21 @@ struct PersistentCollection:
     ) raises -> List[SearchResult]:
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+
+    def search_dot_approx(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        return self._search_approx(query, k, ef_search, _DOT_METRIC)
+
+    def search_l2_approx(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        return self._search_approx(query, k, ef_search, _L2_METRIC)
+
+    def search_cosine_approx(
+        mut self, query: List[Float32], k: Int, ef_search: Int
+    ) raises -> List[SearchResult]:
+        return self._search_approx(query, k, ef_search, _COSINE_METRIC)
 
     def search_dot_filtered(
         self,
@@ -230,6 +256,39 @@ struct PersistentCollection:
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
         return self._search_where(query, k, _COSINE_METRIC, expression)
+
+    def search_dot_approx_where(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_approx_where(
+            query, k, ef_search, _DOT_METRIC, expression
+        )
+
+    def search_l2_approx_where(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_approx_where(
+            query, k, ef_search, _L2_METRIC, expression
+        )
+
+    def search_cosine_approx_where(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        return self._search_approx_where(
+            query, k, ef_search, _COSINE_METRIC, expression
+        )
 
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
@@ -306,6 +365,84 @@ struct PersistentCollection:
             results.append(SearchResult(entry.id, entry.score))
         return results^
 
+    def _search_approx(
+        mut self, query: List[Float32], k: Int, ef_search: Int, metric: Int
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        self._validate_vector(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        if ef_search <= 0:
+            raise Error("ef_search must be positive")
+        self._ensure_hnsw()
+        var count = self._hnsw.point_count()
+        if not QueryPlanner.use_hnsw(count, k, count, False):
+            var conditions = List[FilterCondition]()
+            return self._search_filtered(query, k, metric, conditions)
+        if metric == _DOT_METRIC:
+            return self._hnsw.search_dot(query, k, ef_search)
+        if metric == _L2_METRIC:
+            return self._hnsw.search_l2(query, k, ef_search)
+        return self._hnsw.search_cosine(query, k, ef_search)
+
+    def _search_approx_where(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        metric: Int,
+        expression: FilterExpression,
+    ) raises -> List[SearchResult]:
+        self._ensure_open()
+        self._validate_vector(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        if ef_search <= 0:
+            raise Error("ef_search must be positive")
+        expression.validate()
+        self._ensure_hnsw()
+        var entries = self._memtable.live_entries()
+        var matched_count = 0
+        for entry_index in range(len(entries)):
+            if matches_expression(
+                entries[entry_index].fields, expression
+            ):
+                matched_count += 1
+        if not QueryPlanner.use_hnsw(
+            len(entries), k, matched_count, True
+        ):
+            return self._search_where(query, k, metric, expression)
+
+        var overfetch = ef_search
+        if overfetch < k * 4:
+            overfetch = k * 4
+        if overfetch > len(entries):
+            overfetch = len(entries)
+        var candidates: List[SearchResult]
+        if metric == _DOT_METRIC:
+            candidates = self._hnsw.search_dot(query, overfetch, ef_search)
+        elif metric == _L2_METRIC:
+            candidates = self._hnsw.search_l2(query, overfetch, ef_search)
+        else:
+            candidates = self._hnsw.search_cosine(
+                query, overfetch, ef_search
+            )
+
+        var target = k
+        if target > matched_count:
+            target = matched_count
+        var accepted = List[SearchResult](capacity=target)
+        for candidate in candidates:
+            for entry_index in range(len(entries)):
+                if entries[entry_index].id == candidate.id and matches_expression(
+                    entries[entry_index].fields, expression
+                ):
+                    accepted.append(candidate)
+                    break
+            if len(accepted) == target:
+                return accepted^
+        return self._search_where(query, k, metric, expression)
+
     def _search_where(
         self,
         query: List[Float32],
@@ -357,6 +494,13 @@ struct PersistentCollection:
         if self._closed:
             raise Error("collection is closed")
 
+    def _ensure_hnsw(mut self) raises:
+        if not self._hnsw_dirty:
+            return
+        var rebuilt = _build_hnsw(self._memtable, self.dimension)
+        self._hnsw = rebuilt^
+        self._hnsw_dirty = False
+
     def _next_sequence(self) raises -> UInt64:
         if self._last_sequence == UInt64.MAX:
             raise Error("collection sequence exhausted")
@@ -368,3 +512,13 @@ def _clone_vector(values: List[Float32]) -> List[Float32]:
     for value in values:
         result.append(value)
     return result^
+
+
+def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:
+    var index = HnswIndex(dimension)
+    var entries = memtable.live_entries()
+    for entry_index in range(len(entries)):
+        index.add(
+            entries[entry_index].id, entries[entry_index].values
+        )
+    return index^
