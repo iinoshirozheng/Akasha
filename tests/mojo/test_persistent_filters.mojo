@@ -153,6 +153,7 @@ def test_filtered_search_survives_wal_only_reopen_and_resolves_payload() raises:
     var drop = _fields("drop", 9)
     collection.upsert_document(10, [2.0, 0.0], keep^)
     collection.upsert_document(20, [3.0, 0.0], drop^)
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 2)
     var conditions = List[FilterCondition]()
@@ -179,6 +180,7 @@ def test_filtered_search_survives_snapshot_reopen() raises:
     collection.upsert_document(1, [3.0, 0.0], lower^)
     collection.upsert_document(2, [1.0, 0.0], higher^)
     collection.flush()
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 2)
     var conditions = List[FilterCondition]()
@@ -282,6 +284,7 @@ def test_where_search_survives_wal_and_snapshot_recovery() raises:
     var wal_collection = PersistentCollection.open(wal_path, 1)
     var wal_fields = _fields("keep", 7)
     wal_collection.upsert_document(7, [1.0], wal_fields^)
+    wal_collection.close()
     var wal_reopened = PersistentCollection.open(wal_path, 1)
     var expression = _keep_or_late_page()
     var query: List[Float32] = [1.0]
@@ -294,6 +297,7 @@ def test_where_search_survives_wal_and_snapshot_recovery() raises:
     var snapshot_fields = _fields("keep", 7)
     snapshot_collection.upsert_document(8, [1.0], snapshot_fields^)
     snapshot_collection.flush()
+    snapshot_collection.close()
     var snapshot_reopened = PersistentCollection.open(snapshot_path, 1)
     var snapshot_results = snapshot_reopened.search_dot_where(
         query, 1, expression

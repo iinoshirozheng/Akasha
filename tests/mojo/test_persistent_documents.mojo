@@ -93,6 +93,7 @@ def test_document_survives_wal_only_reopen() raises:
     var collection = PersistentCollection.open(path, 1)
     var fields = _document_fields()
     collection.upsert_document(1, [2.0], fields^)
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 1)
     var record = reopened.get(1)
@@ -112,6 +113,7 @@ def test_document_survives_flush_and_search_result_lookup() raises:
     collection.upsert_document(20, [2.0, 0.0], fields^)
     collection.upsert(30, [0.0, 1.0])
     collection.flush()
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 2)
     var query: List[Float32] = [1.0, 0.0]
@@ -165,6 +167,7 @@ def test_v1_database_opens_and_flushes_as_v2_segment() raises:
     assert_true(Bool(old_record))
     assert_equal(len(old_record.value().fields), 0)
     collection.flush()
+    collection.close()
 
     var segment = read_file_bytes(path + "/segment-1.bin")
     assert_equal(segment[4], UInt8(2))

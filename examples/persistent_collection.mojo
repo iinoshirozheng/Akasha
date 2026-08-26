@@ -44,6 +44,7 @@ def main() raises:
     collection.upsert_document(202, [0.8, 0.2, 0.0], image_fields^)
     collection.upsert(303, [0.0, 1.0, 0.0])
     collection.flush()
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 3)
     var query: List[Float32] = [1.0, 0.0, 0.0]

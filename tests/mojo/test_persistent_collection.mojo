@@ -51,6 +51,7 @@ def test_wal_only_recovery() raises:
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
     collection.upsert(2, [3.0])
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 1)
     var query: List[Float32] = [1.0]
@@ -69,6 +70,7 @@ def test_flush_and_reopen_restores_complete_live_snapshot() raises:
     collection.upsert(2, [0.0, 1.0])
     collection.delete(1)
     collection.flush()
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 2)
     var query: List[Float32] = [0.0, 1.0]
@@ -86,6 +88,7 @@ def test_reopen_combines_snapshot_with_newer_wal_records() raises:
     collection.upsert(1, [1.0])
     collection.flush()
     collection.upsert(2, [2.0])
+    collection.close()
 
     var reopened = PersistentCollection.open(path, 1)
     var query: List[Float32] = [1.0]
@@ -106,6 +109,37 @@ def test_existing_collection_rejects_dimension_mismatch() raises:
 
     with assert_raises():
         _ = PersistentCollection.open(path, 3)
+
+
+def test_collection_rejects_second_live_owner_and_reopens_after_close() raises:
+    var path = String("/tmp/akasha-phase5-collection-owner")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+
+    with assert_raises():
+        _ = PersistentCollection.open(path, 1)
+
+    collection.close()
+    var reopened = PersistentCollection.open(path, 1)
+    reopened.close()
+
+
+def test_closed_collection_rejects_data_operations() raises:
+    var path = String("/tmp/akasha-phase5-collection-closed")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.close()
+
+    with assert_raises():
+        collection.upsert(1, [1.0])
+    with assert_raises():
+        _ = collection.get(1)
+    with assert_raises():
+        _ = collection.search_dot([1.0], 1)
+    with assert_raises():
+        collection.delete(1)
+    with assert_raises():
+        collection.flush()
 
 
 def main() raises:

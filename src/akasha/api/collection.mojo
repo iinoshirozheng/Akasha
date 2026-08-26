@@ -19,6 +19,7 @@ from akasha.storage.filesystem import (
     sync_directory,
 )
 from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
+from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import read_segment, write_segment
 from akasha.storage.wal import append_wal, recover_wal, WalRecord
@@ -38,6 +39,8 @@ struct PersistentCollection:
     var _wal_path: String
     var _memtable: MemTable
     var _last_sequence: UInt64
+    var _lock: CollectionLock
+    var _closed: Bool
 
     def __init__(
         out self,
@@ -45,12 +48,15 @@ struct PersistentCollection:
         dimension: Int,
         var memtable: MemTable,
         last_sequence: UInt64,
+        var lock: CollectionLock,
     ):
         self.path = String(copy=path)
         self.dimension = dimension
         self._wal_path = path + "/wal.bin"
         self._memtable = memtable^
         self._last_sequence = last_sequence
+        self._lock = lock^
+        self._closed = False
 
     @staticmethod
     def open(path: String, dimension: Int) raises -> PersistentCollection:
@@ -58,6 +64,7 @@ struct PersistentCollection:
         if dimension <= 0:
             raise Error("collection dimension must be positive")
         ensure_directory(path)
+        var lock = CollectionLock.acquire(path + "/collection.lock")
 
         var memtable = MemTable(dimension)
         var snapshot_sequence = UInt64(0)
@@ -102,12 +109,23 @@ struct PersistentCollection:
                 )
             last_sequence = records[index].sequence
 
-        return PersistentCollection(path, dimension, memtable^, last_sequence)
+        return PersistentCollection(
+            path, dimension, memtable^, last_sequence, lock^
+        )
 
-    def last_sequence(self) -> UInt64:
+    def close(mut self) raises:
+        """Release this collection's single-writer ownership."""
+        if self._closed:
+            return
+        self._lock.close()
+        self._closed = True
+
+    def last_sequence(self) raises -> UInt64:
+        self._ensure_open()
         return self._last_sequence
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
+        self._ensure_open()
         self._validate_vector(values)
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
@@ -122,6 +140,7 @@ struct PersistentCollection:
         var values: List[Float32],
         var fields: List[DocumentField],
     ) raises:
+        self._ensure_open()
         self._validate_vector(values)
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
@@ -134,9 +153,11 @@ struct PersistentCollection:
         self._last_sequence = sequence
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
+        self._ensure_open()
         return self._memtable.get(id)
 
     def delete(mut self, id: Int) raises:
+        self._ensure_open()
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self.dimension, record)
@@ -211,6 +232,7 @@ struct PersistentCollection:
 
     def flush(mut self) raises:
         """Atomically publish a complete immutable live-state snapshot."""
+        self._ensure_open()
         var entries = self._memtable.live_entries()
         var segment_name = "segment-" + String(self._last_sequence) + ".bin"
         var temporary_path = self.path + "/" + segment_name + ".tmp"
@@ -238,6 +260,7 @@ struct PersistentCollection:
         metric: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
+        self._ensure_open()
         self._validate_vector(query)
         if k <= 0:
             raise Error("k must be positive")
@@ -278,6 +301,7 @@ struct PersistentCollection:
         metric: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
+        self._ensure_open()
         self._validate_vector(query)
         if k <= 0:
             raise Error("k must be positive")
@@ -316,6 +340,10 @@ struct PersistentCollection:
         for value in values:
             if not isfinite(value):
                 raise Error("vectors must contain only finite values")
+
+    def _ensure_open(self) raises:
+        if self._closed:
+            raise Error("collection is closed")
 
     def _next_sequence(self) raises -> UInt64:
         if self._last_sequence == UInt64.MAX:

@@ -22,11 +22,13 @@ def test_reopen_repairs_torn_tail_before_next_append() raises:
     for index in range(34):
         torn.append(next_record[index])
     append_file_sync(directory + "/wal.bin", torn)
+    collection.close()
 
     var recovered = PersistentCollection.open(directory, 1)
     var query: List[Float32] = [1.0]
     assert_equal(len(recovered.search_dot(query, 2)), 1)
     recovered.upsert(2, [2.0])
+    recovered.close()
 
     var reopened = PersistentCollection.open(directory, 1)
     var results = reopened.search_dot(query, 2)
