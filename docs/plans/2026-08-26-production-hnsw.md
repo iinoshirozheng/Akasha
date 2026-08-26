@@ -4,7 +4,7 @@
 
 **Goal:** Replace Akasha's prototype HNSW with a metric-correct, packed, incremental, filter-aware, persisted, mmap-capable, quantized ANN subsystem with measurable recall and a capability-gated C ABI.
 
-**Architecture:** Keep MemTable/segments as the authoritative F32 record store and make HNSW a rebuildable acceleration layer. Bind each collection to one ANN metric, use canonical lower-is-better distance internally, store mutable graph slots in flat bounded buffers, persist a frozen sidecar through manifest v2, and overlay post-checkpoint mutations in an owned delta. Exact search remains the compatibility and correctness fallback.
+**Architecture:** Keep MemTable/segments as the authoritative F32 record store and make HNSW a rebuildable acceleration layer. Bind each collection to one ANN metric, use canonical lower-is-better distance internally, store mutable graph slots in flat bounded buffers, persist a frozen sidecar through a backward-compatible manifest v3 extension, and overlay post-checkpoint mutations in an owned delta. Exact search remains the compatibility and correctness fallback.
 
 **Tech Stack:** Mojo 1.0.0, Mojo SIMD and FFI, Pixi, existing Akasha binary codecs/WAL/segment/manifest infrastructure, Python 3.11 + pytest/FastAPI, C compiler/linker for the ABI capability gate.
 
@@ -24,6 +24,28 @@
 - Run the full suite at the milestone gates in Tasks 14, 22, 27, and 30.
 - If a compiler/FFI capability gate fails, record the evidence in the named ADR
   and stop only that optional track. Do not invent a substitute ABI.
+
+## Post-rebase integration constraints (2026-08-27)
+
+The branch was rebased onto `origin/main` after upstream added multi-segment
+recovery, derived index caches, manifest v2, SQ8/PQ indexes, parallel scans, GPU
+planning/execution, and wider adapter/operations surfaces. Tasks 12 onward must
+extend those implementations rather than replace them:
+
+- keep upstream `HnswIndex.encode_cache_payload` / `decode_cache_payload`
+  compatibility until the versioned sidecar transition in Tasks 20-22 is
+  complete;
+- treat `hnsw.cache` as the legacy rebuildable derived-cache path and define one
+  explicit transition to the manifest-referenced HNSW sidecar;
+- add HNSW references as manifest v3, preserving both v1 single-segment and v2
+  multi-segment decoding and publication semantics;
+- reuse the existing SQ8/PQ codecs and quality fixtures in Task 26, adding only
+  the scalar kinds and graph-vector integration that remain missing;
+- make Task 27's HNSW dispatcher compose with the existing parallel-scan and GPU
+  planner instead of creating a competing top-level planner;
+- extend Task 28 coverage across the current Python, HTTP, operations, snapshot,
+  and distributed entry points so configuration identity and stats remain
+  consistent on every public surface.
 
 ## Milestone A: Measurement and immutable configuration
 
@@ -910,6 +932,12 @@ var last_search_stats: HnswSearchStats
 Delete `_HnswNode`, `_NeighborLevel`, `_Candidate`, linear `_find_index`, and the
 old full-scan add loop.
 
+Preserve the public signatures and byte compatibility of
+`encode_cache_payload` / `decode_cache_payload` while `hnsw.cache` remains an
+upstream recovery input. Reimplement those methods against the new packed graph,
+and add a legacy-cache round-trip/reopen test. Do not remove the compatibility
+codec until Task 22 has published and recovered the replacement sidecar.
+
 **Step 4: Implement standard insertion**
 
 For a non-empty index:
@@ -1336,6 +1364,10 @@ bad magic/version/flags/checksum, mismatched sequence/config/dimension,
 overflowing offsets/counts, invalid entry slot/level, out-of-range neighbors,
 duplicate/self/asymmetric links, and nonzero reserved bytes.
 
+Also preserve a fixture produced by the existing `hnsw.cache` payload codec and
+test the transition policy: legacy cache data remains readable/rebuildable, but
+new sidecar publication never writes a second independently authoritative graph.
+
 **Step 2: Run and verify failure**
 
 Run: `pixi run mojo run -I src tests/mojo/test_hnsw_store.mojo`
@@ -1375,6 +1407,10 @@ Add exact header/section tables, alignment, checksum range, limits, validation
 order, filename convention `hnsw-<sequence>.bin`, and compatibility policy to
 `docs/formats/hnsw-format.md`.
 
+Document that the sidecar supersedes `hnsw.cache` only after the manifest v3
+commit point in Task 22. Until then, the cache is derived and optional; after a
+v3 sidecar is committed, recovery must not prefer a stale cache over it.
+
 **Step 5: Verify and commit**
 
 Run:
@@ -1391,37 +1427,41 @@ git add src/akasha/storage/hnsw_store.mojo src/akasha/storage/__init__.mojo test
 git commit -m "feat: encode validated HNSW snapshot sidecars"
 ```
 
-### Task 21: Upgrade the manifest to optional HNSW references
+### Task 21: Upgrade manifest v2 to optional HNSW references in v3
 
 **Files:**
 
 - Modify: `src/akasha/storage/manifest.mojo`
 - Modify: `tests/mojo/test_manifest.mojo`
 - Modify: `docs/formats/manifest-format.md`
-- Create: `tests/mojo/test_manifest_v1_compat.mojo`
+- Create: `tests/mojo/test_manifest_v1_v2_compat.mojo`
 
-**Step 1: Preserve a v1 fixture and write failing v2 tests**
+**Step 1: Preserve v1 and v2 fixtures and write failing v3 tests**
 
-Before changing the codec, encode representative v1 bytes in the compatibility
-test. Test that v1 still decodes with `hnsw_name = None`. Add v2 round trips for
-segment-only and segment+sparse+HNSW references, deterministic bytes, filename
-validation, and corruption of each new length/checksum/fingerprint/count field.
+Before changing the codec, preserve representative v1 single-segment and v2
+multi-segment bytes in the compatibility test. Test that both decode with
+`hnsw_name = None` and retain their existing segment/sparse descriptors. Add v3
+round trips for multi-segment manifests with and without an HNSW reference,
+deterministic bytes, filename validation, and corruption of each new
+length/checksum/fingerprint/count field.
 
-**Step 2: Run and verify v2 tests fail**
+**Step 2: Run and verify v3 tests fail**
 
 Run:
 
 ```bash
 pixi run mojo run -I src tests/mojo/test_manifest.mojo
-pixi run mojo run -I src tests/mojo/test_manifest_v1_compat.mojo
+pixi run mojo run -I src tests/mojo/test_manifest_v1_v2_compat.mojo
 ```
 
-Expected: v1 compatibility PASS; new v2 assertions FAIL.
+Expected: v1/v2 compatibility PASS; new v3 assertions FAIL.
 
 **Step 3: Implement version-dispatched decoding**
 
 Extend `Manifest` with optional HNSW name, checksum, config fingerprint, and
-point count. Keep v1 decode byte-for-byte compatible. New publishes use v2.
+point count. Keep v1 and v2 decode byte-for-byte compatible. New publishes use
+v3 only when HNSW reference fields are present; ordinary upstream multi-segment
+publishes remain v2 until Task 22 integrates the sidecar commit point.
 Dispatch on the decoded version before applying version-specific fixed-size and
 length rules. Reuse one safe-filename validator for segment/sparse/HNSW names.
 
@@ -1431,8 +1471,9 @@ missing authoritative segment.
 
 **Step 4: Update format documentation**
 
-Add separate v1/v2 tables and state that the HNSW reference is optional and
-rebuildable while the segment reference is authoritative and required.
+Add separate v1/v2/v3 tables and state that the HNSW reference is optional and
+rebuildable while every manifest segment reference is authoritative and
+required.
 
 **Step 5: Verify and commit**
 
@@ -1440,15 +1481,15 @@ Run:
 
 ```bash
 pixi run mojo run -I src tests/mojo/test_manifest.mojo
-pixi run mojo run -I src tests/mojo/test_manifest_v1_compat.mojo
+pixi run mojo run -I src tests/mojo/test_manifest_v1_v2_compat.mojo
 pixi run mojo run -I src tests/mojo/test_segment_v1_compat.mojo
 ```
 
 Expected: PASS.
 
 ```bash
-git add src/akasha/storage/manifest.mojo tests/mojo/test_manifest.mojo tests/mojo/test_manifest_v1_compat.mojo docs/formats/manifest-format.md
-git commit -m "feat: reference HNSW sidecars from manifest v2"
+git add src/akasha/storage/manifest.mojo tests/mojo/test_manifest.mojo tests/mojo/test_manifest_v1_v2_compat.mojo docs/formats/manifest-format.md
+git commit -m "feat: reference HNSW sidecars from manifest v3"
 ```
 
 ### Task 22: Integrate sidecar checkpoint, owned recovery, and crash ordering
@@ -1475,7 +1516,7 @@ Use the existing crash-test pattern to stop after each checkpoint boundary:
 
 1. data temporaries written, manifest old;
 2. data files renamed, manifest old;
-3. manifest v2 published, WAL old;
+3. manifest v3 published, WAL old;
 4. WAL rotated, old sidecars present;
 5. old sidecars removed.
 
@@ -1502,7 +1543,7 @@ During `flush()`:
 - rebuild first only when Task 19 policy requires it;
 - write segment, sparse, and HNSW temporary files;
 - fsync and rename all data files, then sync the directory;
-- publish manifest v2 as the commit point;
+- publish manifest v3 as the commit point;
 - rotate dense and sparse WALs;
 - remove only prior valid manifest references that differ from current names.
 
@@ -1720,10 +1761,11 @@ git commit -m "feat: overlay HNSW checkpoint with mutable delta"
 
 ## Milestone F: Compact vectors and distance backend selection
 
-### Task 26: Add tested scalar conversion and compact graph vectors
+### Task 26: Extend existing quantization with compact graph vectors
 
 **Files:**
 
+- Modify: `src/akasha/index/quantization.mojo`
 - Create: `src/akasha/compute/quantization.mojo`
 - Modify: `src/akasha/compute/__init__.mojo`
 - Modify: `src/akasha/index/hnsw_storage.mojo`
@@ -1748,7 +1790,8 @@ pixi run mojo run -I src tests/mojo/test_quantization.mojo
 pixi run mojo run -I src tests/mojo/test_hnsw_quantized.mojo
 ```
 
-Expected: FAIL because conversion/storage backends are absent.
+Expected: existing SQ8/PQ tests PASS; new graph-scalar conversion/storage tests
+FAIL because BF16/F16 and bound-metric graph integration are absent.
 
 **Step 3: Implement typed conversion kernels**
 
@@ -1760,6 +1803,12 @@ multiplies the integer accumulation by both scales so vector magnitude remains
 part of approximate ordering. Accumulate integer products in a width proven safe
 for the maximum supported dimension, then convert to F32. Enforce the
 dimension/accumulator bound in config validation.
+
+Reuse the existing `Sq8Codebook`, `Sq8Index`, `PqCodebook`, and `PqIndex`
+training, encoding, and deterministic Top-K behavior. Extract shared rounding,
+saturation, accumulator-bound, and quality-fixture helpers instead of adding a
+second incompatible I8 codec. PQ remains an optional coarse/rerank index unless
+the graph format explicitly gains and tests a PQ scalar tag.
 
 Do not quantize MemTable, WAL, segment, or exact-search values.
 
@@ -1792,7 +1841,7 @@ pixi run check-hnsw-quality
 Expected: PASS for each enabled scalar kind.
 
 ```bash
-git add src/akasha/compute/quantization.mojo src/akasha/compute/__init__.mojo src/akasha/index/hnsw_storage.mojo src/akasha/index/hnsw_view.mojo src/akasha/storage/hnsw_store.mojo tests/mojo/test_quantization.mojo tests/mojo/test_hnsw_quantized.mojo
+git add src/akasha/index/quantization.mojo src/akasha/compute/quantization.mojo src/akasha/compute/__init__.mojo src/akasha/index/hnsw_storage.mojo src/akasha/index/hnsw_view.mojo src/akasha/storage/hnsw_store.mojo tests/mojo/test_quantization.mojo tests/mojo/test_hnsw_quantized.mojo
 git commit -m "feat: add compact HNSW vector storage"
 ```
 
@@ -1829,6 +1878,13 @@ method branches outside graph traversal; if Mojo cannot store function pointers
 with the required ownership/calling convention, use a small tagged dispatcher
 whose tag is switched once by public `search`/`insert` entry points, then call a
 parameterized core. Never switch inside a scalar loop or neighbor loop.
+
+Expose this as the HNSW distance-kernel layer beneath the existing query
+execution policy. The current parallel scan and GPU planner keep ownership of
+CPU/GPU and batch/fallback decisions; they consume the same metric names and
+stats vocabulary. Add integration tests proving exact scalar, parallel, GPU
+fallback, and HNSW paths report compatible backend/reason fields without
+recursively dispatching or silently changing score semantics.
 
 **Step 4: Document the runtime-dispatch boundary**
 
@@ -1869,10 +1925,17 @@ git commit -m "perf: dispatch HNSW distance backend once"
 - Modify: `src/bindings/python_module.mojo`
 - Modify: `python/akashadb/models.py`
 - Modify: `python/akashadb/database.py`
+- Modify: `python/akashadb/operations.py`
+- Modify: `python/akashadb/distributed/cluster.py`
+- Modify: `python/akashadb/distributed/protocol.py`
+- Modify: `python/akashadb/distributed/replica.py`
 - Modify: `apps/server/schemas.py`
 - Modify: `apps/server/main.py`
 - Modify: `tests/python/test_package.py`
 - Modify: `tests/python/test_server.py`
+- Modify: `tests/python/test_operations.py`
+- Modify: `tests/python/test_distributed_protocol.py`
+- Modify: `src/akasha/api/snapshot.mojo`
 
 **Step 1: Write failing adapter tests**
 
@@ -1882,6 +1945,11 @@ query-stats response containing planner reason/backend/metric/scalar/ef/visited/
 distance counts. Keep existing response items compatible; expose stats through a
 separate method/endpoint or optional response field rather than changing list
 elements unexpectedly.
+
+Cover backup/restore, immutable snapshots, maintenance/operations wrappers, and
+distributed routing already present after the rebase. Each path must either
+preserve the full collection fingerprint and stats or explicitly reject an
+unsupported option before creating durable state.
 
 **Step 2: Run and verify failure**
 
