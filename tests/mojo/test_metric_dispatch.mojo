@@ -1,10 +1,12 @@
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute import MetricDispatcher
-from std.math import inf, nan
+from std.math import inf, isfinite, nan
+from std.sys import simd_width_of
 from std.testing import (
     assert_almost_equal,
     assert_equal,
     assert_raises,
+    assert_true,
     TestSuite,
 )
 
@@ -15,7 +17,7 @@ def _unchecked_without_raises(
     rhs: List[Float32],
 ) -> Float32:
     """Compile-time proof that the prepared hot path is non-raising."""
-    return dispatcher.canonical_prepared_unchecked(lhs, rhs)
+    return dispatcher._canonical_prepared_unchecked(lhs, rhs)
 
 
 def test_canonical_distance_is_lower_better_for_every_metric() raises:
@@ -34,6 +36,15 @@ def test_canonical_distance_is_lower_better_for_every_metric() raises:
         1.0 - 16.0 / 16.124515497,
         atol=1.0e-6,
     )
+
+
+def test_negative_dot_and_dimension_one_semantics() raises:
+    var dispatcher = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 1)
+    var lhs: List[Float32] = [-2.0]
+    var rhs: List[Float32] = [3.0]
+
+    assert_almost_equal(dispatcher.canonical(lhs, rhs), 6.0, atol=1.0e-6)
+    assert_almost_equal(dispatcher.public_score(6.0), -6.0, atol=1.0e-6)
 
 
 def test_public_score_inverts_canonical_transform() raises:
@@ -121,6 +132,62 @@ def test_cosine_preparation_normalizes_once_for_prepared_hot_path() raises:
     )
 
 
+def test_cosine_handles_large_and_tiny_nonzero_vectors() raises:
+    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 1)
+    var large: List[Float32] = [1.0e15]
+    var tiny: List[Float32] = [1.0e-30]
+
+    var large_prepared = dispatcher.prepare_query(large)
+    var tiny_prepared = dispatcher.prepare_graph_vector(tiny)
+    var large_raw_distance = dispatcher.canonical(large, large)
+    var tiny_raw_distance = dispatcher.canonical(tiny, tiny)
+
+    assert_almost_equal(large_raw_distance, 0.0, atol=1.0e-6)
+    assert_almost_equal(tiny_raw_distance, 0.0, atol=1.0e-6)
+    assert_almost_equal(large_prepared[0], 1.0, atol=1.0e-6)
+    assert_almost_equal(tiny_prepared[0], 1.0, atol=1.0e-6)
+    assert_almost_equal(
+        dispatcher.canonical_prepared(large_prepared, large_prepared),
+        large_raw_distance,
+        atol=1.0e-6,
+    )
+    assert_almost_equal(
+        dispatcher.canonical_prepared(tiny_prepared, tiny_prepared),
+        tiny_raw_distance,
+        atol=1.0e-6,
+    )
+
+
+def test_cosine_mixed_magnitudes_preserve_raw_prepared_parity() raises:
+    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 3)
+    var lhs: List[Float32] = [1.0e15, 1.0e15, 1.0]
+    var rhs: List[Float32] = [1.0e15, -1.0e15, 2.0]
+    var prepared_lhs = dispatcher.prepare_query(lhs)
+    var prepared_rhs = dispatcher.prepare_graph_vector(rhs)
+    var raw_distance = dispatcher.canonical(lhs, rhs)
+    var prepared_distance = dispatcher.canonical_prepared(
+        prepared_lhs, prepared_rhs
+    )
+
+    assert_true(isfinite(raw_distance))
+    assert_true(isfinite(prepared_distance))
+    assert_almost_equal(raw_distance, 1.0, atol=1.0e-6)
+    assert_almost_equal(prepared_distance, raw_distance, atol=1.0e-5)
+
+
+def test_cosine_distance_is_clamped_to_closed_range() raises:
+    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
+    var slightly_long: List[Float32] = [1.00001, 0.0]
+    var opposite: List[Float32] = [-1.00001, 0.0]
+
+    var lower = dispatcher.canonical_prepared(slightly_long, slightly_long)
+    var upper = dispatcher.canonical_prepared(slightly_long, opposite)
+    assert_equal(lower, 0.0)
+    assert_equal(upper, 2.0)
+    assert_true(lower >= 0.0 and lower <= 2.0)
+    assert_true(upper >= 0.0 and upper <= 2.0)
+
+
 def test_unchecked_prepared_matches_checked_for_every_f32_metric() raises:
     var raw_lhs: List[Float32] = [3.0, 4.0]
     var raw_rhs: List[Float32] = [-4.0, 3.0]
@@ -151,6 +218,74 @@ def test_unchecked_prepared_matches_checked_for_every_f32_metric() raises:
         cosine.canonical_prepared(cosine_lhs, cosine_rhs),
         atol=1.0e-6,
     )
+
+
+def test_checked_prepared_rejects_mismatch_before_simd_load() raises:
+    var width = simd_width_of[DType.float32]()
+    var dispatcher = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), width)
+    var lhs = List[Float32](capacity=width)
+    var rhs = List[Float32](capacity=width - 1)
+    for i in range(width):
+        lhs.append(Float32(i))
+        if i + 1 < width:
+            rhs.append(Float32(i))
+
+    with assert_raises():
+        _ = dispatcher.canonical_prepared(lhs, rhs)
+
+
+def test_checked_prepared_rejects_nonfinite_and_nonunit_cosine() raises:
+    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
+    var unit: List[Float32] = [1.0, 0.0]
+    var nonfinite: List[Float32] = [inf[DType.float32](), 0.0]
+    var not_unit: List[Float32] = [2.0, 0.0]
+
+    with assert_raises():
+        _ = dispatcher.canonical_prepared(unit, nonfinite)
+    with assert_raises():
+        _ = dispatcher.canonical_prepared(unit, not_unit)
+
+
+def test_dot_and_l2_reject_values_that_can_overflow_f32_accumulation() raises:
+    var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 1)
+    var l2 = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 1)
+    var extreme: List[Float32] = [1.0e20]
+    var maximum: List[Float32] = [3.0e38]
+    var negative_extreme: List[Float32] = [-1.0e20]
+
+    with assert_raises():
+        _ = dot.prepare_query(extreme)
+    with assert_raises():
+        _ = dot.canonical(maximum, maximum)
+    with assert_raises():
+        _ = l2.prepare_graph_vector(negative_extreme)
+    with assert_raises():
+        _ = l2.canonical(extreme, negative_extreme)
+
+
+def test_prepared_hot_path_is_finite_at_exact_and_multiple_simd_widths() raises:
+    var width = simd_width_of[DType.float32]()
+    for dimension in [width, width * 2]:
+        var lhs = List[Float32](capacity=dimension)
+        var rhs = List[Float32](capacity=dimension)
+        for i in range(dimension):
+            lhs.append(Float32((i % 5) - 2))
+            rhs.append(Float32((i % 3) - 1))
+
+        var dot = MetricDispatcher(
+            MetricKind.dot(), ScalarKind.f32(), dimension
+        )
+        var prepared_lhs = dot.prepare_query(lhs)
+        var prepared_rhs = dot.prepare_graph_vector(rhs)
+        var distance = _unchecked_without_raises(
+            dot, prepared_lhs, prepared_rhs
+        )
+        assert_true(isfinite(distance))
+        assert_almost_equal(
+            distance,
+            dot.canonical_prepared(prepared_lhs, prepared_rhs),
+            atol=1.0e-5,
+        )
 
 
 def test_cosine_rejects_zero_norm_at_every_checked_boundary() raises:

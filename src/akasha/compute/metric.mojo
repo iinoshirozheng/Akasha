@@ -1,19 +1,25 @@
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.simd import (
-    simd_dot_product_unchecked,
-    simd_l2_squared_unchecked,
+    _simd_dot_product_unchecked,
+    _simd_l2_squared_unchecked,
 )
 from std.math import isfinite, sqrt
 
 
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
+comptime _FLOAT32_MAX_AS_FLOAT64 = 3.4028234663852886e38
+comptime _ACCUMULATION_SAFETY_FACTOR = 8.0
+comptime _COSINE_UNIT_NORM_TOLERANCE = 1.0e-3
 
 
 struct MetricDispatcher(Copyable, Movable):
     """Own one collection's metric, scalar backend, and vector dimension.
 
-    Public boundary methods validate dimensions and finite values. HNSW may
-    call `canonical_prepared_unchecked` only with vectors prepared by this
+    Public boundary methods validate dimensions and finite values. Dot and L2
+    also enforce a dimension-dependent component bound so their Float32 SIMD
+    accumulations remain finite. Cosine uses Float64 boundary math and stores
+    unit-normalized Float32 graph vectors. HNSW may call
+    `_canonical_prepared_unchecked` only with vectors prepared by this
     dispatcher (or an equivalent durable codec).
     """
 
@@ -87,23 +93,30 @@ struct MetricDispatcher(Copyable, Movable):
         self.validate_vector(rhs)
 
         if self._metric == MetricKind.l2():
-            return simd_l2_squared_unchecked(lhs, rhs)
+            return self._require_finite_distance(
+                _simd_l2_squared_unchecked(lhs, rhs)
+            )
         if self._metric == MetricKind.dot():
-            return -simd_dot_product_unchecked(lhs, rhs)
+            return self._require_finite_distance(
+                -_simd_dot_product_unchecked(lhs, rhs)
+            )
 
-        var product = simd_dot_product_unchecked(lhs, rhs)
-        var lhs_norm_squared = simd_dot_product_unchecked(lhs, lhs)
-        var rhs_norm_squared = simd_dot_product_unchecked(rhs, rhs)
-        return 1.0 - product / sqrt(lhs_norm_squared * rhs_norm_squared)
+        var similarity = _stable_cosine_similarity(lhs, rhs)
+        var distance = Float32(1.0 - _clamp_similarity_f64(similarity))
+        return self._require_finite_distance(distance)
 
     def canonical_prepared(
         self, lhs: List[Float32], rhs: List[Float32]
     ) raises -> Float32:
-        """Check backend support, then score already-prepared vectors."""
+        """Validate backend and prepared-vector invariants before scoring."""
         self.require_supported_backend()
-        return self.canonical_prepared_unchecked(lhs, rhs)
+        self._validate_prepared_values(lhs)
+        self._validate_prepared_values(rhs)
+        return self._require_finite_distance(
+            self._canonical_prepared_unchecked(lhs, rhs)
+        )
 
-    def canonical_prepared_unchecked(
+    def _canonical_prepared_unchecked(
         self, lhs: List[Float32], rhs: List[Float32]
     ) -> Float32:
         """Return canonical distance for prevalidated, prepared vectors.
@@ -111,13 +124,17 @@ struct MetricDispatcher(Copyable, Movable):
         The dispatcher must use the F32 backend. Both inputs must be
         equal-length vectors prepared for this dispatcher; cosine inputs must
         be unit-normalized. This method performs no validation, allocation, or
-        norm calculation.
+        norm calculation. Vectors admitted by `prepare_query` and
+        `prepare_graph_vector` guarantee a finite result; cosine is clamped so
+        its canonical distance is always in the closed interval [0, 2].
         """
         if self._metric == MetricKind.l2():
-            return simd_l2_squared_unchecked(lhs, rhs)
+            return _simd_l2_squared_unchecked(lhs, rhs)
         if self._metric == MetricKind.dot():
-            return -simd_dot_product_unchecked(lhs, rhs)
-        return 1.0 - simd_dot_product_unchecked(lhs, rhs)
+            return -_simd_dot_product_unchecked(lhs, rhs)
+        return 1.0 - _clamp_similarity_f32(
+            _simd_dot_product_unchecked(lhs, rhs)
+        )
 
     def public_score(self, canonical_distance: Float32) -> Float32:
         """Convert a canonical distance back to the stable public score."""
@@ -135,20 +152,105 @@ struct MetricDispatcher(Copyable, Movable):
     def _validate_values(self, values: List[Float32]) raises:
         if len(values) != self._dimension:
             raise Error("vector dimension does not match dispatcher")
+
+        var component_limit = self._safe_component_limit()
         for i in range(self._dimension):
             if not isfinite(values[i]):
                 raise Error("vectors must contain only finite values")
+            if self._metric != MetricKind.cosine():
+                var magnitude = Float64(values[i])
+                if magnitude < 0.0:
+                    magnitude = -magnitude
+                if magnitude > component_limit:
+                    raise Error(
+                        "dot and l2 components exceed safe f32 accumulation"
+                    )
 
     def _require_nonzero_norm(self, values: List[Float32]) raises:
-        if simd_dot_product_unchecked(values, values) == 0.0:
+        if _stable_norm(values) == 0.0:
             raise Error("cosine distance requires a non-zero vector")
 
-    def _prepare_validated(self, values: List[Float32]) -> List[Float32]:
+    def _validate_prepared_values(self, values: List[Float32]) raises:
+        self._validate_values(values)
+        if self._metric != MetricKind.cosine():
+            return
+
+        var norm = _stable_norm(values)
+        var error = norm - 1.0
+        if error < 0.0:
+            error = -error
+        if error > _COSINE_UNIT_NORM_TOLERANCE:
+            raise Error("prepared cosine vector must have unit norm")
+
+    def _safe_component_limit(self) -> Float64:
+        """Bound admitted dot/L2 inputs for finite Float32 accumulation.
+
+        With B = sqrt(F32_MAX / (8 * dimension)), the absolute worst-case
+        dot sum is at most F32_MAX / 8. The worst-case squared L2 sum, using
+        component differences of 2B, is at most F32_MAX / 2. The remaining
+        margin covers Float32 lane accumulation and reduction rounding.
+        """
+        return sqrt(
+            _FLOAT32_MAX_AS_FLOAT64
+            / (_ACCUMULATION_SAFETY_FACTOR * Float64(self._dimension))
+        )
+
+    def _require_finite_distance(self, distance: Float32) raises -> Float32:
+        if not isfinite(distance):
+            raise Error("metric distance must be finite")
+        return distance
+
+    def _prepare_validated(self, values: List[Float32]) raises -> List[Float32]:
         if self._metric != MetricKind.cosine():
             return values.copy()
 
-        var norm = sqrt(simd_dot_product_unchecked(values, values))
+        var norm = _stable_norm(values)
         var prepared = List[Float32](capacity=self._dimension)
         for i in range(self._dimension):
-            prepared.append(values[i] / norm)
+            var component = Float32(Float64(values[i]) / norm)
+            if not isfinite(component):
+                raise Error("prepared cosine vector must be finite")
+            prepared.append(component)
         return prepared^
+
+
+def _stable_norm(values: List[Float32]) -> Float64:
+    """Return an underflow/overflow-resistant norm for finite Float32 data."""
+    var squared_norm = Float64(0.0)
+    for i in range(len(values)):
+        var component = Float64(values[i])
+        squared_norm += component * component
+    return sqrt(squared_norm)
+
+
+def _stable_cosine_similarity(
+    lhs: List[Float32], rhs: List[Float32]
+) -> Float64:
+    var product = Float64(0.0)
+    var lhs_squared_norm = Float64(0.0)
+    var rhs_squared_norm = Float64(0.0)
+    for i in range(len(lhs)):
+        var left = Float64(lhs[i])
+        var right = Float64(rhs[i])
+        product += left * right
+        lhs_squared_norm += left * left
+        rhs_squared_norm += right * right
+
+    var similarity = product / sqrt(lhs_squared_norm)
+    return similarity / sqrt(rhs_squared_norm)
+
+
+def _clamp_similarity_f64(similarity: Float64) -> Float64:
+    if similarity < -1.0:
+        return -1.0
+    if similarity > 1.0:
+        return 1.0
+    return similarity
+
+
+def _clamp_similarity_f32(similarity: Float32) -> Float32:
+    if similarity < -1.0:
+        return -1.0
+    if similarity > 1.0:
+        return 1.0
+    return similarity
