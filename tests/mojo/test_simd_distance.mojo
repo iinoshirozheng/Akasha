@@ -6,7 +6,9 @@ from akasha.compute.distance import (
 from akasha.compute.simd import (
     simd_cosine_similarity,
     simd_dot_product,
+    simd_dot_product_unchecked,
     simd_l2_squared_distance,
+    simd_l2_squared_unchecked,
 )
 from std.math import inf
 from std.sys import simd_width_of
@@ -26,8 +28,18 @@ def _assert_matches_scalar(size: Int) raises:
         atol=1.0e-4,
     )
     assert_almost_equal(
+        simd_dot_product_unchecked(lhs, rhs),
+        simd_dot_product(lhs, rhs),
+        atol=1.0e-4,
+    )
+    assert_almost_equal(
         simd_l2_squared_distance(lhs, rhs),
         l2_squared_distance(lhs, rhs),
+        atol=1.0e-4,
+    )
+    assert_almost_equal(
+        simd_l2_squared_unchecked(lhs, rhs),
+        simd_l2_squared_distance(lhs, rhs),
         atol=1.0e-4,
     )
     assert_almost_equal(
