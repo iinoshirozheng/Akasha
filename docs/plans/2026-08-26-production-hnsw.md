@@ -900,7 +900,7 @@ rejection; and full graph structural validity after every insertion in a seeded
 
 Remove the old contract that one graph searches all metrics. If legacy
 `search_dot/search_cosine` is called on an L2 index directly, require a clear
-metric-mismatch error. Collection compatibility fallback is added in Task 17.
+metric-mismatch error. Collection compatibility fallback is added in Task 18.
 
 **Step 2: Run and verify the prototype fails**
 
@@ -1016,18 +1016,28 @@ build distance count, visited count, serialized-size estimate, and latency in
 directory is not present at the baseline commit. Label wall-clock values as
 local diagnostics, not universal requirements.
 
-**Step 4: Run the Milestone B suite**
+**Step 4: Run the Milestone B core suite**
 
 Run:
 
 ```bash
 pixi run mojo run -I src tests/mojo/test_hnsw_quality_gate.mojo
-pixi run test
+pixi run mojo run -I src tests/mojo/test_hnsw.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_invariants.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_links.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_search_layer.mojo
+pixi run mojo run -I src tests/mojo/test_persisted_index_cache.mojo
 pixi run test-crash
 pixi run build
 ```
 
 Expected: PASS.
+
+Do not claim the repository-wide Mojo suite passes at this staged boundary.
+Task 13 intentionally made the graph metric-bound while collection-level
+cross-metric fallback is Task 18, so the legacy collection dot-ANN cases remain
+expected metric-mismatch failures until then. Task 18 owns the next fresh full
+suite gate after restoring that compatibility contract.
 
 **Step 5: Commit**
 
@@ -1281,6 +1291,9 @@ Run:
 pixi run mojo run -I src tests/mojo/test_collection_hnsw_incremental.mojo
 pixi run mojo run -I src tests/mojo/test_persistent_hnsw.mojo
 pixi run mojo run -I src tests/mojo/test_persistent_filters.mojo
+pixi run test
+pixi run test-crash
+pixi run build
 ```
 
 Expected: PASS.
