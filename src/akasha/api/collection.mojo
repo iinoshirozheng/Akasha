@@ -54,6 +54,7 @@ from akasha.storage.manifest import (
     SegmentDescriptor,
 )
 from akasha.storage.lock import CollectionLock
+from akasha.storage.operations import backup_storage, StorageInspection
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import (
     read_segment,
@@ -1014,6 +1015,20 @@ struct PersistentCollection:
         """Atomically append an immutable incremental checkpoint."""
         with BlockingScopedLock(self._writer_lock[]):
             self._flush_unlocked()
+
+    def backup_to(mut self, target: String) raises -> StorageInspection:
+        """Checkpoint and copy one generation while it remains pinned."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._flush_unlocked()
+            var manifest = load_manifest(self.path, self.dimension)
+            self._pins[].pin(manifest.generation)
+            try:
+                var report = backup_storage(self.path, target, self.dimension)
+                self._pins[].unpin(manifest.generation)
+                return report^
+            except error:
+                self._pins[].unpin(manifest.generation)
+                raise Error(String(error))
 
     def _flush_unlocked(mut self) raises:
         self._ensure_open()
