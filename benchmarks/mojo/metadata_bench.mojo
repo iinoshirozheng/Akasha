@@ -10,8 +10,9 @@ def _condition(var condition: FilterCondition) raises -> FilterExpression:
     return FilterExpression.condition(condition^)
 
 
-def _benchmark(point_count: Int, iterations: Int) raises:
+def _benchmark(point_count: Int, iterations: Int) raises -> Float64:
     var index = MetadataIndex()
+    index.begin_bulk()
     var build_start = perf_counter_ns()
     for point_id in range(point_count):
         var fields = List[DocumentField]()
@@ -25,6 +26,7 @@ def _benchmark(point_count: Int, iterations: Int) raises:
             DocumentField("page", PayloadValue.integer(Int64(point_id)))
         )
         index.upsert(point_id, fields^)
+    index.finish_bulk()
     var build_elapsed = perf_counter_ns() - build_start
 
     var children = List[FilterExpression]()
@@ -45,18 +47,22 @@ def _benchmark(point_count: Int, iterations: Int) raises:
         checksum += evaluate_expression(index, expression).count()
     var query_elapsed = perf_counter_ns() - query_start
 
+    var build_ns_per_point = Float64(build_elapsed) / Float64(point_count)
     print(
         "metadata points",
         point_count,
         "build ns/point",
-        Float64(build_elapsed) / Float64(point_count),
+        build_ns_per_point,
         "query ns",
         Float64(query_elapsed) / Float64(iterations),
         "checksum",
         checksum,
     )
+    return build_ns_per_point
 
 
 def main() raises:
-    _benchmark(10_000, 20)
-    _benchmark(100_000, 10)
+    var small_build = _benchmark(10_000, 20)
+    var large_build = _benchmark(100_000, 10)
+    if large_build > small_build * 8.0:
+        raise Error("metadata bulk build scaling regressed")

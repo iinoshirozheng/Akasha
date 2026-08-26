@@ -9,9 +9,8 @@ def candidate_entries(
     if candidates.size() != memtable.slot_count():
         raise Error("candidate bitmap does not align with memtable slots")
     var result = List[MemTableEntry](capacity=candidates.count())
-    for ordinal in range(candidates.size()):
-        if not candidates.contains(ordinal):
-            continue
+    var ordinals = candidates.set_ordinals()
+    for ordinal in ordinals:
         var entry = memtable.entry_at(ordinal)
         if entry.tombstone:
             continue

@@ -19,6 +19,7 @@ struct MetadataIndex:
     var _live: Bitmap
     var _keywords: KeywordIndex
     var _numbers: SortedBlockIndex
+    var _bulk_loading: Bool
 
     def __init__(out self) raises:
         self._ids = List[Int]()
@@ -27,6 +28,7 @@ struct MetadataIndex:
         self._live = Bitmap()
         self._keywords = KeywordIndex()
         self._numbers = SortedBlockIndex()
+        self._bulk_loading = False
 
     def slot_count(self) -> Int:
         return len(self._ids)
@@ -46,9 +48,25 @@ struct MetadataIndex:
     def live_universe(self) raises -> Bitmap:
         return self._live.clone()
 
+    def begin_bulk(mut self) raises:
+        if self._bulk_loading or self.slot_count() != 0:
+            raise Error("metadata bulk load requires an empty index")
+        self._keywords.begin_bulk()
+        self._numbers.begin_bulk()
+        self._bulk_loading = True
+
+    def finish_bulk(mut self) raises:
+        if not self._bulk_loading:
+            raise Error("metadata bulk load is not active")
+        self._keywords.finish_bulk()
+        self._numbers.finish_bulk()
+        self._bulk_loading = False
+
     def upsert(mut self, id: Int, var fields: List[DocumentField]) raises:
         validate_fields(fields)
         var ordinal = self.ordinal_for(id)
+        if self._bulk_loading and ordinal >= 0:
+            raise Error("metadata bulk load requires unique point IDs")
         if ordinal < 0:
             ordinal = self._append_slot(id)
         else:
@@ -135,10 +153,12 @@ def build_metadata_index(
     if len(ids) != len(tombstones) or len(ids) != len(fields):
         raise Error("metadata recovery columns must have equal lengths")
     var index = MetadataIndex()
+    index.begin_bulk()
     for ordinal in range(len(ids)):
         if tombstones[ordinal]:
             index.delete(ids[ordinal])
         else:
             var owned = clone_fields(fields[ordinal])
             index.upsert(ids[ordinal], owned^)
+    index.finish_bulk()
     return index^

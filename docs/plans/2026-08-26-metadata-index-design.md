@@ -13,8 +13,9 @@ caches its cardinality. `MetadataIndex` owns the live-point universe, the
 point-ID/ordinal mapping, the latest owned fields for each ordinal, keyword
 postings, and sorted numeric entries.
 
-String and Bool equality use keyword postings. Int64 and Float64 equality and
-range operators use type-specific sorted blocks. A condition produces a
+String and Bool equality use sparse sorted keyword postings, avoiding one dense
+bitmap per distinct high-cardinality value. Int64 and Float64 equality and
+range operators use type-specific sorted blocks. A condition materializes one
 candidate bitmap. Boolean All, Any, and Negate combine candidate bitmaps with
 intersection, union, and live-universe difference. Empty All returns the live
 universe and empty Any returns an empty bitmap.
@@ -28,14 +29,16 @@ all live documents.
 
 The index is derived state and is never written to WAL, Segment, Manifest, or
 the sparse sidecar. Collection open recovers the authoritative MemTable first,
-then builds the index from every current MemTable slot. A document upsert
+then bulk-loads every current MemTable slot and heap-sorts typed entries in
+`O(N log N)`. A document upsert
 removes the ordinal's old postings and inserts its new fields only after the WAL
 and MemTable mutation succeed. A vector-only upsert clears old metadata.
 Delete removes postings and clears the ordinal from the live universe.
 
 Stable MemTable slots and metadata ordinals have the same order. Exact filtered
-execution iterates only set candidate ordinals, fetches the corresponding
-MemTable slot in O(1), and scores its vector. HNSW planning uses the bitmap's
+execution scans bitmap words, materializes only set candidate ordinals, fetches
+the corresponding MemTable slot in O(1), and scores its vector. HNSW planning
+uses the bitmap's
 cached cardinality rather than scanning documents. HNSW and sparse candidates
 are accepted by point-ID membership in the same derived index.
 

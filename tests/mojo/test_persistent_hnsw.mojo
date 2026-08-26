@@ -81,5 +81,38 @@ def test_approximate_api_validates_ef_search() raises:
         _ = collection.search_l2_approx([1.0], 1, 0)
 
 
+def test_nonselective_filter_uses_hnsw_bitmap_membership() raises:
+    var path = String("/tmp/akasha-phase9-hnsw-membership")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(1, 81):
+        var fields = List[DocumentField]()
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
+        collection.upsert_document(id, [Float32(id)], fields^)
+    var expression = FilterExpression.condition(
+        FilterCondition.equal("keep", PayloadValue.boolean(True))
+    )
+    var result = collection.search_dot_approx_where([1.0], 3, 80, expression)
+    assert_equal(result[0].id, 80)
+    assert_equal(result[1].id, 78)
+    assert_equal(result[2].id, 76)
+
+
+def test_hnsw_filter_candidate_shortfall_falls_back_to_exact_bitmap() raises:
+    var path = String("/tmp/akasha-phase9-hnsw-shortfall")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(1, 81):
+        var fields = List[DocumentField]()
+        fields.append(DocumentField("keep", PayloadValue.boolean(id <= 40)))
+        collection.upsert_document(id, [Float32(id)], fields^)
+    var expression = FilterExpression.condition(
+        FilterCondition.equal("keep", PayloadValue.boolean(True))
+    )
+    var result = collection.search_dot_approx_where([1.0], 2, 8, expression)
+    assert_equal(result[0].id, 40)
+    assert_equal(result[1].id, 39)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -69,5 +69,17 @@ def test_bitmap_full_and_indexes_are_bounded() raises:
         full.resize(1)
 
 
+def test_bitmap_materializes_only_set_ordinals_in_order() raises:
+    var bitmap = Bitmap(140)
+    bitmap.set(139)
+    bitmap.set(1)
+    bitmap.set(65)
+    var ordinals = bitmap.set_ordinals()
+    assert_equal(len(ordinals), 3)
+    assert_equal(ordinals[0], 1)
+    assert_equal(ordinals[1], 65)
+    assert_equal(ordinals[2], 139)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

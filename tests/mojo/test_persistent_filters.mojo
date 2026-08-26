@@ -349,5 +349,26 @@ def test_metadata_index_tracks_mutations_and_rebuilds_on_reopen() raises:
     assert_equal(result[0].id, 2)
 
 
+def test_wal_recovery_preserves_ordinal_after_tombstone_and_id_reuse() raises:
+    var path = String("/tmp/akasha-phase9-wal-id-reuse")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert_document(7, [1.0], _fields("old", 1))
+    collection.upsert_document(8, [2.0], _fields("keep", 2))
+    collection.delete(7)
+    collection.upsert_document(7, [3.0], _fields("new", 9))
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    var expression = FilterExpression.condition(
+        FilterCondition.equal("category", PayloadValue.string("new"))
+    )
+    assert_equal(reopened.metadata_live_count(), 2)
+    assert_equal(reopened.metadata_match_count(expression), 1)
+    var result = reopened.search_dot_where([1.0], 2, expression)
+    assert_equal(len(result), 1)
+    assert_equal(result[0].id, 7)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

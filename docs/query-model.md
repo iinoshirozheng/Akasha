@@ -19,10 +19,10 @@ scalar metadata. Vector-only `upsert` replaces the record with empty fields;
 
 `search_dot_filtered`, `search_l2_filtered`, and `search_cosine_filtered` accept
 a list of `FilterCondition` values combined with AND. Conditions generate
-candidate bitmaps before vector scoring. String and Bool use equality postings;
-Int64 and finite Float64 use sorted equality/range blocks. A missing field or
-different payload type never matches, including for `!=`. An empty condition
-list is equivalent to unfiltered search.
+candidate bitmaps before vector scoring. String and Bool use sparse sorted
+equality postings; Int64 and finite Float64 use sorted equality/range blocks. A
+missing field or different payload type never matches, including for `!=`. An
+empty condition list is equivalent to unfiltered search.
 
 `FilterExpression.condition`, `all`, `any`, and `negate` build owned Boolean
 trees for `search_dot_where`, `search_l2_where`, and `search_cosine_where`.
@@ -32,8 +32,9 @@ The flat arena representation is bounded to 16 levels and 256 nodes and is
 validated again at the query boundary.
 
 The metadata index is derived and never persisted. It is maintained after each
-successful collection mutation and rebuilt from stable MemTable slots after
-WAL/Segment recovery, so v1/v2 storage compatibility is unchanged. Cached
+successful collection mutation and bulk-rebuilt in `O(N log N)` from stable
+MemTable slots after WAL/Segment recovery, so v1/v2 storage compatibility is
+unchanged. Cached
 bitmap cardinality lets the planner choose filtered exact execution or HNSW
 without first scanning all payloads. Exact execution iterates selected slots;
 HNSW and sparse/hybrid paths use the same point-ID membership set.

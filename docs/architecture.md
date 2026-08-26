@@ -91,15 +91,17 @@ Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
 to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
 a derived `MetadataIndex`: stable MemTable slots are ordinals in dense 64-bit
-candidate bitmaps, String/Bool values use bitmap postings, and Int64/Float64
-values use type-specific sorted blocks for equality and ranges. Missing fields
-and type mismatches do not match, including inequality.
+candidate bitmaps, String/Bool values use sparse sorted postings, and
+Int64/Float64 values use type-specific sorted blocks for equality and ranges.
+This keeps high-cardinality metadata memory linear in indexed field entries.
+Missing fields and type mismatches do not match, including inequality.
 
 Document writes incrementally remove old postings and add new postings after
 the authoritative WAL and MemTable mutation succeeds. Deletes clear the live
-universe bit. Recovery rebuilds the complete derived index from stable MemTable
-slots after Segment and WAL replay, so WAL, Segment, and Manifest formats remain
-unchanged. Exact filtered execution scores only selected ordinals. Approximate
+universe bit. Recovery bulk-loads and heap-sorts the complete derived index from
+stable MemTable slots after Segment and WAL replay, so WAL, Segment, and
+Manifest formats remain unchanged. Exact filtered execution scans bitmap words
+and scores only selected ordinals. Approximate
 planning reads cached bitmap cardinality, and HNSW/sparse candidates use indexed
 point-ID membership before exact fallback or fusion. Search still returns
 lightweight IDs and scores, and `get` resolves the latest owned payload.

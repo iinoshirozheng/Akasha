@@ -795,6 +795,7 @@ def _build_hnsw(memtable: MemTable, dimension: Int) raises -> HnswIndex:
 
 def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     var index = MetadataIndex()
+    index.begin_bulk()
     for ordinal in range(memtable.slot_count()):
         var entry = memtable.entry_at(ordinal)
         if entry.tombstone:
@@ -802,6 +803,7 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
         else:
             var fields = clone_fields(entry.fields)
             index.upsert(entry.id, fields^)
+    index.finish_bulk()
     if index.slot_count() != memtable.slot_count():
         raise Error("metadata index and memtable slot alignment failed")
     return index^

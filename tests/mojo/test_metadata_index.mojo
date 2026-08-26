@@ -219,5 +219,30 @@ def test_indexed_results_match_linear_oracle_for_every_operator() raises:
     )
 
 
+def test_metadata_bulk_load_preserves_slot_order_and_query_results() raises:
+    var index = MetadataIndex()
+    index.begin_bulk()
+    for ordinal in range(1_000):
+        var fields = List[DocumentField]()
+        fields.append(
+            DocumentField(
+                "path", PayloadValue.string("/item/" + String(ordinal))
+            )
+        )
+        fields.append(
+            DocumentField(
+                "page", PayloadValue.integer(Int64((ordinal * 7919) % 1_000))
+            )
+        )
+        index.upsert(10_000 + ordinal, fields^)
+    index.finish_bulk()
+    assert_equal(index.id_at(731), 10_731)
+    var result = index.evaluate_condition(
+        FilterCondition.equal("path", PayloadValue.string("/item/731"))
+    )
+    assert_equal(result.count(), 1)
+    assert_true(index.contains_id(result, 10_731))
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

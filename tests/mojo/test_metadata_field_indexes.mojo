@@ -120,5 +120,39 @@ def test_field_indexes_reject_wrong_value_families() raises:
         sorted.add("category", PayloadValue.string("x"), 0)
 
 
+def test_keyword_bulk_load_handles_high_cardinality_without_dense_postings() raises:
+    var index = KeywordIndex(1_000)
+    index.begin_bulk()
+    for ordinal in range(1_000):
+        index.add(
+            "path", PayloadValue.string("/chunk/" + String(ordinal)), ordinal
+        )
+    index.finish_bulk()
+    assert_equal(index.entry_count(), 1_000)
+    var result = index.evaluate(
+        FilterCondition.equal("path", PayloadValue.string("/chunk/731"))
+    )
+    assert_equal(result.count(), 1)
+    assert_true(result.contains(731))
+    index.resize(2_000)
+    assert_equal(index.entry_count(), 1_000)
+
+
+def test_sorted_block_bulk_load_sorts_unsorted_numeric_entries() raises:
+    var index = SortedBlockIndex(1_000)
+    index.begin_bulk()
+    for ordinal in range(1_000):
+        index.add(
+            "page",
+            PayloadValue.integer(Int64((ordinal * 7919) % 1_000)),
+            ordinal,
+        )
+    index.finish_bulk()
+    var result = index.evaluate(
+        FilterCondition.greater_or_equal("page", PayloadValue.integer(990))
+    )
+    assert_equal(result.count(), 10)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
