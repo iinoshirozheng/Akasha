@@ -21,6 +21,47 @@ comptime _CONFIG_NAME = "collection.bin"
 comptime _TEMP_NAME = "collection.bin.tmp"
 
 
+trait _CollectionConfigPublishOps:
+    """Internal publication operations seam for durability fault tests."""
+
+    def remove_temp(mut self, path: String) raises:
+        ...
+
+    def write_temp(
+        mut self, path: String, bytes: List[UInt8]
+    ) raises:
+        ...
+
+    def replace_temp(
+        mut self, source: String, destination: String
+    ) raises:
+        ...
+
+    def sync_parent(mut self, directory: String) raises:
+        ...
+
+
+struct _FilesystemPublishOps(_CollectionConfigPublishOps):
+    def __init__(out self):
+        pass
+
+    def remove_temp(mut self, path: String) raises:
+        remove_file_if_exists(path)
+
+    def write_temp(
+        mut self, path: String, bytes: List[UInt8]
+    ) raises:
+        write_file_sync(path, bytes)
+
+    def replace_temp(
+        mut self, source: String, destination: String
+    ) raises:
+        atomic_replace(source, destination)
+
+    def sync_parent(mut self, directory: String) raises:
+        sync_directory(directory)
+
+
 def encode_collection_config(
     config: CollectionConfig,
 ) raises -> List[UInt8]:
@@ -128,26 +169,42 @@ def publish_collection_config(
     directory: String, config: CollectionConfig
 ) raises:
     """Durably publish a collection config without replacing an identity."""
+    var ops = _FilesystemPublishOps()
+    _publish_collection_config_with_ops(directory, config, ops)
+
+
+def _publish_collection_config_with_ops[
+    Ops: _CollectionConfigPublishOps
+](directory: String, config: CollectionConfig, mut ops: Ops) raises:
+    """Publish through injected operations while preserving public semantics."""
     config.validate()
     var temporary_path = directory + "/" + _TEMP_NAME
     var final_path = directory + "/" + _CONFIG_NAME
 
     # A stale temp file is never authoritative and is safe to discard.
-    remove_file_if_exists(temporary_path)
+    ops.remove_temp(temporary_path)
     if path_exists(final_path):
         var existing = load_collection_config(directory)
         if existing != config:
             raise Error("collection configuration does not match existing file")
+        # A previous attempt may have renamed the file but failed to fsync the
+        # directory. An identical retry must complete that durability barrier.
+        ops.sync_parent(directory)
         return
 
     var bytes = encode_collection_config(config)
     try:
-        write_file_sync(temporary_path, bytes)
-        atomic_replace(temporary_path, final_path)
-        sync_directory(directory)
+        ops.write_temp(temporary_path, bytes)
+        ops.replace_temp(temporary_path, final_path)
+        ops.sync_parent(directory)
     except error:
-        remove_file_if_exists(temporary_path)
-        raise Error(String(error))
+        var original_error = String(error)
+        try:
+            ops.remove_temp(temporary_path)
+        except cleanup_error:
+            # Best-effort cleanup must never replace the publication failure.
+            _ = String(cleanup_error)
+        raise Error(original_error)
 
 
 def load_collection_config(directory: String) raises -> CollectionConfig:

@@ -59,8 +59,11 @@ fsyncs `collection.bin.tmp`, atomically renames it to `collection.bin`, and
 fsyncs the collection directory. A stale temporary file is not authoritative
 and is removed before publication. If `collection.bin` already exists, Akasha
 loads and fully validates it. Publishing an identical configuration is an
-idempotent no-op; publishing any different field fails without replacing the
-existing bytes.
+idempotent retry that does not rewrite the file but does fsync the collection
+directory again. This completes the durability barrier when a prior attempt
+renamed `collection.bin` and then failed during directory fsync. Publishing any
+different field fails without replacing the existing bytes. Best-effort temp
+cleanup never masks the original write, rename, or fsync failure.
 
 Version 1 is a closed fixed-width format. Readers reject unknown versions,
 flags, tags, and nonzero reserve bytes rather than guessing compatibility. A

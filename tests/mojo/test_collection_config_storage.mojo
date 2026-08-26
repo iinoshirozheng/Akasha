@@ -1,5 +1,9 @@
 from akasha import CollectionConfig, MetricKind, ScalarKind
 from akasha.storage.checksum import crc32_range
+from akasha.storage.collection_config import (
+    _CollectionConfigPublishOps,
+    _publish_collection_config_with_ops,
+)
 from akasha.storage import (
     collection_config_exists,
     decode_collection_config_bytes,
@@ -8,17 +12,70 @@ from akasha.storage import (
     publish_collection_config,
 )
 from akasha.storage.filesystem import (
+    atomic_replace,
     ensure_directory,
     path_exists,
     read_file_bytes,
     remove_file_if_exists,
     write_file_sync,
 )
+from std.ffi import c_int, external_call
 from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
 
 comptime _ENCODED_SIZE = 60
 comptime _CHECKSUM_OFFSET = 56
+
+
+struct _FailOnceSyncOps(_CollectionConfigPublishOps):
+    var sync_attempts: Int
+
+    def __init__(out self):
+        self.sync_attempts = 0
+
+    def remove_temp(mut self, path: String) raises:
+        remove_file_if_exists(path)
+
+    def write_temp(
+        mut self, path: String, bytes: List[UInt8]
+    ) raises:
+        write_file_sync(path, bytes)
+
+    def replace_temp(
+        mut self, source: String, destination: String
+    ) raises:
+        atomic_replace(source, destination)
+
+    def sync_parent(mut self, directory: String) raises:
+        self.sync_attempts += 1
+        if self.sync_attempts == 1:
+            raise Error("injected directory sync failure")
+
+
+struct _WriteAndCleanupFailOps(_CollectionConfigPublishOps):
+    var cleanup_attempts: Int
+
+    def __init__(out self):
+        self.cleanup_attempts = 0
+
+    def remove_temp(mut self, path: String) raises:
+        self.cleanup_attempts += 1
+        if self.cleanup_attempts > 1:
+            raise Error("injected cleanup failure")
+        remove_file_if_exists(path)
+
+    def write_temp(
+        mut self, path: String, bytes: List[UInt8]
+    ) raises:
+        raise Error("injected primary write failure")
+
+    def replace_temp(
+        mut self, source: String, destination: String
+    ) raises:
+        pass
+
+    def sync_parent(mut self, directory: String) raises:
+        pass
 
 
 def _config(metric: MetricKind, scalar: ScalarKind) -> CollectionConfig:
@@ -35,6 +92,16 @@ def _config(metric: MetricKind, scalar: ScalarKind) -> CollectionConfig:
         rebuild_inactive_percent=25,
         delta_max_points=10_000,
         level_seed=UInt64(0xA5A5A5A5A5A5A5A5),
+    )
+
+
+def _test_directory(suffix: String) -> String:
+    var process_id = external_call["getpid", c_int]()
+    return String(
+        "/tmp/akasha-collection-config-",
+        Int(process_id),
+        "-",
+        suffix,
     )
 
 
@@ -142,6 +209,26 @@ def test_round_trips_default_and_inclusive_boundary_configurations() raises:
     )
 
 
+def test_default_config_matches_and_decodes_independent_golden_vector() raises:
+    # Independent struct.pack/zlib fixture; CRC32 is 0x253BCFF8.
+    var golden: List[UInt8] = [
+        0x41, 0x4B, 0x43, 0x46, 0x01, 0x00, 0x00, 0x00,
+        0x07, 0x00, 0x00, 0x00, 0x01, 0x00, 0x10, 0x00,
+        0x20, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
+        0x40, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+        0x20, 0x00, 0x19, 0x00, 0x10, 0x27, 0x00, 0x00,
+        0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xF8, 0xCF, 0x3B, 0x25,
+    ]
+    var encoded = encode_collection_config(CollectionConfig.defaults(7))
+    _assert_bytes_equal(encoded, golden)
+    assert_equal(
+        decode_collection_config_bytes(golden^),
+        CollectionConfig.defaults(7),
+    )
+
+
 def test_rejects_every_truncation_and_extra_bytes() raises:
     var complete = encode_collection_config(CollectionConfig.defaults(8))
     for cut in range(len(complete)):
@@ -170,7 +257,9 @@ def test_rejects_magic_version_flags_reserved_tags_and_checksum() raises:
     with assert_raises():
         _ = decode_collection_config_bytes(flags^)
 
-    var reserved_offsets: List[Int] = [18, 19, 35, 48, 49, 50, 51, 52, 53, 54, 55]
+    var reserved_offsets: List[Int] = [
+        18, 19, 35, 48, 49, 50, 51, 52, 53, 54, 55
+    ]
     for offset in reserved_offsets:
         var reserved = encode_collection_config(CollectionConfig.defaults(8))
         reserved[offset] = UInt8(1)
@@ -236,7 +325,7 @@ def test_encode_validates_before_narrowing() raises:
 
 
 def test_publish_load_exists_and_idempotent_republish() raises:
-    var directory = String("/tmp/akasha-collection-config-storage")
+    var directory = _test_directory("storage")
     ensure_directory(directory)
     remove_file_if_exists(directory + "/collection.bin")
     remove_file_if_exists(directory + "/collection.bin.tmp")
@@ -257,7 +346,7 @@ def test_publish_load_exists_and_idempotent_republish() raises:
 
 
 def test_incompatible_publish_preserves_original_and_removes_temp() raises:
-    var directory = String("/tmp/akasha-collection-config-conflict")
+    var directory = _test_directory("conflict")
     ensure_directory(directory)
     remove_file_if_exists(directory + "/collection.bin")
     remove_file_if_exists(directory + "/collection.bin.tmp")
@@ -281,7 +370,7 @@ def test_incompatible_publish_preserves_original_and_removes_temp() raises:
 
 
 def test_invalid_first_publish_creates_no_files() raises:
-    var directory = String("/tmp/akasha-collection-config-invalid")
+    var directory = _test_directory("invalid")
     ensure_directory(directory)
     remove_file_if_exists(directory + "/collection.bin")
     remove_file_if_exists(directory + "/collection.bin.tmp")
@@ -293,6 +382,45 @@ def test_invalid_first_publish_creates_no_files() raises:
 
     assert_equal(path_exists(directory + "/collection.bin"), False)
     assert_equal(path_exists(directory + "/collection.bin.tmp"), False)
+
+
+def test_retry_after_rename_and_sync_failure_syncs_existing_file_again() raises:
+    var directory = _test_directory("sync-retry")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/collection.bin")
+    remove_file_if_exists(directory + "/collection.bin.tmp")
+    var config = CollectionConfig.defaults(11)
+    var ops = _FailOnceSyncOps()
+
+    with assert_raises():
+        _publish_collection_config_with_ops(directory, config, ops)
+    assert_true(collection_config_exists(directory))
+    assert_equal(ops.sync_attempts, 1)
+
+    _publish_collection_config_with_ops(directory, config, ops)
+    assert_equal(ops.sync_attempts, 2)
+    assert_equal(load_collection_config(directory), config)
+
+    remove_file_if_exists(directory + "/collection.bin")
+
+
+def test_cleanup_failure_does_not_mask_primary_publication_error() raises:
+    var directory = _test_directory("error-preservation")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/collection.bin")
+    remove_file_if_exists(directory + "/collection.bin.tmp")
+    var ops = _WriteAndCleanupFailOps()
+
+    var message = String()
+    try:
+        _publish_collection_config_with_ops(
+            directory, CollectionConfig.defaults(5), ops
+        )
+    except error:
+        message = String(error)
+
+    assert_equal(message, "injected primary write failure")
+    assert_equal(ops.cleanup_attempts, 2)
 
 
 def main() raises:
