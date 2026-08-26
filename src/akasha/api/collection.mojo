@@ -515,6 +515,36 @@ struct PersistentCollection:
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
 
+    def search_dot_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_dot_batch(queries, k, num_workers=num_workers)
+
+    def search_l2_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_l2_batch(queries, k, num_workers=num_workers)
+
+    def search_cosine_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_cosine_batch(queries, k, num_workers=num_workers)
+
     def search_dot_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:

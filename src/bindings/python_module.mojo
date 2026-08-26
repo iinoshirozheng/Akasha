@@ -187,6 +187,46 @@ struct BoundCollection(Movable, Writable):
         )
 
     @staticmethod
+    def search_batch(
+        py_self: PythonObject,
+        metric: PythonObject,
+        queries: PythonObject,
+        k: PythonObject,
+        num_workers: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var vectors = _float_vectors(queries)
+        var count = Int(py=k)
+        var workers = Int(py=num_workers)
+        var results: List[List[SearchResult]]
+        if metric_name == "dot":
+            results = (
+                self[]
+                .inner.value()
+                .search_dot_batch(vectors, count, num_workers=workers)
+            )
+        elif metric_name == "l2":
+            results = (
+                self[]
+                .inner.value()
+                .search_l2_batch(vectors, count, num_workers=workers)
+            )
+        elif metric_name == "cosine":
+            results = (
+                self[]
+                .inner.value()
+                .search_cosine_batch(vectors, count, num_workers=workers)
+            )
+        else:
+            raise Error("unknown dense metric")
+        var output = Python.list()
+        for query_results in results:
+            output.append(_results_to_python(query_results))
+        return output
+
+    @staticmethod
     def search_approx(
         py_self: PythonObject,
         metric: PythonObject,
@@ -388,6 +428,13 @@ def _float_vector(value: PythonObject) raises -> List[Float32]:
     return result^
 
 
+def _float_vectors(value: PythonObject) raises -> List[List[Float32]]:
+    var result = List[List[Float32]](capacity=len(value))
+    for item in value:
+        result.append(_float_vector(item))
+    return result^
+
+
 def _sparse_vector(value: PythonObject) raises -> List[SparseElement]:
     var result = List[SparseElement](capacity=len(value))
     for item in value:
@@ -525,6 +572,7 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.search_dot]("search_dot")
             .def_method[BoundCollection.search_l2]("search_l2")
             .def_method[BoundCollection.search_cosine]("search_cosine")
+            .def_method[BoundCollection.search_batch]("search_batch")
             .def_method[BoundCollection.search_approx]("search_approx")
             .def_method[BoundCollection.search_sparse]("search_sparse")
             .def_method[BoundCollection.search_hybrid]("search_hybrid")

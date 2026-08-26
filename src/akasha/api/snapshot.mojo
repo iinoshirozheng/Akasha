@@ -11,7 +11,14 @@ from akasha.index.metadata import MetadataIndex
 from akasha.query.executor import candidate_entries
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
-from akasha.storage.memtable import MemTable
+from akasha.query.batch_executor import (
+    BATCH_COSINE_METRIC,
+    BATCH_DOT_METRIC,
+    BATCH_L2_METRIC,
+    execute_exact_candidate_batch,
+    execute_exact_batch,
+)
+from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.generation_pins import GenerationPinRegistry
 from std.math import isfinite
 from std.memory import ArcPointer
@@ -114,6 +121,78 @@ struct ReadSnapshot(Movable):
         var conditions = List[FilterCondition]()
         return self._search_filtered(query, k, _COSINE_METRIC, conditions)
 
+    def search_dot_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        self._ensure_open()
+        return execute_exact_batch(
+            self._memtable, queries, k, BATCH_DOT_METRIC, num_workers
+        )
+
+    def search_l2_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        self._ensure_open()
+        return execute_exact_batch(
+            self._memtable, queries, k, BATCH_L2_METRIC, num_workers
+        )
+
+    def search_cosine_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        self._ensure_open()
+        return execute_exact_batch(
+            self._memtable, queries, k, BATCH_COSINE_METRIC, num_workers
+        )
+
+    def search_dot_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        return self._search_where_batch(
+            queries, expressions, k, BATCH_DOT_METRIC, num_workers
+        )
+
+    def search_l2_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        return self._search_where_batch(
+            queries, expressions, k, BATCH_L2_METRIC, num_workers
+        )
+
+    def search_cosine_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        return self._search_where_batch(
+            queries, expressions, k, BATCH_COSINE_METRIC, num_workers
+        )
+
     def search_dot_filtered(
         self,
         query: List[Float32],
@@ -186,6 +265,31 @@ struct ReadSnapshot(Movable):
         expression.validate()
         var candidates = evaluate_expression(self._metadata, expression)
         return self._search_candidates(query, k, metric, candidates)
+
+    def _search_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        metric: Int,
+        num_workers: Int,
+    ) raises -> List[List[SearchResult]]:
+        self._ensure_open()
+        if len(queries) != len(expressions):
+            raise Error("batch query and filter counts must match")
+        var candidates = List[List[MemTableEntry]](capacity=len(queries))
+        for index in range(len(expressions)):
+            expressions[index].validate()
+            var bitmap = evaluate_expression(self._metadata, expressions[index])
+            candidates.append(candidate_entries(self._memtable, bitmap))
+        return execute_exact_candidate_batch(
+            self._dimension,
+            queries,
+            candidates,
+            k,
+            metric,
+            num_workers,
+        )
 
     def _search_candidates(
         self,

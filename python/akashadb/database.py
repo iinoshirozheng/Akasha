@@ -32,6 +32,13 @@ class KernelCollection(Protocol):
     def search_dot(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
     def search_l2(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
     def search_cosine(self, vector: list[float], k: int) -> list[dict[str, Any]]: ...
+    def search_batch(
+        self,
+        metric: str,
+        vectors: list[list[float]],
+        k: int,
+        num_workers: int,
+    ) -> list[list[dict[str, Any]]]: ...
     def search_approx(
         self, metric: str, vector: list[float], k: int, ef_search: int
     ) -> list[dict[str, Any]]: ...
@@ -215,6 +222,23 @@ class Collection:
         return [
             SearchResult(id=int(item["id"]), score=float(item["score"]))
             for item in raw
+        ]
+
+    def search_batch(
+        self,
+        metric: str,
+        vectors: list[list[float]],
+        k: int,
+        *,
+        num_workers: int = 0,
+    ) -> list[list[SearchResult]]:
+        raw = self._call("search_batch", metric, vectors, k, num_workers)
+        return [
+            [
+                SearchResult(id=int(item["id"]), score=float(item["score"]))
+                for item in query_results
+            ]
+            for query_results in raw
         ]
 
 

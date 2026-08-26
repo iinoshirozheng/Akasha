@@ -110,6 +110,26 @@ def test_compiled_kernel_applies_typed_atomic_batch(tmp_path) -> None:
     reopened.close()
 
 
+def test_compiled_kernel_parallel_batch_query_matches_single_queries(tmp_path) -> None:
+    collection = akashadb.Collection(tmp_path / "batch-query", 2)
+    for point_id in range(80):
+        collection.upsert(
+            point_id,
+            [float(point_id % 9 - 4), float(point_id % 5 - 2) + 0.25],
+        )
+    vectors = [[1.0, 0.0], [0.0, 1.0], [-1.0, 0.5], [0.5, -1.0]]
+
+    batched = collection.search_batch("dot", vectors, 6, num_workers=4)
+
+    assert len(batched) == len(vectors)
+    for index, vector in enumerate(vectors):
+        oracle = collection.search(
+            akashadb.SearchRequest("dot", 6, vector=vector)
+        )
+        assert batched[index] == oracle
+    collection.close()
+
+
 def test_compiled_kernel_rebuilds_nested_metadata_index_on_reopen(tmp_path) -> None:
     path = tmp_path / "indexed"
     collection = akashadb.Collection(path, 1)

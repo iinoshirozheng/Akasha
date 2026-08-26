@@ -21,9 +21,11 @@ bench-flat = "mojo run -I src benchmarks/mojo/flat_bench.mojo"
 bench-hnsw = "mojo run -I src benchmarks/mojo/hnsw_bench.mojo"
 bench-metadata = "mojo run -I src benchmarks/mojo/metadata_bench.mojo"
 bench-compaction = "mojo run -I src benchmarks/mojo/compaction_bench.mojo"
+bench-batch = "mojo run -I src benchmarks/mojo/batch_query_bench.mojo"
 
 [dependencies]
 mojo = ">=1.0.0,<2"
+max-core = "==26.5.0"
 python = "==3.11"
 fastapi = ">=0.141.1,<0.142"
 uvicorn = ">=0.52.4,<0.53"
