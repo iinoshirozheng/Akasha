@@ -4,12 +4,62 @@ from std.os.path import exists
 from std.sys._libc_errno import get_errno
 
 
+trait _DurableDirectoryOps:
+    """Internal seam for durable collection-directory creation tests."""
+
+    def exists(self, path: String) -> Bool:
+        ...
+
+    def make(mut self, path: String) raises:
+        ...
+
+    def sync(mut self, path: String) raises:
+        ...
+
+
+struct _FilesystemDirectoryOps(_DurableDirectoryOps):
+    def __init__(out self):
+        pass
+
+    def exists(self, path: String) -> Bool:
+        return exists(path)
+
+    def make(mut self, path: String) raises:
+        makedirs(path, exist_ok=True)
+
+    def sync(mut self, path: String) raises:
+        sync_directory(path)
+
+
 def path_exists(path: String) -> Bool:
     return exists(path)
 
 
 def ensure_directory(path: String) raises:
     makedirs(path, exist_ok=True)
+
+
+def ensure_durable_directory(path: String) raises -> Bool:
+    """Create one directory and durably publish its parent entry.
+
+    A newly created directory is fsynced before its immediate parent. Existing
+    directories are left untouched. Returns whether this call created the
+    directory.
+    """
+    var parent = _parent_directory(path)
+    var ops = _FilesystemDirectoryOps()
+    return _ensure_durable_directory_with_ops(path, parent, ops)
+
+
+def _ensure_durable_directory_with_ops[Ops: _DurableDirectoryOps](
+    path: String, parent: String, mut ops: Ops
+) raises -> Bool:
+    if ops.exists(path):
+        return False
+    ops.make(path)
+    ops.sync(path)
+    ops.sync(parent)
+    return True
 
 
 def read_file_bytes(path: String) raises -> List[UInt8]:
@@ -59,3 +109,26 @@ def _sync_descriptor(descriptor: Int) raises:
     var result = external_call["fsync", c_int](c_int(descriptor))
     if result != 0:
         raise Error("fsync failed: " + String(get_errno()))
+
+
+def _parent_directory(path: String) raises -> String:
+    var bytes = List[UInt8]()
+    for byte in path.bytes():
+        bytes.append(byte)
+    if len(bytes) == 0:
+        raise Error("directory path cannot be empty")
+    var end = len(bytes)
+    while end > 1 and bytes[end - 1] == UInt8(0x2F):
+        end -= 1
+    var slash = -1
+    for index in range(end):
+        if bytes[index] == UInt8(0x2F):
+            slash = index
+    if slash < 0:
+        return "."
+    if slash == 0:
+        return "/"
+    var parent = List[UInt8](capacity=slash)
+    for index in range(slash):
+        parent.append(bytes[index])
+    return String(from_utf8=parent)

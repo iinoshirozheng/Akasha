@@ -44,7 +44,7 @@ from akasha.storage.index_cache import (
 )
 from akasha.storage.filesystem import (
     atomic_replace,
-    ensure_directory,
+    ensure_durable_directory,
     path_exists,
     sync_directory,
 )
@@ -103,6 +103,7 @@ struct PersistentCollection:
 
     var path: String
     var dimension: Int
+    var _path: String
     var _config: CollectionConfig
     var _wal_path: String
     var _memtable: MemTable
@@ -143,6 +144,7 @@ struct PersistentCollection:
     ):
         self.path = String(copy=path)
         self.dimension = config.dimension
+        self._path = String(copy=path)
         self._config = config.copy()
         self._wal_path = path + "/wal.bin"
         self._memtable = memtable^
@@ -194,7 +196,7 @@ struct PersistentCollection:
     ) raises -> PersistentCollection:
         """Create or recover a collection bound to one durable ANN identity."""
         requested.validate()
-        ensure_directory(path)
+        _ = ensure_durable_directory(path)
         var lock = CollectionLock.acquire(path + "/collection.lock")
         var config = _load_or_migrate_config(path, requested)
         var dimension = config.dimension
@@ -487,10 +489,10 @@ struct PersistentCollection:
     def _snapshot_unlocked(self) raises -> ReadSnapshot:
         self._ensure_open()
         var generation = UInt64(0)
-        if path_exists(self.path + "/manifest.bin"):
-            generation = load_manifest(self.path, self.dimension).generation
+        if path_exists(self._path + "/manifest.bin"):
+            generation = load_manifest(self._path, self._config.dimension).generation
         return ReadSnapshot.capture(
-            self.dimension,
+            self._config.dimension,
             generation,
             self._last_sequence,
             self._memtable,
@@ -508,7 +510,7 @@ struct PersistentCollection:
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
         var record = WalRecord.upsert(sequence, id, wal_values^)
-        append_wal(self._wal_path, self.dimension, record)
+        append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
@@ -540,7 +542,7 @@ struct PersistentCollection:
         var record = WalRecord.document_upsert(
             sequence, id, wal_values^, wal_fields^
         )
-        append_wal(self._wal_path, self.dimension, record)
+        append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
@@ -606,7 +608,7 @@ struct PersistentCollection:
             )
         var staged_metadata = _build_metadata(staged_memtable)
 
-        append_wal_batch(self._wal_path, self.dimension, records)
+        append_wal_batch(self._wal_path, self._config.dimension, records)
         self._memtable = staged_memtable^
         self._metadata = staged_metadata^
         for index in range(len(mutations)):
@@ -661,7 +663,7 @@ struct PersistentCollection:
         self._ensure_open()
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
-        append_wal(self._wal_path, self.dimension, record)
+        append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_delete(id, sequence)
         self._metadata.delete(id)
         self._sparse.delete(id)
@@ -1052,10 +1054,10 @@ struct PersistentCollection:
         """Checkpoint and copy one generation while it remains pinned."""
         with BlockingScopedLock(self._writer_lock[]):
             self._flush_unlocked()
-            var manifest = load_manifest(self.path, self.dimension)
+            var manifest = load_manifest(self._path, self._config.dimension)
             self._pins[].pin(manifest.generation)
             try:
-                var report = backup_storage(self.path, target, self.dimension)
+                var report = backup_storage(self._path, target, self._config.dimension)
                 self._pins[].unpin(manifest.generation)
                 return report^
             except error:
@@ -1069,15 +1071,15 @@ struct PersistentCollection:
         var generation = UInt64(1)
         var has_previous_manifest = False
         var descriptors = List[SegmentDescriptor]()
-        if path_exists(self.path + "/manifest.bin"):
-            var previous_manifest = load_manifest(self.path, self.dimension)
+        if path_exists(self._path + "/manifest.bin"):
+            var previous_manifest = load_manifest(self._path, self._config.dimension)
             previous_sequence = previous_manifest.last_sequence
             has_previous_manifest = True
             if self._last_sequence < previous_sequence:
                 raise Error("collection sequence precedes checkpoint")
             if self._last_sequence == previous_sequence:
-                rotate_wal(self.path)
-                rotate_sparse_wal(self.path)
+                rotate_wal(self._path)
+                rotate_sparse_wal(self._path)
                 self._sparse_pending = List[SparseWalRecord]()
                 self._publish_index_caches_best_effort()
                 return
@@ -1104,7 +1106,7 @@ struct PersistentCollection:
             sparse_prefix = "sparse-delta-"
             sparse_mutations = latest_sparse_records(self._sparse_pending)
         var sparse_name = sparse_prefix + String(self._last_sequence) + ".bin"
-        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_temporary = self._path + "/" + sparse_name + ".tmp"
         var sparse_checksum = write_sparse_segment(
             sparse_temporary,
             sparse_kind,
@@ -1112,8 +1114,8 @@ struct PersistentCollection:
             self._last_sequence,
             sparse_mutations,
         )
-        atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
-        sync_directory(self.path)
+        atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
+        sync_directory(self._path)
 
         var kind = SEGMENT_KIND_BASE
         var level = 1
@@ -1127,18 +1129,18 @@ struct PersistentCollection:
             segment_prefix = "segment-delta-"
             entries = self._memtable.entries_after(previous_sequence)
         var segment_name = segment_prefix + String(self._last_sequence) + ".bin"
-        var temporary_path = self.path + "/" + segment_name + ".tmp"
-        var final_path = self.path + "/" + segment_name
+        var temporary_path = self._path + "/" + segment_name + ".tmp"
+        var final_path = self._path + "/" + segment_name
         var checksum = write_segment_v3(
             temporary_path,
-            self.dimension,
+            self._config.dimension,
             kind,
             min_sequence,
             self._last_sequence,
             entries,
         )
         atomic_replace(temporary_path, final_path)
-        sync_directory(self.path)
+        sync_directory(self._path)
         descriptors.append(
             SegmentDescriptor.with_sparse(
                 level,
@@ -1151,14 +1153,14 @@ struct PersistentCollection:
             )
         )
         var manifest = Manifest.with_segments(
-            self.dimension,
+            self._config.dimension,
             generation,
             self._last_sequence,
             descriptors^,
         )
-        publish_manifest(self.path, manifest)
-        rotate_wal(self.path)
-        rotate_sparse_wal(self.path)
+        publish_manifest(self._path, manifest)
+        rotate_wal(self._path)
+        rotate_sparse_wal(self._path)
         self._sparse_pending = List[SparseWalRecord]()
         self._publish_index_caches_best_effort()
         var policy = CompactionPolicy(4)
@@ -1176,9 +1178,9 @@ struct PersistentCollection:
     def _compact_unlocked(mut self) raises:
         self._ensure_open()
         self._flush_unlocked()
-        if not path_exists(self.path + "/manifest.bin"):
+        if not path_exists(self._path + "/manifest.bin"):
             return
-        var previous = load_manifest(self.path, self.dimension)
+        var previous = load_manifest(self._path, self._config.dimension)
         if len(previous.segments) <= 1:
             return
         self._compact_committed(previous^)
@@ -1188,7 +1190,7 @@ struct PersistentCollection:
             raise Error("manifest generation exhausted")
 
         var sparse_name = "sparse-base-" + String(self._last_sequence) + ".bin"
-        var sparse_temporary = self.path + "/" + sparse_name + ".tmp"
+        var sparse_temporary = self._path + "/" + sparse_name + ".tmp"
         var sparse_mutations = List[SparseWalRecord]()
         var sparse_records = self._sparse.records()
         for index in range(len(sparse_records)):
@@ -1205,24 +1207,24 @@ struct PersistentCollection:
             self._last_sequence,
             sparse_mutations,
         )
-        atomic_replace(sparse_temporary, self.path + "/" + sparse_name)
-        sync_directory(self.path)
+        atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
+        sync_directory(self._path)
 
         var segment_name = (
             "segment-base-" + String(self._last_sequence) + ".bin"
         )
-        var segment_temporary = self.path + "/" + segment_name + ".tmp"
+        var segment_temporary = self._path + "/" + segment_name + ".tmp"
         var live_entries = self._memtable.live_entries()
         var checksum = write_segment_v3(
             segment_temporary,
-            self.dimension,
+            self._config.dimension,
             SEGMENT_KIND_BASE,
             0,
             self._last_sequence,
             live_entries,
         )
-        atomic_replace(segment_temporary, self.path + "/" + segment_name)
-        sync_directory(self.path)
+        atomic_replace(segment_temporary, self._path + "/" + segment_name)
+        sync_directory(self._path)
 
         var descriptors = List[SegmentDescriptor]()
         descriptors.append(
@@ -1237,12 +1239,12 @@ struct PersistentCollection:
             )
         )
         var compacted = Manifest.with_segments(
-            self.dimension,
+            self._config.dimension,
             previous.generation + 1,
             self._last_sequence,
             descriptors^,
         )
-        publish_manifest(self.path, compacted)
+        publish_manifest(self._path, compacted)
 
         self._publish_index_caches_best_effort()
 
@@ -1257,9 +1259,9 @@ struct PersistentCollection:
         self._ensure_open()
         self._reclaim_retired()
         self._flush_unlocked()
-        if not path_exists(self.path + "/manifest.bin"):
+        if not path_exists(self._path + "/manifest.bin"):
             return False
-        var manifest = load_manifest(self.path, self.dimension)
+        var manifest = load_manifest(self._path, self._config.dimension)
         var policy = CompactionPolicy(4)
         if not policy.should_compact(manifest):
             return False
@@ -1275,21 +1277,21 @@ struct PersistentCollection:
         var removed = List[String]()
         for index in range(len(previous.segments)):
             if previous.segments[index].name != retained_dense:
-                removed.append(self.path + "/" + previous.segments[index].name)
+                removed.append(self._path + "/" + previous.segments[index].name)
             if (
                 previous.segments[index].sparse_name.byte_length() > 0
                 and previous.segments[index].sparse_name != retained_sparse
             ):
                 removed.append(
-                    self.path + "/" + previous.segments[index].sparse_name
+                    self._path + "/" + previous.segments[index].sparse_name
                 )
 
         self._retired[].retire_or_reclaim(
-            self.path, previous.generation, removed, self._pins
+            self._path, previous.generation, removed, self._pins
         )
 
     def _reclaim_retired(mut self) raises:
-        self._retired[].reclaim(self.path, self._pins)
+        self._retired[].reclaim(self._path, self._pins)
 
     def _search_filtered(
         self,
@@ -1500,7 +1502,7 @@ struct PersistentCollection:
             raise Error("RRF rank constant must be positive")
 
     def _validate_vector(self, values: List[Float32]) raises:
-        if len(values) != self.dimension:
+        if len(values) != self._config.dimension:
             raise Error("vector dimension does not match collection")
         for value in values:
             if not isfinite(value):
@@ -1509,12 +1511,18 @@ struct PersistentCollection:
     def _ensure_open(self) raises:
         if self._closed:
             raise Error("collection is closed")
+        if self.path != self._path:
+            raise Error("public collection path copy diverged from identity")
+        if self.dimension != self._config.dimension:
+            raise Error(
+                "public collection dimension copy diverged from identity"
+            )
         self._maintenance.check()
 
     def _ensure_hnsw(mut self) raises:
         if not self._hnsw_dirty:
             return
-        var rebuilt = _build_hnsw(self._memtable, self.dimension)
+        var rebuilt = _build_hnsw(self._memtable, self._config.dimension)
         self._hnsw = rebuilt^
         self._hnsw_dirty = False
         self._publish_index_caches_best_effort()
@@ -1526,32 +1534,32 @@ struct PersistentCollection:
     def _publish_index_caches_best_effort(mut self):
         try:
             var generation = UInt64(0)
-            if path_exists(self.path + "/manifest.bin"):
+            if path_exists(self._path + "/manifest.bin"):
                 generation = load_manifest(
-                    self.path, self.dimension
+                    self._path, self._config.dimension
                 ).generation
             var checksum = authoritative_index_checksum(self._memtable)
             var metadata_payload = self._metadata.encode_cache_payload()
             var metadata_artifact = CacheArtifact(
                 CACHE_METADATA_KIND,
-                self.dimension,
+                self._config.dimension,
                 generation,
                 self._last_sequence,
                 checksum,
                 metadata_payload^,
             )
-            publish_cache(self.path, "metadata.cache", metadata_artifact)
+            publish_cache(self._path, "metadata.cache", metadata_artifact)
             if not self._hnsw_dirty:
                 var hnsw_payload = self._hnsw.encode_cache_payload()
                 var hnsw_artifact = CacheArtifact(
                     CACHE_HNSW_KIND,
-                    self.dimension,
+                    self._config.dimension,
                     generation,
                     self._last_sequence,
                     checksum,
                     hnsw_payload^,
                 )
-                publish_cache(self.path, "hnsw.cache", hnsw_artifact)
+                publish_cache(self._path, "hnsw.cache", hnsw_artifact)
             self._cache_generation = generation
             self._source_checksum = checksum
         except:

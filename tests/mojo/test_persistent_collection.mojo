@@ -154,9 +154,85 @@ def test_existing_collection_rejects_dimension_mismatch() raises:
     var collection = PersistentCollection.open(path, 2)
     collection.upsert(1, [1.0, 0.0])
     collection.flush()
+    collection.close()
 
     with assert_raises():
         _ = PersistentCollection.open(path, 3)
+
+    var reopened = PersistentCollection.open(path, 2)
+    assert_equal(reopened.get(1).value().vector[0], Float32(1.0))
+    reopened.close()
+
+
+def test_mutated_public_dimension_cannot_change_wal_identity() raises:
+    var path = _test_directory("public-dimension-copy")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    collection.upsert(1, [1.0, 2.0])
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    collection.dimension = 3
+    with assert_raises():
+        collection.upsert(2, [3.0, 4.0, 5.0])
+
+    var after_rejected = read_file_bytes(path + "/wal.bin")
+    assert_equal(len(after_rejected), len(before_wal))
+    for index in range(len(before_wal)):
+        assert_equal(after_rejected[index], before_wal[index])
+    collection.dimension = 2
+    assert_equal(collection.last_sequence(), UInt64(1))
+    collection.upsert(2, [3.0, 4.0])
+    assert_equal(collection.last_sequence(), UInt64(2))
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 2)
+    assert_equal(reopened.get(2).value().vector[1], Float32(4.0))
+    reopened.close()
+
+
+def test_mutated_public_path_cannot_redirect_mutation_or_flush() raises:
+    var path = _test_directory("public-path-copy")
+    var alternate = _test_directory("public-path-alternate")
+    _reset(path)
+    _reset(alternate)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [2.0])
+    var before_wal = read_file_bytes(path + "/wal.bin")
+
+    collection.path = alternate
+    with assert_raises():
+        collection.upsert(2, [4.0])
+    with assert_raises():
+        collection.flush()
+
+    assert_equal(path_exists(alternate + "/wal.bin"), False)
+    assert_equal(path_exists(alternate + "/manifest.bin"), False)
+    assert_equal(path_exists(alternate + "/collection.bin"), False)
+    var after_rejected = read_file_bytes(path + "/wal.bin")
+    assert_equal(len(after_rejected), len(before_wal))
+    for index in range(len(before_wal)):
+        assert_equal(after_rejected[index], before_wal[index])
+    collection.path = path
+    assert_equal(collection.last_sequence(), UInt64(1))
+    collection.flush()
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    assert_equal(reopened.get(1).value().vector[0], Float32(2.0))
+    reopened.close()
+
+
+def test_close_releases_lock_when_public_identity_copies_diverge() raises:
+    var path = _test_directory("diverged-close")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    collection.path = _test_directory("diverged-close-alternate")
+    collection.dimension = 99
+
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 2)
+    reopened.close()
 
 
 def test_collection_rejects_second_live_owner_and_reopens_after_close() raises:
