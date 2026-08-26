@@ -20,7 +20,12 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import PqIndex, Sq8Index
-from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
+from akasha.index.sparse import (
+    SparseElement,
+    SparseIndex,
+    SparseRecord,
+    validate_sparse,
+)
 from akasha.query.executor import candidate_entries
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
@@ -133,6 +138,26 @@ struct ReadSnapshot(Movable):
         if not Bool(document):
             return Optional[DocumentRecord]()
         return Optional(project_document(document.value(), projection))
+
+    def documents(self) raises -> List[DocumentRecord]:
+        """Return owned live records for logical export."""
+        self._ensure_open()
+        var entries = self._memtable.live_entries()
+        var records = List[DocumentRecord](capacity=len(entries))
+        for index in range(len(entries)):
+            var record = self._memtable.get(entries[index].id)
+            if Bool(record):
+                records.append(record.value().clone())
+        return records^
+
+    def sparse_records(self) raises -> List[SparseRecord]:
+        """Return an owned sparse snapshot for logical export."""
+        self._ensure_open()
+        var source = self._sparse.records()
+        var records = List[SparseRecord](capacity=len(source))
+        for index in range(len(source)):
+            records.append(source[index].clone())
+        return records^
 
     def search_dot(
         self, query: List[Float32], k: Int

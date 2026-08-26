@@ -109,3 +109,38 @@ class SearchRequest:
     fetch_k: int = 50
     rank_constant: int = 60
     filter: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceLimits:
+    max_batch_rows: int = 65_536
+    max_query_batch: int = 1_024
+    max_k: int = 10_000
+    max_candidates: int = 10_000_000
+
+    def __post_init__(self) -> None:
+        if min(
+            self.max_batch_rows,
+            self.max_query_batch,
+            self.max_k,
+            self.max_candidates,
+        ) <= 0:
+            raise ValueError("resource limits must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class MetricsSnapshot:
+    operations: int
+    writes: int
+    queries: int
+    failures: int
+    cancellations: int
+    total_duration_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceRecord:
+    operation: str
+    duration_ns: int
+    status: Literal["ok", "error"]
+    sequence: int | None

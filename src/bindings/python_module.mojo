@@ -8,8 +8,15 @@ from akasha import (
     PayloadValue,
     PersistentCollection,
     SparseElement,
+    QueryControl,
+    CancellationToken,
 )
 from akasha.index.flat import SearchResult
+from akasha.storage.operations import (
+    inspect_storage,
+    restore_storage,
+    StorageInspection,
+)
 from std.os import abort
 from std.python import Python, PythonObject
 from std.python.bindings import PythonModuleBuilder
@@ -128,6 +135,79 @@ struct BoundCollection(Movable, Writable):
         _ensure_open(self[])
         self[].inner.value().flush()
         return Python.none()
+
+    @staticmethod
+    def backup_to(
+        py_self: PythonObject, target: PythonObject
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var report = self[].inner.value().backup_to(String(py=target))
+        return _storage_report_to_python(report)
+
+    @staticmethod
+    def export_records(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var snapshot = self[].inner.value().snapshot()
+        var documents = snapshot.documents()
+        var sparse = snapshot.sparse_records()
+        var output = Python.list()
+        for document_index in range(len(documents)):
+            var record = _document_to_python(
+                Optional(documents[document_index].clone())
+            )
+            var elements = Python.list()
+            for sparse_index in range(len(sparse)):
+                if sparse[sparse_index].id != documents[document_index].id:
+                    continue
+                for element in sparse[sparse_index].elements:
+                    elements.append(
+                        Python.dict(
+                            term_id=PythonObject(element.term_id),
+                            weight=PythonObject(element.weight),
+                        )
+                    )
+                break
+            record["sparse"] = elements
+            output.append(record)
+        snapshot.close()
+        return output
+
+    @staticmethod
+    def search_controlled(
+        py_self: PythonObject,
+        metric: PythonObject,
+        query: PythonObject,
+        k: PythonObject,
+        options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = QueryControl(
+            token,
+            max_candidates=Int(py=options["max_candidates"]),
+            deadline_ns=Int(py=options["deadline_ns"]),
+        )
+        var snapshot = self[].inner.value().snapshot()
+        var values = _float_vector(query)
+        var metric_name = String(py=metric)
+        var results: List[SearchResult]
+        if metric_name == "dot":
+            results = snapshot.search_dot_controlled(values, Int(py=k), control)
+        elif metric_name == "l2":
+            results = snapshot.search_l2_controlled(values, Int(py=k), control)
+        elif metric_name == "cosine":
+            results = snapshot.search_cosine_controlled(
+                values, Int(py=k), control
+            )
+        else:
+            raise Error("unknown dense metric")
+        snapshot.close()
+        return _results_to_python(results)
 
     @staticmethod
     def get(py_self: PythonObject, id: PythonObject) raises -> PythonObject:
@@ -727,6 +807,40 @@ def _results_to_python(results: List[SearchResult]) raises -> PythonObject:
     return output
 
 
+def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
+    var segments = Python.list()
+    for name in report.segment_names:
+        segments.append(name)
+    var sparse = Python.list()
+    for name in report.sparse_names:
+        sparse.append(name)
+    return Python.dict(
+        dimension=PythonObject(report.dimension),
+        format_version=PythonObject(report.format_version),
+        generation=PythonObject(report.generation),
+        last_sequence=PythonObject(report.last_sequence),
+        segment_count=PythonObject(report.segment_count),
+        live_points=PythonObject(report.live_points),
+        valid=PythonObject(report.valid),
+        segment_names=segments,
+        sparse_names=sparse,
+    )
+
+
+def inspect_storage_py(path: PythonObject, dimension: PythonObject) raises -> PythonObject:
+    return _storage_report_to_python(
+        inspect_storage(String(py=path), Int(py=dimension))
+    )
+
+
+def restore_storage_py(
+    backup: PythonObject, target: PythonObject, dimension: PythonObject
+) raises -> PythonObject:
+    return _storage_report_to_python(
+        restore_storage(String(py=backup), String(py=target), Int(py=dimension))
+    )
+
+
 @export
 def PyInit__kernel() abi("C") -> PythonObject:
     try:
@@ -742,6 +856,9 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.upsert_sparse]("upsert_sparse")
             .def_method[BoundCollection.delete]("delete")
             .def_method[BoundCollection.flush]("flush")
+            .def_method[BoundCollection.backup_to]("backup_to")
+            .def_method[BoundCollection.export_records]("export_records")
+            .def_method[BoundCollection.search_controlled]("search_controlled")
             .def_method[BoundCollection.get]("get")
             .def_method[BoundCollection.get_projected]("get_projected")
             .def_method[BoundCollection.apply_arrow_batch]("apply_arrow_batch")
@@ -765,6 +882,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
                 "search_hybrid_where"
             )
         )
+        module.def_function[inspect_storage_py]("inspect_storage")
+        module.def_function[restore_storage_py]("restore_storage")
         return module.finalize()
     except error:
         abort(String("failed to create Akasha Python module: ", error))

@@ -1,7 +1,16 @@
 """Python adapter for the AkashaDB Mojo kernel."""
 
-from .database import Collection, LocalDatabase
+from .database import CancellationToken, Collection, LocalDatabase
 from .arrow import ArrowBatchLease, results_to_record_batch, upsert_record_batch
+from .operations import (
+    StorageReport,
+    backup_collection,
+    export_ndjson,
+    import_ndjson,
+    inspect_storage,
+    quarantine_orphans,
+    restore_storage,
+)
 from .exceptions import (
     AkashaError,
     CollectionAlreadyOpenError,
@@ -15,9 +24,12 @@ from .models import (
     Document,
     PayloadField,
     Projection,
+    MetricsSnapshot,
+    ResourceLimits,
     SearchRequest,
     SearchResult,
     SparseElement,
+    TraceRecord,
 )
 
 __version__ = "0.1.0"
@@ -27,7 +39,9 @@ __all__ = [
     "ArrowBatchLease",
     "BatchMutation",
     "BatchWriteResult",
+    "StorageReport",
     "Collection",
+    "CancellationToken",
     "CollectionAlreadyOpenError",
     "CollectionClosedError",
     "CollectionNotFoundError",
@@ -35,11 +49,20 @@ __all__ = [
     "LocalDatabase",
     "PayloadField",
     "Projection",
+    "MetricsSnapshot",
+    "ResourceLimits",
     "SearchRequest",
     "SearchResult",
     "SparseElement",
+    "TraceRecord",
     "ValidationError",
     "results_to_record_batch",
     "upsert_record_batch",
+    "backup_collection",
+    "export_ndjson",
+    "import_ndjson",
+    "inspect_storage",
+    "quarantine_orphans",
+    "restore_storage",
     "__version__",
 ]

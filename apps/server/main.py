@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import gettempdir
 
@@ -11,19 +12,31 @@ from apps.server.routes.points import router as points_router
 
 
 def create_app(database: LocalDatabase | None = None) -> FastAPI:
+    owned_database = database
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        yield
+        application.state.database.close_all()
+
     app = FastAPI(
         title="AkashaDB",
         version="0.1.0",
         description="Local HTTP adapter for the AkashaDB Mojo kernel.",
+        lifespan=lifespan,
     )
     root = Path(
         os.environ.get("AKASHA_DATA_DIR", str(Path(gettempdir()) / "akashadb"))
     )
-    app.state.database = database or LocalDatabase(root)
+    app.state.database = owned_database or LocalDatabase(root)
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "kernel": "mojo"}
+
+    @app.get("/metrics")
+    def metrics() -> dict[str, object]:
+        return app.state.database.metrics()
 
     @app.exception_handler(CollectionNotFoundError)
     async def not_found_handler(

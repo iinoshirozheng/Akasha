@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from akashadb import LocalDatabase
+from akashadb import Collection, LocalDatabase
 from apps.server.main import app, create_app
 
 
@@ -99,3 +99,20 @@ def test_http_adapter_returns_deterministic_errors(tmp_path) -> None:
         invalid = client.post("/collections/demo", json={"dimension": 0})
         assert missing.status_code == 404
         assert invalid.status_code == 422
+
+
+def test_http_metrics_and_graceful_shutdown_release_collection_locks(tmp_path) -> None:
+    database = LocalDatabase(tmp_path)
+    with TestClient(create_app(database)) as client:
+        assert client.post("/collections/live", json={"dimension": 2}).status_code == 200
+        assert client.post(
+            "/collections/live/points", json={"id": 1, "vector": [1.0, 0.0]}
+        ).status_code == 200
+        metrics = client.get("/metrics").json()
+        assert metrics["open_collections"] == 1
+        assert metrics["collections"]["live"]["writes"] >= 1
+
+    assert database.metrics()["open_collections"] == 0
+    reopened = Collection(tmp_path / "live", 2)
+    assert reopened.get(1).vector == [1.0, 0.0]
+    reopened.close()
