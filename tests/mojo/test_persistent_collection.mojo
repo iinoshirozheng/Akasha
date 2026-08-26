@@ -6,6 +6,17 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
     write_file_sync,
 )
+from akasha.storage.manifest import (
+    Manifest,
+    publish_manifest,
+    SegmentDescriptor,
+)
+from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.segment import (
+    SEGMENT_KIND_BASE,
+    SEGMENT_KIND_DELTA,
+    write_segment_v3,
+)
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -21,6 +32,9 @@ def _reset(directory: String) raises:
     remove_file_if_exists(directory + "/manifest.bin.tmp")
     remove_file_if_exists(directory + "/wal.bin.tmp")
     remove_file_if_exists(directory + "/segment-stray.bin")
+    remove_file_if_exists(directory + "/segment-base-2.bin")
+    remove_file_if_exists(directory + "/segment-delta-4.bin")
+    remove_file_if_exists(directory + "/segment-delta-6.bin")
     for sequence in range(11):
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin"
@@ -197,6 +211,72 @@ def test_recovery_skips_retained_pre_checkpoint_wal() raises:
     assert_equal(len(result), 1)
     assert_equal(result[0].id, 7)
     assert_equal(recovered.last_sequence(), UInt64(1))
+
+
+def test_recovery_applies_base_and_deltas_in_manifest_sequence_order() raises:
+    var path = String("/tmp/akasha-phase10-multi-segment-recovery")
+    _reset(path)
+
+    var base = MemTable(1)
+    base.apply_upsert(1, 1, [1.0])
+    base.apply_upsert(2, 2, [2.0])
+    var base_entries = base.live_entries()
+    var base_checksum = write_segment_v3(
+        path + "/segment-base-2.bin",
+        1,
+        SEGMENT_KIND_BASE,
+        0,
+        2,
+        base_entries,
+    )
+
+    var first_delta = List[MemTableEntry]()
+    first_delta.append(MemTableEntry(1, 3, True, List[Float32]()))
+    first_delta.append(MemTableEntry(2, 4, False, [4.0]))
+    var first_checksum = write_segment_v3(
+        path + "/segment-delta-4.bin",
+        1,
+        SEGMENT_KIND_DELTA,
+        3,
+        4,
+        first_delta,
+    )
+
+    var second_delta = List[MemTableEntry]()
+    second_delta.append(MemTableEntry(1, 5, False, [5.0]))
+    second_delta.append(MemTableEntry(3, 6, False, [6.0]))
+    var second_checksum = write_segment_v3(
+        path + "/segment-delta-6.bin",
+        1,
+        SEGMENT_KIND_DELTA,
+        5,
+        6,
+        second_delta,
+    )
+
+    var descriptors = List[SegmentDescriptor]()
+    descriptors.append(
+        SegmentDescriptor(1, 0, 2, base_checksum, "segment-base-2.bin")
+    )
+    descriptors.append(
+        SegmentDescriptor(0, 3, 4, first_checksum, "segment-delta-4.bin")
+    )
+    descriptors.append(
+        SegmentDescriptor(0, 5, 6, second_checksum, "segment-delta-6.bin")
+    )
+    var manifest = Manifest.with_segments(1, 3, 6, descriptors^)
+    publish_manifest(path, manifest)
+
+    var collection = PersistentCollection.open(path, 1)
+    var results = collection.search_dot([1.0], 3)
+
+    assert_equal(collection.last_sequence(), UInt64(6))
+    assert_equal(len(results), 3)
+    assert_equal(results[0].id, 3)
+    assert_equal(results[1].id, 1)
+    assert_equal(results[2].id, 2)
+    assert_equal(collection.get(1).value().sequence, UInt64(5))
+    assert_equal(collection.get(2).value().vector[0], Float32(4.0))
 
 
 def main() raises:

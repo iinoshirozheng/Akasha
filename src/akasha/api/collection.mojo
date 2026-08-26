@@ -29,7 +29,12 @@ from akasha.storage.filesystem import (
 from akasha.storage.manifest import load_manifest, Manifest, publish_manifest
 from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
-from akasha.storage.segment import read_segment, write_segment
+from akasha.storage.segment import (
+    read_segment,
+    SEGMENT_KIND_BASE,
+    SEGMENT_KIND_DELTA,
+    write_segment,
+)
 from akasha.storage.sparse_store import (
     append_sparse_wal,
     read_sparse_snapshot,
@@ -100,23 +105,53 @@ struct PersistentCollection:
         var manifest_path = path + "/manifest.bin"
         if path_exists(manifest_path):
             var manifest = load_manifest(path, dimension)
-            var snapshot = read_segment(
-                path + "/" + manifest.segment_name, dimension
-            )
-            if snapshot.last_sequence != manifest.last_sequence:
-                raise Error("manifest and segment sequence mismatch")
-            if snapshot.checksum != manifest.segment_checksum:
-                raise Error("manifest and segment checksum mismatch")
-            snapshot_sequence = manifest.last_sequence
-            for index in range(len(snapshot.entries)):
-                var values = _clone_vector(snapshot.entries[index].values)
-                var fields = clone_fields(snapshot.entries[index].fields)
-                memtable.apply_document_upsert(
-                    snapshot.entries[index].id,
-                    snapshot.entries[index].sequence,
-                    values^,
-                    fields^,
+            for segment_index in range(len(manifest.segments)):
+                var snapshot = read_segment(
+                    path + "/" + manifest.segments[segment_index].name,
+                    dimension,
                 )
+                if (
+                    snapshot.min_sequence
+                    != manifest.segments[segment_index].min_sequence
+                    or snapshot.last_sequence
+                    != manifest.segments[segment_index].max_sequence
+                ):
+                    raise Error("manifest and segment sequence mismatch")
+                if (
+                    snapshot.checksum
+                    != manifest.segments[segment_index].checksum
+                ):
+                    raise Error("manifest and segment checksum mismatch")
+                if (
+                    manifest.segments[segment_index].level == 0
+                    and snapshot.kind != SEGMENT_KIND_DELTA
+                ):
+                    raise Error("level-zero manifest entry must be a delta")
+                if (
+                    manifest.segments[segment_index].level > 0
+                    and snapshot.kind != SEGMENT_KIND_BASE
+                ):
+                    raise Error("compacted manifest entry must be a base")
+                for entry_index in range(len(snapshot.entries)):
+                    if snapshot.entries[entry_index].tombstone:
+                        memtable.apply_delete(
+                            snapshot.entries[entry_index].id,
+                            snapshot.entries[entry_index].sequence,
+                        )
+                        continue
+                    var values = _clone_vector(
+                        snapshot.entries[entry_index].values
+                    )
+                    var fields = clone_fields(
+                        snapshot.entries[entry_index].fields
+                    )
+                    memtable.apply_document_upsert(
+                        snapshot.entries[entry_index].id,
+                        snapshot.entries[entry_index].sequence,
+                        values^,
+                        fields^,
+                    )
+            snapshot_sequence = manifest.last_sequence
 
         var records = recover_wal(path + "/wal.bin", dimension)
         var last_sequence = snapshot_sequence
