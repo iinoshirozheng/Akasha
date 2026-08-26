@@ -613,6 +613,45 @@ struct PersistentCollection:
         var snapshot = self.snapshot()
         return snapshot.search_cosine_batch(queries, k, num_workers=num_workers)
 
+    def search_dot_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_dot_where_batch(
+            queries, expressions, k, num_workers=num_workers
+        )
+
+    def search_l2_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_l2_where_batch(
+            queries, expressions, k, num_workers=num_workers
+        )
+
+    def search_cosine_where_batch(
+        self,
+        queries: List[List[Float32]],
+        expressions: List[FilterExpression],
+        k: Int,
+        *,
+        num_workers: Int = 0,
+    ) raises -> List[List[SearchResult]]:
+        var snapshot = self.snapshot()
+        return snapshot.search_cosine_where_batch(
+            queries, expressions, k, num_workers=num_workers
+        )
+
     def search_dot_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
@@ -1279,6 +1318,7 @@ struct PersistentCollection:
     def _ensure_open(self) raises:
         if self._closed:
             raise Error("collection is closed")
+        self._maintenance.check()
 
     def _ensure_hnsw(mut self) raises:
         if not self._hnsw_dirty:

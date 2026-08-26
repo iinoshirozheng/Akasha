@@ -39,6 +39,14 @@ class KernelCollection(Protocol):
         k: int,
         num_workers: int,
     ) -> list[list[dict[str, Any]]]: ...
+    def search_batch_where(
+        self,
+        metric: str,
+        vectors: list[list[float]],
+        filters: list[dict[str, Any]],
+        k: int,
+        num_workers: int,
+    ) -> list[list[dict[str, Any]]]: ...
     def search_approx(
         self, metric: str, vector: list[float], k: int, ef_search: int
     ) -> list[dict[str, Any]]: ...
@@ -231,8 +239,19 @@ class Collection:
         k: int,
         *,
         num_workers: int = 0,
+        filters: list[dict[str, Any]] | None = None,
     ) -> list[list[SearchResult]]:
-        raw = self._call("search_batch", metric, vectors, k, num_workers)
+        if filters is None:
+            raw = self._call("search_batch", metric, vectors, k, num_workers)
+        else:
+            raw = self._call(
+                "search_batch_where",
+                metric,
+                vectors,
+                filters,
+                k,
+                num_workers,
+            )
         return [
             [
                 SearchResult(id=int(item["id"]), score=float(item["score"]))

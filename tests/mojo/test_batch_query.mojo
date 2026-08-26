@@ -150,9 +150,24 @@ def test_parallel_filtered_batch_equals_per_query_expression_oracle() raises:
     var results = snapshot.search_dot_where_batch(
         queries, expressions, 4, num_workers=2
     )
+    var collection_dot = collection.search_dot_where_batch(
+        queries, expressions, 4, num_workers=2
+    )
+    var collection_l2 = collection.search_l2_where_batch(
+        queries, expressions, 4, num_workers=2
+    )
+    var collection_cosine = collection.search_cosine_where_batch(
+        queries, expressions, 4, num_workers=2
+    )
 
     for index in range(len(queries)):
         var oracle = snapshot.search_dot_where(
+            queries[index], 4, expressions[index]
+        )
+        var l2_oracle = snapshot.search_l2_where(
+            queries[index], 4, expressions[index]
+        )
+        var cosine_oracle = snapshot.search_cosine_where(
             queries[index], 4, expressions[index]
         )
         for result_index in range(4):
@@ -162,6 +177,18 @@ def test_parallel_filtered_batch_equals_per_query_expression_oracle() raises:
             assert_equal(
                 results[index][result_index].score,
                 oracle[result_index].score,
+            )
+            assert_equal(
+                collection_dot[index][result_index].id,
+                oracle[result_index].id,
+            )
+            assert_equal(
+                collection_l2[index][result_index].id,
+                l2_oracle[result_index].id,
+            )
+            assert_equal(
+                collection_cosine[index][result_index].id,
+                cosine_oracle[result_index].id,
             )
     var missing = List[FilterExpression]()
     with assert_raises():

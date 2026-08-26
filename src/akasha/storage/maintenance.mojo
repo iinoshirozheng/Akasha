@@ -170,7 +170,10 @@ struct MaintenanceController(Movable):
             raise Error("background maintenance worker failed")
         self._raise_failure()
 
-    def _raise_failure(mut self) raises:
+    def check(self) raises:
+        self._raise_failure()
+
+    def _raise_failure(self) raises:
         var message = self._state[].failure()
         if message.byte_length() > 0:
             raise Error("background maintenance failed: " + message)

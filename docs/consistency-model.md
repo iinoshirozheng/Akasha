@@ -1,6 +1,7 @@
 # Consistency model
 
-Status: Phase 10 incremental storage core implemented.
+Status: Phase 11 snapshot, batch, concurrency, and maintenance model
+implemented.
 
 ## Mutation visibility and durability
 
@@ -15,6 +16,18 @@ returns only after its checksummed WAL record has been fully written and `fsync`
 has succeeded. It is then applied to the in-process MemTable and immediately
 visible to searches on that handle.
 
+`apply_batch` validates every upsert/delete before allocating one contiguous
+sequence range. It appends and fsyncs one checksummed WAL v3 envelope before
+swapping the staged MemTable and derived indexes into live state. Recovery
+accepts a complete envelope or repairs an incomplete final envelope as a unit;
+it never exposes a durable prefix.
+
+Mutable collection operations are serialized by one engine-owned writer lock.
+`snapshot()` takes that lock only while capturing an owned view. Later exact,
+filtered, sparse, hybrid, batch, and `get` calls on the snapshot consult no live
+collection state. A concurrent snapshot sees either the state before an atomic
+batch or the state after it, never a prefix.
+
 ## Flush and recovery
 
 The first flush writes a complete base; later flushes write only the latest
@@ -25,13 +38,20 @@ manifest rename is the checkpoint commit point. Only after that commit is
 durable does flush atomically replace the dense and sparse WALs with empty
 fsynced files and sync the directory.
 
-When four L0 generations accumulate, the same foreground maintenance boundary
-performs full-coverage compaction. It flushes pending mutations, writes paired
-base segments from authoritative live state, publishes a generation containing
-only that base, then removes exactly the old files no longer referenced by the
-committed manifest. Covered tombstones are discarded; unrelated orphan files
-are not deleted. `compact()` and `maintenance()` expose the same deterministic
-synchronous path.
+When four L0 generations accumulate, flush coalesces a request into one bounded
+background slot. The worker acquires the writer lock, merges only the
+generation named by the manifest, writes paired bases, and publishes a new
+generation. A WAL accepted after that manifest remains untouched and is
+replayed above the compacted checkpoint. `wait_for_maintenance()` drains the
+queue; `close()` drains and joins it before releasing the collection lock. The
+first worker error is surfaced deterministically. If the portable native worker
+cannot load, threshold compaction runs synchronously. Explicit `compact()` and
+`maintenance()` remain synchronous.
+
+Every read snapshot pins its captured manifest generation. Obsolete files are
+queued rather than deleted while any relevant pin remains. Reclamation happens
+only after publication and the final unpin; unrelated orphan files are never
+silently removed.
 
 Open validates every ordered manifest descriptor and its dense/sparse checksum
 and sequence interval, applies base and delta records in manifest order, and
@@ -49,8 +69,7 @@ records.
 
 ## Current limits
 
-- No long-lived snapshot reader API yet.
-- No transactions spanning multiple mutations.
-- No engine-owned background maintenance worker yet; threshold compaction runs
-  synchronously at the end of `flush()`.
-- No replication or distributed consistency yet.
+- Atomicity is collection-local; there are no cross-collection transactions.
+- Live approximate queries are mutable collection operations; callers needing a
+  stable long read use the immutable exact/sparse/hybrid snapshot APIs.
+- There is no replication or distributed consistency yet.

@@ -1,4 +1,5 @@
 from akasha import ReadSnapshot
+from akasha.index.sparse import SparseIndex
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
 from std.memory import ArcPointer
@@ -32,8 +33,9 @@ def _snapshot() raises -> ReadSnapshot:
     var table = MemTable(_DIMENSION)
     table.apply_recovered_entries(entries)
     var pins = ArcPointer(GenerationPinRegistry())
+    var sparse = SparseIndex()
     return ReadSnapshot.capture(
-        _DIMENSION, 0, UInt64(_POINT_COUNT), table, pins
+        _DIMENSION, 0, UInt64(_POINT_COUNT), table, sparse, pins
     )
 
 

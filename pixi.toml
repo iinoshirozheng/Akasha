@@ -23,6 +23,7 @@ bench-hnsw = "mojo run -I src benchmarks/mojo/hnsw_bench.mojo"
 bench-metadata = "mojo run -I src benchmarks/mojo/metadata_bench.mojo"
 bench-compaction = "mojo run -I src benchmarks/mojo/compaction_bench.mojo"
 bench-batch = "mojo run -I src benchmarks/mojo/batch_query_bench.mojo"
+bench-phase11 = { cmd = "mojo run -I src benchmarks/mojo/phase11_bench.mojo", depends-on = ["build-native-worker"] }
 
 [dependencies]
 mojo = ">=1.0.0,<2"

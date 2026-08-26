@@ -39,6 +39,19 @@ bitmap cardinality lets the planner choose filtered exact execution or HNSW
 without first scanning all payloads. Exact execution iterates selected slots;
 HNSW and sparse/hybrid paths use the same point-ID membership set.
 
+`PersistentCollection.snapshot()` freezes dense vectors, payloads, sparse
+vectors, and the metadata index at one sequence. Its exact, Boolean-filtered,
+sparse, hybrid, batch, and `get` methods remain stable while the live collection
+is replaced, deleted, flushed, or compacted. Closing the snapshot releases its
+manifest-generation pin.
+
+`search_*_batch` captures one snapshot for every input query and preserves
+input ordinal order. `search_*_where_batch` additionally accepts exactly one
+`FilterExpression` per query. Each worker owns a bounded Top-K heap; metric
+ordering and ascending-ID tie rules are identical to the sequential methods.
+Small batches retain a sequential path. Python exposes the same behavior as
+`Collection.search_batch(..., filters=[...])`.
+
 For one condition, lookup is proportional to keyword posting discovery or
 `O(log N + M)` numeric range discovery plus bitmap materialization, where `M`
 is the number of matches. Boolean set operations are linear in bitmap words.

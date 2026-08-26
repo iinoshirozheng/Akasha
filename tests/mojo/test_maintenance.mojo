@@ -91,6 +91,8 @@ def test_worker_failure_surfaces_on_wait_and_close_without_leaking_lock() raises
     with assert_raises():
         _ = collection.wait_for_maintenance()
     with assert_raises():
+        _ = collection.get(1)
+    with assert_raises():
         collection.close()
 
     _reset(path)

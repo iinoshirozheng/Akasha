@@ -130,6 +130,44 @@ def test_compiled_kernel_parallel_batch_query_matches_single_queries(tmp_path) -
     collection.close()
 
 
+def test_compiled_kernel_filtered_batch_query_matches_single_queries(tmp_path) -> None:
+    collection = akashadb.Collection(tmp_path / "batch-query-filtered", 1)
+    for point_id in range(20):
+        collection.upsert(
+            point_id,
+            [float(point_id + 1)],
+            [
+                akashadb.PayloadField(
+                    "group", "string", "even" if point_id % 2 == 0 else "odd"
+                )
+            ],
+        )
+    vectors = [[1.0], [-1.0]]
+    filters = [
+        {
+            "kind": "condition",
+            "name": "group",
+            "operator": "eq",
+            "type": "string",
+            "value": group,
+        }
+        for group in ("even", "odd")
+    ]
+
+    batched = collection.search_batch(
+        "dot", vectors, 5, num_workers=2, filters=filters
+    )
+
+    for index, vector in enumerate(vectors):
+        oracle = collection.search(
+            akashadb.SearchRequest(
+                "dot", 5, vector=vector, filter=filters[index]
+            )
+        )
+        assert batched[index] == oracle
+    collection.close()
+
+
 def test_compiled_kernel_rebuilds_nested_metadata_index_on_reopen(tmp_path) -> None:
     path = tmp_path / "indexed"
     collection = akashadb.Collection(path, 1)

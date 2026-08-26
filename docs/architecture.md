@@ -30,7 +30,8 @@ flush
    -> atomic segment renames + directory fsync
    -> atomic Manifest v2 generation publish + directory fsync
    -> atomic empty WAL replacement + directory fsync
-   -> threshold compaction may publish one full-coverage base
+   -> threshold signal coalesces into one background maintenance request
+   -> worker locks the same writer boundary and may publish one full base
 ```
 
 ## Initial read path
@@ -38,7 +39,7 @@ flush
 ```text
 manifest -> ordered v1/v2/v3 base+deltas -> newer WAL replay -> MemTable
                                                                |
-query -> typed AND filter -> SIMD metric -> bounded Top-K IDs
+query -> immutable read snapshot -> typed filter -> SIMD -> bounded Top-K IDs
                                                                |
                                     get(ID) -> owned document <-+
 ```
@@ -85,10 +86,27 @@ The first checkpoint publishes paired dense/sparse base segments; later flushes
 append only the latest changed states as paired L0 deltas. Recovery validates
 and applies descriptors in manifest order, then ignores WAL sequence numbers
 already covered by the committed generation. Four L0 generations trigger a
-full-coverage synchronous compaction that atomically replaces all inputs with
-one L1 base and safely drops covered tombstones. Exact old files are reclaimed
-only after the manifest commit. Snapshot-isolated concurrent readers and a
-long-lived background maintenance worker remain Phase 11 work.
+bounded engine-owned maintenance request. A small portable pthread shim invokes
+a Mojo callback; the callback acquires the same writer lock, reconstructs only
+manifest-committed dense and sparse state, and atomically publishes one L1
+base. It never modifies or rotates a newer WAL. At most one callback waits
+behind the active callback. Failure is stored and surfaced by the next public
+data operation, explicit wait, later scheduling, or close. If the shared
+library cannot load, flush uses the same synchronous compaction path.
+
+`PersistentCollection.snapshot()` captures owned MemTable, metadata, and
+sparse index state at one accepted sequence. Exact, Boolean-filtered, sparse,
+hybrid, batch, `get`, and payload results remain stable after live mutations.
+Snapshots pin their manifest generation. Both foreground and background
+compaction publish before retiring files and reclaim only after the final
+relevant pin closes. Collection writers are serialized; snapshot reads require
+no writer lock after capture.
+
+Batch mutation uses one WAL v3 envelope and one fsync for a prevalidated
+contiguous sequence range. Live state changes only after append succeeds.
+Batch queries capture one snapshot, then use the public scoped MAX worker pool
+with one deterministic Top-K heap and output ordinal per query. No private Mojo
+async API is used.
 
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
@@ -124,6 +142,8 @@ logic.
 
 Boolean filter dictionaries are converted into bounded Mojo
 `FilterExpression` values before exact, approximate, sparse, or hybrid search.
+Dense batch calls accept one filter dictionary per query and retain input
+ordinal order across parallel execution.
 The current Arrow adapter always copies Python/NumPy/PyArrow-compatible
 sequences. A zero-copy C Data bridge remains disabled until its ownership ABI
 can be expressed and tested safely.

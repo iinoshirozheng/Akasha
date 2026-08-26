@@ -198,6 +198,8 @@ def test_snapshot_freezes_sparse_hybrid_and_filtered_results() raises:
     collection.delete(2)
     collection.upsert(3, [10.0, 0.0])
     collection.upsert_sparse(3, [SparseElement(7, 10.0)])
+    collection.flush()
+    collection.compact()
 
     var sparse = snapshot.search_sparse_dot([SparseElement(7, 1.0)], 3)
     assert_equal(len(sparse), 2)

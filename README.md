@@ -74,7 +74,8 @@ search through `search_*_filtered`. Conditions are combined with AND and run
 before vector scoring. String and Bool support `==` and `!=`; Int64 and finite
 Float64 additionally support `<`, `<=`, `>`, and `>=`. Missing fields and type
 mismatches do not match, including inequality. Phase 4.2 performs a linear
-payload scan without a metadata index.
+migration-compatible API; Phase 9 evaluates it through the derived metadata
+index.
 
 For Boolean logic, build a bounded expression and use `search_*_where`:
 
@@ -139,6 +140,8 @@ pixi run bench-flat
 pixi run bench-hnsw
 pixi run bench-metadata
 pixi run bench-compaction
+pixi run bench-batch
+pixi run bench-phase11
 ```
 
 Use the compiled in-process Python adapter:
@@ -154,10 +157,33 @@ results = collection.search(
 collection.close()
 ```
 
+Parallel batches may carry one Boolean filter expression per query:
+
+```python
+filters = [
+    {
+        "kind": "condition",
+        "name": "kind",
+        "operator": "eq",
+        "type": "string",
+        "value": "chunk",
+    }
+]
+results = collection.search_batch(
+    "cosine",
+    [[1.0, 0.0, 0.0]],
+    10,
+    num_workers=4,
+    filters=filters,
+)
+```
+
 `pixi run build-python` compiles `src/bindings/python_module.mojo` into the
 ignored, platform-local `python/akashadb/_kernel.so`. Python models translate
 typed payload, sparse, Boolean-filter, approximate, and hybrid requests; the
 extension owns the Mojo collection and performs every database operation.
+See [`docs/python-api.md`](docs/python-api.md) for atomic batch and filtered
+batch examples.
 
 Run the local HTTP adapter:
 
@@ -172,7 +198,10 @@ project does not claim zero-copy Arrow C Data ownership.
 
 ## Architecture
 
-The Mojo kernel under `src/akasha` never depends on Python or FastAPI. Language bindings live under `src/bindings`, and runnable adapters live under `apps`. See [`docs/architecture.md`](docs/architecture.md) for the dependency direction and initial data paths.
+The Mojo kernel under `src/akasha` never depends on Python or FastAPI. Language
+bindings live under `src/bindings`, and runnable adapters live under `apps`.
+See [`docs/architecture.md`](docs/architecture.md) for the dependency direction
+and initial data paths.
 
 ## Current milestone
 
@@ -213,12 +242,21 @@ Implemented:
   L0 delta recovery for both dense and sparse state.
 - Threshold-triggered full-coverage compaction that publishes one new base,
   drops covered tombstones, and reclaims only files removed from the manifest.
+- Immutable read snapshots with owned dense, sparse, payload, and metadata
+  state; generation pins defer obsolete-file reclamation through compaction.
+- Atomic WAL v3 mutation batches with contiguous sequences and all-or-none
+  crash recovery.
+- Deterministic scoped parallel batch query for all dense metrics and one
+  Boolean metadata expression per input query.
+- Serialized concurrent writers plus an engine-owned bounded pthread
+  maintenance worker, deterministic drain/close, failure propagation, and a
+  synchronous fallback when the native worker library cannot load.
 - A compiled Mojo Python extension, typed Python facade and errors, functional
   FastAPI routes, and copying Arrow-compatible batch columns.
 
 Text and image bytes are not embedded by the database: callers generate vectors
 externally and may persist the original text or an image URI as fields. Filtered
 search returns candidate IDs and scores; callers resolve payloads with `get`.
-Snapshot-isolated readers and the engine-owned background maintenance worker,
-trusted zero-copy Arrow C Data interchange, quantized/persisted indexes, GPU
-kernels, and distributed execution remain deferred to Phases 11–16.
+Trusted zero-copy Arrow C Data interchange, quantized/persisted indexes, GPU
+kernels, operations tooling, and distributed execution remain Phase 12–16
+work.

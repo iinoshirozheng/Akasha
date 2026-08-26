@@ -227,6 +227,65 @@ struct BoundCollection(Movable, Writable):
         return output
 
     @staticmethod
+    def search_batch_where(
+        py_self: PythonObject,
+        metric: PythonObject,
+        queries: PythonObject,
+        filters: PythonObject,
+        k: PythonObject,
+        num_workers: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var metric_name = String(py=metric)
+        var vectors = _float_vectors(queries)
+        var expressions = List[FilterExpression](capacity=len(filters))
+        for item in filters:
+            expressions.append(_filter_expression(item))
+        var count = Int(py=k)
+        var workers = Int(py=num_workers)
+        var results: List[List[SearchResult]]
+        if metric_name == "dot":
+            results = (
+                self[]
+                .inner.value()
+                .search_dot_where_batch(
+                    vectors,
+                    expressions,
+                    count,
+                    num_workers=workers,
+                )
+            )
+        elif metric_name == "l2":
+            results = (
+                self[]
+                .inner.value()
+                .search_l2_where_batch(
+                    vectors,
+                    expressions,
+                    count,
+                    num_workers=workers,
+                )
+            )
+        elif metric_name == "cosine":
+            results = (
+                self[]
+                .inner.value()
+                .search_cosine_where_batch(
+                    vectors,
+                    expressions,
+                    count,
+                    num_workers=workers,
+                )
+            )
+        else:
+            raise Error("unknown dense metric")
+        var output = Python.list()
+        for query_results in results:
+            output.append(_results_to_python(query_results))
+        return output
+
+    @staticmethod
     def search_approx(
         py_self: PythonObject,
         metric: PythonObject,
@@ -573,6 +632,9 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.search_l2]("search_l2")
             .def_method[BoundCollection.search_cosine]("search_cosine")
             .def_method[BoundCollection.search_batch]("search_batch")
+            .def_method[BoundCollection.search_batch_where](
+                "search_batch_where"
+            )
             .def_method[BoundCollection.search_approx]("search_approx")
             .def_method[BoundCollection.search_sparse]("search_sparse")
             .def_method[BoundCollection.search_hybrid]("search_hybrid")
