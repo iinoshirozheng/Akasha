@@ -8,9 +8,11 @@ from akasha.storage.filesystem import (
 from akasha.storage.manifest import (
     decode_manifest_bytes,
     encode_manifest,
+    encode_manifest_v2,
     load_manifest,
     publish_manifest,
     Manifest,
+    SegmentDescriptor,
 )
 from std.testing import assert_equal, assert_raises, TestSuite
 
@@ -23,6 +25,60 @@ def test_manifest_binary_round_trip() raises:
     assert_equal(manifest.last_sequence, UInt64(9))
     assert_equal(manifest.segment_checksum, UInt32(0x12345678))
     assert_equal(manifest.segment_name, "segment-9.bin")
+    assert_equal(manifest.format_version, 1)
+    assert_equal(len(manifest.segments), 1)
+    assert_equal(manifest.segments[0].level, 1)
+    assert_equal(manifest.segments[0].max_sequence, UInt64(9))
+
+
+def test_manifest_v2_round_trips_ordered_segment_descriptors() raises:
+    var segments = List[SegmentDescriptor]()
+    segments.append(
+        SegmentDescriptor(1, 0, 3, 0x11111111, "segment-base-3.bin")
+    )
+    segments.append(
+        SegmentDescriptor(0, 4, 5, 0x22222222, "segment-delta-5.bin")
+    )
+    var manifest = Manifest.with_segments(3, 7, 5, segments^)
+    var bytes = encode_manifest_v2(manifest)
+    var decoded = decode_manifest_bytes(bytes^, 3)
+
+    assert_equal(decoded.format_version, 2)
+    assert_equal(decoded.generation, UInt64(7))
+    assert_equal(decoded.last_sequence, UInt64(5))
+    assert_equal(len(decoded.segments), 2)
+    assert_equal(decoded.segments[0].level, 1)
+    assert_equal(decoded.segments[0].min_sequence, UInt64(0))
+    assert_equal(decoded.segments[0].max_sequence, UInt64(3))
+    assert_equal(decoded.segments[0].checksum, UInt32(0x11111111))
+    assert_equal(decoded.segments[1].level, 0)
+    assert_equal(decoded.segments[1].name, "segment-delta-5.bin")
+    assert_equal(decoded.segment_name, "segment-delta-5.bin")
+    assert_equal(decoded.segment_checksum, UInt32(0x22222222))
+
+
+def test_manifest_v2_rejects_invalid_descriptors_and_duplicates() raises:
+    with assert_raises():
+        _ = SegmentDescriptor(-1, 1, 2, 1, "segment-negative.bin")
+    with assert_raises():
+        _ = SegmentDescriptor(8, 1, 2, 1, "segment-high.bin")
+    with assert_raises():
+        _ = SegmentDescriptor(0, 3, 2, 1, "segment-range.bin")
+    with assert_raises():
+        _ = SegmentDescriptor(0, 1, 2, 1, "nested/segment.bin")
+
+    var duplicate = List[SegmentDescriptor]()
+    duplicate.append(SegmentDescriptor(1, 0, 2, 1, "segment-same.bin"))
+    duplicate.append(SegmentDescriptor(0, 3, 4, 2, "segment-same.bin"))
+    with assert_raises():
+        _ = Manifest.with_segments(1, 1, 4, duplicate^)
+
+    var beyond_checkpoint = List[SegmentDescriptor]()
+    beyond_checkpoint.append(
+        SegmentDescriptor(0, 4, 6, 1, "segment-future.bin")
+    )
+    with assert_raises():
+        _ = Manifest.with_segments(1, 1, 5, beyond_checkpoint^)
 
 
 def test_manifest_rejects_truncation_checksum_and_version() raises:
@@ -69,6 +125,33 @@ def test_publish_atomically_replaces_manifest_and_removes_temp() raises:
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/segment-1.bin")
     remove_file_if_exists(directory + "/segment-2.bin")
+
+
+def test_load_v2_requires_every_referenced_segment() raises:
+    var directory = String("/tmp/akasha-phase10-manifest-multi")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    remove_file_if_exists(directory + "/segment-base-2.bin")
+    remove_file_if_exists(directory + "/segment-delta-3.bin")
+    var empty = List[UInt8]()
+    write_file_sync(directory + "/segment-base-2.bin", empty)
+    var segments = List[SegmentDescriptor]()
+    segments.append(SegmentDescriptor(1, 0, 2, 1, "segment-base-2.bin"))
+    segments.append(SegmentDescriptor(0, 3, 3, 2, "segment-delta-3.bin"))
+    var manifest = Manifest.with_segments(1, 2, 3, segments^)
+    publish_manifest(directory, manifest)
+
+    with assert_raises():
+        _ = load_manifest(directory, 1)
+
+    write_file_sync(directory + "/segment-delta-3.bin", empty)
+    var loaded = load_manifest(directory, 1)
+    assert_equal(len(loaded.segments), 2)
+
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/segment-base-2.bin")
+    remove_file_if_exists(directory + "/segment-delta-3.bin")
 
 
 def test_load_rejects_missing_referenced_segment() raises:

@@ -16,19 +16,64 @@ comptime _MAGIC_0 = UInt8(0x41)  # A
 comptime _MAGIC_1 = UInt8(0x4B)  # K
 comptime _MAGIC_2 = UInt8(0x4D)  # M
 comptime _MAGIC_3 = UInt8(0x46)  # F
-comptime _VERSION = UInt16(1)
-comptime _FIXED_SIZE = 32
+comptime _VERSION_V1 = UInt16(1)
+comptime _VERSION_V2 = UInt16(2)
+comptime _FIXED_SIZE_V1 = 32
+comptime _FIXED_SIZE_V2 = 40
+comptime _MAX_SEGMENTS = 1024
+comptime _MAX_LEVEL = 7
 comptime _MANIFEST_NAME = "manifest.bin"
 comptime _TEMP_NAME = "manifest.bin.tmp"
 
 
+struct SegmentDescriptor(Movable):
+    """One immutable segment referenced by a committed manifest."""
+
+    var level: Int
+    var min_sequence: UInt64
+    var max_sequence: UInt64
+    var checksum: UInt32
+    var name: String
+
+    def __init__(
+        out self,
+        level: Int,
+        min_sequence: UInt64,
+        max_sequence: UInt64,
+        checksum: UInt32,
+        name: String,
+    ) raises:
+        if level < 0 or level > _MAX_LEVEL:
+            raise Error("manifest segment level is out of bounds")
+        if min_sequence > max_sequence:
+            raise Error("manifest segment sequence range is invalid")
+        _validate_segment_name(name)
+        self.level = level
+        self.min_sequence = min_sequence
+        self.max_sequence = max_sequence
+        self.checksum = checksum
+        self.name = String(copy=name)
+
+    def clone(self) raises -> SegmentDescriptor:
+        return SegmentDescriptor(
+            self.level,
+            self.min_sequence,
+            self.max_sequence,
+            self.checksum,
+            self.name,
+        )
+
+
 struct Manifest(Movable):
-    """The atomic pointer to one committed snapshot segment."""
+    """The atomic pointer to one committed immutable segment generation."""
 
     var dimension: Int
+    var generation: UInt64
     var last_sequence: UInt64
     var segment_checksum: UInt32
     var segment_name: String
+    var format_version: Int
+    var segments: List[SegmentDescriptor]
 
     def __init__(
         out self,
@@ -36,11 +81,48 @@ struct Manifest(Movable):
         last_sequence: UInt64,
         segment_checksum: UInt32,
         segment_name: String,
-    ):
+    ) raises:
+        if dimension <= 0:
+            raise Error("manifest dimension must be positive")
+        var descriptor = SegmentDescriptor(
+            1,
+            0,
+            last_sequence,
+            segment_checksum,
+            segment_name,
+        )
         self.dimension = dimension
+        self.generation = 0
         self.last_sequence = last_sequence
         self.segment_checksum = segment_checksum
         self.segment_name = String(copy=segment_name)
+        self.format_version = 1
+        self.segments = List[SegmentDescriptor]()
+        self.segments.append(descriptor^)
+
+    @staticmethod
+    def with_segments(
+        dimension: Int,
+        generation: UInt64,
+        last_sequence: UInt64,
+        var segments: List[SegmentDescriptor],
+    ) raises -> Manifest:
+        if dimension <= 0:
+            raise Error("manifest dimension must be positive")
+        if generation == 0:
+            raise Error("manifest generation must be positive")
+        _validate_manifest_segments(last_sequence, segments)
+        var newest = len(segments) - 1
+        var manifest = Manifest(
+            dimension,
+            last_sequence,
+            segments[newest].checksum,
+            segments[newest].name,
+        )
+        manifest.generation = generation
+        manifest.format_version = 2
+        manifest.segments = segments^
+        return manifest^
 
 
 def encode_manifest(
@@ -49,6 +131,7 @@ def encode_manifest(
     segment_checksum: UInt32,
     segment_name: String,
 ) raises -> List[UInt8]:
+    """Encode the legacy single-segment manifest format."""
     _validate_segment_name(segment_name)
     if dimension <= 0:
         raise Error("manifest dimension must be positive")
@@ -61,7 +144,7 @@ def encode_manifest(
     writer.write_u8(_MAGIC_1)
     writer.write_u8(_MAGIC_2)
     writer.write_u8(_MAGIC_3)
-    writer.write_u16(_VERSION)
+    writer.write_u16(_VERSION_V1)
     writer.write_u16(0)
     writer.write_u32(UInt32(dimension))
     writer.write_u64(last_sequence)
@@ -70,13 +153,42 @@ def encode_manifest(
     writer.write_u16(0)
     for byte in segment_name.bytes():
         writer.write_u8(byte)
+    return _finish_manifest(writer^)
 
-    var body = writer.take_bytes()
-    var checksum = crc32_range(body, 4, len(body))
-    var complete = BinaryWriter()
-    complete.write_bytes(body)
-    complete.write_u32(checksum)
-    return complete.take_bytes()
+
+def encode_manifest_v2(manifest: Manifest) raises -> List[UInt8]:
+    if manifest.dimension <= 0:
+        raise Error("manifest dimension must be positive")
+    if manifest.generation == 0:
+        raise Error("manifest generation must be positive")
+    _validate_manifest_segments(manifest.last_sequence, manifest.segments)
+
+    var writer = BinaryWriter()
+    writer.write_u8(_MAGIC_0)
+    writer.write_u8(_MAGIC_1)
+    writer.write_u8(_MAGIC_2)
+    writer.write_u8(_MAGIC_3)
+    writer.write_u16(_VERSION_V2)
+    writer.write_u16(0)
+    writer.write_u32(UInt32(manifest.dimension))
+    writer.write_u64(manifest.generation)
+    writer.write_u64(manifest.last_sequence)
+    writer.write_u32(UInt32(len(manifest.segments)))
+    writer.write_u32(0)
+    for index in range(len(manifest.segments)):
+        var name_length = manifest.segments[index].name.byte_length()
+        if name_length > Int(UInt16.MAX):
+            raise Error("manifest segment name is too long")
+        writer.write_u16(UInt16(manifest.segments[index].level))
+        writer.write_u16(0)
+        writer.write_u64(manifest.segments[index].min_sequence)
+        writer.write_u64(manifest.segments[index].max_sequence)
+        writer.write_u32(manifest.segments[index].checksum)
+        writer.write_u16(UInt16(name_length))
+        writer.write_u16(0)
+        for byte in manifest.segments[index].name.bytes():
+            writer.write_u8(byte)
+    return _finish_manifest(writer^)
 
 
 def decode_manifest_bytes(
@@ -84,7 +196,7 @@ def decode_manifest_bytes(
 ) raises -> Manifest:
     if expected_dimension <= 0:
         raise Error("manifest dimension must be positive")
-    if len(bytes) < _FIXED_SIZE:
+    if len(bytes) < _FIXED_SIZE_V1:
         raise Error("truncated manifest")
 
     var encoded_size = len(bytes)
@@ -100,36 +212,33 @@ def decode_manifest_bytes(
         or reader.read_u8() != _MAGIC_3
     ):
         raise Error("invalid manifest magic")
-    if reader.read_u16() != _VERSION:
+    var version = reader.read_u16()
+    if version != _VERSION_V1 and version != _VERSION_V2:
         raise Error("unsupported manifest version")
     if reader.read_u16() != 0:
         raise Error("unsupported manifest flags")
     var dimension = Int(reader.read_u32())
     if dimension != expected_dimension:
         raise Error("manifest dimension mismatch")
-    var last_sequence = reader.read_u64()
-    var segment_checksum = reader.read_u32()
-    var name_length = Int(reader.read_u16())
-    if reader.read_u16() != 0:
-        raise Error("unsupported manifest reserved field")
-    if _FIXED_SIZE + name_length != encoded_size:
-        raise Error("manifest length mismatch")
-    var name_bytes = reader.read_bytes(name_length)
-    var segment_name = String(from_utf8=name_bytes)
-    _ = reader.read_u32()
-    if reader.remaining() != 0:
-        raise Error("unexpected manifest payload")
-    _validate_segment_name(segment_name)
-    return Manifest(dimension, last_sequence, segment_checksum, segment_name)
+
+    if version == _VERSION_V1:
+        return _decode_manifest_v1(reader^, dimension, encoded_size)
+    return _decode_manifest_v2(reader^, dimension, encoded_size)
 
 
 def publish_manifest(directory: String, manifest: Manifest) raises:
-    var bytes = encode_manifest(
-        manifest.dimension,
-        manifest.last_sequence,
-        manifest.segment_checksum,
-        manifest.segment_name,
-    )
+    var bytes: List[UInt8]
+    if manifest.format_version == 1:
+        bytes = encode_manifest(
+            manifest.dimension,
+            manifest.last_sequence,
+            manifest.segment_checksum,
+            manifest.segment_name,
+        )
+    elif manifest.format_version == 2:
+        bytes = encode_manifest_v2(manifest)
+    else:
+        raise Error("unsupported in-memory manifest version")
     var temporary_path = directory + "/" + _TEMP_NAME
     var final_path = directory + "/" + _MANIFEST_NAME
     write_file_sync(temporary_path, bytes)
@@ -142,9 +251,97 @@ def load_manifest(
 ) raises -> Manifest:
     var bytes = read_file_bytes(directory + "/" + _MANIFEST_NAME)
     var manifest = decode_manifest_bytes(bytes^, expected_dimension)
-    if not path_exists(directory + "/" + manifest.segment_name):
-        raise Error("manifest references a missing segment")
+    for index in range(len(manifest.segments)):
+        if not path_exists(directory + "/" + manifest.segments[index].name):
+            raise Error("manifest references a missing segment")
     return manifest^
+
+
+def _decode_manifest_v1(
+    var reader: BinaryReader, dimension: Int, encoded_size: Int
+) raises -> Manifest:
+    var last_sequence = reader.read_u64()
+    var segment_checksum = reader.read_u32()
+    var name_length = Int(reader.read_u16())
+    if reader.read_u16() != 0:
+        raise Error("unsupported manifest reserved field")
+    if _FIXED_SIZE_V1 + name_length != encoded_size:
+        raise Error("manifest length mismatch")
+    var name_bytes = reader.read_bytes(name_length)
+    var segment_name = String(from_utf8=name_bytes)
+    _ = reader.read_u32()
+    if reader.remaining() != 0:
+        raise Error("unexpected manifest payload")
+    return Manifest(dimension, last_sequence, segment_checksum, segment_name)
+
+
+def _decode_manifest_v2(
+    var reader: BinaryReader, dimension: Int, encoded_size: Int
+) raises -> Manifest:
+    if encoded_size < _FIXED_SIZE_V2:
+        raise Error("truncated manifest")
+    var generation = reader.read_u64()
+    var last_sequence = reader.read_u64()
+    var segment_count_u32 = reader.read_u32()
+    if segment_count_u32 == 0 or segment_count_u32 > UInt32(_MAX_SEGMENTS):
+        raise Error("manifest segment count is out of bounds")
+    var segment_count = Int(segment_count_u32)
+    if reader.read_u32() != 0:
+        raise Error("unsupported manifest reserved field")
+    if segment_count > (encoded_size - _FIXED_SIZE_V2) // 28:
+        raise Error("manifest segment count exceeds file length")
+
+    var segments = List[SegmentDescriptor](capacity=segment_count)
+    for _ in range(segment_count):
+        var level = Int(reader.read_u16())
+        if reader.read_u16() != 0:
+            raise Error("unsupported manifest segment flags")
+        var min_sequence = reader.read_u64()
+        var max_sequence = reader.read_u64()
+        var checksum = reader.read_u32()
+        var name_length = Int(reader.read_u16())
+        if reader.read_u16() != 0:
+            raise Error("unsupported manifest segment reserved field")
+        var name_bytes = reader.read_bytes(name_length)
+        var name = String(from_utf8=name_bytes)
+        segments.append(
+            SegmentDescriptor(level, min_sequence, max_sequence, checksum, name)
+        )
+
+    _ = reader.read_u32()
+    if reader.remaining() != 0:
+        raise Error("unexpected manifest payload")
+    return Manifest.with_segments(
+        dimension, generation, last_sequence, segments^
+    )
+
+
+def _validate_manifest_segments(
+    last_sequence: UInt64, segments: List[SegmentDescriptor]
+) raises:
+    if len(segments) == 0 or len(segments) > _MAX_SEGMENTS:
+        raise Error("manifest segment count is out of bounds")
+    var previous_max = UInt64(0)
+    for index in range(len(segments)):
+        if segments[index].max_sequence > last_sequence:
+            raise Error("manifest segment exceeds checkpoint sequence")
+        if index > 0 and segments[index].min_sequence <= previous_max:
+            raise Error("manifest segment sequence ranges must increase")
+        for prior in range(index):
+            if segments[prior].name == segments[index].name:
+                raise Error("manifest segment names must be unique")
+        previous_max = segments[index].max_sequence
+    if segments[len(segments) - 1].max_sequence != last_sequence:
+        raise Error("manifest does not cover checkpoint sequence")
+
+
+def _finish_manifest(var writer: BinaryWriter) -> List[UInt8]:
+    var body = writer.take_bytes()
+    var checksum = crc32_range(body, 4, len(body))
+    var complete = BinaryWriter()
+    complete.write_bytes(body)
+    complete.write_u32(checksum)
+    return complete.take_bytes()
 
 
 def _validate_segment_name(segment_name: String) raises:
