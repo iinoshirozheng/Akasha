@@ -2,6 +2,9 @@ from akasha.document import DocumentField, PayloadValue
 from akasha.storage.checksum import crc32_range
 from akasha.storage.filesystem import (
     append_file_sync,
+    ensure_directory,
+    path_exists,
+    read_file_bytes,
     remove_file_if_exists,
     write_file_sync,
 )
@@ -12,6 +15,7 @@ from akasha.storage.wal import (
     encode_document_upsert,
     encode_upsert,
     replay_wal,
+    rotate_wal,
     WalRecord,
 )
 from std.testing import assert_equal, assert_raises, TestSuite
@@ -128,6 +132,20 @@ def test_wal_v2_rejects_malformed_payload_with_valid_record_crc() raises:
 
     with assert_raises():
         _ = decode_wal_bytes(bytes^, 1)
+
+
+def test_rotate_wal_atomically_publishes_empty_file() raises:
+    var directory = String("/tmp/akasha-phase5-wal-rotation")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/wal.bin")
+    remove_file_if_exists(directory + "/wal.bin.tmp")
+    var record = WalRecord.upsert(1, 10, [1.0])
+    append_wal(directory + "/wal.bin", 1, record)
+
+    rotate_wal(directory)
+
+    assert_equal(len(read_file_bytes(directory + "/wal.bin")), 0)
+    assert_equal(path_exists(directory + "/wal.bin.tmp"), False)
 
 
 def main() raises:

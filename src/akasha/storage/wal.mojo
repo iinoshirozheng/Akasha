@@ -11,8 +11,10 @@ from akasha.storage.checksum import (
 )
 from akasha.storage.filesystem import (
     append_file_sync,
+    atomic_replace,
     path_exists,
     read_file_bytes,
+    sync_directory,
     write_file_sync,
 )
 
@@ -130,6 +132,16 @@ def append_wal(path: String, dimension: Int, record: WalRecord) raises:
             record.fields,
         )
     append_file_sync(path, bytes)
+
+
+def rotate_wal(directory: String) raises:
+    """Atomically replace the collection WAL with a durable empty file."""
+    var temporary_path = directory + "/wal.bin.tmp"
+    var final_path = directory + "/wal.bin"
+    var empty = List[UInt8]()
+    write_file_sync(temporary_path, empty)
+    atomic_replace(temporary_path, final_path)
+    sync_directory(directory)
 
 
 def replay_wal(path: String, dimension: Int) raises -> List[WalRecord]:
