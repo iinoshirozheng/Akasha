@@ -48,7 +48,7 @@ def test_new_directory_syncs_itself_and_parent_once() raises:
     assert_equal(ops.sync_attempts, 2)
 
 
-def test_existing_directory_requires_no_creation_sync() raises:
+def test_existing_directory_retries_target_and_parent_barriers() raises:
     var ops = _RecordingDirectoryOps(existing=True)
 
     var created = _ensure_durable_directory_with_ops(
@@ -57,7 +57,7 @@ def test_existing_directory_requires_no_creation_sync() raises:
 
     assert_equal(created, False)
     assert_equal(ops.made, False)
-    assert_equal(ops.sync_attempts, 0)
+    assert_equal(ops.sync_attempts, 2)
 
 
 def test_parent_sync_failure_propagates_after_creation() raises:
@@ -69,6 +69,33 @@ def test_parent_sync_failure_propagates_after_creation() raises:
         )
 
     assert_equal(ops.made, True)
+    assert_equal(ops.sync_attempts, 2)
+
+    # The failed mkdir remains visible. Retry must complete both barriers.
+    assert_equal(
+        _ensure_durable_directory_with_ops(
+            "/tmp/parent/collection", "/tmp/parent", ops
+        ),
+        False,
+    )
+    assert_equal(ops.sync_attempts, 4)
+
+
+def test_existing_root_syncs_once_without_parent_recursion() raises:
+    var ops = _RecordingDirectoryOps(existing=True)
+
+    assert_equal(
+        _ensure_durable_directory_with_ops("/", "/", ops), False
+    )
+    assert_equal(ops.sync_attempts, 1)
+
+
+def test_existing_relative_path_syncs_dot_parent() raises:
+    var ops = _RecordingDirectoryOps(existing=True)
+
+    assert_equal(
+        _ensure_durable_directory_with_ops("collection", ".", ops), False
+    )
     assert_equal(ops.sync_attempts, 2)
 
 

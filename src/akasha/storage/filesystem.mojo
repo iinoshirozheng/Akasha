@@ -42,16 +42,16 @@ def ensure_directory(path: String) raises:
 def ensure_durable_directory(path: String) raises -> Bool:
     """Create a directory hierarchy and durably publish each new entry.
 
-    Each newly created directory is fsynced before its immediate parent.
-    Existing directories are left untouched. Returns whether this call
+    Each directory and its immediate parent are fsynced, including on retry
+    when a previous parent barrier may have failed. Returns whether this call
     created the requested leaf directory.
     """
-    if path_exists(path):
-        return False
     var parent = _parent_directory(path)
-    if not path_exists(parent):
-        _ = ensure_durable_directory(parent)
     var ops = _FilesystemDirectoryOps()
+    if path_exists(path):
+        return _ensure_durable_directory_with_ops(path, parent, ops)
+    if parent != path:
+        _ = ensure_durable_directory(parent)
     return _ensure_durable_directory_with_ops(path, parent, ops)
 
 
@@ -59,6 +59,9 @@ def _ensure_durable_directory_with_ops[Ops: _DurableDirectoryOps](
     path: String, parent: String, mut ops: Ops
 ) raises -> Bool:
     if ops.exists(path):
+        ops.sync(path)
+        if parent != path:
+            ops.sync(parent)
         return False
     ops.make(path)
     ops.sync(path)
