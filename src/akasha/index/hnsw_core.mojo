@@ -1,5 +1,10 @@
 from akasha.compute.metric import MetricDispatcher
-from akasha.index.hnsw_heap import CandidateMinHeap, HnswHeapItem
+from akasha.index.bitmap import Bitmap
+from akasha.index.hnsw_heap import (
+    CandidateMinHeap,
+    HnswHeapItem,
+    ResultMaxHeap,
+)
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -18,35 +23,74 @@ struct HnswGreedyResult(Copyable, Movable):
         self.distance = distance
 
 
-struct HnswSearchAdmission(Movable):
-    """Narrow slot-admission seam used until metadata bitmaps land in Task 15.
+struct HnswEligibility(Movable):
+    """Borrowed-at-search result eligibility backed by stable metadata IDs.
 
-    The empty constructor is an allocation-free allow-all fast path. A caller
-    may instead move in one stable list of slot flags; searches borrow that
-    list and never clone or allocate an eligibility bitmap per query.
+    The empty constructor is the allow-all fast path. Filtered callers move in
+    one metadata bitmap and its point-ID-to-ordinal lookup; graph traversal
+    borrows this adapter without expanding the bitmap into graph-slot flags.
+    The slot-list constructor remains only as a compatibility seam for direct
+    low-level ``search_layer`` callers.
     """
 
-    var _allow_all: Bool
+    var _mode: UInt8
     var _allowed_slots: List[Bool]
+    var _allowed_ordinals: Bitmap
+    var _id_to_ordinal: Dict[Int, Int]
 
-    def __init__(out self):
-        self._allow_all = True
+    def __init__(out self) raises:
+        self._mode = UInt8(0)
         self._allowed_slots = List[Bool]()
+        self._allowed_ordinals = Bitmap()
+        self._id_to_ordinal = Dict[Int, Int]()
 
-    def __init__(out self, var allowed_slots: List[Bool]):
-        self._allow_all = False
+    def __init__(out self, var allowed_slots: List[Bool]) raises:
+        self._mode = UInt8(1)
         self._allowed_slots = allowed_slots^
+        self._allowed_ordinals = Bitmap()
+        self._id_to_ordinal = Dict[Int, Int]()
+
+    def __init__(
+        out self,
+        var allowed_ordinals: Bitmap,
+        var id_to_ordinal: Dict[Int, Int],
+    ) raises:
+        for entry in id_to_ordinal.items():
+            if entry.value < 0 or entry.value >= allowed_ordinals.size():
+                raise Error("HNSW metadata ordinal is outside allowed bitmap")
+        self._mode = UInt8(2)
+        self._allowed_slots = List[Bool]()
+        self._allowed_ordinals = allowed_ordinals^
+        self._id_to_ordinal = id_to_ordinal^
+
+    def is_allow_all(self) -> Bool:
+        return self._mode == UInt8(0)
 
     def validate(self, slot_count: Int) raises:
         if slot_count < 0:
             raise Error("HNSW admission slot count cannot be negative")
-        if not self._allow_all and len(self._allowed_slots) != slot_count:
+        if self._mode == UInt8(1) and len(self._allowed_slots) != slot_count:
             raise Error("HNSW admission flags do not match graph slots")
 
-    def allows(self, slot: UInt32) -> Bool:
-        if self._allow_all:
+    def allows(self, id: Int) raises -> Bool:
+        if self._mode == UInt8(0):
             return True
-        return self._allowed_slots[Int(slot)]
+        if self._mode == UInt8(1):
+            raise Error("slot-backed HNSW admission requires a graph slot")
+        if id not in self._id_to_ordinal:
+            return False
+        return self._allowed_ordinals.contains(self._id_to_ordinal[id])
+
+    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
+        if self._mode == UInt8(0):
+            return True
+        if self._mode == UInt8(1):
+            return self._allowed_slots[Int(slot)]
+        return self.allows(id)
+
+
+# Compatibility name retained for direct search-layer callers.
+comptime HnswSearchAdmission = HnswEligibility
 
 
 struct HnswValidationStats(Copyable, Movable):
@@ -602,19 +646,19 @@ def greedy_descent(
 
 def _consider_result_admission(
     graph: HnswStorage,
-    admission: HnswSearchAdmission,
+    admission: HnswEligibility,
     item: HnswHeapItem,
     ef: Int,
-    mut scratch: HnswSearchScratch,
+    mut results: ResultMaxHeap,
     mut stats: HnswSearchStats,
 ) raises:
     if not graph.is_current(item.slot):
         stats.inactive_rejections += 1
         return
-    if not admission.allows(item.slot):
+    if not admission._allows_item(item.slot, item.id):
         stats.filtered_rejections += 1
         return
-    scratch.results.offer(item, ef)
+    results.offer(item, ef)
 
 
 def search_layer(
@@ -625,7 +669,7 @@ def search_layer(
     level: Int,
     k: Int,
     ef: Int,
-    admission: HnswSearchAdmission,
+    admission: HnswEligibility,
     mut scratch: HnswSearchScratch,
     mut stats: HnswSearchStats,
 ) raises -> List[HnswHeapItem]:
@@ -654,13 +698,26 @@ def search_layer(
     admission.validate(graph.slot_count())
 
     scratch.begin(graph.slot_count(), ef)
+    var filtered_results = ResultMaxHeap()
+    var is_filtered = not admission.is_allow_all()
+    if is_filtered:
+        filtered_results.reserve(ef)
     _ = scratch.visit(entry)
     var entry_distance = graph.distance_to_slot(dispatcher, query, entry)
     var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)
     stats.base_visited += 1
     stats.distance_evaluations += 1
     scratch.candidates.push(entry_item)
-    _consider_result_admission(graph, admission, entry_item, ef, scratch, stats)
+    if is_filtered:
+        # The traversal radius is retained independently of eligibility.
+        scratch.results.offer(entry_item, ef)
+        _consider_result_admission(
+            graph, admission, entry_item, ef, filtered_results, stats
+        )
+    else:
+        _consider_result_admission(
+            graph, admission, entry_item, ef, scratch.results, stats
+        )
 
     while not scratch.candidates.is_empty():
         var candidate = scratch.candidates.pop()
@@ -683,9 +740,15 @@ def search_layer(
             stats.base_visited += 1
             stats.distance_evaluations += 1
 
-            _consider_result_admission(
-                graph, admission, item, ef, scratch, stats
-            )
+            if is_filtered:
+                scratch.results.offer(item, ef)
+                _consider_result_admission(
+                    graph, admission, item, ef, filtered_results, stats
+                )
+            else:
+                _consider_result_admission(
+                    graph, admission, item, ef, scratch.results, stats
+                )
 
             if (
                 len(scratch.results) < ef
@@ -693,7 +756,11 @@ def search_layer(
             ):
                 scratch.candidates.push(item)
 
-    var best = scratch.results.take_sorted_best()
+    var best: List[HnswHeapItem]
+    if is_filtered:
+        best = filtered_results.take_sorted_best()
+    else:
+        best = scratch.results.take_sorted_best()
     while len(best) > k:
         _ = best.pop()
     stats.retained_candidates = len(best)

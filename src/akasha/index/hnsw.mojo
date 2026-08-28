@@ -2,6 +2,7 @@ from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
+    HnswEligibility,
     HnswSearchAdmission,
     connect_bidirectional,
     greedy_descent,
@@ -353,25 +354,38 @@ struct HnswIndex:
         var requested = ef_search
         if requested < 0:
             requested = self._identity_config.default_ef_search
-        return self._search_bound(query, k, requested)
+        var allowed = HnswEligibility()
+        return self._search_bound(query, k, requested, allowed)
+
+    def search_allowed(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        return self._search_bound(query, k, ef_search, allowed)
 
     def search_dot(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("dot")
-        return self._search_bound(query, k, ef_search)
+        var allowed = HnswEligibility()
+        return self._search_bound(query, k, ef_search, allowed)
 
     def search_l2(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("l2")
-        return self._search_bound(query, k, ef_search)
+        var allowed = HnswEligibility()
+        return self._search_bound(query, k, ef_search, allowed)
 
     def search_cosine(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("cosine")
-        return self._search_bound(query, k, ef_search)
+        var allowed = HnswEligibility()
+        return self._search_bound(query, k, ef_search, allowed)
 
     def _require_metric(self, requested: String) raises:
         var bound = self.metric.metric_name()
@@ -386,7 +400,11 @@ struct HnswIndex:
             )
 
     def _search_bound(
-        mut self, query: List[Float32], k: Int, ef_search: Int
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
@@ -397,6 +415,7 @@ struct HnswIndex:
             raise Error("HNSW search ef must be positive")
         if ef_search > self._identity_config.max_ef_search:
             raise Error("HNSW search ef exceeds collection maximum")
+        allowed.validate(self.graph.slot_count())
         var prepared = self.metric.prepare_query(query)
         var target_count = k
         if target_count > self.graph.slot_count():
@@ -433,7 +452,6 @@ struct HnswIndex:
             current = descended.slot
             level -= 1
 
-        var admission = HnswSearchAdmission()
         var candidates = search_layer(
             self.graph,
             self.metric,
@@ -442,7 +460,7 @@ struct HnswIndex:
             0,
             target_count,
             effective_ef,
-            admission,
+            allowed,
             self.scratch,
             stats,
         )
