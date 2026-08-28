@@ -1017,17 +1017,26 @@ struct PersistentCollection:
     def search_dot_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
-        return self._search_approx(query, k, ef_search, _DOT_METRIC)
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_unlocked(
+                query, k, ef_search, _DOT_METRIC
+            )
 
     def search_l2_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
-        return self._search_approx(query, k, ef_search, _L2_METRIC)
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_unlocked(
+                query, k, ef_search, _L2_METRIC
+            )
 
     def search_cosine_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
-        return self._search_approx(query, k, ef_search, _COSINE_METRIC)
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_unlocked(
+                query, k, ef_search, _COSINE_METRIC
+            )
 
     def search_dot_filtered(
         self,
@@ -1084,9 +1093,10 @@ struct PersistentCollection:
         ef_search: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_approx_where(
-            query, k, ef_search, _DOT_METRIC, expression
-        )
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_where_unlocked(
+                query, k, ef_search, _DOT_METRIC, expression
+            )
 
     def search_l2_approx_where(
         mut self,
@@ -1095,9 +1105,10 @@ struct PersistentCollection:
         ef_search: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_approx_where(
-            query, k, ef_search, _L2_METRIC, expression
-        )
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_where_unlocked(
+                query, k, ef_search, _L2_METRIC, expression
+            )
 
     def search_cosine_approx_where(
         mut self,
@@ -1106,9 +1117,10 @@ struct PersistentCollection:
         ef_search: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_approx_where(
-            query, k, ef_search, _COSINE_METRIC, expression
-        )
+        with BlockingScopedLock(self._writer_lock[]):
+            return self._search_approx_where_unlocked(
+                query, k, ef_search, _COSINE_METRIC, expression
+            )
 
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
@@ -1504,7 +1516,7 @@ struct PersistentCollection:
         var candidates = evaluate_all(self._metadata, conditions)
         return self._search_candidates(query, k, metric, candidates)
 
-    def _search_approx(
+    def _search_approx_unlocked(
         mut self, query: List[Float32], k: Int, ef_search: Int, metric: Int
     ) raises -> List[SearchResult]:
         self._ensure_open()
@@ -1551,7 +1563,7 @@ struct PersistentCollection:
             self._last_dense_plan_reason = "graph_unavailable"
             return exact^
 
-    def _search_approx_where(
+    def _search_approx_where_unlocked(
         mut self,
         query: List[Float32],
         k: Int,

@@ -233,5 +233,38 @@ def test_flush_rebuilds_only_at_inactive_threshold() raises:
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)
 
 
+def test_empty_collection_explicit_rebuild_and_flush_stay_available() raises:
+    var path = String("/tmp/akasha-task19-empty-rebuild")
+    _reset(path)
+    var collection = PersistentCollection.open_with_config(path, _config())
+
+    collection.rebuild_hnsw()
+    collection.flush()
+
+    assert_true(collection.hnsw_available())
+    assert_equal(collection.hnsw_slot_count(), 0)
+    assert_equal(collection.hnsw_inactive_count(), 0)
+    assert_equal(len(collection.search_l2_approx([0.0], 1, 8)), 0)
+
+
+def test_all_tombstoned_rebuild_and_flush_remove_stale_graph_state() raises:
+    var path = String("/tmp/akasha-task19-all-tombstoned-rebuild")
+    _reset(path)
+    var collection = PersistentCollection.open_with_config(path, _config())
+    for id in range(8):
+        collection.upsert(id, [Float32(id)])
+    for id in range(8):
+        collection.delete(id)
+    assert_true(collection._hnsw.needs_rebuild())
+
+    collection.rebuild_hnsw()
+    collection.flush()
+
+    assert_true(collection.hnsw_available())
+    assert_equal(collection.hnsw_slot_count(), 0)
+    assert_equal(collection.hnsw_inactive_count(), 0)
+    assert_equal(len(collection.search_l2_approx([0.0], 1, 8)), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
