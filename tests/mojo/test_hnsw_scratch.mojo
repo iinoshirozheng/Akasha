@@ -132,9 +132,24 @@ def test_epoch_wrap_clears_hidden_capacity_before_regrowth() raises:
     assert_false(scratch.visit(UInt32(7)))
 
 
+def test_allow_all_does_not_allocate_filtered_heap() raises:
+    var scratch = HnswSearchScratch()
+    scratch.begin(4, 128)
+    assert_equal(scratch.filtered_result_reserved_capacity(), 0)
+
+    scratch.begin(4, 9, prepare_filtered=True)
+    assert_equal(scratch.filtered_result_reserved_capacity(), 9)
+    scratch.filtered_results.offer(_item(1, 50, 5.0), 9)
+
+    # Allow-all still clears prior filtered results but never grows capacity.
+    scratch.begin(4, 128)
+    assert_true(scratch.filtered_results.is_empty())
+    assert_equal(scratch.filtered_result_reserved_capacity(), 9)
+
+
 def test_begin_clears_and_reuses_all_heaps() raises:
     var scratch = HnswSearchScratch()
-    scratch.begin(4, 3)
+    scratch.begin(4, 3, prepare_filtered=True)
     scratch.candidates.push(_item(1, 10, 2.0))
     scratch.results.offer(_item(2, 20, 3.0), 3)
     scratch.filtered_results.offer(_item(3, 30, 4.0), 3)
@@ -143,7 +158,7 @@ def test_begin_clears_and_reuses_all_heaps() raises:
     assert_equal(len(scratch.filtered_results), 1)
     assert_equal(scratch.filtered_result_reserved_capacity(), 3)
 
-    scratch.begin(4, 9)
+    scratch.begin(4, 9, prepare_filtered=True)
     assert_true(scratch.candidates.is_empty())
     assert_true(scratch.results.is_empty())
     assert_true(scratch.filtered_results.is_empty())
@@ -156,7 +171,7 @@ def test_begin_clears_and_reuses_all_heaps() raises:
     assert_equal(scratch.filtered_results.pop_worst().slot, UInt32(1))
 
     # A narrower widening round clears but retains the prior reservation.
-    scratch.begin(4, 2)
+    scratch.begin(4, 2, prepare_filtered=True)
     assert_true(scratch.filtered_results.is_empty())
     assert_equal(scratch.filtered_result_reserved_capacity(), 9)
 

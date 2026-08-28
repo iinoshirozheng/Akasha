@@ -4,7 +4,7 @@ from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from std.collections import Dict
-from std.testing import assert_equal, TestSuite
+from std.testing import assert_equal, assert_raises, TestSuite
 
 
 def _vector(value: Float32) -> List[Float32]:
@@ -69,7 +69,7 @@ def test_allow_all_matches_unfiltered_search() raises:
     var query = _vector(0.0)
     var expected = index.search(query, 3, ef_search=4)
     var ordinals = _ordinal_map(ids)
-    var lookup = HnswIdOrdinalLookup(ordinals^)
+    var lookup = HnswIdOrdinalLookup(ordinals^, 4)
     var full = Bitmap.full(4)
     var allow_all = HnswEligibility(full^, lookup)
     var actual = index.search_allowed(query, 3, 4, allow_all)
@@ -90,7 +90,7 @@ def test_empty_full_and_sparse_metadata_bitmaps() raises:
     # Metadata order intentionally differs from graph slot order.
     var metadata_ids: List[Int] = [100, 700, 900]
     var ordinals = _ordinal_map(metadata_ids)
-    var lookup = HnswIdOrdinalLookup(ordinals^)
+    var lookup = HnswIdOrdinalLookup(ordinals^, 3)
     var query = _vector(0.0)
 
     var empty = Bitmap(3)
@@ -130,7 +130,7 @@ def test_disallowed_bridge_remains_traversable_to_allowed_result() raises:
 
     var metadata_ids: List[Int] = [10, 20, 30]
     var ordinals = _ordinal_map(metadata_ids)
-    var lookup = HnswIdOrdinalLookup(ordinals^)
+    var lookup = HnswIdOrdinalLookup(ordinals^, 3)
     var bitmap = Bitmap(3)
     bitmap.set(0)
     var allowed = HnswEligibility(bitmap^, lookup)
@@ -157,7 +157,7 @@ def test_allowed_ids_fewer_than_k_returns_only_allowed_ids() raises:
     _set_neighbors(index, 3, n3^)
     var metadata_ids: List[Int] = [10, 20, 30, 40]
     var ordinals = _ordinal_map(metadata_ids)
-    var lookup = HnswIdOrdinalLookup(ordinals^)
+    var lookup = HnswIdOrdinalLookup(ordinals^, 4)
     var bitmap = Bitmap(4)
     bitmap.set(1)
     var allowed = HnswEligibility(bitmap^, lookup)
@@ -182,16 +182,20 @@ def test_repeated_filtered_queries_share_lookup_without_setup_scan() raises:
 
     var ordinals = Dict[Int, Int]()
     for ordinal in range(2_048):
-        ordinals[10_000 + ordinal] = ordinal
-    ordinals[20] = 17
-    ordinals[10] = 1_999
-    var lookup = HnswIdOrdinalLookup(ordinals^)
-    assert_equal(lookup.entry_count(), 2_050)
-    assert_equal(lookup.setup_scanned_entries(), 0)
+        var id = 10_000 + ordinal
+        if ordinal == 17:
+            id = 20
+        elif ordinal == 1_999:
+            id = 10
+        ordinals[id] = ordinal
+    var lookup = HnswIdOrdinalLookup(ordinals^, 2_048)
+    assert_equal(lookup.entry_count(), 2_048)
+    assert_equal(lookup.construction_scanned_entries(), 2_048)
 
     var first_bitmap = Bitmap(2_048)
     first_bitmap.set(17)
     var first_allowed = HnswEligibility(first_bitmap^, lookup)
+    assert_equal(first_allowed.setup_scanned_entries(), 0)
     var query = _vector(0.0)
     var first = index.search_allowed(query, 1, 2, first_allowed)
     assert_equal(len(first), 1)
@@ -200,10 +204,52 @@ def test_repeated_filtered_queries_share_lookup_without_setup_scan() raises:
     var second_bitmap = Bitmap(2_048)
     second_bitmap.set(1_999)
     var second_allowed = HnswEligibility(second_bitmap^, lookup)
+    assert_equal(second_allowed.setup_scanned_entries(), 0)
     var second = index.search_allowed(query, 1, 2, second_allowed)
     assert_equal(len(second), 1)
     assert_equal(second[0].id, 10)
-    assert_equal(lookup.setup_scanned_entries(), 0)
+    assert_equal(lookup.construction_scanned_entries(), 2_048)
+
+
+def test_lookup_rejects_invalid_ordinal_domains_before_search_state() raises:
+    var ids: List[Int] = [20, 10]
+    var values: List[Float32] = [2.0, 1.0]
+    var index = _index(ids, values)
+    var left: List[UInt32] = [UInt32(1)]
+    var right: List[UInt32] = [UInt32(0)]
+    _set_neighbors(index, 0, left^)
+    _set_neighbors(index, 1, right^)
+    var query = _vector(0.0)
+    _ = index.search(query, 1, ef_search=2)
+    var old_epoch = index.scratch.epoch
+    var old_visited = index.last_search_stats.base_visited
+    var old_filtered = index.last_search_stats.filtered_rejections
+
+    var negative = Dict[Int, Int]()
+    negative[10] = -1
+    with assert_raises():
+        _ = HnswIdOrdinalLookup(negative^, 1)
+
+    var out_of_range = Dict[Int, Int]()
+    out_of_range[10] = 1
+    with assert_raises():
+        _ = HnswIdOrdinalLookup(out_of_range^, 1)
+
+    var duplicate = Dict[Int, Int]()
+    duplicate[10] = 0
+    duplicate[20] = 0
+    with assert_raises():
+        _ = HnswIdOrdinalLookup(duplicate^, 2)
+
+    var missing = Dict[Int, Int]()
+    missing[10] = 0
+    missing[30] = 2
+    with assert_raises():
+        _ = HnswIdOrdinalLookup(missing^, 3)
+
+    assert_equal(index.scratch.epoch, old_epoch)
+    assert_equal(index.last_search_stats.base_visited, old_visited)
+    assert_equal(index.last_search_stats.filtered_rejections, old_filtered)
 
 
 def main() raises:

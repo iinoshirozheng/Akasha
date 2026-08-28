@@ -39,12 +39,18 @@ trait HnswResultAdmission:
 
 struct _HnswIdOrdinalState:
     var ordinals: Dict[Int, Int]
-    var setup_scanned_entries: Int
+    var ordinal_count: Int
+    var construction_scanned_entries: Int
 
-    def __init__(out self, var ordinals: Dict[Int, Int]):
+    def __init__(
+        out self,
+        var ordinals: Dict[Int, Int],
+        ordinal_count: Int,
+        construction_scanned_entries: Int,
+    ):
         self.ordinals = ordinals^
-        # Moving a prebuilt metadata lookup performs no entry-wise scan.
-        self.setup_scanned_entries = 0
+        self.ordinal_count = ordinal_count
+        self.construction_scanned_entries = construction_scanned_entries
 
 
 struct HnswIdOrdinalLookup(Copyable, Movable):
@@ -52,14 +58,31 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
 
     var _state: ArcPointer[_HnswIdOrdinalState]
 
-    def __init__(out self, var ordinals: Dict[Int, Int]):
-        self._state = ArcPointer(_HnswIdOrdinalState(ordinals^))
+    def __init__(
+        out self, var ordinals: Dict[Int, Int], ordinal_count: Int
+    ) raises:
+        if ordinal_count < 0:
+            raise Error("HNSW metadata ordinal count cannot be negative")
+        if len(ordinals) != ordinal_count:
+            raise Error("HNSW ID lookup must cover every metadata ordinal")
+        var seen = Dict[Int, Bool]()
+        var scanned = 0
+        for entry in ordinals.items():
+            scanned += 1
+            if entry.value < 0 or entry.value >= ordinal_count:
+                raise Error("HNSW metadata ordinal is outside declared domain")
+            if entry.value in seen:
+                raise Error("HNSW metadata ordinals must be unique")
+            seen[entry.value] = True
+        self._state = ArcPointer(
+            _HnswIdOrdinalState(ordinals^, ordinal_count, scanned)
+        )
 
     def entry_count(self) -> Int:
         return len(self._state[].ordinals)
 
-    def setup_scanned_entries(self) -> Int:
-        return self._state[].setup_scanned_entries
+    def construction_scanned_entries(self) -> Int:
+        return self._state[].construction_scanned_entries
 
     def ordinal_for(self, id: Int) -> Int:
         if id in self._state[].ordinals:
@@ -77,6 +100,7 @@ struct HnswEligibility(HnswResultAdmission, Movable):
 
     var _allowed_ordinals: Bitmap
     var _lookup: ArcPointer[_HnswIdOrdinalState]
+    var _setup_scanned_entries: Int
 
     def __init__(
         out self,
@@ -85,6 +109,8 @@ struct HnswEligibility(HnswResultAdmission, Movable):
     ):
         self._allowed_ordinals = allowed_ordinals^
         self._lookup = lookup._state
+        # Adapter setup shares the already-validated lookup without iteration.
+        self._setup_scanned_entries = 0
 
     def is_allow_all(self) -> Bool:
         return False
@@ -92,6 +118,11 @@ struct HnswEligibility(HnswResultAdmission, Movable):
     def validate(self, slot_count: Int) raises:
         if slot_count < 0:
             raise Error("HNSW admission slot count cannot be negative")
+        if self._allowed_ordinals.size() != self._lookup[].ordinal_count:
+            raise Error("HNSW allowed bitmap does not match metadata domain")
+
+    def setup_scanned_entries(self) -> Int:
+        return self._setup_scanned_entries
 
     def allows(self, id: Int) raises -> Bool:
         if id not in self._lookup[].ordinals:
@@ -738,8 +769,10 @@ def search_layer[AdmissionType: HnswResultAdmission](
     _validate_search_boundary(graph, dispatcher, query, entry, level)
     admission.validate(graph.slot_count())
 
-    scratch.begin(graph.slot_count(), ef)
     var is_filtered = not admission.is_allow_all()
+    scratch.begin(
+        graph.slot_count(), ef, prepare_filtered=is_filtered
+    )
     _ = scratch.visit(entry)
     var entry_distance = graph.distance_to_slot(dispatcher, query, entry)
     var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)

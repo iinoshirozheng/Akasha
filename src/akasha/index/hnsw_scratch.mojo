@@ -25,7 +25,13 @@ struct HnswSearchScratch(Movable):
         self.filtered_results = ResultMaxHeap()
         self._prepared_slot_count = 0
 
-    def begin(mut self, slot_count: Int, ef: Int) raises:
+    def begin(
+        mut self,
+        slot_count: Int,
+        ef: Int,
+        *,
+        prepare_filtered: Bool = False,
+    ) raises:
         """Prepare scratch for one query without clearing visited storage."""
         if slot_count < 0:
             raise Error("HNSW scratch slot count cannot be negative")
@@ -45,7 +51,8 @@ struct HnswSearchScratch(Movable):
         self.filtered_results.clear()
         self.candidates.reserve(ef)
         self.results.reserve(ef)
-        self.filtered_results.reserve(ef)
+        if prepare_filtered:
+            self.filtered_results.reserve(ef)
 
     def filtered_result_reserved_capacity(self) -> Int:
         """Actual filtered-result heap allocation retained across rounds."""
