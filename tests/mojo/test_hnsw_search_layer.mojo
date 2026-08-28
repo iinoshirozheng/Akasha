@@ -339,6 +339,8 @@ def test_disallowed_slots_remain_traversable_and_count_once() raises:
     # be rejected exactly once but still traversed to reach slot four.
     var flags: List[Bool] = [True, True, False, True, True]
     var admission = HnswSearchAdmission(flags^)
+    assert_true(admission.allows(UInt32(0)))
+    assert_true(not admission.allows(UInt32(2)))
 
     var metric = _metric()
     var query = _query(0.0)

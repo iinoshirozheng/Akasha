@@ -20,12 +20,14 @@ def test_initialization_and_first_begin_prepare_empty_scratch() raises:
     assert_equal(scratch.epoch, UInt32(0))
     assert_true(scratch.candidates.is_empty())
     assert_true(scratch.results.is_empty())
+    assert_true(scratch.filtered_results.is_empty())
 
     scratch.begin(4, 8)
     assert_equal(len(scratch.visited_epochs), 4)
     assert_equal(scratch.epoch, UInt32(1))
     assert_true(scratch.candidates.is_empty())
     assert_true(scratch.results.is_empty())
+    assert_true(scratch.filtered_results.is_empty())
 
 
 def test_visit_marks_only_the_first_visit_in_current_epoch() raises:
@@ -130,21 +132,33 @@ def test_epoch_wrap_clears_hidden_capacity_before_regrowth() raises:
     assert_false(scratch.visit(UInt32(7)))
 
 
-def test_begin_clears_and_reuses_both_heaps() raises:
+def test_begin_clears_and_reuses_all_heaps() raises:
     var scratch = HnswSearchScratch()
     scratch.begin(4, 3)
     scratch.candidates.push(_item(1, 10, 2.0))
     scratch.results.offer(_item(2, 20, 3.0), 3)
+    scratch.filtered_results.offer(_item(3, 30, 4.0), 3)
     assert_equal(len(scratch.candidates), 1)
     assert_equal(len(scratch.results), 1)
+    assert_equal(len(scratch.filtered_results), 1)
+    assert_equal(scratch.filtered_result_reserved_capacity(), 3)
 
     scratch.begin(4, 9)
     assert_true(scratch.candidates.is_empty())
     assert_true(scratch.results.is_empty())
+    assert_true(scratch.filtered_results.is_empty())
+    assert_equal(scratch.filtered_result_reserved_capacity(), 9)
     scratch.candidates.push(_item(3, 30, -1.0))
     scratch.results.offer(_item(0, 40, 1.0), 9)
+    scratch.filtered_results.offer(_item(1, 50, 5.0), 9)
     assert_equal(scratch.candidates.pop().slot, UInt32(3))
     assert_equal(scratch.results.pop_worst().slot, UInt32(0))
+    assert_equal(scratch.filtered_results.pop_worst().slot, UInt32(1))
+
+    # A narrower widening round clears but retains the prior reservation.
+    scratch.begin(4, 2)
+    assert_true(scratch.filtered_results.is_empty())
+    assert_equal(scratch.filtered_result_reserved_capacity(), 9)
 
 
 def test_begin_bounds_old_capacity_and_large_ordinal_without_growing() raises:

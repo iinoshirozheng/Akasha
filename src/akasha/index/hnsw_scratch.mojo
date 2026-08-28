@@ -14,6 +14,7 @@ struct HnswSearchScratch(Movable):
     var epoch: UInt32
     var candidates: CandidateMinHeap
     var results: ResultMaxHeap
+    var filtered_results: ResultMaxHeap
     var _prepared_slot_count: Int
 
     def __init__(out self):
@@ -21,6 +22,7 @@ struct HnswSearchScratch(Movable):
         self.epoch = UInt32(0)
         self.candidates = CandidateMinHeap()
         self.results = ResultMaxHeap()
+        self.filtered_results = ResultMaxHeap()
         self._prepared_slot_count = 0
 
     def begin(mut self, slot_count: Int, ef: Int) raises:
@@ -40,8 +42,14 @@ struct HnswSearchScratch(Movable):
 
         self.candidates.clear()
         self.results.clear()
+        self.filtered_results.clear()
         self.candidates.reserve(ef)
         self.results.reserve(ef)
+        self.filtered_results.reserve(ef)
+
+    def filtered_result_reserved_capacity(self) -> Int:
+        """Actual filtered-result heap allocation retained across rounds."""
+        return self.filtered_results.capacity()
 
     def _ensure_slot_count(mut self, new_count: Int) raises:
         """Grow visit storage without changing the current query epoch."""

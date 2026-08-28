@@ -3,6 +3,7 @@ from akasha.compute.metric import MetricDispatcher
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
     HnswEligibility,
+    HnswResultAdmission,
     HnswSearchAdmission,
     connect_bidirectional,
     greedy_descent,
@@ -354,7 +355,7 @@ struct HnswIndex:
         var requested = ef_search
         if requested < 0:
             requested = self._identity_config.default_ef_search
-        var allowed = HnswEligibility()
+        var allowed = HnswSearchAdmission()
         return self._search_bound(query, k, requested, allowed)
 
     def search_allowed(
@@ -370,21 +371,21 @@ struct HnswIndex:
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("dot")
-        var allowed = HnswEligibility()
+        var allowed = HnswSearchAdmission()
         return self._search_bound(query, k, ef_search, allowed)
 
     def search_l2(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("l2")
-        var allowed = HnswEligibility()
+        var allowed = HnswSearchAdmission()
         return self._search_bound(query, k, ef_search, allowed)
 
     def search_cosine(
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         self._require_metric("cosine")
-        var allowed = HnswEligibility()
+        var allowed = HnswSearchAdmission()
         return self._search_bound(query, k, ef_search, allowed)
 
     def _require_metric(self, requested: String) raises:
@@ -399,12 +400,12 @@ struct HnswIndex:
                 )
             )
 
-    def _search_bound(
+    def _search_bound[AdmissionType: HnswResultAdmission](
         mut self,
         query: List[Float32],
         k: Int,
         ef_search: Int,
-        allowed: HnswEligibility,
+        allowed: AdmissionType,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():

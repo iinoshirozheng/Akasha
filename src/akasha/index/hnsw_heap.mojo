@@ -114,6 +114,9 @@ struct ResultMaxHeap(Sized):
     def is_empty(self) -> Bool:
         return len(self._heap) == 0
 
+    def capacity(self) -> Int:
+        return self._heap.capacity()
+
     def clear(mut self):
         self._heap.clear()
 

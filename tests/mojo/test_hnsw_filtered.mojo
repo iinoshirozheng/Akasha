@@ -2,7 +2,7 @@ from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
-from akasha.index.hnsw_core import HnswEligibility
+from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from std.collections import Dict
 from std.testing import assert_equal, TestSuite
 
@@ -68,7 +68,10 @@ def test_allow_all_matches_unfiltered_search() raises:
     _set_neighbors(index, 3, n3^)
     var query = _vector(0.0)
     var expected = index.search(query, 3, ef_search=4)
-    var allow_all = HnswEligibility()
+    var ordinals = _ordinal_map(ids)
+    var lookup = HnswIdOrdinalLookup(ordinals^)
+    var full = Bitmap.full(4)
+    var allow_all = HnswEligibility(full^, lookup)
     var actual = index.search_allowed(query, 3, 4, allow_all)
     _assert_same_results(expected, actual)
     assert_equal(index.last_search_stats.filtered_rejections, 0)
@@ -87,16 +90,17 @@ def test_empty_full_and_sparse_metadata_bitmaps() raises:
     # Metadata order intentionally differs from graph slot order.
     var metadata_ids: List[Int] = [100, 700, 900]
     var ordinals = _ordinal_map(metadata_ids)
+    var lookup = HnswIdOrdinalLookup(ordinals^)
     var query = _vector(0.0)
 
     var empty = Bitmap(3)
-    var empty_allowed = HnswEligibility(empty^, ordinals.copy())
+    var empty_allowed = HnswEligibility(empty^, lookup)
     var empty_results = index.search_allowed(query, 3, 3, empty_allowed)
     assert_equal(len(empty_results), 0)
     assert_equal(index.last_search_stats.filtered_rejections, 3)
 
     var full = Bitmap.full(3)
-    var full_allowed = HnswEligibility(full^, ordinals.copy())
+    var full_allowed = HnswEligibility(full^, lookup)
     var full_results = index.search_allowed(query, 3, 3, full_allowed)
     assert_equal(len(full_results), 3)
     assert_equal(full_results[0].id, 100)
@@ -106,7 +110,7 @@ def test_empty_full_and_sparse_metadata_bitmaps() raises:
 
     var sparse = Bitmap(3)
     sparse.set(1)
-    var sparse_allowed = HnswEligibility(sparse^, ordinals^)
+    var sparse_allowed = HnswEligibility(sparse^, lookup)
     var sparse_results = index.search_allowed(query, 3, 3, sparse_allowed)
     assert_equal(len(sparse_results), 1)
     assert_equal(sparse_results[0].id, 700)
@@ -126,9 +130,10 @@ def test_disallowed_bridge_remains_traversable_to_allowed_result() raises:
 
     var metadata_ids: List[Int] = [10, 20, 30]
     var ordinals = _ordinal_map(metadata_ids)
+    var lookup = HnswIdOrdinalLookup(ordinals^)
     var bitmap = Bitmap(3)
     bitmap.set(0)
-    var allowed = HnswEligibility(bitmap^, ordinals^)
+    var allowed = HnswEligibility(bitmap^, lookup)
     var query = _vector(0.0)
     var results = index.search_allowed(query, 1, 3, allowed)
 
@@ -152,9 +157,10 @@ def test_allowed_ids_fewer_than_k_returns_only_allowed_ids() raises:
     _set_neighbors(index, 3, n3^)
     var metadata_ids: List[Int] = [10, 20, 30, 40]
     var ordinals = _ordinal_map(metadata_ids)
+    var lookup = HnswIdOrdinalLookup(ordinals^)
     var bitmap = Bitmap(4)
     bitmap.set(1)
-    var allowed = HnswEligibility(bitmap^, ordinals^)
+    var allowed = HnswEligibility(bitmap^, lookup)
     assert_equal(allowed.allows(20), True)
     assert_equal(allowed.allows(10), False)
     var query = _vector(0.0)
@@ -163,6 +169,41 @@ def test_allowed_ids_fewer_than_k_returns_only_allowed_ids() raises:
     assert_equal(len(results), 1)
     assert_equal(results[0].id, 20)
     assert_equal(index.last_search_stats.filtered_rejections, 3)
+
+
+def test_repeated_filtered_queries_share_lookup_without_setup_scan() raises:
+    var ids: List[Int] = [20, 10]
+    var values: List[Float32] = [2.0, 1.0]
+    var index = _index(ids, values)
+    var left: List[UInt32] = [UInt32(1)]
+    var right: List[UInt32] = [UInt32(0)]
+    _set_neighbors(index, 0, left^)
+    _set_neighbors(index, 1, right^)
+
+    var ordinals = Dict[Int, Int]()
+    for ordinal in range(2_048):
+        ordinals[10_000 + ordinal] = ordinal
+    ordinals[20] = 17
+    ordinals[10] = 1_999
+    var lookup = HnswIdOrdinalLookup(ordinals^)
+    assert_equal(lookup.entry_count(), 2_050)
+    assert_equal(lookup.setup_scanned_entries(), 0)
+
+    var first_bitmap = Bitmap(2_048)
+    first_bitmap.set(17)
+    var first_allowed = HnswEligibility(first_bitmap^, lookup)
+    var query = _vector(0.0)
+    var first = index.search_allowed(query, 1, 2, first_allowed)
+    assert_equal(len(first), 1)
+    assert_equal(first[0].id, 20)
+
+    var second_bitmap = Bitmap(2_048)
+    second_bitmap.set(1_999)
+    var second_allowed = HnswEligibility(second_bitmap^, lookup)
+    var second = index.search_allowed(query, 1, 2, second_allowed)
+    assert_equal(len(second), 1)
+    assert_equal(second[0].id, 10)
+    assert_equal(lookup.setup_scanned_entries(), 0)
 
 
 def main() raises:

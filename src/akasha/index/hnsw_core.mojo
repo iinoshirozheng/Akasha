@@ -10,6 +10,7 @@ from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
 from std.collections import Dict
 from std.math import isfinite
+from std.memory import ArcPointer
 
 
 struct HnswGreedyResult(Copyable, Movable):
@@ -23,74 +24,114 @@ struct HnswGreedyResult(Copyable, Movable):
         self.distance = distance
 
 
-struct HnswEligibility(Movable):
-    """Borrowed-at-search result eligibility backed by stable metadata IDs.
+trait HnswResultAdmission:
+    """Internal result-admission contract shared by graph search paths."""
 
-    The empty constructor is the allow-all fast path. Filtered callers move in
-    one metadata bitmap and its point-ID-to-ordinal lookup; graph traversal
-    borrows this adapter without expanding the bitmap into graph-slot flags.
-    The slot-list constructor remains only as a compatibility seam for direct
-    low-level ``search_layer`` callers.
+    def is_allow_all(self) -> Bool:
+        ...
+
+    def validate(self, slot_count: Int) raises:
+        ...
+
+    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
+        ...
+
+
+struct _HnswIdOrdinalState:
+    var ordinals: Dict[Int, Int]
+    var setup_scanned_entries: Int
+
+    def __init__(out self, var ordinals: Dict[Int, Int]):
+        self.ordinals = ordinals^
+        # Moving a prebuilt metadata lookup performs no entry-wise scan.
+        self.setup_scanned_entries = 0
+
+
+struct HnswIdOrdinalLookup(Copyable, Movable):
+    """Cheaply shared immutable point-ID to metadata-ordinal lookup."""
+
+    var _state: ArcPointer[_HnswIdOrdinalState]
+
+    def __init__(out self, var ordinals: Dict[Int, Int]):
+        self._state = ArcPointer(_HnswIdOrdinalState(ordinals^))
+
+    def entry_count(self) -> Int:
+        return len(self._state[].ordinals)
+
+    def setup_scanned_entries(self) -> Int:
+        return self._state[].setup_scanned_entries
+
+    def ordinal_for(self, id: Int) -> Int:
+        if id in self._state[].ordinals:
+            return self._state[].ordinals[id]
+        return -1
+
+
+struct HnswEligibility(HnswResultAdmission, Movable):
+    """Metadata-bitmap result eligibility addressed strictly by public ID.
+
+    The bitmap is query-specific and owned. The immutable ID lookup is an
+    ``ArcPointer`` view, so constructing repeated query adapters is O(1) in
+    metadata cardinality and never clones or scans the full dictionary.
     """
 
-    var _mode: UInt8
-    var _allowed_slots: List[Bool]
     var _allowed_ordinals: Bitmap
-    var _id_to_ordinal: Dict[Int, Int]
-
-    def __init__(out self) raises:
-        self._mode = UInt8(0)
-        self._allowed_slots = List[Bool]()
-        self._allowed_ordinals = Bitmap()
-        self._id_to_ordinal = Dict[Int, Int]()
-
-    def __init__(out self, var allowed_slots: List[Bool]) raises:
-        self._mode = UInt8(1)
-        self._allowed_slots = allowed_slots^
-        self._allowed_ordinals = Bitmap()
-        self._id_to_ordinal = Dict[Int, Int]()
+    var _lookup: ArcPointer[_HnswIdOrdinalState]
 
     def __init__(
         out self,
         var allowed_ordinals: Bitmap,
-        var id_to_ordinal: Dict[Int, Int],
-    ) raises:
-        for entry in id_to_ordinal.items():
-            if entry.value < 0 or entry.value >= allowed_ordinals.size():
-                raise Error("HNSW metadata ordinal is outside allowed bitmap")
-        self._mode = UInt8(2)
-        self._allowed_slots = List[Bool]()
+        lookup: HnswIdOrdinalLookup,
+    ):
         self._allowed_ordinals = allowed_ordinals^
-        self._id_to_ordinal = id_to_ordinal^
+        self._lookup = lookup._state
 
     def is_allow_all(self) -> Bool:
-        return self._mode == UInt8(0)
+        return False
 
     def validate(self, slot_count: Int) raises:
         if slot_count < 0:
             raise Error("HNSW admission slot count cannot be negative")
-        if self._mode == UInt8(1) and len(self._allowed_slots) != slot_count:
-            raise Error("HNSW admission flags do not match graph slots")
 
     def allows(self, id: Int) raises -> Bool:
-        if self._mode == UInt8(0):
-            return True
-        if self._mode == UInt8(1):
-            raise Error("slot-backed HNSW admission requires a graph slot")
-        if id not in self._id_to_ordinal:
+        if id not in self._lookup[].ordinals:
             return False
-        return self._allowed_ordinals.contains(self._id_to_ordinal[id])
+        return self._allowed_ordinals.contains(self._lookup[].ordinals[id])
 
     def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
-        if self._mode == UInt8(0):
-            return True
-        if self._mode == UInt8(1):
-            return self._allowed_slots[Int(slot)]
         return self.allows(id)
 
 
-# Compatibility name retained for direct search-layer callers.
-comptime HnswSearchAdmission = HnswEligibility
+struct HnswSearchAdmission(HnswResultAdmission, Movable):
+    """Independent low-level graph-slot admission for core tests/building."""
+
+    var _allow_all: Bool
+    var _allowed_slots: List[Bool]
+
+    def __init__(out self):
+        self._allow_all = True
+        self._allowed_slots = List[Bool]()
+
+    def __init__(out self, var allowed_slots: List[Bool]):
+        self._allow_all = False
+        self._allowed_slots = allowed_slots^
+
+    def is_allow_all(self) -> Bool:
+        return self._allow_all
+
+    def validate(self, slot_count: Int) raises:
+        if slot_count < 0:
+            raise Error("HNSW admission slot count cannot be negative")
+        if not self._allow_all and len(self._allowed_slots) != slot_count:
+            raise Error("HNSW admission flags do not match graph slots")
+
+    def allows(self, slot: UInt32) -> Bool:
+        if self._allow_all:
+            return True
+        return self._allowed_slots[Int(slot)]
+
+    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
+        return self.allows(slot)
 
 
 struct HnswValidationStats(Copyable, Movable):
@@ -644,9 +685,9 @@ def greedy_descent(
     return HnswGreedyResult(current_slot, current_distance)
 
 
-def _consider_result_admission(
+def _consider_result_admission[AdmissionType: HnswResultAdmission](
     graph: HnswStorage,
-    admission: HnswEligibility,
+    admission: AdmissionType,
     item: HnswHeapItem,
     ef: Int,
     mut results: ResultMaxHeap,
@@ -661,7 +702,7 @@ def _consider_result_admission(
     results.offer(item, ef)
 
 
-def search_layer(
+def search_layer[AdmissionType: HnswResultAdmission](
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
     query: List[Float32],
@@ -669,7 +710,7 @@ def search_layer(
     level: Int,
     k: Int,
     ef: Int,
-    admission: HnswEligibility,
+    admission: AdmissionType,
     mut scratch: HnswSearchScratch,
     mut stats: HnswSearchStats,
 ) raises -> List[HnswHeapItem]:
@@ -698,10 +739,7 @@ def search_layer(
     admission.validate(graph.slot_count())
 
     scratch.begin(graph.slot_count(), ef)
-    var filtered_results = ResultMaxHeap()
     var is_filtered = not admission.is_allow_all()
-    if is_filtered:
-        filtered_results.reserve(ef)
     _ = scratch.visit(entry)
     var entry_distance = graph.distance_to_slot(dispatcher, query, entry)
     var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)
@@ -712,7 +750,7 @@ def search_layer(
         # The traversal radius is retained independently of eligibility.
         scratch.results.offer(entry_item, ef)
         _consider_result_admission(
-            graph, admission, entry_item, ef, filtered_results, stats
+            graph, admission, entry_item, ef, scratch.filtered_results, stats
         )
     else:
         _consider_result_admission(
@@ -743,7 +781,12 @@ def search_layer(
             if is_filtered:
                 scratch.results.offer(item, ef)
                 _consider_result_admission(
-                    graph, admission, item, ef, filtered_results, stats
+                    graph,
+                    admission,
+                    item,
+                    ef,
+                    scratch.filtered_results,
+                    stats,
                 )
             else:
                 _consider_result_admission(
@@ -758,7 +801,7 @@ def search_layer(
 
     var best: List[HnswHeapItem]
     if is_filtered:
-        best = filtered_results.take_sorted_best()
+        best = scratch.filtered_results.take_sorted_best()
     else:
         best = scratch.results.take_sorted_best()
     while len(best) > k:
