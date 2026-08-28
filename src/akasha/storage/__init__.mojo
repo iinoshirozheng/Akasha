@@ -6,6 +6,7 @@ from .collection_config import (
     publish_collection_config,
 )
 from .index_cache import CacheArtifact
+from .hnsw_store import HnswSnapshotInfo
 from .manifest import Manifest
 from .memtable import MemTable, MemTableEntry
 from .operations import StorageInspection
