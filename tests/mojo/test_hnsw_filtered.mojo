@@ -191,6 +191,8 @@ def test_repeated_filtered_queries_share_lookup_without_setup_scan() raises:
     var lookup = HnswIdOrdinalLookup(ordinals^, 2_048)
     assert_equal(lookup.entry_count(), 2_048)
     assert_equal(lookup.construction_scanned_entries(), 2_048)
+    # Domain validation uses one packed bit per ordinal, not a second hash map.
+    assert_equal(lookup.validation_scratch_bytes(), 256)
 
     var first_bitmap = Bitmap(2_048)
     first_bitmap.set(17)

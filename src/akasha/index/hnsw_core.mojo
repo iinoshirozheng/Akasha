@@ -41,16 +41,19 @@ struct _HnswIdOrdinalState:
     var ordinals: Dict[Int, Int]
     var ordinal_count: Int
     var construction_scanned_entries: Int
+    var validation_scratch_bytes: Int
 
     def __init__(
         out self,
         var ordinals: Dict[Int, Int],
         ordinal_count: Int,
         construction_scanned_entries: Int,
+        validation_scratch_bytes: Int,
     ):
         self.ordinals = ordinals^
         self.ordinal_count = ordinal_count
         self.construction_scanned_entries = construction_scanned_entries
+        self.validation_scratch_bytes = validation_scratch_bytes
 
 
 struct HnswIdOrdinalLookup(Copyable, Movable):
@@ -65,17 +68,22 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
             raise Error("HNSW metadata ordinal count cannot be negative")
         if len(ordinals) != ordinal_count:
             raise Error("HNSW ID lookup must cover every metadata ordinal")
-        var seen = Dict[Int, Bool]()
+        var seen = Bitmap(ordinal_count)
         var scanned = 0
         for entry in ordinals.items():
             scanned += 1
             if entry.value < 0 or entry.value >= ordinal_count:
                 raise Error("HNSW metadata ordinal is outside declared domain")
-            if entry.value in seen:
+            if seen.contains(entry.value):
                 raise Error("HNSW metadata ordinals must be unique")
-            seen[entry.value] = True
+            seen.set(entry.value)
+        if seen.count() != ordinal_count:
+            raise Error("HNSW ID lookup must cover every metadata ordinal")
+        var scratch_bytes = ((ordinal_count + 63) // 64) * 8
         self._state = ArcPointer(
-            _HnswIdOrdinalState(ordinals^, ordinal_count, scanned)
+            _HnswIdOrdinalState(
+                ordinals^, ordinal_count, scanned, scratch_bytes
+            )
         )
 
     def entry_count(self) -> Int:
@@ -83,6 +91,10 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
 
     def construction_scanned_entries(self) -> Int:
         return self._state[].construction_scanned_entries
+
+    def validation_scratch_bytes(self) -> Int:
+        """Packed UInt64 bitmap payload used by one-time validation."""
+        return self._state[].validation_scratch_bytes
 
     def ordinal_for(self, id: Int) -> Int:
         if id in self._state[].ordinals:
