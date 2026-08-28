@@ -70,9 +70,10 @@ after WAL, MemTable, and metadata mutation succeeds. If that derived mutation
 fails, the write remains committed and the graph is quarantined; subsequent ANN
 requests use exact search. Missing, stale, truncated, structurally invalid,
 CRC-corrupt, or authoritatively inconsistent HNSW cache files likewise leave
-ANN unavailable. Queries never rebuild HNSW; an explicit maintenance rebuild
-may restore it. Cache publication failure is ignored and cannot fail an
-otherwise valid query or acknowledged write.
+ANN unavailable, and subsequent requests continue through exact fallback.
+Queries never rebuild HNSW. Explicit maintenance recovery is planned for the
+next task and is not part of the current guarantee. Cache publication failure
+is ignored and cannot fail an otherwise valid query or acknowledged write.
 
 Quantized and parallel execution run only over owned read-snapshot state. SQ8
 and PQ may change candidate recall and approximate scores, but exact rerank uses

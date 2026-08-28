@@ -114,8 +114,9 @@ search. Acknowledged writes update the graph incrementally only after WAL,
 MemTable, and metadata mutation succeeds. Graph mutation failure quarantines
 only the derived graph: reads remain available through exact search. A
 versioned, checksummed `hnsw.cache` speeds reopen; missing, stale, damaged, or
-authoritatively inconsistent cache bytes leave ANN unavailable until an
-explicit maintenance rebuild restores the graph. Queries never rebuild it.
+authoritatively inconsistent cache bytes leave ANN unavailable while queries
+continue through exact fallback. Queries never rebuild the graph; maintenance
+recovery is planned for the next task.
 
 Immutable snapshots also expose deterministic Phase 12 execution paths:
 
@@ -310,8 +311,8 @@ Implemented:
   merge for unfiltered and Boolean-filtered snapshots.
 - Checksummed HNSW and metadata derived caches keyed by manifest generation,
   accepted sequence, and authoritative live-state fingerprint; HNSW cache or
-  graph failure safely falls back to exact search until maintenance rebuilds
-  the derived graph.
+  graph failure keeps ANN unavailable and safely falls back to exact search.
+  Maintenance recovery is planned for the next task.
 - Batched Mojo GPU dot/L2/cosine scoring and deterministic GPU Top-K for Apple,
   NVIDIA, or AMD accelerators, with device-memory planning and exact CPU
   fallback for disabled, unavailable, small, memory-rejected, or failed work.
