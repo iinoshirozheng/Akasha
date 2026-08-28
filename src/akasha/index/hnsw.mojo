@@ -102,6 +102,8 @@ struct HnswIndex:
     var valid: Bool
     var build_stats: HnswBuildStats
     var last_search_stats: HnswSearchStats
+    var _last_search_query_preparations: Int
+    var _last_search_upper_descents: Int
 
     # Compatibility fields used by the collection cache wrapper and older
     # direct callers. They mirror the bound configuration and are immutable.
@@ -127,6 +129,8 @@ struct HnswIndex:
         self.build_stats = HnswBuildStats()
         self.build_stats.maximum_level = -1
         self.last_search_stats = HnswSearchStats()
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
         self.dimension = owned.dimension
         self.m = owned.m
         self.max_level = owned.max_level
@@ -150,6 +154,8 @@ struct HnswIndex:
         self.build_stats = HnswBuildStats()
         self.build_stats.maximum_level = -1
         self.last_search_stats = HnswSearchStats()
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
         self.dimension = owned.dimension
         self.m = owned.m
         self.max_level = owned.max_level
@@ -213,6 +219,12 @@ struct HnswIndex:
 
     def last_search_effective_ef(self) -> Int:
         return self.last_search_stats.effective_ef
+
+    def last_search_query_preparations(self) -> Int:
+        return self._last_search_query_preparations
+
+    def last_search_upper_descents(self) -> Int:
+        return self._last_search_upper_descents
 
     def _validate_bound_identity(self) raises:
         if self.config != self._identity_config:
@@ -405,85 +417,184 @@ struct HnswIndex:
         k: Int,
         initial_ef: Int,
         max_ef: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Widen from the eligibility bitmap's authoritative cardinality."""
+        return self._search_allowed_with_actual_widening(
+            query, k, initial_ef, max_ef, allowed
+        )
+
+    def search_allowed_with_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
         matched_count: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Compatibility boundary for callers still carrying match counts."""
+        allowed.validate(self.graph.slot_count())
+        if matched_count != allowed.eligible_count():
+            raise Error(
+                "HNSW matched count does not match eligibility cardinality"
+            )
+        return self._search_allowed_with_actual_widening(
+            query, k, initial_ef, max_ef, allowed
+        )
+
+    def _search_allowed_with_actual_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
         allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
         """Run filtered ANN rounds, then exact-scan on exhausted breadth.
 
-        Each wider round is a fresh base-layer search over the same reusable
-        scratch allocation. Prior result lists are replaced, never appended,
-        so an ID can occur at most once in the returned round. The index-local
-        exact scan is the correctness fallback; collection integration may
-        subsequently rerank these IDs against authoritative vectors.
+        The query and upper descent are prepared once. Each wider round reruns
+        only the base layer over the same reusable scratch allocation. Prior
+        result lists are replaced, never appended. The index-local exact scan
+        is the correctness fallback; collection integration may subsequently
+        rerank these IDs against authoritative vectors.
         """
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot search an invalid HNSW index")
         if k <= 0:
             raise Error("HNSW search k must be positive")
-        if matched_count < 0 or matched_count > self.graph.slot_count():
-            raise Error("HNSW matched count is outside graph bounds")
         if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
             raise Error("HNSW widening ef range is invalid")
         if max_ef > self._identity_config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
-        if k > max_ef:
-            raise Error("HNSW result demand exceeds widening maximum")
         allowed.validate(self.graph.slot_count())
 
+        var matched_count = allowed.eligible_count()
+        var slot_count = self.graph.slot_count()
+        if matched_count > slot_count:
+            raise Error("HNSW eligibility count exceeds graph slots")
         var target_count = k
         if target_count > matched_count:
             target_count = matched_count
+        # Every graph slot is a possible navigation bridge, including future
+        # historical slots. No base round can usefully retain more state than
+        # this traversable population.
+        var effective_ceiling = max_ef
+        if effective_ceiling > slot_count:
+            effective_ceiling = slot_count
+
+        var prepared = self.metric.prepare_query(query)
+        if target_count == 0:
+            var empty_stats = self._new_search_stats(0, 0)
+            self.last_search_stats = empty_stats^
+            self._last_search_query_preparations = 1
+            self._last_search_upper_descents = 0
+            return List[SearchResult]()
+
         var current_ef = initial_ef
-        if current_ef < k:
-            current_ef = k
+        if current_ef < target_count:
+            current_ef = target_count
+        if current_ef > effective_ceiling:
+            current_ef = effective_ceiling
+        if current_ef < target_count:
+            raise Error("HNSW result demand exceeds traversable graph slots")
+
+        var upper_stats = self._new_search_stats(current_ef, current_ef)
+        var upper_descents = 0
+        var has_entry = Bool(self.entry_slot)
+        var current = UInt32(0)
+        if has_entry:
+            current = self.entry_slot.value()
+            var level = self.entry_level
+            while level > 0:
+                var descended = greedy_descent(
+                    self.graph,
+                    self.metric,
+                    prepared,
+                    current,
+                    level,
+                    upper_stats,
+                )
+                upper_descents += 1
+                current = descended.slot
+                level -= 1
+
         var widening_rounds = 0
-        var results = self._search_bound(
-            query, k, current_ef, allowed
-        )
-        while len(results) < target_count and current_ef < max_ef:
-            var widened = HnswIndex.next_widened_ef(current_ef, max_ef)
+        var results: List[SearchResult]
+        if has_entry:
+            results = self._search_base_prepared(
+                prepared,
+                current,
+                target_count,
+                current_ef,
+                current_ef,
+                allowed,
+                upper_stats,
+            )
+        else:
+            results = List[SearchResult]()
+            self.last_search_stats = _copy_search_stats(upper_stats)
+
+        while len(results) < target_count and current_ef < effective_ceiling:
+            var widened = HnswIndex.next_widened_ef(
+                current_ef, effective_ceiling
+            )
             if widened == current_ef:
                 break
             current_ef = widened
             widening_rounds += 1
-            # Replace the prior round wholesale. `_search_bound` calls
-            # scratch.begin(), advancing its epoch while retaining capacity.
-            results = self._search_bound(query, k, current_ef, allowed)
+            # Replace the prior base round wholesale. `search_layer` begins a
+            # new scratch epoch while retaining its bounded allocations.
+            results = self._search_base_prepared(
+                prepared,
+                current,
+                target_count,
+                current_ef,
+                current_ef,
+                allowed,
+                upper_stats,
+            )
 
         var final_stats = _copy_search_stats(self.last_search_stats)
         final_stats.widening_rounds = widening_rounds
         if len(results) >= target_count:
             self.last_search_stats = final_stats^
+            self._last_search_query_preparations = 1
+            self._last_search_upper_descents = upper_descents
             return results^
 
-        var exact = self._search_allowed_exact(query, target_count, allowed)
+        var exact = self._search_allowed_exact_prepared(
+            prepared, target_count, allowed
+        )
         final_stats.fallback_reason = String("filtered_ann_exhausted")
         self.last_search_stats = final_stats^
+        self._last_search_query_preparations = 1
+        self._last_search_upper_descents = upper_descents
         return exact^
 
-    def _search_allowed_exact(
+    def _search_allowed_exact_prepared(
         self,
-        query: List[Float32],
+        prepared: List[Float32],
         k: Int,
         allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
         """Return exact eligible graph results without changing ANN stats."""
         if k == 0:
             return List[SearchResult]()
-        var prepared = self.metric.prepare_query(query)
         allowed.validate(self.graph.slot_count())
         var retained = ResultMaxHeap()
         retained.reserve(k)
-        var seen_ids = Dict[Int, Bool]()
         for slot_index in range(self.graph.slot_count()):
             var slot = UInt32(slot_index)
-            if not self.graph.is_current(slot):
-                continue
             var id = self.graph.id_at(slot)
-            if id in seen_ids or not allowed.allows(id):
+            var current = self.graph.current_slot(id)
+            if (
+                not Bool(current)
+                or current.value() != slot
+                or not allowed.allows(id)
+            ):
                 continue
-            seen_ids[id] = True
             retained.offer(
                 HnswHeapItem(
                     slot,
@@ -538,6 +649,55 @@ struct HnswIndex:
                 )
             )
 
+    def _new_search_stats(
+        self, requested_ef: Int, effective_ef: Int
+    ) -> HnswSearchStats:
+        var stats = HnswSearchStats()
+        stats.requested_ef = requested_ef
+        stats.effective_ef = effective_ef
+        stats.backend_name = self.metric.backend_name()
+        stats.metric_name = self.metric.metric_name()
+        stats.scalar_name = self.metric.scalar_name()
+        stats.storage_name = "packed-f32"
+        return stats^
+
+    def _search_base_prepared[AdmissionType: HnswResultAdmission](
+        mut self,
+        prepared: List[Float32],
+        current: UInt32,
+        target_count: Int,
+        requested_ef: Int,
+        effective_ef: Int,
+        allowed: AdmissionType,
+        upper_stats: HnswSearchStats,
+    ) raises -> List[SearchResult]:
+        """Run one base round while preserving a single upper-phase prefix."""
+        var stats = _copy_search_stats(upper_stats)
+        stats.requested_ef = requested_ef
+        stats.effective_ef = effective_ef
+        var candidates = search_layer(
+            self.graph,
+            self.metric,
+            prepared,
+            current,
+            0,
+            target_count,
+            effective_ef,
+            allowed,
+            self.scratch,
+            stats,
+        )
+        var results = List[SearchResult](capacity=len(candidates))
+        for candidate in candidates:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    self.metric.public_score(candidate.distance),
+                )
+            )
+        self.last_search_stats = stats^
+        return results^
+
     def _search_bound[AdmissionType: HnswResultAdmission](
         mut self,
         query: List[Float32],
@@ -565,20 +725,17 @@ struct HnswIndex:
         if effective_ef > self._identity_config.max_ef_search:
             raise Error("HNSW result demand exceeds collection maximum ef")
 
-        var stats = HnswSearchStats()
-        stats.requested_ef = ef_search
-        stats.effective_ef = effective_ef
-        stats.backend_name = self.metric.backend_name()
-        stats.metric_name = self.metric.metric_name()
-        stats.scalar_name = self.metric.scalar_name()
-        stats.storage_name = "packed-f32"
+        var stats = self._new_search_stats(ef_search, effective_ef)
         if not Bool(self.entry_slot):
             stats.effective_ef = 0
             self.last_search_stats = stats^
+            self._last_search_query_preparations = 1
+            self._last_search_upper_descents = 0
             return List[SearchResult]()
 
         var current = self.entry_slot.value()
         var level = self.entry_level
+        var upper_descents = 0
         while level > 0:
             var descended = greedy_descent(
                 self.graph,
@@ -588,30 +745,21 @@ struct HnswIndex:
                 level,
                 stats,
             )
+            upper_descents += 1
             current = descended.slot
             level -= 1
 
-        var candidates = search_layer(
-            self.graph,
-            self.metric,
+        var results = self._search_base_prepared(
             prepared,
             current,
-            0,
             target_count,
+            ef_search,
             effective_ef,
             allowed,
-            self.scratch,
             stats,
         )
-        var results = List[SearchResult](capacity=len(candidates))
-        for candidate in candidates:
-            results.append(
-                SearchResult(
-                    candidate.id,
-                    self.metric.public_score(candidate.distance),
-                )
-            )
-        self.last_search_stats = stats^
+        self._last_search_query_preparations = 1
+        self._last_search_upper_descents = upper_descents
         return results^
 
     def encode_cache_payload(self) raises -> List[UInt8]:

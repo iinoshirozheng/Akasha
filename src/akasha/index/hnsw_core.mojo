@@ -136,6 +136,10 @@ struct HnswEligibility(HnswResultAdmission, Movable):
     def setup_scanned_entries(self) -> Int:
         return self._setup_scanned_entries
 
+    def eligible_count(self) -> Int:
+        """Return the query bitmap's cached cardinality in O(1)."""
+        return self._allowed_ordinals.count()
+
     def allows(self, id: Int) raises -> Bool:
         if id not in self._lookup[].ordinals:
             return False
