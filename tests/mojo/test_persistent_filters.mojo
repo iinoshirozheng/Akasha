@@ -14,15 +14,41 @@ from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
 def _reset(directory: String) raises:
     ensure_directory(directory)
-    remove_file_if_exists(directory + "/wal.bin")
-    remove_file_if_exists(directory + "/manifest.bin")
-    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    var names = [
+        "collection.bin",
+        "collection.bin.tmp",
+        "wal.bin",
+        "wal.bin.tmp",
+        "sparse.wal",
+        "sparse.wal.tmp",
+        "manifest.bin",
+        "manifest.bin.tmp",
+        "hnsw.cache",
+        "hnsw.cache.tmp",
+        "metadata.cache",
+        "metadata.cache.tmp",
+        "collection.lock",
+    ]
+    for name in names:
+        remove_file_if_exists(directory + "/" + name)
     for sequence in range(16):
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin"
         )
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin.tmp"
+        )
+        remove_file_if_exists(
+            directory + "/segment-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/segment-delta-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-base-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            directory + "/sparse-delta-" + String(sequence) + ".bin"
         )
 
 

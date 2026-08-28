@@ -19,6 +19,7 @@ from akasha.document.record import (
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.metadata import MetadataIndex
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
@@ -90,6 +91,7 @@ from akasha.storage.wal import (
     WalRecord,
 )
 from std.math import isfinite
+from std.collections import Dict
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
@@ -123,7 +125,11 @@ struct PersistentCollection:
     var _lock: CollectionLock
     var _closed: Bool
     var _hnsw: HnswIndex
-    var _hnsw_dirty: Bool
+    var _hnsw_id_lookup: HnswIdOrdinalLookup
+    var _hnsw_id_lookup_dirty: Bool
+    var _hnsw_available: Bool
+    var _hnsw_unavailable_reason: String
+    var _last_dense_plan_reason: String
     var _sparse: SparseIndex
     var _sparse_wal_path: String
     var _sparse_pending: List[SparseWalRecord]
@@ -145,6 +151,7 @@ struct PersistentCollection:
         last_sequence: UInt64,
         var lock: CollectionLock,
         var hnsw: HnswIndex,
+        var hnsw_id_lookup: HnswIdOrdinalLookup,
         var sparse: SparseIndex,
         var sparse_pending: List[SparseWalRecord],
         var metadata: MetadataIndex,
@@ -153,6 +160,7 @@ struct PersistentCollection:
         source_checksum: UInt32,
         hnsw_cache_hit: Bool,
         metadata_cache_hit: Bool,
+        hnsw_available: Bool,
     ):
         self.path = String(copy=path)
         self.dimension = config.dimension
@@ -164,7 +172,13 @@ struct PersistentCollection:
         self._lock = lock^
         self._closed = False
         self._hnsw = hnsw^
-        self._hnsw_dirty = False
+        self._hnsw_id_lookup = hnsw_id_lookup^
+        self._hnsw_id_lookup_dirty = False
+        self._hnsw_available = hnsw_available
+        self._hnsw_unavailable_reason = (
+            "" if hnsw_available else "cache_miss"
+        )
+        self._last_dense_plan_reason = ""
         self._sparse = sparse^
         self._sparse_wal_path = path + "/sparse.wal"
         self._sparse_pending = sparse_pending^
@@ -424,7 +438,8 @@ struct PersistentCollection:
         )
         var metadata_cache_hit = metadata_load.hit
         var metadata = metadata_load.take_index()
-        var recovered_point_count = memtable.entry_count()
+        var hnsw_id_lookup = _build_hnsw_id_lookup(metadata)
+        var recovered_point_count = metadata.live_count()
         var collection = PersistentCollection(
             path,
             config,
@@ -432,6 +447,7 @@ struct PersistentCollection:
             last_sequence,
             lock^,
             hnsw^,
+            hnsw_id_lookup^,
             sparse^,
             sparse_pending^,
             metadata^,
@@ -440,8 +456,8 @@ struct PersistentCollection:
             source_checksum,
             hnsw_cache_hit,
             metadata_cache_hit,
+            recovered_point_count == 0 or hnsw_cache_hit,
         )
-        collection._hnsw_dirty = recovered_point_count > 0 and not hnsw_cache_hit
         return collection^
 
     def collection_config(self) -> CollectionConfig:
@@ -506,6 +522,36 @@ struct PersistentCollection:
             self._ensure_open()
             return self._metadata_cache_was_hit
 
+    def hnsw_available(self) raises -> Bool:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw_available
+
+    def hnsw_unavailable_reason(self) raises -> String:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw_unavailable_reason.copy()
+
+    def last_dense_plan_reason(self) raises -> String:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._last_dense_plan_reason.copy()
+
+    def hnsw_slot_count(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw.point_count()
+
+    def hnsw_inactive_count(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw.inactive_count()
+
+    def hnsw_build_distance_evaluations(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._hnsw.build_distance_evaluations()
+
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -532,6 +578,7 @@ struct PersistentCollection:
     def _upsert_unlocked(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()
         self._validate_vector(values)
+        var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
         var record = WalRecord.upsert(sequence, id, wal_values^)
@@ -540,7 +587,9 @@ struct PersistentCollection:
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
-        self._hnsw_dirty = True
+        if self._metadata.slot_count() != metadata_slots:
+            self._hnsw_id_lookup_dirty = True
+        self._update_hnsw_after_upsert(id)
         self._invalidate_cache_hits()
 
     def upsert_document(
@@ -560,6 +609,7 @@ struct PersistentCollection:
     ) raises:
         self._ensure_open()
         self._validate_vector(values)
+        var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
         var wal_values = _clone_vector(values)
         var wal_fields = clone_fields(fields)
@@ -571,7 +621,9 @@ struct PersistentCollection:
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
-        self._hnsw_dirty = True
+        if self._metadata.slot_count() != metadata_slots:
+            self._hnsw_id_lookup_dirty = True
+        self._update_hnsw_after_upsert(id)
         self._invalidate_cache_hits()
 
     def apply_batch(
@@ -634,14 +686,28 @@ struct PersistentCollection:
         var staged_metadata = _build_metadata(staged_memtable)
 
         append_wal_batch(self._wal_path, self._config.dimension, records)
+        var metadata_slots = self._metadata.slot_count()
         self._memtable = staged_memtable^
         self._metadata = staged_metadata^
+        if self._metadata.slot_count() != metadata_slots:
+            self._hnsw_id_lookup_dirty = True
         for index in range(len(mutations)):
             if mutations[index].is_delete:
                 self._sparse.delete(mutations[index].id)
         var last_sequence = first_sequence + UInt64(len(mutations) - 1)
         self._last_sequence = last_sequence
-        self._hnsw_dirty = True
+        var final_mutation_by_id = Dict[Int, Int]()
+        for index in range(len(mutations)):
+            final_mutation_by_id[mutations[index].id] = index
+        for index in range(len(mutations)):
+            if not self._hnsw_available:
+                break
+            if final_mutation_by_id[mutations[index].id] != index:
+                continue
+            if mutations[index].is_delete:
+                self._update_hnsw_after_delete(mutations[index].id)
+            else:
+                self._update_hnsw_after_upsert(mutations[index].id)
         self._invalidate_cache_hits()
         return BatchWriteResult(first_sequence, last_sequence, len(mutations))
 
@@ -686,6 +752,7 @@ struct PersistentCollection:
 
     def _delete_unlocked(mut self, id: Int) raises:
         self._ensure_open()
+        var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self._config.dimension, record)
@@ -693,7 +760,9 @@ struct PersistentCollection:
         self._metadata.delete(id)
         self._sparse.delete(id)
         self._last_sequence = sequence
-        self._hnsw_dirty = True
+        if self._metadata.slot_count() != metadata_slots:
+            self._hnsw_id_lookup_dirty = True
+        self._update_hnsw_after_delete(id)
         self._invalidate_cache_hits()
 
     def search_dot(
@@ -1343,16 +1412,32 @@ struct PersistentCollection:
             raise Error("k must be positive")
         if ef_search <= 0:
             raise Error("ef_search must be positive")
-        self._ensure_hnsw()
-        var count = self._hnsw.point_count()
-        if not QueryPlanner.use_hnsw(count, k, count, False):
+        var count = self._metadata.live_count()
+        var plan = QueryPlanner.plan_dense(
+            count,
+            count,
+            k,
+            ef_search,
+            self._config.max_ef_search,
+            False,
+            self._metric_compatible(metric),
+            self._hnsw_available,
+        )
+        self._last_dense_plan_reason = plan.reason.copy()
+        if not plan.use_hnsw:
             var conditions = List[FilterCondition]()
             return self._search_filtered(query, k, metric, conditions)
-        if metric == _DOT_METRIC:
-            return self._hnsw.search_dot(query, k, ef_search)
-        if metric == _L2_METRIC:
-            return self._hnsw.search_l2(query, k, ef_search)
-        return self._hnsw.search_cosine(query, k, ef_search)
+        try:
+            var candidates = self._hnsw.search(
+                query, k, ef_search=plan.initial_ef
+            )
+            return self._rerank_hnsw_candidates(query, k, metric, candidates)
+        except:
+            var conditions = List[FilterCondition]()
+            var exact = self._search_filtered(query, k, metric, conditions)
+            self._mark_hnsw_unavailable("search_failed")
+            self._last_dense_plan_reason = "graph_unavailable"
+            return exact^
 
     def _search_approx_where(
         mut self,
@@ -1369,36 +1454,44 @@ struct PersistentCollection:
         if ef_search <= 0:
             raise Error("ef_search must be positive")
         expression.validate()
-        self._ensure_hnsw()
         var matched = evaluate_expression(self._metadata, expression)
         var matched_count = matched.count()
         var total_count = self._metadata.live_count()
-        if not QueryPlanner.use_hnsw(total_count, k, matched_count, True):
+        var plan = QueryPlanner.plan_dense(
+            total_count,
+            matched_count,
+            k,
+            ef_search,
+            self._config.max_ef_search,
+            True,
+            self._metric_compatible(metric),
+            self._hnsw_available,
+        )
+        self._last_dense_plan_reason = plan.reason.copy()
+        if not plan.use_hnsw:
             return self._search_where(query, k, metric, expression)
-
-        var overfetch = ef_search
-        if overfetch < k * 4:
-            overfetch = k * 4
-        if overfetch > total_count:
-            overfetch = total_count
-        var candidates: List[SearchResult]
-        if metric == _DOT_METRIC:
-            candidates = self._hnsw.search_dot(query, overfetch, ef_search)
-        elif metric == _L2_METRIC:
-            candidates = self._hnsw.search_l2(query, overfetch, ef_search)
-        else:
-            candidates = self._hnsw.search_cosine(query, overfetch, ef_search)
-
-        var target = k
-        if target > matched_count:
-            target = matched_count
-        var accepted = List[SearchResult](capacity=target)
-        for candidate in candidates:
-            if self._metadata.contains_id(matched, candidate.id):
-                accepted.append(candidate)
-            if len(accepted) == target:
-                return accepted^
-        return self._search_where(query, k, metric, expression)
+        if not self._ensure_hnsw_id_lookup():
+            self._last_dense_plan_reason = "graph_unavailable"
+            return self._search_where(query, k, metric, expression)
+        try:
+            var eligibility = HnswEligibility(
+                matched^, self._hnsw_id_lookup
+            )
+            var candidates = self._hnsw.search_allowed_with_widening(
+                query,
+                k,
+                plan.initial_ef,
+                plan.max_ef,
+                eligibility,
+            )
+            return self._rerank_hnsw_candidates(
+                query, k, metric, candidates
+            )
+        except:
+            var exact = self._search_where(query, k, metric, expression)
+            self._mark_hnsw_unavailable("search_failed")
+            self._last_dense_plan_reason = "graph_unavailable"
+            return exact^
 
     def _search_where(
         self,
@@ -1544,13 +1637,81 @@ struct PersistentCollection:
             )
         self._maintenance.check()
 
-    def _ensure_hnsw(mut self) raises:
-        if not self._hnsw_dirty:
+    def _update_hnsw_after_upsert(mut self, id: Int):
+        if not self._hnsw_available:
             return
-        var rebuilt = _build_hnsw(self._memtable, self._config)
-        self._hnsw = rebuilt^
-        self._hnsw_dirty = False
-        self._publish_index_caches_best_effort()
+        try:
+            var authoritative = self._memtable.get(id)
+            if Bool(authoritative):
+                self._hnsw.upsert(id, authoritative.value().vector)
+        except:
+            self._mark_hnsw_unavailable("mutation_failed")
+
+    def _ensure_hnsw_id_lookup(mut self) -> Bool:
+        if not self._hnsw_id_lookup_dirty:
+            return True
+        try:
+            self._hnsw_id_lookup = _build_hnsw_id_lookup(self._metadata)
+            self._hnsw_id_lookup_dirty = False
+            return True
+        except:
+            self._mark_hnsw_unavailable("eligibility_failed")
+            return False
+
+    def _update_hnsw_after_delete(mut self, id: Int):
+        if not self._hnsw_available:
+            return
+        _ = self._hnsw.delete(id)
+        if not self._hnsw.valid:
+            self._mark_hnsw_unavailable("mutation_failed")
+
+    def _mark_hnsw_unavailable(mut self, reason: String):
+        self._hnsw_available = False
+        self._hnsw_unavailable_reason = String(copy=reason)
+
+    def _metric_compatible(self, metric: Int) -> Bool:
+        if metric == _DOT_METRIC:
+            return self._config.ann_metric == MetricKind.dot()
+        if metric == _L2_METRIC:
+            return self._config.ann_metric == MetricKind.l2()
+        return self._config.ann_metric == MetricKind.cosine()
+
+    def _rerank_hnsw_candidates(
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        candidates: List[SearchResult],
+    ) raises -> List[SearchResult]:
+        if len(candidates) == 0:
+            return List[SearchResult]()
+        var result_count = k
+        if result_count > len(candidates):
+            result_count = len(candidates)
+        var topk = BoundedTopK(
+            result_count, smaller_is_better=metric == _L2_METRIC
+        )
+        for index in range(len(candidates)):
+            var document = self._memtable.get(candidates[index].id)
+            if not Bool(document):
+                continue
+            var score: Float32
+            if metric == _DOT_METRIC:
+                score = simd_dot_product(query, document.value().vector)
+            elif metric == _L2_METRIC:
+                score = simd_l2_squared_distance(
+                    query, document.value().vector
+                )
+            else:
+                score = simd_cosine_similarity(
+                    query, document.value().vector
+                )
+            topk.offer(document.value().id, score)
+        var retained = topk.sorted_entries()
+        var results = List[SearchResult](capacity=len(retained))
+        for entry in retained:
+            results.append(SearchResult(entry.id, entry.score))
+        return results^
 
     def _invalidate_cache_hits(mut self):
         self._hnsw_cache_was_hit = False
@@ -1574,7 +1735,7 @@ struct PersistentCollection:
                 metadata_payload^,
             )
             publish_cache(self._path, "metadata.cache", metadata_artifact)
-            if not self._hnsw_dirty:
+            if self._hnsw_available:
                 var hnsw_payload = self._hnsw.encode_cache_payload()
                 var hnsw_artifact = CacheArtifact(
                     CACHE_HNSW_KIND,
@@ -1706,6 +1867,15 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     if index.slot_count() != memtable.slot_count():
         raise Error("metadata index and memtable slot alignment failed")
     return index^
+
+
+def _build_hnsw_id_lookup(
+    metadata: MetadataIndex
+) raises -> HnswIdOrdinalLookup:
+    var ordinals = Dict[Int, Int]()
+    for ordinal in range(metadata.slot_count()):
+        ordinals[metadata.id_at(ordinal)] = ordinal
+    return HnswIdOrdinalLookup(ordinals^, metadata.slot_count())
 
 
 struct _HnswCacheLoad(Movable):
