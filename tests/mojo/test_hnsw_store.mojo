@@ -528,7 +528,9 @@ def test_rejects_overflowing_counts_offsets_and_ranges() raises:
         _ = decode_hnsw_snapshot_owned(overlapping^, config, UInt64(71))
 
 
-def test_hostile_header_counts_fail_before_staging_capacity_is_created() raises:
+def test_header_preflight_rejects_hostile_counts() raises:
+    # Decoder call order is guaranteed by its preflight-before-staging
+    # structure; this seam narrowly verifies the hostile-header rejection.
     with assert_raises():
         _validate_hnsw_snapshot_header_allocation(
             UInt64(1_024),

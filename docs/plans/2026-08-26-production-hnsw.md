@@ -1784,8 +1784,10 @@ git commit -m "feat: overlay HNSW checkpoint with mutable delta"
 - Modify: `src/akasha/index/hnsw_storage.mojo`
 - Modify: `src/akasha/index/hnsw_view.mojo`
 - Modify: `src/akasha/storage/hnsw_store.mojo`
+- Modify: `docs/formats/hnsw-format.md`
 - Create: `tests/mojo/test_quantization.mojo`
 - Create: `tests/mojo/test_hnsw_quantized.mojo`
+- Create: `tests/mojo/test_hnsw_store_v1_compat.mojo`
 
 **Step 1: Write failing conversion tests**
 
@@ -1794,6 +1796,16 @@ rounding boundaries, deterministic bytes, accumulation into F32, normalized
 cosine vectors, magnitude-preserving dot vectors, zero-norm rejection,
 per-vector scale, and saturation. Verify I8+L2 remains a configuration error.
 
+Freeze representative Task 20 v1 F32 sidecar bytes as a checked-in fixture,
+including an empty graph and a graph with edges/tombstones. Test byte-for-byte
+v1 compatibility, owned and mapped reads, and equivalent queries. Add CRC-valid
+v1 headers whose scalar tag is BF16, F16, or I8 and require both readers to
+reject them: version 1 is permanently F32-only and its tag must never be
+reinterpreted as compact storage. Add v2 round trips and corruption tests for
+each enabled compact scalar, including deterministic bytes, section-length and
+offset overflow, scalar-width mismatches, bad version/tag combinations, and
+owned/mapped query equivalence.
+
 **Step 2: Run and verify failure**
 
 Run:
@@ -1801,10 +1813,13 @@ Run:
 ```bash
 pixi run mojo run -I src tests/mojo/test_quantization.mojo
 pixi run mojo run -I src tests/mojo/test_hnsw_quantized.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_store_v1_compat.mojo
 ```
 
-Expected: existing SQ8/PQ tests PASS; new graph-scalar conversion/storage tests
-FAIL because BF16/F16 and bound-metric graph integration are absent.
+Expected: the frozen v1 F32 fixture and v1 non-F32 rejection tests PASS before
+implementation. Existing SQ8/PQ tests PASS; new graph-scalar conversion/storage
+and v2 assertions FAIL because BF16/F16, bound-metric graph integration, and
+the v2 codec are absent.
 
 **Step 3: Implement typed conversion kernels**
 
@@ -1825,11 +1840,27 @@ the graph format explicitly gains and tests a PQ scalar tag.
 
 Do not quantize MemTable, WAL, segment, or exact-search values.
 
-**Step 4: Generalize owned and mapped vector sections**
+**Step 4: Add a version-dispatched HNSW sidecar v2**
 
-Store graph vector bytes according to `scalar_kind`; compute offsets using the
-encoded scalar width. The sidecar header already carries the tag. Decode/view
-must reject length mismatches before distance access.
+Do not change, reinterpret, or widen the frozen Task 20 v1 format. Version 1
+remains byte-compatible, readable, and F32-only forever. Existing F32 encoding
+continues to write v1; compact BF16, F16, and I8 graph vectors are written only
+as a new version 2 sidecar. A compact scalar must never be smuggled into a v1
+header even if its tag value is known to the runtime.
+
+Define an explicit v2 header and section layout with scalar-width-aware vector
+lengths and any per-vector scale metadata required by I8. Both the owned decoder
+and mapped view must read only the common magic/version prefix first, dispatch
+on version, and then apply that version's fixed sizes, scalar rules, offsets,
+lengths, checksum, and structural validation. V1 dispatch must retain the
+Task 20 F32-only checks and decode the frozen fixtures unchanged. V2 decode/view
+must reject unsupported tags and length mismatches before any distance access.
+
+Update `docs/formats/hnsw-format.md` without editing the normative v1 tables.
+Add separate, complete v2 header and section tables, checksum coverage,
+alignment, scalar-width rules, limits, validation order, writer-selection
+policy, and the v1/v2 compatibility matrix. State that future format evolution
+adds another version rather than changing either table in place.
 
 **Step 5: Add quality gates per scalar**
 
@@ -1837,9 +1868,10 @@ On the same fixed datasets and graph settings, compare recall@10 with F32. Asser
 loss <= 0.02 and assert encoded vector bytes per point are 2x smaller for
 BF16/F16 and 4x smaller for I8, excluding fixed metadata.
 
-If one scalar fails quality, leave its config tag readable but reject creating a
-new index with it; record its failing numbers in the benchmark document. Do not
-weaken the gate.
+If one scalar fails quality, v2 readers may retain its already-documented tag,
+but new index/sidecar creation must reject it; record its failing numbers in the
+benchmark document. V1 behavior is unaffected and v1 must still reject every
+non-F32 tag. Do not weaken the gate.
 
 **Step 6: Verify and commit**
 
@@ -1848,14 +1880,20 @@ Run:
 ```bash
 pixi run mojo run -I src tests/mojo/test_quantization.mojo
 pixi run mojo run -I src tests/mojo/test_hnsw_quantized.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_store.mojo
+pixi run mojo run -I src tests/mojo/test_hnsw_store_v1_compat.mojo
 pixi run check-hnsw-quality
+pixi run build
+git diff --check
 ```
 
-Expected: PASS for each enabled scalar kind.
+Expected: PASS for each enabled scalar kind; frozen v1 fixture bytes remain
+unchanged/readable, v1 non-F32 inputs remain rejected, and both owned and mapped
+readers dispatch v1/v2 correctly.
 
 ```bash
-git add src/akasha/index/quantization.mojo src/akasha/compute/quantization.mojo src/akasha/compute/__init__.mojo src/akasha/index/hnsw_storage.mojo src/akasha/index/hnsw_view.mojo src/akasha/storage/hnsw_store.mojo tests/mojo/test_quantization.mojo tests/mojo/test_hnsw_quantized.mojo
-git commit -m "feat: add compact HNSW vector storage"
+git add src/akasha/index/quantization.mojo src/akasha/compute/quantization.mojo src/akasha/compute/__init__.mojo src/akasha/index/hnsw_storage.mojo src/akasha/index/hnsw_view.mojo src/akasha/storage/hnsw_store.mojo docs/formats/hnsw-format.md tests/mojo/test_quantization.mojo tests/mojo/test_hnsw_quantized.mojo tests/mojo/test_hnsw_store_v1_compat.mojo
+git commit -m "feat: add versioned compact HNSW vector storage"
 ```
 
 ### Task 27: Select and report a distance backend once per index
