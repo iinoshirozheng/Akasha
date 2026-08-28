@@ -9,12 +9,32 @@ from akasha.storage.manifest import (
     decode_manifest_bytes,
     encode_manifest,
     encode_manifest_v2,
+    encode_manifest_v3,
     load_manifest,
     publish_manifest,
     Manifest,
     SegmentDescriptor,
 )
 from std.testing import assert_equal, assert_raises, TestSuite
+
+
+def _v3_segments() raises -> List[SegmentDescriptor]:
+    var segments = List[SegmentDescriptor]()
+    segments.append(
+        SegmentDescriptor(1, 0, 3, 0x11111111, "segment-base-3.bin")
+    )
+    segments.append(
+        SegmentDescriptor.with_sparse(
+            0,
+            4,
+            5,
+            0x22222222,
+            "segment-delta-5.bin",
+            0x33333333,
+            "sparse-delta-5.bin",
+        )
+    )
+    return segments^
 
 
 def test_manifest_binary_round_trip() raises:
@@ -65,6 +85,153 @@ def test_manifest_v2_round_trips_ordered_segment_descriptors() raises:
     assert_equal(decoded.segments[1].sparse_name, "sparse-delta-5.bin")
     assert_equal(decoded.segment_name, "segment-delta-5.bin")
     assert_equal(decoded.segment_checksum, UInt32(0x22222222))
+
+
+def test_manifest_v3_round_trips_optional_hnsw_reference() raises:
+    var manifest = Manifest.with_hnsw(
+        3,
+        7,
+        5,
+        _v3_segments(),
+        "hnsw-7.bin",
+        UInt32(0xA1B2C3D4),
+        UInt64(0x1122334455667788),
+        UInt64(2),
+    )
+    var first = encode_manifest_v3(manifest)
+    var second = encode_manifest_v3(manifest)
+    var decoded = decode_manifest_bytes(first.copy(), 3)
+
+    assert_equal(first, second)
+    assert_equal(decoded.format_version, 3)
+    assert_equal(len(decoded.segments), 2)
+    assert_equal(decoded.segments[1].sparse_name, "sparse-delta-5.bin")
+    assert_equal(decoded.hnsw_name.value(), "hnsw-7.bin")
+    assert_equal(decoded.hnsw_checksum.value(), UInt32(0xA1B2C3D4))
+    assert_equal(
+        decoded.hnsw_config_fingerprint.value(),
+        UInt64(0x1122334455667788),
+    )
+    assert_equal(decoded.hnsw_point_count.value(), UInt64(2))
+
+
+def test_manifest_v3_without_hnsw_round_trips_but_normal_publish_stays_v2() raises:
+    var manifest = Manifest.with_segments(3, 7, 5, _v3_segments())
+    var v3_bytes = encode_manifest_v3(manifest)
+    var decoded = decode_manifest_bytes(v3_bytes^, 3)
+
+    assert_equal(decoded.format_version, 3)
+    assert_equal(Bool(decoded.hnsw_name), False)
+    assert_equal(Bool(decoded.hnsw_checksum), False)
+    assert_equal(Bool(decoded.hnsw_config_fingerprint), False)
+    assert_equal(Bool(decoded.hnsw_point_count), False)
+
+    var directory = String("/tmp/akasha-manifest-v3-version-policy")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    var empty = List[UInt8]()
+    write_file_sync(directory + "/segment-base-3.bin", empty)
+    write_file_sync(directory + "/segment-delta-5.bin", empty)
+    write_file_sync(directory + "/sparse-delta-5.bin", empty)
+    publish_manifest(directory, manifest)
+    var published = load_manifest(directory, 3)
+    assert_equal(published.format_version, 2)
+
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/segment-base-3.bin")
+    remove_file_if_exists(directory + "/segment-delta-5.bin")
+    remove_file_if_exists(directory + "/sparse-delta-5.bin")
+
+
+def test_manifest_v3_validates_hnsw_filename_and_does_not_require_sidecar_on_load() raises:
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), "", 1, 2, 3)
+    with assert_raises():
+        _ = Manifest.with_hnsw(
+            3, 7, 5, _v3_segments(), "nested/hnsw.bin", 1, 2, 3
+        )
+    with assert_raises():
+        _ = Manifest.with_hnsw(
+            3, 7, 5, _v3_segments(), String("hnsw\0.bin"), 1, 2, 3
+        )
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), ".", 1, 2, 3)
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), "..", 1, 2, 3)
+    with assert_raises():
+        _ = Manifest.with_hnsw(
+            3, 7, 5, _v3_segments(), "segment-base-3.bin", 1, 2, 3
+        )
+    var partial = Manifest.with_segments(3, 7, 5, _v3_segments())
+    partial.hnsw_checksum = Optional(UInt32(1))
+    with assert_raises():
+        _ = encode_manifest_v3(partial)
+
+    var directory = String("/tmp/akasha-manifest-v3-derived-sidecar")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    remove_file_if_exists(directory + "/hnsw-7.bin")
+    var empty = List[UInt8]()
+    write_file_sync(directory + "/segment-base-3.bin", empty)
+    write_file_sync(directory + "/segment-delta-5.bin", empty)
+    write_file_sync(directory + "/sparse-delta-5.bin", empty)
+    var manifest = Manifest.with_hnsw(
+        3, 7, 5, _v3_segments(), "hnsw-7.bin", 11, 22, 2
+    )
+    publish_manifest(directory, manifest)
+    var loaded = load_manifest(directory, 3)
+    assert_equal(loaded.format_version, 3)
+    assert_equal(loaded.hnsw_name.value(), "hnsw-7.bin")
+    assert_equal(path_exists(directory + "/hnsw-7.bin"), False)
+
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/segment-base-3.bin")
+    remove_file_if_exists(directory + "/segment-delta-5.bin")
+    remove_file_if_exists(directory + "/sparse-delta-5.bin")
+
+
+def test_manifest_v3_rejects_corruption_of_each_hnsw_field() raises:
+    var manifest = Manifest.with_hnsw(
+        3,
+        7,
+        5,
+        _v3_segments(),
+        "hnsw-7.bin",
+        UInt32(0xA1B2C3D4),
+        UInt64(0x1122334455667788),
+        UInt64(2),
+    )
+    var encoded = encode_manifest_v3(manifest)
+    var hnsw_base = len(encoded) - 4 - "hnsw-7.bin".byte_length() - 24
+
+    var checksum_corrupt = encoded.copy()
+    checksum_corrupt[hnsw_base] ^= UInt8(1)
+    with assert_raises():
+        _ = decode_manifest_bytes(checksum_corrupt^, 3)
+
+    var length_corrupt = encoded.copy()
+    length_corrupt[hnsw_base + 4] ^= UInt8(1)
+    var length_checksum = crc32_range(
+        length_corrupt, 4, len(length_corrupt) - 4
+    )
+    for byte_index in range(4):
+        length_corrupt[len(length_corrupt) - 4 + byte_index] = UInt8(
+            length_checksum >> UInt32(byte_index * 8)
+        )
+    with assert_raises():
+        _ = decode_manifest_bytes(length_corrupt^, 3)
+
+    var fingerprint_corrupt = encoded.copy()
+    fingerprint_corrupt[hnsw_base + 8] ^= UInt8(1)
+    with assert_raises():
+        _ = decode_manifest_bytes(fingerprint_corrupt^, 3)
+
+    var count_corrupt = encoded.copy()
+    count_corrupt[hnsw_base + 16] ^= UInt8(1)
+    with assert_raises():
+        _ = decode_manifest_bytes(count_corrupt^, 3)
 
 
 def test_manifest_v2_rejects_invalid_descriptors_and_duplicates() raises:
