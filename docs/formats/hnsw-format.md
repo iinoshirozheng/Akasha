@@ -40,7 +40,7 @@ bytes.
 | 24 | 8 | checkpoint sequence | Exact manifest checkpoint sequence |
 | 32 | 4 | dimension | Vector dimension |
 | 36 | 1 | metric tag | Durable `MetricKind` tag |
-| 37 | 1 | scalar tag | Durable `ScalarKind` tag |
+| 37 | 1 | scalar tag | `0`, the durable `ScalarKind.f32()` tag |
 | 38 | 2 | `m` | Upper-level neighbor capacity |
 | 40 | 2 | `m0` | Base-level neighbor capacity |
 | 42 | 2 | maximum configured level | Collection `max_level` |
@@ -59,6 +59,11 @@ bytes.
 | 136 | 8 | edges offset | Byte offset |
 | 144 | 8 | edges length | Byte length |
 | 152 | 8 | reserved extension | `0` |
+
+Version 1 is exclusively an F32 graph format. Encoding or decoding a BF16, F16,
+or I8 collection is rejected even when the graph is empty. Task 26 must define a
+new format version before persisting any compact or quantized vector width; it
+must not reinterpret the v1 vector section.
 
 The fingerprint covers the complete immutable collection identity, including
 construction and search settings not repeated in the header. Repeated fields
@@ -87,9 +92,10 @@ Historical slots may repeat a public ID and remain graph traversal bridges.
 ## Vector, count, and edge sections
 
 Vectors contain exactly `slot_count * dimension` `Float32` values in slot-major
-order. These are prepared graph vectors, including normalization or scalar
-preparation already selected by the collection metric dispatcher. Every value
-must be finite.
+order. These are prepared graph vectors. The shared metric dispatcher validator
+checks every vector on encode and decode: dot/L2 components obey the safe F32
+accumulation bound, and cosine vectors are finite, nonzero, and unit-normalized
+within the dispatcher's frozen tolerance.
 
 Counts contain one `UInt32` for level 0 through the node's highest level, in
 slot order. A level-0 count is at most `m0`; every upper-level count is at most
@@ -109,28 +115,42 @@ included.
 
 Readers validate in this order before exposing a graph:
 
-1. minimum/maximum file length and whole-file checksum;
-2. magic, version, flags, header width, and all reserved bytes;
+1. bounded file read of at most 512 MiB plus one detection byte, followed by
+   minimum/maximum length and whole-file checksum;
+2. magic, version, flags, header width, and header reserved bytes;
 3. expected sequence and complete collection identity (fingerprint and repeated
    dimension/metric/scalar/graph fields);
-4. checked `UInt64` count multiplication, offset addition, exact section order,
-   alignment, file bounds, and implementation limits;
-5. node levels/lifecycle flags, packed bases, live count, and unique current
-   public IDs;
-6. finite vector values, bounded neighbor counts, ordinal/level/self/duplicate
-   rules;
+4. checked header counts and the conservative pre-staging allocation lower
+   bound, then offset addition, exact section order, alignment, file bounds, and
+   implementation limits;
+5. node levels/lifecycle flags, packed bases, live count, unique current public
+   IDs, and the exact post-node allocation budget;
+6. prepared-vector invariants, bounded neighbor counts, and
+   ordinal/level/self/duplicate rules;
 7. owned materialization, entry-point invariants, packed-storage validation,
    and full bidirectional-link validation.
 
 No allocation or indexing derived from an encoded count occurs until its
 multiplication and range have been checked. Before materialization, the decoder
-also estimates both staging tapes and the capacity-sized final packed graph;
-that estimate may not exceed 512 MiB or 16 times the encoded file size (with a
-4 KiB minimum budget). This prevents a sparse edge section paired with large
-`m` values from causing allocation amplification. The current owned decoder
-also limits a file to 512 MiB and 10,000,000 slots; slot ordinals must fit the
-reserved `UInt32` graph address space. Invalid, stale, mismatched, or
-structurally corrupt bytes never produce a partially usable ANN index.
+first applies a lower-bound peak check before allocating node lists or current-ID
+maps, conservatively treating every untrusted slot as current. After scanning
+node records it repeats the check with exact capacity-sized neighbor storage.
+The estimate includes the input bytes, staging and final vector/count/edge
+tapes, both current-ID maps, final packed capacity, and the bidirectional
+validator's level/edge dictionaries and reverse-edge tape. Because Mojo 1.0 does
+not expose stable `List`/`Dict` allocator overhead, v1 reserves conservative
+per-entry peaks: 128 bytes per slot, 192 bytes per possible current-map entry,
+104 bytes per owned level, and 108 bytes per directed edge. The resulting peak
+may not exceed 512 MiB or 32 times the encoded file size (with a 4 KiB minimum
+budget). This prevents sparse sections or hostile counts from causing allocation
+amplification.
+
+The current owned decoder also limits a file to 512 MiB and 10,000,000 slots;
+slot ordinals must fit the reserved `UInt32` graph address space. The supported
+`osx-arm64` and `linux-64` targets provide a 64-bit Mojo `Int`; v1 checks this at
+runtime because durable public IDs are signed 64-bit values materialized as
+`Int`. Invalid, stale, mismatched, or structurally corrupt bytes never produce a
+partially usable ANN index.
 
 ## Publication and compatibility
 

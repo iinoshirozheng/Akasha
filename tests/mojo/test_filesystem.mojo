@@ -4,6 +4,8 @@ from akasha.storage.filesystem import (
     ensure_directory,
     ensure_durable_directory,
     path_exists,
+    read_file_bytes_bounded,
+    write_file_sync,
 )
 from std.ffi import c_int, external_call
 from std.testing import assert_equal, assert_raises, TestSuite
@@ -109,6 +111,17 @@ def test_real_durable_directory_reports_created_then_existing() raises:
     assert_equal(ensure_durable_directory(child), True)
     assert_equal(path_exists(child), True)
     assert_equal(ensure_durable_directory(child), False)
+
+
+def test_bounded_read_accepts_exact_limit_and_rejects_one_extra_byte() raises:
+    var path = "/tmp/akasha-bounded-read"
+    var bytes: List[UInt8] = [UInt8(1), UInt8(2), UInt8(3), UInt8(4)]
+    write_file_sync(path, bytes)
+    assert_equal(read_file_bytes_bounded(path, 4), bytes)
+    with assert_raises():
+        _ = read_file_bytes_bounded(path, 3)
+    with assert_raises():
+        _ = read_file_bytes_bounded(path, -1)
 
 
 def main() raises:

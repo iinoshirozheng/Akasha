@@ -8,11 +8,14 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.hnsw_store import (
+    _validate_hnsw_snapshot_header_allocation,
     decode_hnsw_snapshot_owned,
     encode_hnsw_snapshot,
     read_hnsw_snapshot_owned,
     write_hnsw_snapshot,
 )
+from std.memory import bitcast
+from std.sys.info import is_64bit
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -279,6 +282,107 @@ def test_all_f32_metrics_preserve_queries_after_owned_decode() raises:
             )
 
 
+def test_rejects_crc_valid_unprepared_durable_vectors() raises:
+    var cosine_config = _config(MetricKind.cosine())
+    var cosine = _graph(cosine_config, 4)
+    var cosine_bytes = encode_hnsw_snapshot(cosine, UInt64(35))
+    var cosine_vectors = Int(_u64_at(cosine_bytes, 104))
+
+    var zero_cosine = cosine_bytes.copy()
+    _put_u32(zero_cosine, cosine_vectors, UInt32(0))
+    _put_u32(zero_cosine, cosine_vectors + 4, UInt32(0))
+    _seal(zero_cosine)
+    with assert_raises():
+        _ = decode_hnsw_snapshot_owned(zero_cosine^, cosine_config, UInt64(35))
+
+    var nonunit_cosine = cosine_bytes.copy()
+    _put_u32(
+        nonunit_cosine,
+        cosine_vectors,
+        bitcast[DType.uint32](Float32(0.5)),
+    )
+    _put_u32(
+        nonunit_cosine,
+        cosine_vectors + 4,
+        bitcast[DType.uint32](Float32(0.5)),
+    )
+    _seal(nonunit_cosine)
+    with assert_raises():
+        _ = decode_hnsw_snapshot_owned(
+            nonunit_cosine^, cosine_config, UInt64(35)
+        )
+
+    var large_component = bitcast[DType.uint32](Float32(1.0e20))
+    var metrics: List[MetricKind] = [MetricKind.dot(), MetricKind.l2()]
+    for metric in metrics:
+        var config = _config(metric)
+        var index = _graph(config, 4)
+        var bytes = encode_hnsw_snapshot(index, UInt64(36))
+        _put_u32(bytes, Int(_u64_at(bytes, 104)), large_component)
+        _seal(bytes)
+        with assert_raises():
+            _ = decode_hnsw_snapshot_owned(bytes^, config, UInt64(36))
+
+
+def test_encoder_rejects_mutated_unprepared_graph_vector() raises:
+    var config = _config(MetricKind.cosine())
+    var index = _graph(config, 4)
+    index.graph.vector_scalars[0] = Float32(0.0)
+    index.graph.vector_scalars[1] = Float32(0.0)
+    with assert_raises():
+        _ = encode_hnsw_snapshot(index, UInt64(37))
+
+    var dot_config = _config(MetricKind.dot())
+    var dot = _graph(dot_config, 4)
+    dot.graph.vector_scalars[0] = Float32(1.0e20)
+    with assert_raises():
+        _ = encode_hnsw_snapshot(dot, UInt64(37))
+
+
+def test_v1_rejects_non_f32_empty_and_nonempty_graphs() raises:
+    assert_true(is_64bit())
+    var f32_config = _config(MetricKind.dot())
+    var f32_empty = HnswIndex(f32_config)
+    var encoded_empty = encode_hnsw_snapshot(f32_empty, UInt64(38))
+    var f32_nonempty = _graph(f32_config, 2)
+    var encoded_nonempty = encode_hnsw_snapshot(f32_nonempty, UInt64(38))
+    var scalar_kinds: List[ScalarKind] = [
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
+    ]
+    for scalar in scalar_kinds:
+        var config = f32_config.copy()
+        config.scalar_kind = scalar.copy()
+
+        var empty = HnswIndex(config)
+        with assert_raises():
+            _ = encode_hnsw_snapshot(empty, UInt64(38))
+
+        var nonempty = HnswIndex(config)
+        _ = nonempty.graph.append(7, _vector(1.0, 2.0), 0)
+        nonempty.entry_slot = Optional(UInt32(0))
+        nonempty.entry_level = 0
+        nonempty.build_stats.slot_count = 1
+        nonempty.build_stats.maximum_level = 0
+        nonempty.validate_structure()
+        with assert_raises():
+            _ = encode_hnsw_snapshot(nonempty, UInt64(38))
+
+        var bytes = encoded_empty.copy()
+        _put_u64(bytes, 16, config.fingerprint())
+        bytes[37] = scalar.tag()
+        _seal(bytes)
+        with assert_raises():
+            _ = decode_hnsw_snapshot_owned(bytes^, config, UInt64(38))
+        var nonempty_bytes = encoded_nonempty.copy()
+        _put_u64(nonempty_bytes, 16, config.fingerprint())
+        nonempty_bytes[37] = scalar.tag()
+        _seal(nonempty_bytes)
+        with assert_raises():
+            _ = decode_hnsw_snapshot_owned(nonempty_bytes^, config, UInt64(38))
+
+
 def test_file_helpers_report_metadata_and_read_owned_snapshot() raises:
     var directory = "/tmp/akasha-hnsw-sidecar-v1"
     ensure_directory(directory)
@@ -422,6 +526,18 @@ def test_rejects_overflowing_counts_offsets_and_ranges() raises:
     _seal(overlapping)
     with assert_raises():
         _ = decode_hnsw_snapshot_owned(overlapping^, config, UInt64(71))
+
+
+def test_hostile_header_counts_fail_before_staging_capacity_is_created() raises:
+    with assert_raises():
+        _validate_hnsw_snapshot_header_allocation(
+            UInt64(1_024),
+            UInt64(10_000_000),
+            UInt64(2),
+            UInt64(10_000_000),
+            UInt64(0),
+            UInt64(8),
+        )
 
 
 def test_rejects_invalid_entry_level_and_slot() raises:

@@ -72,6 +72,11 @@ struct MetricDispatcher(Copyable, Movable):
         if self._metric == MetricKind.cosine():
             self._require_nonzero_norm(values)
 
+    def validate_prepared_vector(self, values: List[Float32]) raises:
+        """Validate durable values for the dispatcher's prepared hot path."""
+        self.require_supported_backend()
+        self._validate_prepared_values(values)
+
     def prepare_query(self, values: List[Float32]) raises -> List[Float32]:
         self.require_supported_backend()
         self.validate_query(values)

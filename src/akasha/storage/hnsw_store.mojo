@@ -1,9 +1,9 @@
-from akasha.common.config import CollectionConfig
+from akasha.common.config import CollectionConfig, ScalarKind
 from akasha.index.hnsw import HnswIndex
 from akasha.storage.checksum import BinaryReader, BinaryWriter, crc32_range
-from akasha.storage.filesystem import read_file_bytes, write_file_sync
+from akasha.storage.filesystem import read_file_bytes_bounded, write_file_sync
 from std.collections import Dict
-from std.math import isfinite
+from std.sys.info import is_64bit
 
 
 comptime HNSW_SNAPSHOT_VERSION = UInt16(1)
@@ -12,8 +12,12 @@ comptime HNSW_SNAPSHOT_NODE_BYTES = 40
 comptime _CHECKSUM_BYTES = 4
 comptime _MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024
 comptime _MAX_DECODE_ALLOCATION_BYTES = UInt64(512 * 1024 * 1024)
-comptime _MAX_ALLOCATION_RATIO = UInt64(16)
+comptime _MAX_ALLOCATION_RATIO = UInt64(32)
 comptime _MIN_ALLOCATION_BUDGET = UInt64(4_096)
+comptime _SLOT_PEAK_BYTES = UInt64(128)
+comptime _CURRENT_MAP_PEAK_BYTES = UInt64(192)
+comptime _LEVEL_VALIDATION_PEAK_BYTES = UInt64(104)
+comptime _EDGE_VALIDATION_PEAK_BYTES = UInt64(108)
 comptime _MAX_SLOTS = 10_000_000
 comptime _CURRENT_FLAG = UInt8(1)
 comptime _DELETED_FLAG = UInt8(2)
@@ -76,8 +80,8 @@ def encode_hnsw_snapshot(
     index: HnswIndex, sequence: UInt64
 ) raises -> List[UInt8]:
     """Encode one deterministic, owned HNSW snapshot in sectioned v1."""
+    _require_v1_config(index.config)
     index.validate_structure()
-    index.config.validate()
 
     var slots = index.graph.slot_count()
     if slots > _MAX_SLOTS:
@@ -88,6 +92,8 @@ def encode_hnsw_snapshot(
     var live_points = UInt64(0)
     for slot_index in range(slots):
         var slot = UInt32(slot_index)
+        var prepared = _copy_graph_vector(index, slot)
+        index.metric.validate_prepared_vector(prepared)
         level_cells = _checked_add_u64(
             level_cells, UInt64(index.graph.level(slot)) + UInt64(1)
         )
@@ -221,7 +227,7 @@ def decode_hnsw_snapshot_owned(
     sequence: UInt64,
 ) raises -> HnswIndex:
     """Fully validate and materialize one owned HNSW snapshot."""
-    config.validate()
+    _require_v1_config(config)
     if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     if len(bytes) > _MAX_SNAPSHOT_BYTES:
@@ -286,6 +292,22 @@ def decode_hnsw_snapshot_owned(
     var directed_edges = _bounded_count(
         directed_edges_u64, Int.MAX, "directed edge"
     )
+    if count_length % UInt64(4) != UInt64(0):
+        raise Error("HNSW snapshot count section length is invalid")
+    var level_count = _bounded_count(
+        count_length // UInt64(4), Int.MAX, "level count"
+    )
+    # This lower-bound peak check deliberately precedes all attacker-sized
+    # node lists and dictionaries. It assumes every slot may be current because
+    # the encoded live count is not trusted until the node scan completes.
+    _validate_hnsw_snapshot_header_allocation(
+        UInt64(encoded_size),
+        slot_count_u64,
+        UInt64(config.dimension),
+        UInt64(level_count),
+        directed_edges_u64,
+        UInt64(config.m0),
+    )
     _validate_section_layout(
         UInt64(encoded_size),
         slot_count_u64,
@@ -299,11 +321,6 @@ def decode_hnsw_snapshot_owned(
         count_length,
         edge_offset,
         edge_length,
-    )
-    if count_length % UInt64(4) != UInt64(0):
-        raise Error("HNSW snapshot count section length is invalid")
-    var level_count = _bounded_count(
-        count_length // UInt64(4), Int.MAX, "level count"
     )
 
     var nodes = _DecodedNodes(slots)
@@ -372,17 +389,21 @@ def decode_hnsw_snapshot_owned(
         allocated_neighbor_cells,
     )
 
+    var index = HnswIndex(config)
     _read_zero_padding(reader, Int(vector_offset - (node_offset + node_length)))
     var vector_scalars = List[Float32](
         capacity=_bounded_count(
             vector_length // UInt64(4), Int.MAX, "vector scalar"
         )
     )
-    for _ in range(slots * config.dimension):
-        var value = reader.read_f32()
-        if not isfinite(value):
-            raise Error("HNSW snapshot vector values must be finite")
-        vector_scalars.append(value)
+    for _ in range(slots):
+        var prepared = List[Float32](capacity=config.dimension)
+        for _ in range(config.dimension):
+            var value = reader.read_f32()
+            prepared.append(value)
+        index.metric.validate_prepared_vector(prepared)
+        for value in prepared:
+            vector_scalars.append(value)
 
     _read_zero_padding(
         reader, Int(count_offset - (vector_offset + vector_length))
@@ -453,7 +474,6 @@ def decode_hnsw_snapshot_owned(
     ):
         raise Error("HNSW snapshot entry point is invalid")
 
-    var index = HnswIndex(config)
     var vector_index = 0
     var inactive_count = 0
     for slot_index in range(slots):
@@ -526,7 +546,9 @@ def read_hnsw_snapshot_owned(
     path: String, config: CollectionConfig, sequence: UInt64
 ) raises -> HnswIndex:
     """Read and fully validate one sidecar into independent owned storage."""
-    return decode_hnsw_snapshot_owned(read_file_bytes(path), config, sequence)
+    return decode_hnsw_snapshot_owned(
+        read_file_bytes_bounded(path, _MAX_SNAPSHOT_BYTES), config, sequence
+    )
 
 
 def _slot_flag(index: HnswIndex, slot: UInt32) raises -> UInt8:
@@ -537,6 +559,21 @@ def _slot_flag(index: HnswIndex, slot: UInt32) raises -> UInt8:
     if index.graph.is_replaced(slot):
         return _REPLACED_FLAG
     raise Error("HNSW snapshot slot lifecycle flags are inconsistent")
+
+
+def _require_v1_config(config: CollectionConfig) raises:
+    config.validate()
+    if not is_64bit():
+        raise Error("HNSW snapshot v1 requires a 64-bit Int target")
+    if config.scalar_kind != ScalarKind.f32():
+        raise Error("HNSW snapshot v1 requires scalar kind f32")
+
+
+def _copy_graph_vector(index: HnswIndex, slot: UInt32) raises -> List[Float32]:
+    var values = List[Float32](capacity=index.config.dimension)
+    for component in range(index.config.dimension):
+        values.append(index.graph.vector_value(slot, component))
+    return values^
 
 
 def _count_directed_edges(index: HnswIndex) raises -> UInt64:
@@ -582,22 +619,78 @@ def _validate_decode_allocation(
     directed_edges: UInt64,
     allocated_neighbor_cells: UInt64,
 ) raises:
-    """Bound staging plus final packed tapes before any large allocation."""
+    """Bound the conservative peak after exact node capacities are known."""
+    _validate_decode_peak(
+        serialized_bytes,
+        slot_count,
+        dimension,
+        level_count,
+        directed_edges,
+        allocated_neighbor_cells,
+    )
+
+
+def _validate_hnsw_snapshot_header_allocation(
+    serialized_bytes: UInt64,
+    slot_count: UInt64,
+    dimension: UInt64,
+    level_count: UInt64,
+    directed_edges: UInt64,
+    m0: UInt64,
+) raises:
+    """Reject hostile header capacities before staging lists or maps exist."""
+    var minimum_neighbor_cells = _checked_mul_u64(slot_count, m0)
+    _validate_decode_peak(
+        serialized_bytes,
+        slot_count,
+        dimension,
+        level_count,
+        directed_edges,
+        minimum_neighbor_cells,
+    )
+
+
+def _validate_decode_peak(
+    serialized_bytes: UInt64,
+    slot_count: UInt64,
+    dimension: UInt64,
+    level_count: UInt64,
+    directed_edges: UInt64,
+    allocated_neighbor_cells: UInt64,
+) raises:
+    """Conservatively bound decode, materialization, and validation peak.
+
+    Mojo 1.0 does not expose stable `List` or `Dict` allocation overhead. The
+    documented per-entry constants therefore intentionally exceed payload
+    widths and include both staging and final graph columns. Current-ID maps
+    assume every untrusted slot is current. Level and edge constants include
+    the bidirectional validator's dictionaries and reverse-edge tape.
+    """
     var vector_cells = _checked_mul_u64(slot_count, dimension)
-    # Vector and used-edge values exist once in preflight storage and once in
-    # the final graph. Counts likewise have a decoded and a packed copy.
-    var estimated = _checked_mul_u64(vector_cells, UInt64(8))
+    var estimated = serialized_bytes
     estimated = _checked_add_u64(
-        estimated, _checked_mul_u64(level_count, UInt64(8))
+        estimated, _checked_mul_u64(vector_cells, UInt64(8))
     )
     estimated = _checked_add_u64(
-        estimated, _checked_mul_u64(directed_edges, UInt64(4))
+        estimated, _checked_mul_u64(dimension, UInt64(4))
+    )
+    estimated = _checked_add_u64(
+        estimated,
+        _checked_mul_u64(level_count, _LEVEL_VALIDATION_PEAK_BYTES),
+    )
+    estimated = _checked_add_u64(
+        estimated,
+        _checked_mul_u64(directed_edges, _EDGE_VALIDATION_PEAK_BYTES),
     )
     estimated = _checked_add_u64(
         estimated, _checked_mul_u64(allocated_neighbor_cells, UInt64(4))
     )
     estimated = _checked_add_u64(
-        estimated, _checked_mul_u64(slot_count, UInt64(80))
+        estimated, _checked_mul_u64(slot_count, _SLOT_PEAK_BYTES)
+    )
+    estimated = _checked_add_u64(
+        estimated,
+        _checked_mul_u64(slot_count, _CURRENT_MAP_PEAK_BYTES),
     )
     var amplification_budget = _MIN_ALLOCATION_BUDGET
     if serialized_bytes <= UInt64.MAX // _MAX_ALLOCATION_RATIO:

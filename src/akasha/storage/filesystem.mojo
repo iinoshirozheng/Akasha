@@ -76,6 +76,22 @@ def read_file_bytes(path: String) raises -> List[UInt8]:
     return bytes^
 
 
+def read_file_bytes_bounded(
+    path: String, maximum_bytes: Int
+) raises -> List[UInt8]:
+    """Read at most one byte beyond a limit, then reject oversized files."""
+    if maximum_bytes < 0 or maximum_bytes == Int.MAX:
+        raise Error("bounded file read limit is invalid")
+    var file = open(path, "r")
+    # Mojo 1.0 FileHandle.read_bytes(size) stops after the requested size even
+    # when the file is larger. The extra byte distinguishes exact-limit files.
+    var bytes = file.read_bytes(maximum_bytes + 1)
+    file.close()
+    if len(bytes) > maximum_bytes:
+        raise Error("file exceeds bounded read limit")
+    return bytes^
+
+
 def write_file_sync(path: String, bytes: List[UInt8]) raises:
     var file = open(path, "w")
     file.write_all(bytes)
