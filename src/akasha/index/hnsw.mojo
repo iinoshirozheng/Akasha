@@ -386,7 +386,7 @@ struct HnswIndex:
 
         if not Bool(self.entry_slot) or not has_other_live:
             var first = self.graph._append_unpublished(
-                id, prepared^, new_level
+                id, prepared, new_level
             )
             self.graph._publish_current(id, first)
             self.entry_slot = Optional(first)
@@ -395,9 +395,8 @@ struct HnswIndex:
             self.build_stats.maximum_level = new_level
             return
 
-        var stored = prepared.copy()
         var new_slot = self.graph._append_unpublished(
-            id, stored^, new_level
+            id, prepared, new_level
         )
         var local_build = _copy_build_stats(self.build_stats)
         var construction_stats = HnswSearchStats()

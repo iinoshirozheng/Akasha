@@ -1,5 +1,9 @@
 from akasha.common.config import CollectionConfig, MetricKind
+from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.hnsw_storage import HnswStorage
+from std.collections import Dict
 from std.testing import (
     assert_equal,
     assert_false,
@@ -35,6 +39,30 @@ def _mixed_vector(step: Int, id: Int) -> List[Float32]:
     )
 
 
+def _validate_mutation_model(
+    index: HnswIndex,
+    live: List[Bool],
+    newest_slots: List[Int],
+    expected_inactive: Int,
+    expected_slots: Int,
+) raises:
+    index.validate_structure()
+    var expected_live = 0
+    for id in range(len(live)):
+        var current = index.graph.current_slot(id)
+        if live[id]:
+            expected_live += 1
+            assert_true(Bool(current))
+            assert_equal(Int(current.value()), newest_slots[id])
+            assert_true(index.graph.is_current(current.value()))
+        else:
+            assert_false(Bool(current))
+            assert_equal(newest_slots[id], -1)
+    assert_equal(index.point_count(), expected_slots)
+    assert_equal(index.inactive_count(), expected_inactive)
+    assert_equal(index.point_count() - index.inactive_count(), expected_live)
+
+
 def test_upsert_inserts_and_replaces_with_a_new_current_slot() raises:
     var index = HnswIndex(_config())
     index.upsert(7, _vector(0.0, 0.0))
@@ -64,6 +92,20 @@ def test_upsert_prepares_before_retiring_the_current_slot() raises:
     assert_equal(index.graph.current_slot(11).value(), UInt32(0))
     assert_equal(index.search(_vector(1.0, 2.0), 1)[0].id, 11)
     index.validate_structure()
+
+
+def test_staged_append_borrows_prepared_vector_for_construction_reuse() raises:
+    var graph = HnswStorage(2, 2, 4)
+    var prepared = _vector(3.0, 4.0)
+    var slot = graph._append_unpublished(7, prepared, 0)
+
+    # The caller retains the one prepared query buffer after storage copies
+    # its scalar values into the packed tape; HNSW construction reuses it.
+    assert_equal(len(prepared), 2)
+    assert_equal(prepared[0], Float32(3.0))
+    assert_equal(prepared[1], Float32(4.0))
+    assert_equal(graph.vector_value(slot, 0), prepared[0])
+    assert_equal(graph.vector_value(slot, 1), prepared[1])
 
 
 def test_delete_is_idempotent_and_delete_reinsert_revives_id() raises:
@@ -143,6 +185,54 @@ def test_empty_live_graph_returns_empty_with_inactive_entry() raises:
     assert_true(Bool(index.entry_slot))
     assert_false(index.graph.is_current(index.entry_slot.value()))
     assert_equal(len(index.search(_vector(0.0, 0.0), 4)), 0)
+    assert_equal(index.last_search_stats.effective_ef, 0)
+    assert_equal(index.last_search_stats.base_visited, 0)
+    assert_equal(index.last_search_stats.fallback_reason, "")
+
+    var ordinals = Dict[Int, Int]()
+    for id in range(4):
+        ordinals[id] = id
+    var lookup = HnswIdOrdinalLookup(ordinals^, 4)
+    var all_metadata = Bitmap.full(4)
+    var allowed = HnswEligibility(all_metadata^, lookup)
+    assert_equal(
+        len(
+            index.search_allowed(
+                _vector(0.0, 0.0), 4, 1_024, allowed
+            )
+        ),
+        0,
+    )
+    assert_equal(index.last_search_stats.effective_ef, 0)
+    assert_equal(index.last_search_stats.base_visited, 0)
+
+    var exact_fallback = index.search_allowed_with_widening(
+        _vector(0.0, 0.0), 4, 1, 1_024, allowed
+    )
+    assert_equal(len(exact_fallback), 0)
+    assert_equal(
+        index.last_search_stats.fallback_reason,
+        "filtered_ann_exhausted",
+    )
+    assert_true(index.scratch.result_reserved_capacity() <= 4)
+    assert_true(index.scratch.filtered_result_reserved_capacity() <= 4)
+    var first_base_visited = index.last_search_stats.base_visited
+    var first_distances = index.last_search_stats.distance_evaluations
+    var first_effective_ef = index.last_search_stats.effective_ef
+
+    var repeated_fallback = index.search_allowed_with_widening(
+        _vector(0.0, 0.0), 4, 1, 1_024, allowed
+    )
+    assert_equal(len(repeated_fallback), 0)
+    assert_equal(index.last_search_stats.base_visited, first_base_visited)
+    assert_equal(
+        index.last_search_stats.distance_evaluations, first_distances
+    )
+    assert_equal(index.last_search_stats.effective_ef, first_effective_ef)
+    assert_equal(
+        index.last_search_stats.fallback_reason,
+        "filtered_ann_exhausted",
+    )
     index.validate_structure()
 
 
@@ -174,15 +264,94 @@ def test_delete_quarantines_diverged_identity_before_tombstoning() raises:
 
 def test_graph_stays_valid_after_500_deterministic_mixed_operations() raises:
     var index = HnswIndex(_config(rebuild_percent=90))
-    for step in range(500):
-        var id = (step * 37 + 11) % 64
-        if step % 10 < 2:
+    var live = List[Bool](length=16, fill=False)
+    var ever_seen = List[Bool](length=16, fill=False)
+    var newest_slots = List[Int](length=16, fill=-1)
+    var insert_count = 0
+    var replacement_count = 0
+    var successful_delete_count = 0
+    var reinsert_count = 0
+    var delete_miss_count = 0
+    var successful_upsert_count = 0
+
+    # Establish a connected live population before cycling the same IDs
+    # through replacement, delete, miss, and reinsert states.
+    for step in range(16):
+        index.upsert(step, _mixed_vector(step, step))
+        live[step] = True
+        ever_seen[step] = True
+        newest_slots[step] = Int(index.graph.current_slot(step).value())
+        insert_count += 1
+        successful_upsert_count += 1
+
+    for step in range(16, 500):
+        var cycle_offset = step - 16
+        var operation = cycle_offset % 8
+        var id = (cycle_offset // 8) % 16
+        var is_upsert = (
+            operation == 0
+            or operation == 1
+            or operation == 4
+            or operation == 5
+            or operation == 7
+        )
+        if is_upsert:
+            if live[id]:
+                replacement_count += 1
+            elif ever_seen[id]:
+                reinsert_count += 1
+            else:
+                insert_count += 1
             index.upsert(id, _mixed_vector(step, id))
+            live[id] = True
+            ever_seen[id] = True
+            newest_slots[id] = Int(index.graph.current_slot(id).value())
+            successful_upsert_count += 1
         else:
-            _ = index.delete(id)
+            var expected_success = live[id]
+            var deleted = index.delete(id)
+            assert_equal(deleted, expected_success)
+            if deleted:
+                successful_delete_count += 1
+                live[id] = False
+                newest_slots[id] = -1
+            else:
+                delete_miss_count += 1
 
-    index.validate_structure()
+        if (step + 1) % 25 == 0:
+            _validate_mutation_model(
+                index,
+                live,
+                newest_slots,
+                replacement_count + successful_delete_count,
+                successful_upsert_count,
+            )
 
+    _validate_mutation_model(
+        index,
+        live,
+        newest_slots,
+        replacement_count + successful_delete_count,
+        successful_upsert_count,
+    )
+
+    assert_equal(
+        insert_count
+        + replacement_count
+        + successful_delete_count
+        + reinsert_count
+        + delete_miss_count,
+        500,
+    )
+    assert_equal(insert_count, 16)
+    assert_equal(replacement_count, 182)
+    assert_equal(successful_delete_count, 121)
+    assert_equal(reinsert_count, 120)
+    assert_equal(delete_miss_count, 61)
+    assert_true(replacement_count > 150)
+    assert_true(successful_delete_count > 100)
+    assert_true(reinsert_count > 100)
+    assert_true(delete_miss_count > 50)
     assert_equal(index.build_slot_count(), index.point_count())
     assert_equal(index.build_stats.inactive_slots, index.inactive_count())
     assert_true(index.graph.is_valid())

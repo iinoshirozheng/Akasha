@@ -93,12 +93,12 @@ struct HnswStorage:
         unit-normalized. This storage intentionally does not retain a metric
         or re-prepare vectors on the graph hot path.
         """
-        var slot = self._append_unpublished(id, values^, level)
+        var slot = self._append_unpublished(id, values, level)
         self._publish_current(id, slot)
         return slot
 
     def _append_unpublished(
-        mut self, id: Int, var values: List[Float32], level: Int
+        mut self, id: Int, values: List[Float32], level: Int
     ) raises -> UInt32:
         """Append a current lifecycle slot without publishing its ID map.
 
