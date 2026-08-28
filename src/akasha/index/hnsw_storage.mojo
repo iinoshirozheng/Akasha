@@ -93,6 +93,19 @@ struct HnswStorage:
         unit-normalized. This storage intentionally does not retain a metric
         or re-prepare vectors on the graph hot path.
         """
+        var slot = self._append_unpublished(id, values^, level)
+        self._publish_current(id, slot)
+        return slot
+
+    def _append_unpublished(
+        mut self, id: Int, var values: List[Float32], level: Int
+    ) raises -> UInt32:
+        """Append a current lifecycle slot without publishing its ID map.
+
+        Incremental HNSW linking uses this narrow staging state so a new slot
+        can participate as the link endpoint while public ID resolution still
+        names no replacement until every reciprocal link has succeeded.
+        """
         if len(values) != self.dimension:
             raise Error("HNSW vector dimension mismatch")
         if level < 0 or level > _UINT16_MAX_AS_INT:
@@ -118,8 +131,16 @@ struct HnswStorage:
             self.neighbor_counts.append(UInt32(0))
         for _ in range(neighbor_cell_count):
             self.neighbor_slots.append(HNSW_EMPTY_NEIGHBOR)
-        self._current_slots[id] = slot
         return slot
+
+    def _publish_current(mut self, id: Int, slot: UInt32) raises:
+        """Atomically publish an already-appended current slot by public ID."""
+        var index = self._slot_index(slot)
+        if self.ids[index] != id or not self.current_flags[index]:
+            raise Error("HNSW current-slot publication is inconsistent")
+        if Bool(self.current_slot(id)):
+            raise Error("HNSW public ID already has a current slot")
+        self._current_slots[id] = slot
 
     def current_slot(self, id: Int) -> Optional[UInt32]:
         if id not in self._current_slots:
@@ -141,6 +162,7 @@ struct HnswStorage:
             raise Error("HNSW public ID has no current slot to replace")
         var slot = optional.value()
         var index = Int(slot)
+        _ = self._current_slots.pop(id)
         self.current_flags[index] = False
         self.replaced_flags[index] = True
         return slot
@@ -150,6 +172,10 @@ struct HnswStorage:
         if not Bool(optional):
             return False
         var index = Int(optional.value())
+        try:
+            _ = self._current_slots.pop(id)
+        except:
+            return False
         self.current_flags[index] = False
         self.deleted_flags[index] = True
         return True
@@ -349,6 +375,7 @@ struct HnswStorage:
 
         var expected_neighbor_base = 0
         var expected_count_base = 0
+        var current_count = 0
         for index in range(slots):
             if self.neighbor_bases[index] != expected_neighbor_base:
                 raise Error("HNSW neighbor base offsets are not packed")
@@ -385,6 +412,7 @@ struct HnswStorage:
             if state_count != 1:
                 raise Error("HNSW slot lifecycle flags are inconsistent")
             if self.current_flags[index]:
+                current_count += 1
                 var current = self.current_slot(self.ids[index])
                 if not Bool(current) or current.value() != slot:
                     raise Error("HNSW current ID map is inconsistent")
@@ -408,6 +436,13 @@ struct HnswStorage:
                         seen_neighbors[key] = True
                     elif neighbor != HNSW_EMPTY_NEIGHBOR:
                         raise Error("HNSW unused neighbor cell is not empty")
+
+        if len(self._current_slots) != current_count:
+            raise Error("HNSW current ID map contains stale entries")
+        for entry in self._current_slots.items():
+            var mapped = self.current_slot(entry.key)
+            if not Bool(mapped) or mapped.value() != entry.value:
+                raise Error("HNSW current ID map contains an invalid entry")
 
     def _slot_index(self, slot: UInt32) raises -> Int:
         if UInt64(slot) >= UInt64(len(self.ids)):

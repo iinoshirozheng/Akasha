@@ -167,6 +167,20 @@ struct HnswIndex:
     def point_count(self) -> Int:
         return self.graph.slot_count()
 
+    def inactive_count(self) -> Int:
+        return self.build_stats.inactive_slots
+
+    def needs_rebuild(self) -> Bool:
+        if not self.valid or not self.graph.is_valid():
+            return True
+        var slots = self.graph.slot_count()
+        if slots == 0 or self.build_stats.inactive_slots == 0:
+            return False
+        return (
+            self.build_stats.inactive_slots * 100
+            >= slots * self._identity_config.rebuild_inactive_percent
+        )
+
     def entry_point_level(self) -> Int:
         return self.entry_level
 
@@ -263,18 +277,22 @@ struct HnswIndex:
             if not Bool(self.entry_slot):
                 raise Error("non-empty HNSW index has no entry point")
             var entry = self.entry_slot.value()
-            if (
-                not self.graph.is_current(entry)
-                or self.entry_level != self.graph.level(entry)
-            ):
+            if self.entry_level != self.graph.level(entry):
                 raise Error("HNSW entry level does not match entry slot")
-            var observed_maximum = -1
+            var maximum_live_level = -1
+            var observed_inactive = 0
             for slot_index in range(count):
-                var level = self.graph.level(UInt32(slot_index))
-                if level > observed_maximum:
-                    observed_maximum = level
-            if self.entry_level != observed_maximum:
-                raise Error("HNSW entry point is not on the highest level")
+                var slot = UInt32(slot_index)
+                if self.graph.is_current(slot):
+                    var level = self.graph.level(slot)
+                    if level > maximum_live_level:
+                        maximum_live_level = level
+                else:
+                    observed_inactive += 1
+            if self.entry_level < maximum_live_level:
+                raise Error("HNSW entry point is below a live graph level")
+            if self.build_stats.inactive_slots != observed_inactive:
+                raise Error("HNSW inactive statistics are inconsistent")
         if self.build_stats.slot_count != count:
             raise Error("HNSW build statistics slot count is inconsistent")
         if self.build_stats.maximum_level != self.entry_level:
@@ -295,17 +313,92 @@ struct HnswIndex:
             self._level_multiplier,
             self._identity_config.max_level,
         )
+        self._insert_prepared(
+            id, prepared^, new_level, False, self._active_count() > 0
+        )
 
-        if not Bool(self.entry_slot):
-            var first = self.graph.append(id, prepared^, new_level)
+    def upsert(mut self, id: Int, values: List[Float32]) raises:
+        """Insert or replace one public ID without rebuilding the graph."""
+        self._validate_bound_identity()
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot mutate an invalid HNSW index")
+
+        # Prepare and validate every caller-controlled value before retiring
+        # the durable ID's current derived-index slot.
+        var prepared = self.metric.prepare_graph_vector(values)
+        var new_level = sample_level(
+            id,
+            self._identity_config.level_seed,
+            self._level_multiplier,
+            self._identity_config.max_level,
+        )
+        var old = self.graph.current_slot(id)
+        var replacing_entry = False
+        if Bool(old):
+            replacing_entry = (
+                Bool(self.entry_slot)
+                and self.entry_slot.value() == old.value()
+            )
+            _ = self.graph.mark_replaced(id)
+            self.build_stats.inactive_slots += 1
+
+        var has_other_live = self._active_count() > 0
+        try:
+            self._insert_prepared(
+                id,
+                prepared^,
+                new_level,
+                replacing_entry,
+                has_other_live,
+            )
+        except error:
+            self.graph.mark_invalid()
+            self.valid = False
+            raise Error(String(error))
+
+    def delete(mut self, id: Int) -> Bool:
+        """Tombstone the current slot while preserving all graph edges."""
+        if not self.valid or not self.graph.is_valid():
+            return False
+        try:
+            self._validate_bound_identity()
+        except:
+            self.graph.mark_invalid()
+            self.valid = False
+            return False
+        if not self.graph.mark_deleted(id):
+            return False
+        self.build_stats.inactive_slots += 1
+        return True
+
+    def _active_count(self) -> Int:
+        return self.graph.slot_count() - self.build_stats.inactive_slots
+
+    def _insert_prepared(
+        mut self,
+        id: Int,
+        var prepared: List[Float32],
+        new_level: Int,
+        replacing_entry: Bool,
+        has_other_live: Bool,
+    ) raises:
+        """Link a prepared staging slot, then publish its current-ID map."""
+
+        if not Bool(self.entry_slot) or not has_other_live:
+            var first = self.graph._append_unpublished(
+                id, prepared^, new_level
+            )
+            self.graph._publish_current(id, first)
             self.entry_slot = Optional(first)
             self.entry_level = new_level
-            self.build_stats.slot_count = 1
+            self.build_stats.slot_count = self.graph.slot_count()
             self.build_stats.maximum_level = new_level
             return
 
         var stored = prepared.copy()
-        var new_slot = self.graph.append(id, stored^, new_level)
+        var new_slot = self.graph._append_unpublished(
+            id, stored^, new_level
+        )
         var local_build = _copy_build_stats(self.build_stats)
         var construction_stats = HnswSearchStats()
         try:
@@ -374,7 +467,8 @@ struct HnswIndex:
             construction_stats.distance_evaluations
         )
         local_build.slot_count = self.graph.slot_count()
-        if new_level > self.entry_level:
+        self.graph._publish_current(id, new_slot)
+        if replacing_entry or new_level > self.entry_level:
             self.entry_slot = Optional(new_slot)
             self.entry_level = new_level
             local_build.maximum_level = new_level
@@ -717,8 +811,8 @@ struct HnswIndex:
         allowed.validate(self.graph.slot_count())
         var prepared = self.metric.prepare_query(query)
         var target_count = k
-        if target_count > self.graph.slot_count():
-            target_count = self.graph.slot_count()
+        if target_count > self._active_count():
+            target_count = self._active_count()
         var effective_ef = ef_search
         if effective_ef < target_count:
             effective_ef = target_count
@@ -731,6 +825,12 @@ struct HnswIndex:
             raise Error("HNSW result demand exceeds collection maximum ef")
 
         var stats = self._new_search_stats(ef_search, effective_ef)
+        if target_count == 0:
+            stats.effective_ef = 0
+            self.last_search_stats = stats^
+            self._last_search_query_preparations = 1
+            self._last_search_upper_descents = 0
+            return List[SearchResult]()
         if not Bool(self.entry_slot):
             stats.effective_ef = 0
             self.last_search_stats = stats^
@@ -772,6 +872,10 @@ struct HnswIndex:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot serialize an invalid HNSW index")
+        if self.inactive_count() != 0:
+            raise Error(
+                "legacy HNSW cache cannot encode mutation tombstones"
+            )
         if (
             self._identity_config.ann_metric != MetricKind.l2()
             or self._identity_config.scalar_kind != ScalarKind.f32()
