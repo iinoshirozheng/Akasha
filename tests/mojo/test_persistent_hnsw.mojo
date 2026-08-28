@@ -185,7 +185,10 @@ def test_hnsw_filter_candidate_shortfall_falls_back_to_exact_bitmap() raises:
     var result = collection.search_dot_approx_where([1.0], 2, 8, expression)
     assert_equal(result[0].id, 40)
     assert_equal(result[1].id, 39)
-    assert_equal(collection.last_dense_plan_reason(), "ann")
+    assert_equal(
+        collection.last_dense_plan_reason(), "filtered_ann_exhausted"
+    )
+    assert_equal(collection.hnsw_available(), True)
 
 
 def main() raises:

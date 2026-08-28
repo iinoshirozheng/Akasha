@@ -1,5 +1,6 @@
 from akasha import (
     BatchMutation,
+    Bitmap,
     CollectionConfig,
     DocumentField,
     FilterCondition,
@@ -7,6 +8,7 @@ from akasha import (
     MetricKind,
     PayloadValue,
     PersistentCollection,
+    SearchResult,
 )
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from std.testing import assert_equal, assert_true, TestSuite
@@ -168,6 +170,10 @@ def test_filtered_ann_uses_bitmap_admission_and_authoritative_rerank() raises:
     )
     assert_equal(collection.last_dense_plan_reason(), "ann")
     assert_true(collection._hnsw.last_search_stats.filtered_rejections > 0)
+    assert_equal(collection.last_hnsw_rerank_candidate_count(), 5)
+    assert_equal(collection.last_hnsw_rerank_ordinal_lookups(), 5)
+    assert_equal(collection.last_hnsw_rerank_linear_id_scans(), 0)
+    assert_equal(collection.last_hnsw_rerank_payload_clones(), 0)
     assert_equal(len(approximate), len(exact))
     for index in range(len(exact)):
         assert_equal(approximate[index].id, exact[index].id)
@@ -189,6 +195,144 @@ def test_batch_updates_each_final_id_once_after_authoritative_commit() raises:
     assert_equal(collection.hnsw_inactive_count(), 1)
     var result = collection.search_l2_approx([301.0], 1, 32)
     assert_equal(result[0].id, 1)
+
+
+def test_known_live_delete_missing_from_graph_quarantines_after_commit() raises:
+    var path = String("/tmp/akasha-task18-delete-divergence")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    assert_true(collection._hnsw.delete(10))
+
+    collection.delete(10)
+
+    assert_equal(Bool(collection.get(10)), False)
+    assert_equal(collection.hnsw_available(), False)
+    assert_equal(collection.hnsw_unavailable_reason(), "mutation_failed")
+
+
+def test_unknown_delete_miss_is_safe_but_batch_known_live_miss_is_not() raises:
+    var unknown_path = String("/tmp/akasha-task18-unknown-delete")
+    _reset(unknown_path)
+    var unknown = PersistentCollection.open(unknown_path, 1)
+    unknown.delete(999)
+    assert_true(unknown.hnsw_available())
+
+    var batch_path = String("/tmp/akasha-task18-batch-delete-divergence")
+    _reset(batch_path)
+    var batch = PersistentCollection.open(batch_path, 1)
+    for id in range(80):
+        batch.upsert(id, [Float32(id)])
+    assert_true(batch._hnsw.delete(20))
+    var mutations = List[BatchMutation]()
+    mutations.append(BatchMutation.delete(20))
+    _ = batch.apply_batch(mutations)
+    assert_equal(Bool(batch.get(20)), False)
+    assert_equal(batch.hnsw_available(), False)
+    assert_equal(batch.hnsw_unavailable_reason(), "mutation_failed")
+
+
+def test_corrupt_candidate_shortfall_quarantines_and_exact_falls_back() raises:
+    var path = String("/tmp/akasha-task18-candidate-shortfall")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    for slot in range(collection._hnsw.graph.slot_count()):
+        collection._hnsw.graph.current_flags[slot] = False
+
+    var result = collection.search_l2_approx([79.0], 3, 32)
+
+    assert_equal(len(result), 3)
+    assert_equal(result[0].id, 79)
+    assert_equal(result[1].id, 78)
+    assert_equal(result[2].id, 77)
+    assert_equal(collection.hnsw_available(), False)
+    assert_equal(collection.hnsw_unavailable_reason(), "candidate_invalid")
+    assert_equal(collection.last_dense_plan_reason(), "graph_unavailable")
+
+
+def test_injected_duplicate_missing_and_ineligible_candidates_fall_back() raises:
+    var duplicate_path = String("/tmp/akasha-task18-duplicate-candidate")
+    _reset(duplicate_path)
+    var duplicate = PersistentCollection.open(duplicate_path, 1)
+    duplicate.upsert(1, [1.0])
+    duplicate.upsert(2, [2.0])
+    var duplicate_candidates = List[SearchResult]()
+    duplicate_candidates.append(SearchResult(2, 0.0))
+    duplicate_candidates.append(SearchResult(2, 0.0))
+    var allow_all = Optional[Bitmap]()
+    var duplicate_result = duplicate._finish_hnsw_candidates(
+        [2.0], 2, 1, duplicate_candidates, 2, allow_all
+    )
+    assert_equal(duplicate_result[0].id, 2)
+    assert_equal(duplicate_result[1].id, 1)
+    assert_equal(duplicate.hnsw_available(), False)
+
+    var missing_path = String("/tmp/akasha-task18-missing-candidate")
+    _reset(missing_path)
+    var missing = PersistentCollection.open(missing_path, 1)
+    missing.upsert(1, [1.0])
+    var missing_candidates = List[SearchResult]()
+    missing_candidates.append(SearchResult(999, 0.0))
+    var missing_allow_all = Optional[Bitmap]()
+    var missing_result = missing._finish_hnsw_candidates(
+        [1.0], 1, 1, missing_candidates, 1, missing_allow_all
+    )
+    assert_equal(missing_result[0].id, 1)
+    assert_equal(missing.hnsw_available(), False)
+
+    var filtered_path = String("/tmp/akasha-task18-ineligible-candidate")
+    _reset(filtered_path)
+    var filtered = PersistentCollection.open(filtered_path, 1)
+    filtered.upsert(1, [1.0])
+    filtered.upsert(2, [2.0])
+    var allowed_bitmap = Bitmap(2)
+    allowed_bitmap.set(0)
+    var allowed = Optional(allowed_bitmap^)
+    var ineligible_candidates = List[SearchResult]()
+    ineligible_candidates.append(SearchResult(2, 0.0))
+    var filtered_result = filtered._finish_hnsw_candidates(
+        [2.0], 1, 1, ineligible_candidates, 1, allowed
+    )
+    assert_equal(filtered_result[0].id, 1)
+    assert_equal(filtered.hnsw_available(), False)
+
+
+def test_open_and_unfiltered_queries_do_not_build_filter_id_lookup() raises:
+    var path = String("/tmp/akasha-task18-lazy-id-lookup")
+    _reset(path)
+    var original = PersistentCollection.open(path, 1)
+    for id in range(80):
+        original.upsert(id, [Float32(id)])
+    original.close()
+
+    var reopened = PersistentCollection.open(path, 1)
+    # Incremental history makes this default-config cache non-lossless, so
+    # reopen exercises the cache-miss/unavailable path.
+    assert_equal(reopened.hnsw_cache_hit(), False)
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
+    _ = reopened.search_l2_approx([79.0], 3, 32)
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
+
+    var filtered_path = String("/tmp/akasha-task18-lazy-filter-lookup")
+    _reset(filtered_path)
+    var filtered = PersistentCollection.open(filtered_path, 1)
+    for id in range(80):
+        var fields = List[DocumentField]()
+        fields.append(
+            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
+        )
+        filtered.upsert_document(id, [Float32(id)], fields^)
+    var expression = FilterExpression.condition(
+        FilterCondition.equal("keep", PayloadValue.boolean(True))
+    )
+    assert_equal(filtered.hnsw_id_lookup_build_count(), 0)
+    _ = filtered.search_l2_approx_where([79.0], 3, 32, expression)
+    assert_equal(filtered.hnsw_id_lookup_build_count(), 1)
+    _ = filtered.search_l2_approx_where([78.0], 3, 32, expression)
+    assert_equal(filtered.hnsw_id_lookup_build_count(), 1)
 
 
 def main() raises:

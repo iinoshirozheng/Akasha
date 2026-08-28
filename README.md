@@ -105,14 +105,17 @@ supported.
 Approximate dense search is available through `search_dot_approx`,
 `search_l2_approx`, and `search_cosine_approx`; each accepts `ef_search` after
 `k`. Boolean-filtered variants use the `_approx_where` suffix. The planner uses
-exact scan for collections smaller than 64 live points and for selective
-filters. Otherwise it searches a deterministic, bounded in-memory HNSW graph,
-filters and exact-reranks over-fetched candidates, and falls back to exact
-filtered search if it cannot fill the requested result count. The graph is a
-derived cache lazily rebuilt from durable live state before the first
-approximate query after recovery or a mutation. A versioned, checksummed
-`hnsw.cache` speeds reopen; stale or damaged cache bytes are ignored and rebuilt
-from WAL/segments.
+exact scan for collections smaller than 64 live points, for selective filters,
+and when the requested metric differs from the graph metric. Otherwise it
+searches a deterministic, bounded in-memory HNSW graph, applies bitmap admission
+with bounded widening, and exact-reranks candidates against authoritative
+Float32 vectors. A short or invalid candidate set safely falls back to exact
+search. Acknowledged writes update the graph incrementally only after WAL,
+MemTable, and metadata mutation succeeds. Graph mutation failure quarantines
+only the derived graph: reads remain available through exact search. A
+versioned, checksummed `hnsw.cache` speeds reopen; missing, stale, damaged, or
+authoritatively inconsistent cache bytes leave ANN unavailable until an
+explicit maintenance rebuild restores the graph. Queries never rebuild it.
 
 Immutable snapshots also expose deterministic Phase 12 execution paths:
 
@@ -299,15 +302,16 @@ Implemented:
 - Incremental metadata index maintenance for replace/delete and deterministic
   rebuild after WAL or snapshot recovery without changing durable formats.
 - Deterministic bounded HNSW approximate search with configurable `ef_search`,
-  lazy graph refresh, bitmap-cardinality planning, and filter-aware exact
-  fallback.
+  post-commit incremental graph mutation, metric- and bitmap-cardinality
+  planning, authoritative exact rerank, and filter-aware exact fallback.
 - Versioned SQ8 and product quantization with deterministic codebooks,
   approximate dot/L2/cosine scoring, and optional exact rerank.
 - Fixed-range single-query parallel exact scan with deterministic local-heap
   merge for unfiltered and Boolean-filtered snapshots.
 - Checksummed HNSW and metadata derived caches keyed by manifest generation,
-  accepted sequence, and authoritative live-state fingerprint; any cache
-  failure safely rebuilds.
+  accepted sequence, and authoritative live-state fingerprint; HNSW cache or
+  graph failure safely falls back to exact search until maintenance rebuilds
+  the derived graph.
 - Batched Mojo GPU dot/L2/cosine scoring and deterministic GPU Top-K for Apple,
   NVIDIA, or AMD accelerators, with device-memory planning and exact CPU
   fallback for disabled, unavailable, small, memory-rejected, or failed work.

@@ -3,6 +3,7 @@ from akasha import (
     DocumentField,
     FilterCondition,
     FilterExpression,
+    HnswIndex,
     MetricKind,
     PayloadValue,
     PersistentCollection,
@@ -263,6 +264,41 @@ def test_crc_valid_hostile_legacy_cache_is_a_safe_miss() raises:
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_false(reopened.hnsw_cache_hit())
     assert_equal(reopened.search_l2_approx([1.1], 1, 8)[0].id, 10)
+    reopened.close()
+
+
+def test_same_count_wrong_id_hnsw_cache_is_a_safe_miss() raises:
+    var path = String("/tmp/akasha-task18-wrong-id-hnsw-cache")
+    _reset(path)
+    var config = _cache_config(1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    collection.upsert(10, [1.0])
+    collection.upsert(20, [2.0])
+    collection.flush()
+    collection.close()
+    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
+
+    var wrong = HnswIndex(config.copy())
+    wrong.add(30, [1.0])
+    wrong.add(40, [2.0])
+    var wrong_payload = wrong.encode_cache_payload()
+    var artifact = CacheArtifact(
+        CACHE_HNSW_KIND,
+        1,
+        current.generation,
+        current.sequence,
+        current.source_checksum,
+        wrong_payload^,
+    )
+    publish_cache(path, "hnsw.cache", artifact)
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_false(reopened.hnsw_cache_hit())
+    assert_false(reopened.hnsw_available())
+    assert_equal(reopened.hnsw_unavailable_reason(), "cache_miss")
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
+    assert_equal(reopened.search_l2_approx([1.0], 1, 8)[0].id, 10)
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
     reopened.close()
 
 
