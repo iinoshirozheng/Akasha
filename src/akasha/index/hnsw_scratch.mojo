@@ -58,6 +58,10 @@ struct HnswSearchScratch(Movable):
         """Actual filtered-result heap allocation retained across rounds."""
         return self.filtered_results.capacity()
 
+    def result_reserved_capacity(self) -> Int:
+        """Actual traversal-radius heap allocation retained across queries."""
+        return self.results.capacity()
+
     def _ensure_slot_count(mut self, new_count: Int) raises:
         """Grow visit storage without changing the current query epoch."""
         if new_count < 0:

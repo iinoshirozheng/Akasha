@@ -722,6 +722,11 @@ struct HnswIndex:
         var effective_ef = ef_search
         if effective_ef < target_count:
             effective_ef = target_count
+        # Search-layer heaps retain graph slots, so reserving beyond the
+        # traversable population cannot improve results and can turn a valid
+        # UInt32 ef into an unbounded allocation on a tiny graph.
+        if effective_ef > self.graph.slot_count():
+            effective_ef = self.graph.slot_count()
         if effective_ef > self._identity_config.max_ef_search:
             raise Error("HNSW result demand exceeds collection maximum ef")
 

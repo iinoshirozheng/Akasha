@@ -18,7 +18,7 @@ def _index(ids: List[Int], values: List[Float32]) raises -> HnswIndex:
     config.m = 4
     config.m0 = 4
     config.default_ef_search = 8
-    config.max_ef_search = 32
+    config.max_ef_search = 4_294_967_295
     var index = HnswIndex(config)
     for ordinal in range(len(ids)):
         var vector = _vector(values[ordinal])
@@ -252,6 +252,36 @@ def test_lookup_rejects_invalid_ordinal_domains_before_search_state() raises:
     assert_equal(index.scratch.epoch, old_epoch)
     assert_equal(index.last_search_stats.base_visited, old_visited)
     assert_equal(index.last_search_stats.filtered_rejections, old_filtered)
+
+
+def test_search_allowed_tiny_graph_caps_large_ef_before_heap_reserve() raises:
+    var ids: List[Int] = [40, 30, 20, 10]
+    var values: List[Float32] = [4.0, 3.0, 2.0, 1.0]
+    var index = _index(ids, values)
+    var n0: List[UInt32] = [UInt32(1), UInt32(2), UInt32(3)]
+    var n1: List[UInt32] = [UInt32(0), UInt32(2), UInt32(3)]
+    var n2: List[UInt32] = [UInt32(0), UInt32(1), UInt32(3)]
+    var n3: List[UInt32] = [UInt32(0), UInt32(1), UInt32(2)]
+    _set_neighbors(index, 0, n0^)
+    _set_neighbors(index, 1, n1^)
+    _set_neighbors(index, 2, n2^)
+    _set_neighbors(index, 3, n3^)
+    var ordinals = _ordinal_map(ids)
+    var full = Bitmap.full(4)
+    var allowed = HnswEligibility(
+        full^, HnswIdOrdinalLookup(ordinals^, 4)
+    )
+    var query = _vector(0.0)
+    var results = index.search_allowed(
+        query, 10, 4_294_967_295, allowed
+    )
+
+    assert_equal(len(results), 4)
+    assert_equal(index.last_search_effective_ef(), 4)
+    assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
+    assert_equal(
+        index.scratch.filtered_result_reserved_capacity() <= 4, True
+    )
 
 
 def main() raises:

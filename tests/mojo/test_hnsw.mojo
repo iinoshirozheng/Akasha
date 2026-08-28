@@ -150,5 +150,35 @@ def test_huge_k_clamps_to_actual_points_and_configured_ef_limit() raises:
         _ = bounded.search([2.5], 5, ef_search=1)
 
 
+def test_tiny_graph_caps_large_legal_ef_before_scratch_reserve() raises:
+    var config = _config(1, MetricKind.l2())
+    config.max_ef_search = 4_294_967_295
+    var index = HnswIndex(config)
+    for id in range(1, 5):
+        index.add(id, [Float32(id)])
+
+    var results = index.search(
+        [2.5], 10, ef_search=4_294_967_295
+    )
+    assert_equal(len(results), 4)
+    assert_equal(index.last_search_effective_ef(), 4)
+    assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
+
+
+def test_empty_graph_with_maximum_ef_returns_without_scratch_reserve() raises:
+    var config = _config(1, MetricKind.l2())
+    config.max_ef_search = 4_294_967_295
+    var index = HnswIndex(config)
+    var starting_epoch = index.scratch.epoch
+
+    var results = index.search(
+        [0.0], 10, ef_search=4_294_967_295
+    )
+    assert_equal(len(results), 0)
+    assert_equal(index.last_search_effective_ef(), 0)
+    assert_equal(index.scratch.epoch, starting_epoch)
+    assert_equal(index.scratch.result_reserved_capacity(), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
