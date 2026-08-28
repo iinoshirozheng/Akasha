@@ -12,6 +12,7 @@ from akasha.index.hnsw_core import (
     validate_bidirectional_links,
 )
 from akasha.index.hnsw_level import sample_level
+from akasha.index.hnsw_heap import HnswHeapItem, ResultMaxHeap
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -57,6 +58,28 @@ def _copy_build_stats(stats: HnswBuildStats) -> HnswBuildStats:
     result.directed_edges = stats.directed_edges
     result.distance_evaluations = stats.distance_evaluations
     result.serialized_bytes = stats.serialized_bytes
+    return result^
+
+
+def _copy_search_stats(stats: HnswSearchStats) -> HnswSearchStats:
+    var result = HnswSearchStats()
+    result.requested_ef = stats.requested_ef
+    result.effective_ef = stats.effective_ef
+    result.widening_rounds = stats.widening_rounds
+    result.upper_visited = stats.upper_visited
+    result.base_visited = stats.base_visited
+    result.distance_evaluations = stats.distance_evaluations
+    result.retained_candidates = stats.retained_candidates
+    result.reranked_candidates = stats.reranked_candidates
+    result.filtered_rejections = stats.filtered_rejections
+    result.inactive_rejections = stats.inactive_rejections
+    result.base_candidates = stats.base_candidates
+    result.delta_candidates = stats.delta_candidates
+    result.backend_name = stats.backend_name.copy()
+    result.metric_name = stats.metric_name.copy()
+    result.scalar_name = stats.scalar_name.copy()
+    result.storage_name = stats.storage_name.copy()
+    result.fallback_reason = stats.fallback_reason.copy()
     return result^
 
 
@@ -366,6 +389,121 @@ struct HnswIndex:
         allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
         return self._search_bound(query, k, ef_search, allowed)
+
+    @staticmethod
+    def next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
+        """Double ``current_ef`` and saturate at ``max_ef`` safely."""
+        if current_ef <= 0 or max_ef <= 0 or current_ef > max_ef:
+            raise Error("HNSW widening ef range is invalid")
+        if current_ef == max_ef or current_ef > max_ef // 2:
+            return max_ef
+        return current_ef * 2
+
+    def search_allowed_with_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        matched_count: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Run filtered ANN rounds, then exact-scan on exhausted breadth.
+
+        Each wider round is a fresh base-layer search over the same reusable
+        scratch allocation. Prior result lists are replaced, never appended,
+        so an ID can occur at most once in the returned round. The index-local
+        exact scan is the correctness fallback; collection integration may
+        subsequently rerank these IDs against authoritative vectors.
+        """
+        self._validate_bound_identity()
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot search an invalid HNSW index")
+        if k <= 0:
+            raise Error("HNSW search k must be positive")
+        if matched_count < 0 or matched_count > self.graph.slot_count():
+            raise Error("HNSW matched count is outside graph bounds")
+        if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
+            raise Error("HNSW widening ef range is invalid")
+        if max_ef > self._identity_config.max_ef_search:
+            raise Error("HNSW widening maximum exceeds collection maximum")
+        if k > max_ef:
+            raise Error("HNSW result demand exceeds widening maximum")
+        allowed.validate(self.graph.slot_count())
+
+        var target_count = k
+        if target_count > matched_count:
+            target_count = matched_count
+        var current_ef = initial_ef
+        if current_ef < k:
+            current_ef = k
+        var widening_rounds = 0
+        var results = self._search_bound(
+            query, k, current_ef, allowed
+        )
+        while len(results) < target_count and current_ef < max_ef:
+            var widened = HnswIndex.next_widened_ef(current_ef, max_ef)
+            if widened == current_ef:
+                break
+            current_ef = widened
+            widening_rounds += 1
+            # Replace the prior round wholesale. `_search_bound` calls
+            # scratch.begin(), advancing its epoch while retaining capacity.
+            results = self._search_bound(query, k, current_ef, allowed)
+
+        var final_stats = _copy_search_stats(self.last_search_stats)
+        final_stats.widening_rounds = widening_rounds
+        if len(results) >= target_count:
+            self.last_search_stats = final_stats^
+            return results^
+
+        var exact = self._search_allowed_exact(query, target_count, allowed)
+        final_stats.fallback_reason = String("filtered_ann_exhausted")
+        self.last_search_stats = final_stats^
+        return exact^
+
+    def _search_allowed_exact(
+        self,
+        query: List[Float32],
+        k: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Return exact eligible graph results without changing ANN stats."""
+        if k == 0:
+            return List[SearchResult]()
+        var prepared = self.metric.prepare_query(query)
+        allowed.validate(self.graph.slot_count())
+        var retained = ResultMaxHeap()
+        retained.reserve(k)
+        var seen_ids = Dict[Int, Bool]()
+        for slot_index in range(self.graph.slot_count()):
+            var slot = UInt32(slot_index)
+            if not self.graph.is_current(slot):
+                continue
+            var id = self.graph.id_at(slot)
+            if id in seen_ids or not allowed.allows(id):
+                continue
+            seen_ids[id] = True
+            retained.offer(
+                HnswHeapItem(
+                    slot,
+                    id,
+                    self.graph.distance_to_slot(
+                        self.metric, prepared, slot
+                    ),
+                ),
+                k,
+            )
+        var candidates = retained.take_sorted_best()
+        var results = List[SearchResult](capacity=len(candidates))
+        for candidate in candidates:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    self.metric.public_score(candidate.distance),
+                )
+            )
+        return results^
 
     def search_dot(
         mut self, query: List[Float32], k: Int, ef_search: Int
