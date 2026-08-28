@@ -24,6 +24,7 @@ from std.math import isfinite
 comptime _MAX_CACHE_POINTS = 10_000_000
 comptime _UINT16_MAX_AS_INT = 65_535
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
+comptime _REBUILD_SLOT_CEILING = _UINT32_MAX_AS_INT - 1
 comptime _MAX_CACHE_ESTIMATED_BYTES = UInt64(512 * 1024 * 1024)
 comptime _CACHE_ALLOCATION_RATIO = UInt64(16)
 comptime _CACHE_MIN_ESTIMATED_BYTES = UInt64(4_096)
@@ -174,6 +175,10 @@ struct HnswIndex:
         if not self.valid or not self.graph.is_valid():
             return True
         var slots = self.graph.slot_count()
+        # HnswStorage reserves UInt32.MAX as the append exhaustion boundary.
+        # Rebuild before the final representable slot can be consumed.
+        if slots >= _REBUILD_SLOT_CEILING:
+            return True
         if slots == 0 or self.build_stats.inactive_slots == 0:
             return False
         return (

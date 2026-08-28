@@ -105,6 +105,28 @@ def test_replace_and_delete_update_graph_without_query_rebuild() raises:
     assert_equal(collection.last_dense_plan_reason(), "ann")
 
 
+def test_query_observes_rebuild_need_without_performing_maintenance() raises:
+    var path = String("/tmp/akasha-task19-query-observes-rebuild")
+    _reset(path)
+    var config = CollectionConfig.defaults(1)
+    config.rebuild_inactive_percent = 1
+    var collection = PersistentCollection.open_with_config(path, config)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    collection.upsert(79, [-1.0])
+    assert_true(collection._hnsw.needs_rebuild())
+    var slots_before = collection.hnsw_slot_count()
+    var inactive_before = collection.hnsw_inactive_count()
+    var build_before = collection.hnsw_build_distance_evaluations()
+
+    _ = collection.search_l2_approx([79.0], 3, 64)
+
+    assert_true(collection._hnsw.needs_rebuild())
+    assert_equal(collection.hnsw_slot_count(), slots_before)
+    assert_equal(collection.hnsw_inactive_count(), inactive_before)
+    assert_equal(collection.hnsw_build_distance_evaluations(), build_before)
+
+
 def test_metric_mismatch_returns_exact_equivalent_results() raises:
     var path = String("/tmp/akasha-task18-metric-mismatch")
     _reset(path)

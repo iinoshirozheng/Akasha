@@ -112,6 +112,26 @@ struct _ResolvedCollectionConfig(Movable):
         self.needs_publication = needs_publication
 
 
+struct _HnswRebuildOrdinal(Comparable, Copyable, Movable):
+    """A lightweight deterministic maintenance ordering key."""
+
+    var sequence: UInt64
+    var id: Int
+    var ordinal: Int
+
+    def __init__(out self, sequence: UInt64, id: Int, ordinal: Int):
+        self.sequence = sequence
+        self.id = id
+        self.ordinal = ordinal
+
+    def __lt__(self, other: Self) -> Bool:
+        if self.sequence != other.sequence:
+            return self.sequence < other.sequence
+        if self.id != other.id:
+            return self.id < other.id
+        return self.ordinal < other.ordinal
+
+
 struct PersistentCollection:
     """A durable, single-writer exact vector collection."""
 
@@ -130,6 +150,7 @@ struct PersistentCollection:
     var _hnsw_id_lookup_builds: Int
     var _hnsw_available: Bool
     var _hnsw_unavailable_reason: String
+    var _hnsw_mutations_since_rebuild: Int
     var _last_dense_plan_reason: String
     var _last_hnsw_rerank_candidates: Int
     var _last_hnsw_rerank_ordinal_lookups: Int
@@ -186,6 +207,7 @@ struct PersistentCollection:
         self._hnsw_unavailable_reason = (
             "" if hnsw_available else "cache_miss"
         )
+        self._hnsw_mutations_since_rebuild = 0
         self._last_dense_plan_reason = ""
         self._last_hnsw_rerank_candidates = 0
         self._last_hnsw_rerank_ordinal_lookups = 0
@@ -1215,6 +1237,12 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             self._flush_unlocked()
 
+    def rebuild_hnsw(mut self) raises:
+        """Explicitly rebuild the derived graph from authoritative live data."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            self._rebuild_hnsw_unlocked()
+
     def backup_to(mut self, target: String) raises -> StorageInspection:
         """Checkpoint and copy one generation while it remains pinned."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -1246,6 +1274,7 @@ struct PersistentCollection:
                 rotate_wal(self._path)
                 rotate_sparse_wal(self._path)
                 self._sparse_pending = List[SparseWalRecord]()
+                self._maintain_hnsw_for_flush()
                 self._publish_index_caches_best_effort()
                 return
             if previous_manifest.format_version == 2:
@@ -1327,6 +1356,7 @@ struct PersistentCollection:
         rotate_wal(self._path)
         rotate_sparse_wal(self._path)
         self._sparse_pending = List[SparseWalRecord]()
+        self._maintain_hnsw_for_flush()
         self._publish_index_caches_best_effort()
         var policy = CompactionPolicy(4)
         if policy.should_compact(manifest):
@@ -1753,6 +1783,7 @@ struct PersistentCollection:
                 raise Error("HNSW upsert source is not authoritative and current")
             ref authoritative = self._memtable.entry_ref_at(ordinal)
             self._hnsw.upsert(id, authoritative.values)
+            self._record_hnsw_mutation()
         except:
             self._mark_hnsw_unavailable("mutation_failed")
 
@@ -1775,10 +1806,48 @@ struct PersistentCollection:
         var deleted = self._hnsw.delete(id)
         if (was_live and not deleted) or not self._hnsw.valid:
             self._mark_hnsw_unavailable("mutation_failed")
+        elif deleted:
+            self._record_hnsw_mutation()
+
+    def _record_hnsw_mutation(mut self):
+        # The counter is a threshold latch, not an unbounded metric.
+        if self._hnsw_mutations_since_rebuild < self._config.delta_max_points:
+            self._hnsw_mutations_since_rebuild += 1
 
     def _mark_hnsw_unavailable(mut self, reason: String):
         self._hnsw_available = False
         self._hnsw_unavailable_reason = String(copy=reason)
+
+    def _hnsw_requires_maintenance(self) -> Bool:
+        return (
+            not self._hnsw_available
+            or self._hnsw.needs_rebuild()
+            or self._hnsw_mutations_since_rebuild
+            >= self._config.delta_max_points
+        )
+
+    def _maintain_hnsw_for_flush(mut self):
+        if not self._hnsw_requires_maintenance():
+            return
+        try:
+            self._rebuild_hnsw_unlocked()
+        except:
+            # The authoritative checkpoint has already committed. A derived
+            # graph failure only disables ANN until later maintenance retries.
+            self._mark_hnsw_unavailable("rebuild_failed")
+
+    def _rebuild_hnsw_unlocked(mut self) raises:
+        var staged: HnswIndex
+        try:
+            staged = _build_hnsw(self._memtable, self._config)
+        except error:
+            self._mark_hnsw_unavailable("rebuild_failed")
+            raise Error(String(error))
+        self._hnsw = staged^
+        self._hnsw_available = True
+        self._hnsw_unavailable_reason = ""
+        self._hnsw_mutations_since_rebuild = 0
+        self._hnsw_cache_was_hit = False
 
     def _metric_compatible(self, metric: Int) -> Bool:
         if metric == _DOT_METRIC:
@@ -2008,10 +2077,26 @@ def _raise_config_mismatch(
 def _build_hnsw(
     memtable: MemTable, config: CollectionConfig
 ) raises -> HnswIndex:
+    """Stage a deterministic graph while borrowing authoritative vectors."""
+    var order = List[_HnswRebuildOrdinal]()
+    for ordinal in range(memtable.slot_count()):
+        if not memtable.is_live_at(ordinal):
+            continue
+        ref entry = memtable.entry_ref_at(ordinal)
+        order.append(_HnswRebuildOrdinal(entry.sequence, entry.id, ordinal))
+    sort(Span(order))
+
     var index = HnswIndex(config)
-    var entries = memtable.live_entries()
-    for entry_index in range(len(entries)):
-        index.add(entries[entry_index].id, entries[entry_index].values)
+    for order_index in range(len(order)):
+        ref entry = memtable.entry_ref_at(order[order_index].ordinal)
+        if (
+            entry.tombstone
+            or entry.sequence != order[order_index].sequence
+            or entry.id != order[order_index].id
+        ):
+            raise Error("HNSW rebuild source changed during staging")
+        index.add(entry.id, entry.values)
+    index.validate_structure()
     return index^
 
 
