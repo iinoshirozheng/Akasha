@@ -135,6 +135,9 @@ struct PersistentCollection:
     var _last_hnsw_rerank_ordinal_lookups: Int
     var _last_hnsw_rerank_linear_id_scans: Int
     var _last_hnsw_rerank_payload_clones: Int
+    var _last_hnsw_upsert_ordinal_lookups: Int
+    var _last_hnsw_upsert_memtable_id_scans: Int
+    var _last_hnsw_upsert_record_clones: Int
     var _sparse: SparseIndex
     var _sparse_wal_path: String
     var _sparse_pending: List[SparseWalRecord]
@@ -188,6 +191,9 @@ struct PersistentCollection:
         self._last_hnsw_rerank_ordinal_lookups = 0
         self._last_hnsw_rerank_linear_id_scans = 0
         self._last_hnsw_rerank_payload_clones = 0
+        self._last_hnsw_upsert_ordinal_lookups = 0
+        self._last_hnsw_upsert_memtable_id_scans = 0
+        self._last_hnsw_upsert_record_clones = 0
         self._sparse = sparse^
         self._sparse_wal_path = path + "/sparse.wal"
         self._sparse_pending = sparse_pending^
@@ -578,6 +584,21 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
             return self._last_hnsw_rerank_payload_clones
+
+    def last_hnsw_upsert_ordinal_lookups(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._last_hnsw_upsert_ordinal_lookups
+
+    def last_hnsw_upsert_memtable_id_scans(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._last_hnsw_upsert_memtable_id_scans
+
+    def last_hnsw_upsert_record_clones(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._last_hnsw_upsert_record_clones
 
     def hnsw_id_lookup_build_count(self) raises -> Int:
         with BlockingScopedLock(self._writer_lock[]):
@@ -1713,12 +1734,25 @@ struct PersistentCollection:
         self._maintenance.check()
 
     def _update_hnsw_after_upsert(mut self, id: Int):
+        self._last_hnsw_upsert_ordinal_lookups = 0
+        self._last_hnsw_upsert_memtable_id_scans = 0
+        self._last_hnsw_upsert_record_clones = 0
         if not self._hnsw_available:
             return
         try:
-            var authoritative = self._memtable.get(id)
-            if Bool(authoritative):
-                self._hnsw.upsert(id, authoritative.value().vector)
+            var ordinal = self._metadata.ordinal_for(id)
+            self._last_hnsw_upsert_ordinal_lookups += 1
+            if (
+                ordinal < 0
+                or not self._metadata.is_live_at(ordinal)
+                or self._metadata.id_at(ordinal) != id
+                or ordinal >= self._memtable.slot_count()
+                or not self._memtable.is_live_at(ordinal)
+                or self._memtable.id_at(ordinal) != id
+            ):
+                raise Error("HNSW upsert source is not authoritative and current")
+            ref authoritative = self._memtable.entry_ref_at(ordinal)
+            self._hnsw.upsert(id, authoritative.values)
         except:
             self._mark_hnsw_unavailable("mutation_failed")
 

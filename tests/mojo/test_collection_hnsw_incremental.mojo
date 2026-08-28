@@ -59,6 +59,30 @@ def test_upsert_updates_graph_before_any_query() raises:
     assert_equal(collection._hnsw.build_slot_count(), 80)
 
 
+def test_document_upsert_graph_update_borrows_by_ordinal_without_record_clone() raises:
+    var path = String("/tmp/akasha-task18-upsert-borrowed-vector")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    for id in range(80):
+        collection.upsert(id, [Float32(id), Float32(80 - id)])
+    var fields = List[DocumentField]()
+    for index in range(128):
+        fields.append(
+            DocumentField(
+                "payload_" + String(index),
+                PayloadValue.integer(Int64(index)),
+            )
+        )
+
+    collection.upsert_document(999, [999.0, -999.0], fields^)
+
+    assert_equal(collection.last_hnsw_upsert_ordinal_lookups(), 1)
+    assert_equal(collection.last_hnsw_upsert_memtable_id_scans(), 0)
+    assert_equal(collection.last_hnsw_upsert_record_clones(), 0)
+    assert_equal(collection.hnsw_available(), True)
+    assert_equal(collection._hnsw.point_count(), 81)
+
+
 def test_replace_and_delete_update_graph_without_query_rebuild() raises:
     var path = String("/tmp/akasha-task18-mutation-graph")
     _reset(path)
