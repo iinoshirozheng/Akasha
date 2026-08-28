@@ -1,6 +1,6 @@
 # HNSW F32 milestone baseline
 
-Recorded on 2026-08-27. Recall and recorded distance-evaluation counts are
+Recorded on 2026-08-28. Recall and recorded distance-evaluation counts are
 deterministic gates. Wall-clock measurements are local diagnostics only; they
 are not portable performance requirements.
 
@@ -47,16 +47,19 @@ Both shapes use SplitMix64 seed `0xA5A5D00D12345678`, 10,000 points, 64 F32
 dimensions, 100 queries, `k=10`, `efSearch=64`, `M=24`, `M0=48`,
 `efConstruction=192`, and maximum level 16. The packed-size number is a stable
 estimate from live tape lengths; it excludes allocator capacity and hash-map
-overhead and is not a persistence-format promise.
+overhead and is not a persistence-format promise. The local ANN timer starts
+immediately before each `HnswIndex.search` call and stops immediately after it;
+query generation, exact FlatIndex search, stats reads, and recall accounting
+are outside the timed interval.
 
-| Shape | Metric | Recall@10 | Build distances | Directed edges | Avg visited / query | Avg search distances / query | Packed size estimate | Local ns / query |
+| Shape | Metric | Recall@10 | Build distances | Directed edges | Avg visited / query | Avg search distances / query | Packed size estimate | Local ANN ns / query |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Uniform | Dot | 0.948 | 236,372,943 | 466,368 | 2,378.12 | 2,378.12 | 4,855,664 B | 837,490 |
-| Eight-cluster | Dot | 1.000 | 73,385,618 | 96,124 | 323.28 | 323.28 | 4,855,664 B | 602,250 |
-| Uniform | Squared L2 | 0.961 | 269,865,610 | 427,120 | 2,367.06 | 2,367.06 | 4,855,664 B | 790,300 |
-| Eight-cluster | Squared L2 | 1.000 | 132,235,844 | 427,452 | 1,089.27 | 1,089.27 | 4,855,664 B | 659,620 |
-| Uniform | Cosine | 0.952 | 213,515,719 | 479,112 | 2,376.06 | 2,376.06 | 4,855,664 B | 1,003,090 |
-| Eight-cluster | Cosine | 1.000 | 132,800,920 | 425,560 | 1,084.68 | 1,084.68 | 4,855,664 B | 859,020 |
+| Uniform | Dot | 0.948 | 236,372,943 | 466,368 | 2,378.12 | 2,378.12 | 4,855,664 B | 333,220 |
+| Eight-cluster | Dot | 1.000 | 73,385,618 | 96,124 | 323.28 | 323.28 | 4,855,664 B | 105,330 |
+| Uniform | Squared L2 | 0.961 | 269,865,610 | 427,120 | 2,367.06 | 2,367.06 | 4,855,664 B | 468,400 |
+| Eight-cluster | Squared L2 | 1.000 | 132,235,844 | 427,452 | 1,089.27 | 1,089.27 | 4,855,664 B | 190,400 |
+| Uniform | Cosine | 0.952 | 213,515,719 | 479,112 | 2,376.06 | 2,376.06 | 4,855,664 B | 331,860 |
+| Eight-cluster | Cosine | 1.000 | 132,800,920 | 425,560 | 1,084.68 | 1,084.68 | 4,855,664 B | 187,580 |
 
 The larger benchmark is diagnostic rather than the CI oracle. In particular,
 its independent 10,000-point uniform dot sample records 0.948 while the locked
@@ -74,5 +77,5 @@ pixi run bench-hnsw
 The existing latency benchmark uses squared L2, 1,000 points, 16 dimensions,
 20 repeated queries, `k=10`, `M=16`, `M0=32`, `efConstruction=128`, and
 `efSearch=64`. It recorded 4,371,238 build distance evaluations, 112 average
-visited slots per query, and 51,550 ns/query. The time value is a local
+visited slots per query, and 50,000 ns/query. The time value is a local
 diagnostic and can vary with load, compiler state, and hardware.

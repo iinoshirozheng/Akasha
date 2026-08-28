@@ -120,6 +120,7 @@ def test_cosine_recall_at_10_meets_f32_gate() raises:
 def test_construction_distance_growth_stays_subquadratic() raises:
     var n_distances = _build_distances(512)
     var twice_n_distances = _build_distances(1_024)
+    assert_true(n_distances > 0)
     var ratio = Float64(twice_n_distances) / Float64(n_distances)
     print(
         "quality-gate build-distances n=512 value=",
@@ -129,7 +130,6 @@ def test_construction_distance_growth_stays_subquadratic() raises:
         "ratio=",
         ratio,
     )
-    assert_true(n_distances > 0)
     assert_true(ratio < 3.5)
 
 

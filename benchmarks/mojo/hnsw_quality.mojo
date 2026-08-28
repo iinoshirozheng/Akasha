@@ -31,6 +31,36 @@ struct SplitMix64(Movable):
         return Float32(bits) / 8_388_608.0 - 1.0
 
 
+struct _QualityQuery(Movable):
+    """One precomputed query and its untimed exact-search oracle."""
+
+    var values: List[Float32]
+    var ground_truth: List[SearchResult]
+
+    def __init__(
+        out self,
+        var values: List[Float32],
+        var ground_truth: List[SearchResult],
+    ):
+        self.values = values^
+        self.ground_truth = ground_truth^
+
+
+struct _AnnMeasurements(Movable):
+    """Aggregate ANN-only timing and real traversal counters."""
+
+    var recall_sum: Float64
+    var total_visited: Int
+    var total_distances: Int
+    var search_elapsed_ns: Int
+
+    def __init__(out self):
+        self.recall_sum = 0.0
+        self.total_visited = 0
+        self.total_distances = 0
+        self.search_elapsed_ns = 0
+
+
 def recall_at_k(
     exact: List[SearchResult], approximate: List[SearchResult]
 ) -> Float64:
@@ -117,6 +147,36 @@ def _packed_size_estimate(index: HnswIndex) -> Int:
     )
 
 
+def _run_approximate_queries(
+    mut index: HnswIndex,
+    queries: List[_QualityQuery],
+    k: Int,
+    ef: Int,
+) raises -> _AnnMeasurements:
+    """Time only ANN search calls over precomputed queries and oracles."""
+    var measurements = _AnnMeasurements()
+    for query_index in range(len(queries)):
+        var search_start = perf_counter_ns()
+        var candidates = index.search(
+            queries[query_index].values, k, ef_search=ef
+        )
+        measurements.search_elapsed_ns += perf_counter_ns() - search_start
+
+        # Stats reads, oracle comparison, and recall accounting are outside the
+        # timed interval so local ANN latency measures only HnswIndex.search.
+        measurements.total_visited += (
+            index.last_search_stats.upper_visited
+            + index.last_search_stats.base_visited
+        )
+        measurements.total_distances += (
+            index.last_search_stats.distance_evaluations
+        )
+        measurements.recall_sum += recall_at_k(
+            queries[query_index].ground_truth, candidates
+        )
+    return measurements^
+
+
 def run_dataset(
     dataset: String,
     metric: MetricKind,
@@ -142,25 +202,28 @@ def run_dataset(
         approximate.add(point_id, values)
         exact.add(point_id, values^)
 
-    var recall_sum = Float64(0.0)
-    var total_visited = 0
-    var total_distances = 0
-    var search_start = perf_counter_ns()
+    # Prepare queries and exact ground truth before entering the ANN timing
+    # seam. Dataset generation and FlatIndex work must never count as HNSW
+    # query latency.
+    var queries = List[_QualityQuery](capacity=query_count)
     for query_id in range(query_count):
         var query = _query_vector(
             rng, point_count + query_id, dimension, clustered
         )
         var ground_truth = _exact_search(exact, metric, query, k)
-        var candidates = approximate.search(query, k, ef_search=ef)
-        recall_sum += recall_at_k(ground_truth, candidates)
-        total_visited += (
-            approximate.last_search_stats.upper_visited
-            + approximate.last_search_stats.base_visited
-        )
-        total_distances += approximate.last_search_stats.distance_evaluations
+        queries.append(_QualityQuery(query^, ground_truth^))
 
-    var search_elapsed = perf_counter_ns() - search_start
-    var recall = recall_sum / Float64(query_count)
+    var measurements = _run_approximate_queries(approximate, queries, k, ef)
+    var recall = measurements.recall_sum / Float64(query_count)
+    var average_visited = Float64(measurements.total_visited) / Float64(
+        query_count
+    )
+    var average_distances = Float64(measurements.total_distances) / Float64(
+        query_count
+    )
+    var ann_ns_per_query = Float64(measurements.search_elapsed_ns) / Float64(
+        query_count
+    )
     print(
         "dataset="
         + dataset
@@ -181,13 +244,13 @@ def run_dataset(
         + " directed_edges="
         + String(approximate.build_stats.directed_edges)
         + " avg_visited="
-        + String(Float64(total_visited) / Float64(query_count))
+        + String(average_visited)
         + " avg_search_distances="
-        + String(Float64(total_distances) / Float64(query_count))
+        + String(average_distances)
         + " packed_size_estimate_bytes="
         + String(_packed_size_estimate(approximate))
-        + " local_search_ns_per_query="
-        + String(Float64(search_elapsed) / Float64(query_count))
+        + " local_ann_search_ns_per_query="
+        + String(ann_ns_per_query)
     )
 
 
