@@ -119,12 +119,14 @@ def test_explicit_rebuild_is_deterministic_and_removes_inactive_slots() raises:
     assert_equal(second.hnsw_inactive_count(), 0)
     assert_equal(first.hnsw_slot_count(), 31)
     assert_equal(second.hnsw_slot_count(), 31)
-    assert_equal(first._hnsw.graph.id_at(UInt32(0)), 0)
-    assert_equal(first._hnsw.graph.id_at(UInt32(7)), 9)
-    assert_equal(first._hnsw.graph.id_at(UInt32(30)), 7)
+    assert_equal(first._hnsw.checkpoint_base().graph.id_at(UInt32(0)), 0)
+    assert_equal(first._hnsw.checkpoint_base().graph.id_at(UInt32(7)), 9)
+    assert_equal(first._hnsw.checkpoint_base().graph.id_at(UInt32(30)), 7)
     first._hnsw.validate_structure()
     second._hnsw.validate_structure()
-    _assert_same_graph(first._hnsw, second._hnsw)
+    _assert_same_graph(
+        first._hnsw.checkpoint_base(), second._hnsw.checkpoint_base()
+    )
 
 
 def test_live_results_are_equivalent_across_rebuild() raises:
@@ -151,7 +153,7 @@ def test_explicit_rebuild_recovers_an_unavailable_invalid_graph() raises:
     var collection = PersistentCollection.open_with_config(path, _config())
     for id in range(80):
         collection.upsert(id, [Float32(id)])
-    collection._hnsw.config.dimension = 2
+    collection._hnsw._delta.config.dimension = 2
     collection.upsert(999, [999.0])
     assert_false(collection.hnsw_available())
 
@@ -190,7 +192,7 @@ def test_rebuild_failure_preserves_authoritative_data_and_quarantines_graph() ra
     assert_equal(collection.get(1).value().vector[0], Float32(42.0))
 
 
-def test_flush_rebuilds_only_at_dense_delta_threshold() raises:
+def test_flush_materializes_a_complete_base_below_delta_threshold() raises:
     var path = String("/tmp/akasha-task19-delta-threshold")
     _reset(path)
     var collection = PersistentCollection.open_with_config(
@@ -200,19 +202,20 @@ def test_flush_rebuilds_only_at_dense_delta_threshold() raises:
     collection.upsert(2, [2.0])
     assert_equal(collection._hnsw_mutations_since_rebuild, 2)
     collection.flush()
-    assert_equal(collection._hnsw_mutations_since_rebuild, 2)
+    assert_equal(collection._hnsw_mutations_since_rebuild, 0)
+    assert_true(collection._hnsw.checkpoint_ready())
 
     collection.upsert(3, [3.0])
-    assert_equal(collection._hnsw_mutations_since_rebuild, 3)
+    assert_equal(collection._hnsw_mutations_since_rebuild, 1)
     collection.upsert(4, [4.0])
-    assert_equal(collection._hnsw_mutations_since_rebuild, 3)
+    assert_equal(collection._hnsw_mutations_since_rebuild, 2)
     collection.flush()
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)
     assert_equal(collection.hnsw_inactive_count(), 0)
     assert_equal(collection.hnsw_slot_count(), 4)
 
 
-def test_flush_rebuilds_only_at_inactive_threshold() raises:
+def test_frozen_base_replacements_stay_in_delta_until_flush() raises:
     var path = String("/tmp/akasha-task19-inactive-flush-threshold")
     _reset(path)
     var collection = PersistentCollection.open_with_config(
@@ -223,11 +226,15 @@ def test_flush_rebuilds_only_at_inactive_threshold() raises:
     collection.rebuild_hnsw()
     collection.upsert(0, [10.0])
     assert_false(collection._hnsw.needs_rebuild())
+    assert_equal(collection._hnsw.base_slot_count(), 4)
+    assert_equal(collection._hnsw.delta_slot_count(), 1)
+    assert_equal(collection.hnsw_inactive_count(), 0)
     collection.flush()
-    assert_equal(collection.hnsw_inactive_count(), 1)
+    assert_equal(collection.hnsw_inactive_count(), 0)
+    assert_true(collection._hnsw.checkpoint_ready())
 
     collection.upsert(1, [11.0])
-    assert_true(collection._hnsw.needs_rebuild())
+    assert_false(collection._hnsw.needs_rebuild())
     collection.flush()
     assert_equal(collection.hnsw_inactive_count(), 0)
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)

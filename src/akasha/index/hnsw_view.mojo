@@ -160,6 +160,10 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     def metric(self) -> MetricDispatcher:
         return self._metric.copy()
 
+    def config(self) -> CollectionConfig:
+        """Return the immutable durable graph identity by explicit copy."""
+        return self._config.copy()
+
     def last_search_stats(self) -> HnswSearchStats:
         return _copy_stats(self._last_stats)
 

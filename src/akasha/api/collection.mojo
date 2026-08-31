@@ -20,6 +20,7 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.metadata import MetadataIndex
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_entries
@@ -54,6 +55,7 @@ from akasha.storage.hnsw_store import (
     hnsw_snapshot_eligibility,
     hnsw_snapshot_max_bytes,
     HnswSnapshotInfo,
+    try_open_compatible_hnsw_snapshot_view,
     try_read_compatible_hnsw_snapshot_owned,
     write_hnsw_snapshot,
 )
@@ -152,7 +154,7 @@ struct PersistentCollection:
     var _last_sequence: UInt64
     var _lock: CollectionLock
     var _closed: Bool
-    var _hnsw: HnswIndex
+    var _hnsw: SegmentedHnsw
     var _hnsw_id_lookup: Optional[HnswIdOrdinalLookup]
     var _hnsw_id_lookup_dirty: Bool
     var _hnsw_id_lookup_builds: Int
@@ -189,7 +191,7 @@ struct PersistentCollection:
         var memtable: MemTable,
         last_sequence: UInt64,
         var lock: CollectionLock,
-        var hnsw: HnswIndex,
+        var hnsw: SegmentedHnsw,
         var sparse: SparseIndex,
         var sparse_pending: List[SparseWalRecord],
         var metadata: MetadataIndex,
@@ -1321,9 +1323,7 @@ struct PersistentCollection:
                     previous_manifest.hnsw_config_fingerprint.value()
                     == self._config.fingerprint()
                     and previous_manifest.hnsw_point_count.value()
-                    == UInt64(
-                        self._hnsw.point_count() - self._hnsw.inactive_count()
-                    )
+                    == UInt64(self._hnsw.current_point_count())
                     and path_exists(
                         self._path + "/" + previous_hnsw_name
                     )
@@ -1345,38 +1345,43 @@ struct PersistentCollection:
             if not previous_hnsw_metadata_matches:
                 var wrote_hnsw = False
                 if self._hnsw_available:
-                    var eligibility = hnsw_snapshot_eligibility(
-                        self._hnsw, self._hnsw_sidecar_max_bytes_for_test
-                    )
-                    if not eligibility.graph_usable:
-                        self._mark_hnsw_unavailable("eligibility_failed")
-                    if eligibility.eligible:
-                        var hnsw_name = (
-                            "hnsw-" + String(self._last_sequence) + ".bin"
+                    self._ensure_owned_hnsw_checkpoint()
+                    if self._hnsw_available:
+                        var eligibility = hnsw_snapshot_eligibility(
+                            self._hnsw.checkpoint_base(),
+                            self._hnsw_sidecar_max_bytes_for_test,
                         )
-                        var hnsw_temporary = (
-                            self._path + "/" + hnsw_name + ".tmp"
-                        )
-                        var hnsw_info = write_hnsw_snapshot(
-                            hnsw_temporary, self._hnsw, self._last_sequence
-                        )
-                        atomic_replace(
-                            hnsw_temporary, self._path + "/" + hnsw_name
-                        )
-                        sync_directory(self._path)
-                        var upgraded = Manifest.with_hnsw(
-                            self._config.dimension,
-                            generation,
-                            self._last_sequence,
-                            _clone_segment_descriptors(descriptors),
-                            hnsw_name,
-                            hnsw_info.checksum,
-                            hnsw_info.config_fingerprint,
-                            hnsw_info.live_point_count,
-                        )
-                        publish_manifest(self._path, upgraded)
-                        self._hnsw_checkpoint_was_hit = True
-                        wrote_hnsw = True
+                        if not eligibility.graph_usable:
+                            self._mark_hnsw_unavailable("eligibility_failed")
+                        if eligibility.eligible:
+                            var hnsw_name = (
+                                "hnsw-" + String(self._last_sequence) + ".bin"
+                            )
+                            var hnsw_temporary = (
+                                self._path + "/" + hnsw_name + ".tmp"
+                            )
+                            var hnsw_info = write_hnsw_snapshot(
+                                hnsw_temporary,
+                                self._hnsw.checkpoint_base(),
+                                self._last_sequence,
+                            )
+                            atomic_replace(
+                                hnsw_temporary, self._path + "/" + hnsw_name
+                            )
+                            sync_directory(self._path)
+                            var upgraded = Manifest.with_hnsw(
+                                self._config.dimension,
+                                generation,
+                                self._last_sequence,
+                                _clone_segment_descriptors(descriptors),
+                                hnsw_name,
+                                hnsw_info.checksum,
+                                hnsw_info.config_fingerprint,
+                                hnsw_info.live_point_count,
+                            )
+                            publish_manifest(self._path, upgraded)
+                            self._hnsw_checkpoint_was_hit = True
+                            wrote_hnsw = True
                 if not wrote_hnsw and previous_hnsw_name.byte_length() > 0:
                     var downgraded = Manifest.with_segments(
                         self._config.dimension,
@@ -1396,6 +1401,11 @@ struct PersistentCollection:
             self._sparse_pending = List[SparseWalRecord]()
             self._publish_index_caches_best_effort()
             return
+
+        # A sidecar is a complete checkpoint base. Delta-only startup can be
+        # promoted without rebuilding; merging an older base with mutations
+        # is explicit flush-time maintenance and never occurs in a query.
+        self._ensure_owned_hnsw_checkpoint()
 
         var sparse_kind = SPARSE_SEGMENT_KIND_BASE
         var sparse_prefix = String("sparse-base-")
@@ -1449,14 +1459,17 @@ struct PersistentCollection:
         var hnsw_info = Optional[HnswSnapshotInfo]()
         if self._hnsw_available:
             var eligibility = hnsw_snapshot_eligibility(
-                self._hnsw, self._hnsw_sidecar_max_bytes_for_test
+                self._hnsw.checkpoint_base(),
+                self._hnsw_sidecar_max_bytes_for_test,
             )
             if not eligibility.graph_usable:
                 self._mark_hnsw_unavailable("eligibility_failed")
             if eligibility.eligible:
                 hnsw_info = Optional(
                     write_hnsw_snapshot(
-                        hnsw_temporary, self._hnsw, self._last_sequence
+                        hnsw_temporary,
+                        self._hnsw.checkpoint_base(),
+                        self._last_sequence,
                     )
                 )
 
@@ -1695,7 +1708,7 @@ struct PersistentCollection:
             return self._search_filtered(query, k, metric, conditions)
         try:
             var candidates = self._hnsw.search(
-                query, k, ef_search=plan.initial_ef
+                query, k, plan.initial_ef, self._memtable
             )
             var allowed = Optional[Bitmap]()
             var expected_count = k
@@ -1755,16 +1768,18 @@ struct PersistentCollection:
             var eligibility = HnswEligibility(
                 matched^, self._hnsw_id_lookup.value()
             )
-            var candidates = self._hnsw.search_allowed_with_widening(
+            var candidates = self._hnsw.search_allowed(
                 query,
                 k,
                 plan.initial_ef,
                 plan.max_ef,
                 eligibility,
+                self._memtable,
             )
-            if self._hnsw.last_search_stats.fallback_reason != "":
+            var segmented_stats = self._hnsw.last_search_stats()
+            if segmented_stats.fallback_reason != "":
                 self._last_dense_plan_reason = (
-                    self._hnsw.last_search_stats.fallback_reason.copy()
+                    segmented_stats.fallback_reason.copy()
                 )
             var allowed = Optional(allowed_bitmap^)
             var expected_count = k
@@ -1968,8 +1983,13 @@ struct PersistentCollection:
     def _update_hnsw_after_delete(mut self, id: Int, was_live: Bool):
         if not self._hnsw_available:
             return
-        var deleted = self._hnsw.delete(id)
-        if (was_live and not deleted) or not self._hnsw.valid:
+        var deleted: Bool
+        try:
+            deleted = self._hnsw.delete(id)
+        except:
+            self._mark_hnsw_unavailable("mutation_failed")
+            return
+        if was_live and not deleted:
             self._mark_hnsw_unavailable("mutation_failed")
         elif deleted:
             self._record_hnsw_mutation()
@@ -2002,6 +2022,18 @@ struct PersistentCollection:
             # graph failure only disables ANN until later maintenance retries.
             self._mark_hnsw_unavailable("rebuild_failed")
 
+    def _ensure_owned_hnsw_checkpoint(mut self):
+        if not self._hnsw_available or self._hnsw.checkpoint_ready():
+            return
+        try:
+            if not self._hnsw.has_base():
+                self._hnsw.promote_delta_base()
+                self._hnsw_mutations_since_rebuild = 0
+                return
+            self._rebuild_hnsw_unlocked()
+        except:
+            self._mark_hnsw_unavailable("rebuild_failed")
+
     def _rebuild_hnsw_unlocked(mut self) raises:
         var staged: HnswIndex
         try:
@@ -2009,7 +2041,7 @@ struct PersistentCollection:
         except error:
             self._mark_hnsw_unavailable("rebuild_failed")
             raise Error(String(error))
-        self._hnsw = staged^
+        self._hnsw.replace_owned_base(staged^)
         self._hnsw_available = True
         self._hnsw_unavailable_reason = ""
         self._hnsw_mutations_since_rebuild = 0
@@ -2133,8 +2165,10 @@ struct PersistentCollection:
                 metadata_payload^,
             )
             publish_cache(self._path, "metadata.cache", metadata_artifact)
-            if self._hnsw_available:
-                var hnsw_payload = self._hnsw.encode_cache_payload()
+            if self._hnsw_available and self._hnsw.checkpoint_ready():
+                var hnsw_payload = (
+                    self._hnsw.checkpoint_base().encode_cache_payload()
+                )
                 var hnsw_artifact = CacheArtifact(
                     CACHE_HNSW_KIND,
                     self._config.dimension,
@@ -2318,7 +2352,7 @@ struct _HnswCacheLoad(Movable):
 
 
 struct _HnswRecoveryLoad(Movable):
-    var index: HnswIndex
+    var index: SegmentedHnsw
     var sidecar_hit: Bool
     var legacy_cache_hit: Bool
     var replayed_mutations: Int
@@ -2327,7 +2361,7 @@ struct _HnswRecoveryLoad(Movable):
 
     def __init__(
         out self,
-        var index: HnswIndex,
+        var index: SegmentedHnsw,
         sidecar_hit: Bool,
         legacy_cache_hit: Bool,
         replayed_mutations: Int,
@@ -2341,9 +2375,9 @@ struct _HnswRecoveryLoad(Movable):
         self.available = available
         self.failure_reason = String(copy=failure_reason)
 
-    def take_index(mut self) raises -> HnswIndex:
+    def take_index(mut self) raises -> SegmentedHnsw:
         var config = self.index.config.copy()
-        var replacement = HnswIndex(config)
+        var replacement = SegmentedHnsw(config)
         var result = self.index^
         self.index = replacement^
         return result^
@@ -2430,32 +2464,48 @@ def _load_or_rebuild_hnsw(
             )
             var sidecar_path = path + "/" + manifest.hnsw_name.value()
             if metadata_matches and path_exists(sidecar_path):
-                var compatible = try_read_compatible_hnsw_snapshot_owned(
+                var mapped = try_open_compatible_hnsw_snapshot_view(
                     sidecar_path,
                     config,
                     checkpoint_sequence,
                     manifest.hnsw_checksum.value(),
                     manifest.hnsw_point_count.value(),
                 )
-                if Bool(compatible):
-                    var decoded = compatible.take()
-                    if _hnsw_matches_ids(decoded, checkpoint_live_ids):
-                        try:
-                            var replayed = _replay_hnsw_wal(
-                                decoded,
-                                checkpoint_sequence,
-                                wal_records,
-                                config,
+                var segmented = SegmentedHnsw(config)
+                var compatible = False
+                if mapped.hit():
+                    segmented = SegmentedHnsw.from_mapped(mapped.take_view())
+                    compatible = True
+                elif mapped.mapping_failed():
+                    # Only acquisition failure reaches the bounded owned
+                    # fallback. Matching mapped corruption raises above.
+                    var owned = try_read_compatible_hnsw_snapshot_owned(
+                        sidecar_path,
+                        config,
+                        checkpoint_sequence,
+                        manifest.hnsw_checksum.value(),
+                        manifest.hnsw_point_count.value(),
+                    )
+                    if Bool(owned):
+                        segmented = SegmentedHnsw.from_owned(owned.take())
+                        compatible = True
+                if compatible and _hnsw_matches_ids(
+                    segmented, checkpoint_live_ids
+                ):
+                    try:
+                        var replayed = _replay_hnsw_wal(
+                            segmented,
+                            checkpoint_sequence,
+                            wal_records,
+                            config,
+                        )
+                        if _hnsw_matches_memtable(segmented, memtable):
+                            segmented.validate_overlay()
+                            return _HnswRecoveryLoad(
+                                segmented^, True, False, replayed, True, ""
                             )
-                            if _hnsw_matches_memtable(decoded, memtable):
-                                decoded.validate_structure()
-                                # A committed v3 sidecar always wins. Legacy
-                                # cache bytes are not even opened on this path.
-                                return _HnswRecoveryLoad(
-                                    decoded^, True, False, replayed, True, ""
-                                )
-                        except:
-                            pass
+                    except:
+                        pass
             # Missing files and stale descriptor/header metadata are derived
             # acceleration misses. They never invalidate authoritative data.
             return _rebuild_hnsw_for_recovery(memtable, config)
@@ -2472,7 +2522,8 @@ def _load_or_rebuild_hnsw(
     )
     if legacy.hit:
         var cached = legacy.take_index()
-        return _HnswRecoveryLoad(cached^, False, True, 0, True, "")
+        var segmented = SegmentedHnsw.from_owned(cached^)
+        return _HnswRecoveryLoad(segmented^, False, True, 0, True, "")
     return _rebuild_hnsw_for_recovery(memtable, config)
 
 
@@ -2481,31 +2532,32 @@ def _rebuild_hnsw_for_recovery(
 ) raises -> _HnswRecoveryLoad:
     try:
         var rebuilt = _build_hnsw(memtable, config)
+        var segmented = SegmentedHnsw.from_owned(rebuilt^)
         return _HnswRecoveryLoad(
-            rebuilt^, False, False, 0, True, ""
+            segmented^, False, False, 0, True, ""
         )
     except:
         # Authoritative records remain queryable through exact plans when the
         # configured graph backend cannot represent this scalar/layout.
-        var unavailable = HnswIndex(config)
+        var unavailable = SegmentedHnsw(config)
         return _HnswRecoveryLoad(
             unavailable^, False, False, 0, False, "rebuild_failed"
         )
 
 
 def _hnsw_matches_ids(
-    index: HnswIndex, ids: Dict[Int, Bool]
+    index: SegmentedHnsw, ids: Dict[Int, Bool]
 ) -> Bool:
-    if index.point_count() - index.inactive_count() != len(ids):
+    if index.current_point_count() != len(ids):
         return False
     for id in ids:
-        if not Bool(index.graph.current_slot(id)):
+        if not index.contains_current(id):
             return False
     return True
 
 
 def _hnsw_matches_memtable(
-    index: HnswIndex, memtable: MemTable
+    index: SegmentedHnsw, memtable: MemTable
 ) raises -> Bool:
     var ids = Dict[Int, Bool]()
     for ordinal in range(memtable.slot_count()):
@@ -2515,7 +2567,7 @@ def _hnsw_matches_memtable(
 
 
 def _replay_hnsw_wal(
-    mut index: HnswIndex,
+    mut index: SegmentedHnsw,
     checkpoint_sequence: UInt64,
     records: List[WalRecord],
     config: CollectionConfig,
@@ -2526,8 +2578,6 @@ def _replay_hnsw_wal(
             continue
         if records[record_index].is_delete:
             _ = index.delete(records[record_index].id)
-            if not index.valid:
-                raise Error("HNSW WAL delete replay invalidated graph")
         else:
             index.upsert(
                 records[record_index].id, records[record_index].values

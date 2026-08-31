@@ -6,7 +6,12 @@ from .collection_config import (
     publish_collection_config,
 )
 from .index_cache import CacheArtifact
-from .hnsw_store import HnswSnapshotInfo, open_hnsw_snapshot_view
+from .hnsw_store import (
+    HnswMappedSnapshotLoad,
+    HnswSnapshotInfo,
+    open_hnsw_snapshot_view,
+    try_open_compatible_hnsw_snapshot_view,
+)
 from .manifest import Manifest
 from .mapped_file import MappedBytes, MappedFile
 from .memtable import MemTable, MemTableEntry

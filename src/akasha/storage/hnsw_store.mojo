@@ -86,6 +86,34 @@ struct HnswSnapshotEligibility(Movable):
         self.reason = String(copy=reason)
 
 
+struct HnswMappedSnapshotLoad(Movable):
+    """Typed mapped-sidecar compatibility result without string matching."""
+
+    var status: Int
+    var view: HnswGraphView
+
+    def __init__(out self, status: Int, var view: HnswGraphView):
+        self.status = status
+        self.view = view^
+
+    def hit(self) -> Bool:
+        return self.status == 1
+
+    def stale(self) -> Bool:
+        return self.status == 0
+
+    def mapping_failed(self) -> Bool:
+        return self.status == 2
+
+    def take_view(mut self) raises -> HnswGraphView:
+        if not self.hit():
+            raise Error("mapped HNSW load has no compatible view")
+        var replacement = HnswGraphView()
+        var result = self.view^
+        self.view = replacement^
+        return result^
+
+
 struct _DecodedNodes(Movable):
     var ids: List[Int]
     var levels: List[Int]
@@ -671,6 +699,62 @@ def open_hnsw_snapshot_view(
     """Map, completely validate, and return one immutable v1 graph view."""
     _require_v1_config(config)
     var mapping = MappedFile.open_readonly(path)
+    return _open_hnsw_snapshot_view_from_mapping(
+        mapping^, config, sequence, False
+    )
+
+
+def try_open_compatible_hnsw_snapshot_view(
+    path: String,
+    config: CollectionConfig,
+    sequence: UInt64,
+    manifest_checksum: UInt32,
+    manifest_live_point_count: UInt64,
+) raises -> HnswMappedSnapshotLoad:
+    """Map once, classify stale metadata, then validate that same mapping.
+
+    Only acquisition failures produce ``mapping_failed``. Once a mapped file
+    has the manifest's checksum identity, checksum or layout corruption raises
+    and must never be mistaken for a recoverable stale acceleration artifact.
+    """
+    _require_v1_config(config)
+    var mapping: MappedFile
+    try:
+        mapping = MappedFile.open_readonly(path)
+    except:
+        return HnswMappedSnapshotLoad(2, HnswGraphView())
+    var encoded_size = mapping.byte_length()
+    if encoded_size < _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if encoded_size > _MAX_SNAPSHOT_BYTES:
+        raise Error("HNSW snapshot exceeds implementation size limit")
+    var checksum_offset = encoded_size - _CHECKSUM_BYTES
+    var stored_checksum = _mapped_u32(mapping, checksum_offset)
+    if stored_checksum != manifest_checksum:
+        return HnswMappedSnapshotLoad(0, HnswGraphView())
+    if encoded_size < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    var checksum = UInt32(0xFFFFFFFF)
+    for offset in range(checksum_offset):
+        checksum = _crc32_update(checksum, mapping.byte_at(offset))
+    if ~checksum != stored_checksum:
+        raise Error("HNSW snapshot checksum mismatch")
+    if not _mapped_hnsw_snapshot_identity_matches(
+        mapping, config, sequence, manifest_live_point_count
+    ):
+        return HnswMappedSnapshotLoad(0, HnswGraphView())
+    var view = _open_hnsw_snapshot_view_from_mapping(
+        mapping^, config, sequence, True
+    )
+    return HnswMappedSnapshotLoad(1, view^)
+
+
+def _open_hnsw_snapshot_view_from_mapping(
+    var mapping: MappedFile,
+    config: CollectionConfig,
+    sequence: UInt64,
+    checksum_already_validated: Bool,
+) raises -> HnswGraphView:
     var encoded_size = mapping.byte_length()
     if encoded_size < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
@@ -679,11 +763,12 @@ def open_hnsw_snapshot_view(
 
     var checksum_offset = encoded_size - _CHECKSUM_BYTES
     var stored_checksum = _mapped_u32(mapping, checksum_offset)
-    var checksum = UInt32(0xFFFFFFFF)
-    for offset in range(checksum_offset):
-        checksum = _crc32_update(checksum, mapping.byte_at(offset))
-    if ~checksum != stored_checksum:
-        raise Error("HNSW snapshot checksum mismatch")
+    if not checksum_already_validated:
+        var checksum = UInt32(0xFFFFFFFF)
+        for offset in range(checksum_offset):
+            checksum = _crc32_update(checksum, mapping.byte_at(offset))
+        if ~checksum != stored_checksum:
+            raise Error("HNSW snapshot checksum mismatch")
 
     if (
         mapping.byte_at(0) != UInt8(0x41)
@@ -858,6 +943,28 @@ def hnsw_snapshot_identity_matches(
         and _read_u16_at(bytes, 40) == UInt16(config.m0)
         and _read_u16_at(bytes, 42) == UInt16(config.max_level)
         and _read_u64_at(bytes, 56) == live_point_count
+    )
+
+
+def _mapped_hnsw_snapshot_identity_matches(
+    mapping: MappedFile,
+    config: CollectionConfig,
+    sequence: UInt64,
+    live_point_count: UInt64,
+) raises -> Bool:
+    """Compare fixed identity fields directly in one acquired mapping."""
+    if mapping.byte_length() < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        return False
+    return (
+        _mapped_u64(mapping, 16) == config.fingerprint()
+        and _mapped_u64(mapping, 24) == sequence
+        and _mapped_u32(mapping, 32) == UInt32(config.dimension)
+        and mapping.byte_at(36) == config.ann_metric.tag()
+        and mapping.byte_at(37) == config.scalar_kind.tag()
+        and _mapped_u16(mapping, 38) == UInt16(config.m)
+        and _mapped_u16(mapping, 40) == UInt16(config.m0)
+        and _mapped_u16(mapping, 42) == UInt16(config.max_level)
+        and _mapped_u64(mapping, 56) == live_point_count
     )
 
 

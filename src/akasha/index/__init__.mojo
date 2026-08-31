@@ -3,6 +3,7 @@ from .flat import FlatIndex, SearchResult
 from .hnsw import HnswIndex
 from .hnsw_view import HnswGraphView
 from .hnsw_stats import HnswBuildStats, HnswSearchStats
+from .segmented_hnsw import SegmentedHnsw
 from .metadata import MetadataIndex
 from .quantization import PqCodebook, PqIndex, Sq8Codebook, Sq8Index
 from .sparse import SparseElement, SparseIndex, SparseRecord

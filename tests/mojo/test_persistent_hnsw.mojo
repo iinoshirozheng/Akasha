@@ -248,7 +248,7 @@ def _build_checkpoint(path: String) raises -> CollectionConfig:
     return config^
 
 
-def test_flush_commits_v3_hnsw_and_reopen_uses_owned_sidecar() raises:
+def test_flush_commits_v3_hnsw_and_reopen_uses_mapped_sidecar() raises:
     var path = String("/tmp/akasha-task22-owned-sidecar")
     var config = _build_checkpoint(path)
     var manifest = load_manifest(path, 1)
@@ -264,7 +264,9 @@ def test_flush_commits_v3_hnsw_and_reopen_uses_owned_sidecar() raises:
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_true(reopened.hnsw_available())
     assert_false(reopened.hnsw_cache_hit())
-    # Owned decode restores the graph without construction distance work.
+    assert_true(reopened._hnsw.base_is_mapped())
+    assert_equal(reopened._hnsw.delta_slot_count(), 0)
+    # Successful mapping performs neither owned decode nor graph construction.
     assert_equal(reopened.hnsw_build_distance_evaluations(), 0)
     var result = reopened.search_l2_approx([80.0], 3, 80)
     assert_equal(result[0].id, 80)
@@ -300,7 +302,7 @@ def test_queries_match_ids_and_scores_before_and_after_sidecar_reopen() raises:
     reopened.close()
 
 
-def test_reopen_replays_newer_wal_mutations_into_owned_sidecar() raises:
+def test_reopen_replays_newer_wal_mutations_into_mapped_base_delta() raises:
     var path = String("/tmp/akasha-task22-sidecar-wal-replay")
     var config = _build_checkpoint(path)
     var collection = PersistentCollection.open_with_config(path, config.copy())
@@ -309,12 +311,31 @@ def test_reopen_replays_newer_wal_mutations_into_owned_sidecar() raises:
     collection.close()
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
-    # The checkpoint has 80 slots; replacement replay appends one historical
-    # slot and both newer WAL mutations remain represented incrementally.
+    # The immutable mapped checkpoint stays at 80 slots. Replacement replay
+    # creates one delta slot, while a base deletion is represented solely by
+    # the current-source map and never mutates the base.
+    assert_true(reopened._hnsw.base_is_mapped())
+    assert_equal(reopened._hnsw.base_slot_count(), 80)
+    assert_equal(reopened._hnsw.delta_slot_count(), 1)
+    assert_equal(reopened._hnsw._mapped_base.id_at(UInt32(79)), 80)
+    assert_equal(
+        reopened._hnsw._mapped_base.vector_value(UInt32(79), 0),
+        Float32(80.0),
+    )
+    assert_true(reopened._hnsw._mapped_base.is_current(UInt32(78)))
     assert_equal(reopened.hnsw_slot_count(), 81)
-    assert_equal(reopened.hnsw_inactive_count(), 2)
+    assert_equal(reopened.hnsw_inactive_count(), 0)
     assert_equal(reopened.search_l2_approx([80.0], 1, 80)[0].id, 78)
+    reopened.flush()
+    assert_true(reopened._hnsw.checkpoint_ready())
     reopened.close()
+
+    var committed = PersistentCollection.open_with_config(path, config.copy())
+    assert_true(committed._hnsw.base_is_mapped())
+    assert_equal(committed._hnsw.base_slot_count(), 79)
+    assert_equal(committed._hnsw.delta_slot_count(), 0)
+    assert_equal(committed.search_l2_approx([80.0], 1, 80)[0].id, 78)
+    committed.close()
 
 
 def test_manifest_without_sidecar_rebuilds_from_authoritative_records() raises:
@@ -418,8 +439,9 @@ def test_invalid_prepared_graph_quarantines_ann_and_flushes_v2() raises:
     var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 81):
         collection.upsert(id, [Float32(id), 1.0])
-    collection._hnsw.graph.vector_scalars[0] = 0.0
-    collection._hnsw.graph.vector_scalars[1] = 0.0
+    collection.rebuild_hnsw()
+    collection._hnsw._owned_base.graph.vector_scalars[0] = 0.0
+    collection._hnsw._owned_base.graph.vector_scalars[1] = 0.0
 
     collection.flush()
 

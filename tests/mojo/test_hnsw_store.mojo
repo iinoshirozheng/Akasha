@@ -14,6 +14,7 @@ from akasha.storage.hnsw_store import (
     hnsw_snapshot_eligibility,
     hnsw_snapshot_identity_matches,
     read_hnsw_snapshot_owned,
+    try_open_compatible_hnsw_snapshot_view,
     write_hnsw_snapshot,
 )
 from std.memory import bitcast
@@ -695,6 +696,48 @@ def test_legacy_cache_fixture_remains_readable_and_sidecar_is_independent() rais
     assert_equal(sidecar[1], UInt8(0x4B))
     assert_equal(sidecar[2], UInt8(0x48))
     assert_equal(sidecar[3], UInt8(0x47))
+
+
+def test_typed_mapped_compatibility_distinguishes_hit_stale_and_open_failure(
+) raises:
+    var directory = "/tmp/akasha-hnsw-mapped-compatibility"
+    ensure_directory(directory)
+    var path = directory + "/hnsw-301.bin"
+    var missing = directory + "/missing-hnsw-301.bin"
+    remove_file_if_exists(path)
+    remove_file_if_exists(missing)
+    var config = _config()
+    var graph = _graph(config.copy(), 6)
+    var info = write_hnsw_snapshot(path, graph, UInt64(301))
+
+    var hit = try_open_compatible_hnsw_snapshot_view(
+        path,
+        config,
+        UInt64(301),
+        info.checksum,
+        info.live_point_count,
+    )
+    assert_true(hit.hit())
+    var view = hit.take_view()
+    assert_equal(view.live_point_count(), 6)
+
+    var stale = try_open_compatible_hnsw_snapshot_view(
+        path,
+        config,
+        UInt64(301),
+        info.checksum + 1,
+        info.live_point_count,
+    )
+    assert_true(stale.stale())
+
+    var failed = try_open_compatible_hnsw_snapshot_view(
+        missing,
+        config,
+        UInt64(301),
+        info.checksum,
+        info.live_point_count,
+    )
+    assert_true(failed.mapping_failed())
 
 
 def main() raises:

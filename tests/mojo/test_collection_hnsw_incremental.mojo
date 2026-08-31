@@ -181,7 +181,7 @@ def test_graph_mutation_failure_keeps_authoritative_exact_search() raises:
         collection.upsert(id, [Float32(id)])
     var sequence_before = collection.last_sequence()
 
-    collection._hnsw.config.dimension = 2
+    collection._hnsw._delta.config.dimension = 2
     collection.upsert(999, [999.0])
 
     assert_equal(collection.last_sequence(), sequence_before + 1)
@@ -216,7 +216,9 @@ def test_filtered_ann_uses_bitmap_admission_and_authoritative_rerank() raises:
         query, 5, 8, expression
     )
     assert_equal(collection.last_dense_plan_reason(), "ann")
-    assert_true(collection._hnsw.last_search_stats.filtered_rejections > 0)
+    assert_true(
+        collection._hnsw.last_search_stats().filtered_rejections > 0
+    )
     assert_equal(collection.last_hnsw_rerank_candidate_count(), 5)
     assert_equal(collection.last_hnsw_rerank_ordinal_lookups(), 5)
     assert_equal(collection.last_hnsw_rerank_linear_id_scans(), 0)
@@ -286,8 +288,8 @@ def test_corrupt_candidate_shortfall_quarantines_and_exact_falls_back() raises:
     var collection = PersistentCollection.open(path, 1)
     for id in range(80):
         collection.upsert(id, [Float32(id)])
-    for slot in range(collection._hnsw.graph.slot_count()):
-        collection._hnsw.graph.current_flags[slot] = False
+    for slot in range(collection._hnsw._delta.graph.slot_count()):
+        collection._hnsw._delta.graph.current_flags[slot] = False
 
     var result = collection.search_l2_approx([79.0], 3, 32)
 
@@ -296,7 +298,7 @@ def test_corrupt_candidate_shortfall_quarantines_and_exact_falls_back() raises:
     assert_equal(result[1].id, 78)
     assert_equal(result[2].id, 77)
     assert_equal(collection.hnsw_available(), False)
-    assert_equal(collection.hnsw_unavailable_reason(), "candidate_invalid")
+    assert_equal(collection.hnsw_unavailable_reason(), "search_failed")
     assert_equal(collection.last_dense_plan_reason(), "graph_unavailable")
 
 
