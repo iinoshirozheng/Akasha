@@ -6,7 +6,7 @@ from akasha.storage.checksum import (
 from akasha.storage.filesystem import (
     atomic_replace,
     path_exists,
-    read_file_bytes,
+    read_file_bytes_bounded,
     sync_directory,
     write_file_sync,
 )
@@ -26,6 +26,15 @@ comptime _HNSW_DESCRIPTOR_FIXED_SIZE = 24
 comptime _V3_FLAG_HNSW = UInt16(1)
 comptime _MAX_SEGMENTS = 1024
 comptime _MAX_LEVEL = 7
+comptime _MAX_NAME_BYTES = Int(UInt16.MAX)
+# Header + 1024 maximally-sized dense/sparse descriptors + optional HNSW + CRC.
+comptime _MAX_MANIFEST_BYTES = (
+    36
+    + _MAX_SEGMENTS * (28 + _MAX_NAME_BYTES + 8 + _MAX_NAME_BYTES)
+    + _HNSW_DESCRIPTOR_FIXED_SIZE
+    + _MAX_NAME_BYTES
+    + 4
+)
 comptime _MANIFEST_NAME = "manifest.bin"
 comptime _TEMP_NAME = "manifest.bin.tmp"
 
@@ -48,12 +57,13 @@ struct SegmentDescriptor(Movable):
         max_sequence: UInt64,
         checksum: UInt32,
         name: String,
+        strict_name: Bool = True,
     ) raises:
         if level < 0 or level > _MAX_LEVEL:
             raise Error("manifest segment level is out of bounds")
         if min_sequence > max_sequence:
             raise Error("manifest segment sequence range is invalid")
-        _validate_safe_filename(name)
+        _validate_safe_filename(name, strict_name)
         self.level = level
         self.min_sequence = min_sequence
         self.max_sequence = max_sequence
@@ -71,10 +81,11 @@ struct SegmentDescriptor(Movable):
         name: String,
         sparse_checksum: UInt32,
         sparse_name: String,
+        strict_name: Bool = True,
     ) raises -> SegmentDescriptor:
-        _validate_safe_filename(sparse_name)
+        _validate_safe_filename(sparse_name, strict_name)
         var descriptor = SegmentDescriptor(
-            level, min_sequence, max_sequence, checksum, name
+            level, min_sequence, max_sequence, checksum, name, strict_name
         )
         descriptor.sparse_checksum = sparse_checksum
         descriptor.sparse_name = String(copy=sparse_name)
@@ -121,6 +132,7 @@ struct Manifest(Movable):
         last_sequence: UInt64,
         segment_checksum: UInt32,
         segment_name: String,
+        strict_name: Bool = True,
     ) raises:
         if dimension <= 0:
             raise Error("manifest dimension must be positive")
@@ -130,6 +142,7 @@ struct Manifest(Movable):
             last_sequence,
             segment_checksum,
             segment_name,
+            strict_name,
         )
         self.dimension = dimension
         self.generation = 0
@@ -150,18 +163,20 @@ struct Manifest(Movable):
         generation: UInt64,
         last_sequence: UInt64,
         var segments: List[SegmentDescriptor],
+        strict_names: Bool = True,
     ) raises -> Manifest:
         if dimension <= 0:
             raise Error("manifest dimension must be positive")
         if generation == 0:
             raise Error("manifest generation must be positive")
-        _validate_manifest_segments(last_sequence, segments)
+        _validate_manifest_segments(last_sequence, segments, strict_names)
         var newest = len(segments) - 1
         var manifest = Manifest(
             dimension,
             last_sequence,
             segments[newest].checksum,
             segments[newest].name,
+            strict_names,
         )
         manifest.generation = generation
         manifest.format_version = 2
@@ -199,7 +214,7 @@ def encode_manifest(
     segment_name: String,
 ) raises -> List[UInt8]:
     """Encode the legacy single-segment manifest format."""
-    _validate_safe_filename(segment_name)
+    _validate_safe_filename(segment_name, False)
     if dimension <= 0:
         raise Error("manifest dimension must be positive")
     var name_length = segment_name.byte_length()
@@ -226,22 +241,27 @@ def encode_manifest(
 def encode_manifest_v2(manifest: Manifest) raises -> List[UInt8]:
     if _validate_hnsw_reference(manifest):
         raise Error("manifest v2 cannot reference an HNSW sidecar")
-    return _encode_multi_manifest(manifest, _VERSION_V2, False)
+    return _encode_multi_manifest(manifest, _VERSION_V2, False, False)
 
 
 def encode_manifest_v3(manifest: Manifest) raises -> List[UInt8]:
     var has_hnsw = _validate_hnsw_reference(manifest)
-    return _encode_multi_manifest(manifest, _VERSION_V3, has_hnsw)
+    return _encode_multi_manifest(manifest, _VERSION_V3, has_hnsw, True)
 
 
 def _encode_multi_manifest(
-    manifest: Manifest, version: UInt16, has_hnsw: Bool
+    manifest: Manifest,
+    version: UInt16,
+    has_hnsw: Bool,
+    strict_names: Bool,
 ) raises -> List[UInt8]:
     if manifest.dimension <= 0:
         raise Error("manifest dimension must be positive")
     if manifest.generation == 0:
         raise Error("manifest generation must be positive")
-    _validate_manifest_segments(manifest.last_sequence, manifest.segments)
+    _validate_manifest_segments(
+        manifest.last_sequence, manifest.segments, strict_names
+    )
 
     var writer = BinaryWriter()
     writer.write_u8(_MAGIC_0)
@@ -358,6 +378,7 @@ def decode_manifest_bytes(
 
 
 def publish_manifest(directory: String, manifest: Manifest) raises:
+    _validate_manifest_names(manifest, True)
     var bytes: List[UInt8]
     if _validate_hnsw_reference(manifest):
         bytes = encode_manifest_v3(manifest)
@@ -382,8 +403,11 @@ def publish_manifest(directory: String, manifest: Manifest) raises:
 def load_manifest(
     directory: String, expected_dimension: Int
 ) raises -> Manifest:
-    var bytes = read_file_bytes(directory + "/" + _MANIFEST_NAME)
+    var bytes = read_file_bytes_bounded(
+        directory + "/" + _MANIFEST_NAME, _MAX_MANIFEST_BYTES
+    )
     var manifest = decode_manifest_bytes(bytes^, expected_dimension)
+    _validate_manifest_names(manifest, True)
     for index in range(len(manifest.segments)):
         if not path_exists(directory + "/" + manifest.segments[index].name):
             raise Error("manifest references a missing segment")
@@ -411,7 +435,9 @@ def _decode_manifest_v1(
     _ = reader.read_u32()
     if reader.remaining() != 0:
         raise Error("unexpected manifest payload")
-    return Manifest(dimension, last_sequence, segment_checksum, segment_name)
+    return Manifest(
+        dimension, last_sequence, segment_checksum, segment_name, False
+    )
 
 
 def _decode_manifest_multi(
@@ -421,6 +447,7 @@ def _decode_manifest_multi(
     version: UInt16,
     has_hnsw: Bool,
 ) raises -> Manifest:
+    var strict_names = version == _VERSION_V3
     var generation = reader.read_u64()
     var last_sequence = reader.read_u64()
     var segment_count_u32 = reader.read_u32()
@@ -465,12 +492,18 @@ def _decode_manifest_multi(
                     name,
                     sparse_checksum,
                     sparse_name,
+                    strict_names,
                 )
             )
         else:
             segments.append(
                 SegmentDescriptor(
-                    level, min_sequence, max_sequence, checksum, name
+                    level,
+                    min_sequence,
+                    max_sequence,
+                    checksum,
+                    name,
+                    strict_names,
                 )
             )
 
@@ -496,7 +529,7 @@ def _decode_manifest_multi(
     if reader.remaining() != 0:
         raise Error("unexpected manifest payload")
     var manifest = Manifest.with_segments(
-        dimension, generation, last_sequence, segments^
+        dimension, generation, last_sequence, segments^, strict_names
     )
     manifest.format_version = Int(version)
     if has_hnsw:
@@ -510,12 +543,17 @@ def _decode_manifest_multi(
 
 
 def _validate_manifest_segments(
-    last_sequence: UInt64, segments: List[SegmentDescriptor]
+    last_sequence: UInt64,
+    segments: List[SegmentDescriptor],
+    strict_names: Bool = True,
 ) raises:
     if len(segments) == 0 or len(segments) > _MAX_SEGMENTS:
         raise Error("manifest segment count is out of bounds")
     var previous_max = UInt64(0)
     for index in range(len(segments)):
+        _validate_safe_filename(segments[index].name, strict_names)
+        if segments[index].sparse_name.byte_length() > 0:
+            _validate_safe_filename(segments[index].sparse_name, strict_names)
         if segments[index].max_sequence > last_sequence:
             raise Error("manifest segment exceeds checkpoint sequence")
         if index > 0 and segments[index].min_sequence <= previous_max:
@@ -559,7 +597,9 @@ def _validate_hnsw_reference(manifest: Manifest) raises -> Bool:
         )
     if has_name:
         var hnsw_name = manifest.hnsw_name.value()
-        _validate_safe_filename(hnsw_name)
+        _validate_safe_filename(hnsw_name, True)
+        if hnsw_name != "hnsw-" + String(manifest.last_sequence) + ".bin":
+            raise Error("manifest HNSW name must match checkpoint sequence")
         for index in range(len(manifest.segments)):
             if hnsw_name == manifest.segments[index].name or (
                 manifest.segments[index].sparse_name.byte_length() > 0
@@ -569,10 +609,22 @@ def _validate_hnsw_reference(manifest: Manifest) raises -> Bool:
     return has_name
 
 
-def _validate_safe_filename(name: String) raises:
+def _validate_manifest_names(manifest: Manifest, strict: Bool) raises:
+    _validate_safe_filename(manifest.segment_name, strict)
+    for index in range(len(manifest.segments)):
+        _validate_safe_filename(manifest.segments[index].name, strict)
+        if manifest.segments[index].sparse_name.byte_length() > 0:
+            _validate_safe_filename(
+                manifest.segments[index].sparse_name, strict
+            )
+    if Bool(manifest.hnsw_name):
+        _validate_safe_filename(manifest.hnsw_name.value(), True)
+
+
+def _validate_safe_filename(name: String, strict: Bool = True) raises:
     if name.byte_length() == 0:
         raise Error("manifest reference name cannot be empty")
-    if name == "." or name == "..":
+    if strict and (name == "." or name == ".."):
         raise Error("manifest reference name cannot be a directory alias")
     for byte in name.bytes():
         if byte == UInt8(0) or byte == UInt8(0x2F):

@@ -5,7 +5,13 @@ from akasha.storage.manifest import (
     Manifest,
     SegmentDescriptor,
 )
-from std.testing import assert_equal, TestSuite
+from akasha.storage.filesystem import (
+    ensure_directory,
+    remove_file_if_exists,
+    write_file_sync,
+)
+from akasha.storage.manifest import load_manifest, publish_manifest
+from std.testing import assert_equal, assert_raises, TestSuite
 
 
 def _manifest_v1_fixture() -> List[UInt8]:
@@ -224,6 +230,130 @@ def _manifest_v2_fixture() -> List[UInt8]:
     ]
 
 
+def _manifest_v1_dot_fixture() -> List[UInt8]:
+    # Historical codec accepted the directory alias as a filename.
+    return [
+        0x41,
+        0x4B,
+        0x4D,
+        0x46,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x03,
+        0x00,
+        0x00,
+        0x00,
+        0x09,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x78,
+        0x56,
+        0x34,
+        0x12,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x2E,
+        0x9D,
+        0x05,
+        0x5A,
+        0x7D,
+    ]
+
+
+def _manifest_v2_dot_fixture() -> List[UInt8]:
+    # Historical codec accepted dense `.` and sparse `..` names.
+    return [
+        0x41,
+        0x4B,
+        0x4D,
+        0x46,
+        0x02,
+        0x00,
+        0x00,
+        0x00,
+        0x03,
+        0x00,
+        0x00,
+        0x00,
+        0x07,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x05,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x05,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x11,
+        0x11,
+        0x11,
+        0x11,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x2E,
+        0x22,
+        0x22,
+        0x22,
+        0x22,
+        0x02,
+        0x00,
+        0x00,
+        0x00,
+        0x2E,
+        0x2E,
+        0x98,
+        0xCF,
+        0x0F,
+        0xAA,
+    ]
+
+
 def test_manifest_v1_fixture_remains_readable() raises:
     var fixture = _manifest_v1_fixture()
     var decoded = decode_manifest_bytes(fixture.copy(), 3)
@@ -274,6 +404,32 @@ def test_manifest_v2_fixture_retains_dense_and_sparse_descriptors() raises:
     )
     var manifest = Manifest.with_segments(3, 7, 5, segments^)
     assert_equal(encode_manifest_v2(manifest), fixture)
+
+
+def test_legacy_dot_alias_bytes_are_codec_compatible_but_never_loaded_or_published() raises:
+    var v1_fixture = _manifest_v1_dot_fixture()
+    var v1 = decode_manifest_bytes(v1_fixture.copy(), 3)
+    assert_equal(v1.segment_name, ".")
+    assert_equal(encode_manifest(3, 9, 0x12345678, "."), v1_fixture)
+
+    var v2_fixture = _manifest_v2_dot_fixture()
+    var v2 = decode_manifest_bytes(v2_fixture.copy(), 3)
+    assert_equal(v2.segments[0].name, ".")
+    assert_equal(v2.segments[0].sparse_name, "..")
+    assert_equal(encode_manifest_v2(v2), v2_fixture)
+
+    var directory = String("/tmp/akasha-manifest-legacy-dot-alias")
+    ensure_directory(directory)
+    remove_file_if_exists(directory + "/manifest.bin")
+    remove_file_if_exists(directory + "/manifest.bin.tmp")
+    write_file_sync(directory + "/manifest.bin", v1_fixture)
+    with assert_raises():
+        _ = load_manifest(directory, 3)
+    with assert_raises():
+        publish_manifest(directory, v1)
+    with assert_raises():
+        publish_manifest(directory, v2)
+    remove_file_if_exists(directory + "/manifest.bin")
 
 
 def main() raises:

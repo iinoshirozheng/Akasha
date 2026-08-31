@@ -10,6 +10,7 @@ from akasha.storage.manifest import (
     encode_manifest,
     encode_manifest_v2,
     encode_manifest_v3,
+    _MAX_MANIFEST_BYTES,
     load_manifest,
     publish_manifest,
     Manifest,
@@ -35,6 +36,26 @@ def _v3_segments() raises -> List[SegmentDescriptor]:
         )
     )
     return segments^
+
+
+def _u16_at(bytes: List[UInt8], offset: Int) -> UInt16:
+    return UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << UInt16(8))
+
+
+def _u32_at(bytes: List[UInt8], offset: Int) -> UInt32:
+    return (
+        UInt32(bytes[offset])
+        | (UInt32(bytes[offset + 1]) << UInt32(8))
+        | (UInt32(bytes[offset + 2]) << UInt32(16))
+        | (UInt32(bytes[offset + 3]) << UInt32(24))
+    )
+
+
+def _u64_at(bytes: List[UInt8], offset: Int) -> UInt64:
+    var value = UInt64(0)
+    for index in range(8):
+        value |= UInt64(bytes[offset + index]) << UInt64(index * 8)
+    return value
 
 
 def test_manifest_binary_round_trip() raises:
@@ -93,7 +114,7 @@ def test_manifest_v3_round_trips_optional_hnsw_reference() raises:
         7,
         5,
         _v3_segments(),
-        "hnsw-7.bin",
+        "hnsw-5.bin",
         UInt32(0xA1B2C3D4),
         UInt64(0x1122334455667788),
         UInt64(2),
@@ -106,13 +127,83 @@ def test_manifest_v3_round_trips_optional_hnsw_reference() raises:
     assert_equal(decoded.format_version, 3)
     assert_equal(len(decoded.segments), 2)
     assert_equal(decoded.segments[1].sparse_name, "sparse-delta-5.bin")
-    assert_equal(decoded.hnsw_name.value(), "hnsw-7.bin")
+    assert_equal(decoded.hnsw_name.value(), "hnsw-5.bin")
     assert_equal(decoded.hnsw_checksum.value(), UInt32(0xA1B2C3D4))
     assert_equal(
         decoded.hnsw_config_fingerprint.value(),
         UInt64(0x1122334455667788),
     )
     assert_equal(decoded.hnsw_point_count.value(), UInt64(2))
+
+
+def test_manifest_v3_layout_matches_independent_little_endian_offsets() raises:
+    var manifest = Manifest.with_hnsw(
+        3,
+        7,
+        5,
+        _v3_segments(),
+        "hnsw-5.bin",
+        UInt32(0xA1B2C3D4),
+        UInt64(0x1122334455667788),
+        UInt64(2),
+    )
+    var bytes = encode_manifest_v3(manifest)
+
+    assert_equal(len(bytes), 193)
+    assert_equal(_u16_at(bytes, 4), UInt16(3))
+    assert_equal(_u16_at(bytes, 6), UInt16(1))
+    assert_equal(_u32_at(bytes, 8), UInt32(3))
+    assert_equal(_u64_at(bytes, 12), UInt64(7))
+    assert_equal(_u64_at(bytes, 20), UInt64(5))
+    assert_equal(_u32_at(bytes, 28), UInt32(2))
+    assert_equal(_u16_at(bytes, 36), UInt16(1))
+    assert_equal(_u16_at(bytes, 38), UInt16(0))
+    assert_equal(_u64_at(bytes, 48), UInt64(3))
+    assert_equal(_u32_at(bytes, 56), UInt32(0x11111111))
+    assert_equal(_u16_at(bytes, 60), UInt16(18))
+    assert_equal(_u16_at(bytes, 82), UInt16(0))
+    assert_equal(_u16_at(bytes, 84), UInt16(1))
+    assert_equal(_u32_at(bytes, 129), UInt32(0x33333333))
+    assert_equal(_u16_at(bytes, 133), UInt16(18))
+    assert_equal(_u32_at(bytes, 155), UInt32(0xA1B2C3D4))
+    assert_equal(_u16_at(bytes, 159), UInt16(10))
+    assert_equal(_u64_at(bytes, 163), UInt64(0x1122334455667788))
+    assert_equal(_u64_at(bytes, 171), UInt64(2))
+    assert_equal(_u32_at(bytes, 189), UInt32(0xB4F94D4A))
+
+
+def test_manifest_v3_hnsw_name_must_match_checkpoint_sequence() raises:
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), "hnsw-7.bin", 1, 2, 3)
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), "manifest.bin", 1, 2, 3)
+    with assert_raises():
+        _ = Manifest.with_hnsw(3, 7, 5, _v3_segments(), "wal.bin", 1, 2, 3)
+
+    var valid = Manifest.with_hnsw(
+        3, 7, 5, _v3_segments(), "hnsw-5.bin", 1, 2, 3
+    )
+    var invalid_encode = Manifest.with_hnsw(
+        3, 7, 5, _v3_segments(), "hnsw-5.bin", 1, 2, 3
+    )
+    invalid_encode.hnsw_name = Optional(String("hnsw-7.bin"))
+    with assert_raises():
+        _ = encode_manifest_v3(invalid_encode)
+    var corrupt = encode_manifest_v3(valid)
+    corrupt[184] = UInt8(0x37)  # `hnsw-7.bin`, with a valid outer CRC.
+    var checksum = crc32_range(corrupt, 4, len(corrupt) - 4)
+    for byte_index in range(4):
+        corrupt[len(corrupt) - 4 + byte_index] = UInt8(
+            checksum >> UInt32(byte_index * 8)
+        )
+    with assert_raises():
+        _ = decode_manifest_bytes(corrupt^, 3)
+
+
+def test_manifest_file_limit_matches_maximum_encoded_v3_size() raises:
+    # Bounded-read exact/one-extra behavior is covered by test_filesystem.
+    # Pin the manifest-specific limit to the documented format maximum here.
+    assert_equal(_MAX_MANIFEST_BYTES, 134_318_143)
 
 
 def test_manifest_v3_without_hnsw_round_trips_but_normal_publish_stays_v2() raises:
@@ -172,19 +263,19 @@ def test_manifest_v3_validates_hnsw_filename_and_does_not_require_sidecar_on_loa
     ensure_directory(directory)
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/manifest.bin.tmp")
-    remove_file_if_exists(directory + "/hnsw-7.bin")
+    remove_file_if_exists(directory + "/hnsw-5.bin")
     var empty = List[UInt8]()
     write_file_sync(directory + "/segment-base-3.bin", empty)
     write_file_sync(directory + "/segment-delta-5.bin", empty)
     write_file_sync(directory + "/sparse-delta-5.bin", empty)
     var manifest = Manifest.with_hnsw(
-        3, 7, 5, _v3_segments(), "hnsw-7.bin", 11, 22, 2
+        3, 7, 5, _v3_segments(), "hnsw-5.bin", 11, 22, 2
     )
     publish_manifest(directory, manifest)
     var loaded = load_manifest(directory, 3)
     assert_equal(loaded.format_version, 3)
-    assert_equal(loaded.hnsw_name.value(), "hnsw-7.bin")
-    assert_equal(path_exists(directory + "/hnsw-7.bin"), False)
+    assert_equal(loaded.hnsw_name.value(), "hnsw-5.bin")
+    assert_equal(path_exists(directory + "/hnsw-5.bin"), False)
 
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/segment-base-3.bin")
@@ -198,13 +289,13 @@ def test_manifest_v3_rejects_corruption_of_each_hnsw_field() raises:
         7,
         5,
         _v3_segments(),
-        "hnsw-7.bin",
+        "hnsw-5.bin",
         UInt32(0xA1B2C3D4),
         UInt64(0x1122334455667788),
         UInt64(2),
     )
     var encoded = encode_manifest_v3(manifest)
-    var hnsw_base = len(encoded) - 4 - "hnsw-7.bin".byte_length() - 24
+    var hnsw_base = len(encoded) - 4 - "hnsw-5.bin".byte_length() - 24
 
     var checksum_corrupt = encoded.copy()
     checksum_corrupt[hnsw_base] ^= UInt8(1)
