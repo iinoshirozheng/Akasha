@@ -10,13 +10,19 @@ def crc32_range(data: List[UInt8], start: Int, end: Int) -> UInt32:
     """Compute CRC-32/ISO-HDLC over ``[start, end)``."""
     var checksum = UInt32(0xFFFFFFFF)
     for index in range(start, end):
-        checksum ^= UInt32(data[index])
-        for _ in range(8):
-            if checksum & 1:
-                checksum = (checksum >> 1) ^ UInt32(0xEDB88320)
-            else:
-                checksum >>= 1
+        checksum = _crc32_update(checksum, data[index])
     return ~checksum
+
+
+def _crc32_update(checksum: UInt32, byte: UInt8) -> UInt32:
+    """Update an in-progress CRC-32/ISO-HDLC accumulator by one byte."""
+    var result = checksum ^ UInt32(byte)
+    for _ in range(8):
+        if result & 1:
+            result = (result >> 1) ^ UInt32(0xEDB88320)
+        else:
+            result >>= 1
+    return result
 
 
 struct BinaryWriter:

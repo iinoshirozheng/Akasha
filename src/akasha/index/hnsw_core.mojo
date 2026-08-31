@@ -7,7 +7,7 @@ from akasha.index.hnsw_heap import (
 )
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
-from akasha.index.hnsw_storage import HnswStorage
+from akasha.index.hnsw_storage import HnswGraphAccess, HnswStorage
 from std.collections import Dict
 from std.math import isfinite
 from std.memory import ArcPointer
@@ -425,9 +425,7 @@ def _removed_neighbors(
     return removed^
 
 
-def _validate_link_level(
-    graph: HnswStorage, slot: UInt32, level: Int
-) raises:
+def _validate_link_level(graph: HnswStorage, slot: UInt32, level: Int) raises:
     if level < 0 or level > graph.level(slot):
         raise Error("HNSW node does not own touched graph level")
     var count = graph.neighbor_count(slot, level)
@@ -441,13 +439,11 @@ def _validate_link_level(
             raise Error("HNSW graph contains an asymmetric edge")
 
 
-def validate_bidirectional_links_with_stats(
-    graph: HnswStorage, mut stats: HnswValidationStats
-) raises:
-    """Audit links in O(actual owned levels + directed edges)."""
-    if not graph.is_valid():
-        raise Error("HNSW graph is marked invalid")
-    graph.validate_structure()
+def _audit_bidirectional_links_with_stats[
+    GraphType: HnswGraphAccess
+](graph: GraphType, mut stats: HnswValidationStats) raises:
+    """Audit links after the concrete graph proved its local structure."""
+    graph.validate_search_ready()
 
     # Give every actually owned (slot, level) cell a dense UInt32 ordinal.
     # This avoids scanning every slot for every level when one sparse node has
@@ -461,9 +457,7 @@ def validate_bidirectional_links_with_stats(
                 raise Error(
                     "HNSW owned level count exceeds validation address space"
                 )
-            var group_key = (
-                (UInt64(level) << UInt64(32)) | UInt64(slot)
-            )
+            var group_key = (UInt64(level) << UInt64(32)) | UInt64(slot)
             level_groups[group_key] = UInt32(owned_level_cells)
             owned_level_cells += 1
 
@@ -474,22 +468,23 @@ def validate_bidirectional_links_with_stats(
         var slot = UInt32(index)
         for level in range(graph.level(slot) + 1):
             var count = graph.neighbor_count(slot, level)
-            if count > graph.level_capacity(slot, level):
+            var capacity = graph.graph_m()
+            if level == 0:
+                capacity = graph.graph_m0()
+            if count > capacity:
                 raise Error("HNSW touched adjacency exceeds level capacity")
-            var source_group_key = (
-                (UInt64(level) << UInt64(32)) | UInt64(slot)
-            )
+            var source_group_key = (UInt64(level) << UInt64(32)) | UInt64(slot)
             var source_group = level_groups[source_group_key]
             for edge_index in range(count):
                 var neighbor = graph.neighbor_at(slot, level, edge_index)
                 if graph.level(neighbor) < level:
                     raise Error("HNSW edge target does not own graph level")
-                var edge_key = (
-                    (UInt64(source_group) << UInt64(32)) | UInt64(neighbor)
+                var edge_key = (UInt64(source_group) << UInt64(32)) | UInt64(
+                    neighbor
                 )
                 edges[edge_key] = True
-                var target_group_key = (
-                    (UInt64(level) << UInt64(32)) | UInt64(neighbor)
+                var target_group_key = (UInt64(level) << UInt64(32)) | UInt64(
+                    neighbor
                 )
                 var target_group = level_groups[target_group_key]
                 required_reverse_edges.append(
@@ -505,7 +500,25 @@ def validate_bidirectional_links_with_stats(
     stats.directed_edges = directed_edges
 
 
-def validate_bidirectional_links(graph: HnswStorage) raises:
+def validate_bidirectional_links_with_stats[
+    GraphType: HnswGraphAccess
+](graph: GraphType, mut stats: HnswValidationStats) raises:
+    """Validate local structure, then audit all reciprocal graph links."""
+    graph.validate_structure()
+    _audit_bidirectional_links_with_stats(graph, stats)
+
+
+def _audit_bidirectional_links[
+    GraphType: HnswGraphAccess
+](graph: GraphType) raises:
+    """Internal reciprocal-link audit for a graph already locally checked."""
+    var stats = HnswValidationStats()
+    _audit_bidirectional_links_with_stats(graph, stats)
+
+
+def validate_bidirectional_links[
+    GraphType: HnswGraphAccess
+](graph: GraphType) raises:
     """Audit packed structure, level ownership, and edge symmetry."""
     var stats = HnswValidationStats()
     validate_bidirectional_links_with_stats(graph, stats)
@@ -556,12 +569,8 @@ def connect_bidirectional(
     var directed_edge_delta = 0
     try:
         for neighbor in proposals:
-            var endpoint_original = _copy_adjacency(
-                graph, endpoint, level
-            )
-            var neighbor_original = _copy_adjacency(
-                graph, neighbor, level
-            )
+            var endpoint_original = _copy_adjacency(graph, endpoint, level)
+            var neighbor_original = _copy_adjacency(graph, neighbor, level)
             var endpoint_final = _adjacency_with_candidate(
                 graph,
                 dispatcher,
@@ -633,22 +642,27 @@ def connect_bidirectional(
     stats.directed_edges += directed_edge_delta
 
 
-def _validate_search_boundary(
-    graph: HnswStorage,
+def _validate_search_boundary[
+    GraphType: HnswGraphAccess
+](
+    graph: GraphType,
     dispatcher: MetricDispatcher,
     query: List[Float32],
     entry: UInt32,
     level: Int,
 ) raises:
     """Validate all caller-owned state before scratch or stats are mutated."""
-    if not graph.is_valid():
-        raise Error("cannot search an invalid HNSW graph")
+    graph.validate_search_ready()
     dispatcher.require_supported_backend()
     if graph.slot_count() <= 0:
         raise Error("cannot search an empty HNSW graph")
-    if graph.dimension <= 0 or graph.m <= 0 or graph.m0 <= 0:
+    if (
+        graph.graph_dimension() <= 0
+        or graph.graph_m() <= 0
+        or graph.graph_m0() <= 0
+    ):
         raise Error("HNSW graph configuration is invalid")
-    if dispatcher.dimension() != graph.dimension:
+    if dispatcher.dimension() != graph.graph_dimension():
         raise Error("metric dispatcher dimension does not match HNSW graph")
     # This validates finite values and the prepared-cosine unit-norm contract
     # without performing (or falsely counting) a graph distance evaluation.
@@ -667,8 +681,10 @@ def _validate_search_boundary(
             raise Error("HNSW edge targets a node below its graph level")
 
 
-def greedy_descent(
-    graph: HnswStorage,
+def greedy_descent[
+    GraphType: HnswGraphAccess
+](
+    graph: GraphType,
     dispatcher: MetricDispatcher,
     query: List[Float32],
     entry: UInt32,
@@ -732,8 +748,10 @@ def greedy_descent(
     return HnswGreedyResult(current_slot, current_distance)
 
 
-def _consider_result_admission[AdmissionType: HnswResultAdmission](
-    graph: HnswStorage,
+def _consider_result_admission[
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+](
+    graph: GraphType,
     admission: AdmissionType,
     item: HnswHeapItem,
     ef: Int,
@@ -749,8 +767,10 @@ def _consider_result_admission[AdmissionType: HnswResultAdmission](
     results.offer(item, ef)
 
 
-def search_layer[AdmissionType: HnswResultAdmission](
-    graph: HnswStorage,
+def search_layer[
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+](
+    graph: GraphType,
     dispatcher: MetricDispatcher,
     query: List[Float32],
     entry: UInt32,
@@ -786,9 +806,7 @@ def search_layer[AdmissionType: HnswResultAdmission](
     admission.validate(graph.slot_count())
 
     var is_filtered = not admission.is_allow_all()
-    scratch.begin(
-        graph.slot_count(), ef, prepare_filtered=is_filtered
-    )
+    scratch.begin(graph.slot_count(), ef, prepare_filtered=is_filtered)
     _ = scratch.visit(entry)
     var entry_distance = graph.distance_to_slot(dispatcher, query, entry)
     var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)

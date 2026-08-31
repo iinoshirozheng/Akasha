@@ -1,8 +1,16 @@
 from akasha.common.config import CollectionConfig, ScalarKind
 from akasha.index.hnsw import HnswIndex
-from akasha.storage.checksum import BinaryReader, BinaryWriter, crc32_range
+from akasha.index.hnsw_view import HnswGraphView
+from akasha.storage.checksum import (
+    BinaryReader,
+    BinaryWriter,
+    _crc32_update,
+    crc32_range,
+)
 from akasha.storage.filesystem import read_file_bytes_bounded, write_file_sync
+from akasha.storage.mapped_file import MappedFile
 from std.collections import Dict
+from std.memory import bitcast
 from std.sys.info import is_64bit
 
 
@@ -251,13 +259,9 @@ def hnsw_snapshot_eligibility(
 ) raises -> HnswSnapshotEligibility:
     """Preflight v1 representation without allocating the encoded payload."""
     if not is_64bit():
-        return HnswSnapshotEligibility(
-            False, False, 0, "unsupported_target"
-        )
+        return HnswSnapshotEligibility(False, False, 0, "unsupported_target")
     if index.config.scalar_kind != ScalarKind.f32():
-        return HnswSnapshotEligibility(
-            False, False, 0, "unsupported_scalar"
-        )
+        return HnswSnapshotEligibility(False, False, 0, "unsupported_scalar")
     try:
         index.config.validate()
         index.validate_structure()
@@ -267,9 +271,7 @@ def hnsw_snapshot_eligibility(
     try:
         var slots = index.graph.slot_count()
         if slots > _MAX_SLOTS:
-            return HnswSnapshotEligibility(
-                False, True, 0, "slot_limit"
-            )
+            return HnswSnapshotEligibility(False, True, 0, "slot_limit")
         var level_cells = UInt64(0)
         var directed_edges = UInt64(0)
         var allocated_neighbor_cells = UInt64(0)
@@ -291,24 +293,18 @@ def hnsw_snapshot_eligibility(
             UInt64(slots), UInt64(HNSW_SNAPSHOT_NODE_BYTES)
         )
         var vector_length = _checked_mul_u64(
-            _checked_mul_u64(
-                UInt64(slots), UInt64(index.config.dimension)
-            ),
+            _checked_mul_u64(UInt64(slots), UInt64(index.config.dimension)),
             UInt64(4),
         )
         var count_length = _checked_mul_u64(level_cells, UInt64(4))
         var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
         var vector_offset = _align8(
-            _checked_add_u64(
-                UInt64(HNSW_SNAPSHOT_HEADER_BYTES), node_length
-            )
+            _checked_add_u64(UInt64(HNSW_SNAPSHOT_HEADER_BYTES), node_length)
         )
         var count_offset = _align8(
             _checked_add_u64(vector_offset, vector_length)
         )
-        var edge_offset = _align8(
-            _checked_add_u64(count_offset, count_length)
-        )
+        var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
         var file_length = _checked_add_u64(
             _checked_add_u64(edge_offset, edge_length),
             UInt64(_CHECKSUM_BYTES),
@@ -669,6 +665,147 @@ def read_hnsw_snapshot_owned(
     )
 
 
+def open_hnsw_snapshot_view(
+    path: String, config: CollectionConfig, sequence: UInt64
+) raises -> HnswGraphView:
+    """Map, completely validate, and return one immutable v1 graph view."""
+    _require_v1_config(config)
+    var mapping = MappedFile.open_readonly(path)
+    var encoded_size = mapping.byte_length()
+    if encoded_size < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if encoded_size > _MAX_SNAPSHOT_BYTES:
+        raise Error("HNSW snapshot exceeds implementation size limit")
+
+    var checksum_offset = encoded_size - _CHECKSUM_BYTES
+    var stored_checksum = _mapped_u32(mapping, checksum_offset)
+    var checksum = UInt32(0xFFFFFFFF)
+    for offset in range(checksum_offset):
+        checksum = _crc32_update(checksum, mapping.byte_at(offset))
+    if ~checksum != stored_checksum:
+        raise Error("HNSW snapshot checksum mismatch")
+
+    if (
+        mapping.byte_at(0) != UInt8(0x41)
+        or mapping.byte_at(1) != UInt8(0x4B)
+        or mapping.byte_at(2) != UInt8(0x48)
+        or mapping.byte_at(3) != UInt8(0x47)
+    ):
+        raise Error("invalid HNSW snapshot magic")
+    if _mapped_u16(mapping, 4) != HNSW_SNAPSHOT_VERSION:
+        raise Error("unsupported HNSW snapshot version")
+    if _mapped_u16(mapping, 6) != UInt16(0):
+        raise Error("unsupported HNSW snapshot flags")
+    if _mapped_u32(mapping, 8) != UInt32(HNSW_SNAPSHOT_HEADER_BYTES):
+        raise Error("unsupported HNSW snapshot header size")
+    if _mapped_u32(mapping, 12) != UInt32(0):
+        raise Error("nonzero HNSW snapshot reserved header bytes")
+    if _mapped_u64(mapping, 16) != config.fingerprint():
+        raise Error("HNSW snapshot configuration fingerprint mismatch")
+    if _mapped_u64(mapping, 24) != sequence:
+        raise Error("HNSW snapshot sequence mismatch")
+    if _mapped_u32(mapping, 32) != UInt32(config.dimension):
+        raise Error("HNSW snapshot dimension mismatch")
+    if mapping.byte_at(36) != config.ann_metric.tag():
+        raise Error("HNSW snapshot metric mismatch")
+    if mapping.byte_at(37) != config.scalar_kind.tag():
+        raise Error("HNSW snapshot scalar kind mismatch")
+    if (
+        _mapped_u16(mapping, 38) != UInt16(config.m)
+        or _mapped_u16(mapping, 40) != UInt16(config.m0)
+        or _mapped_u16(mapping, 42) != UInt16(config.max_level)
+    ):
+        raise Error("HNSW snapshot graph configuration mismatch")
+    if _mapped_u32(mapping, 44) != UInt32(0):
+        raise Error("nonzero HNSW snapshot reserved config bytes")
+    if _mapped_u64(mapping, 152) != UInt64(0):
+        raise Error("nonzero HNSW snapshot reserved extension bytes")
+
+    var slot_count_u64 = _mapped_u64(mapping, 48)
+    var live_count_u64 = _mapped_u64(mapping, 56)
+    var directed_edges_u64 = _mapped_u64(mapping, 64)
+    var entry_slot_u64 = _mapped_u64(mapping, 72)
+    var entry_level = Int(bitcast[DType.int64](_mapped_u64(mapping, 80)))
+    var node_offset = _mapped_u64(mapping, 88)
+    var node_length = _mapped_u64(mapping, 96)
+    var vector_offset = _mapped_u64(mapping, 104)
+    var vector_length = _mapped_u64(mapping, 112)
+    var count_offset = _mapped_u64(mapping, 120)
+    var count_length = _mapped_u64(mapping, 128)
+    var edge_offset = _mapped_u64(mapping, 136)
+    var edge_length = _mapped_u64(mapping, 144)
+
+    var slots = _bounded_count(slot_count_u64, _MAX_SLOTS, "slot")
+    if live_count_u64 > slot_count_u64:
+        raise Error("HNSW snapshot live count exceeds slot count")
+    var live_points = _bounded_count(live_count_u64, slots, "live point")
+    var directed_edges = _bounded_count(
+        directed_edges_u64, Int.MAX, "directed edge"
+    )
+    if count_length % UInt64(4) != UInt64(0):
+        raise Error("HNSW snapshot count section length is invalid")
+    var level_count = _bounded_count(
+        count_length // UInt64(4), Int.MAX, "level count"
+    )
+    _validate_hnsw_snapshot_header_allocation(
+        UInt64(encoded_size),
+        slot_count_u64,
+        UInt64(config.dimension),
+        UInt64(level_count),
+        directed_edges_u64,
+        UInt64(config.m0),
+    )
+    _validate_section_layout(
+        UInt64(encoded_size),
+        slot_count_u64,
+        UInt64(config.dimension),
+        directed_edges_u64,
+        node_offset,
+        node_length,
+        vector_offset,
+        vector_length,
+        count_offset,
+        count_length,
+        edge_offset,
+        edge_length,
+    )
+    _validate_mapped_zero_padding(
+        mapping, node_offset + node_length, vector_offset
+    )
+    _validate_mapped_zero_padding(
+        mapping, vector_offset + vector_length, count_offset
+    )
+    _validate_mapped_zero_padding(
+        mapping, count_offset + count_length, edge_offset
+    )
+
+    var optional_entry = Optional[UInt32]()
+    if slots == 0:
+        if entry_slot_u64 != _ENTRY_NONE or entry_level != -1:
+            raise Error("empty HNSW snapshot entry point is invalid")
+    else:
+        if entry_slot_u64 >= slot_count_u64:
+            raise Error("HNSW snapshot entry point is invalid")
+        optional_entry = Optional(UInt32(entry_slot_u64))
+
+    var view = HnswGraphView._from_validated_mapping(
+        mapping^,
+        config,
+        slots,
+        live_points,
+        level_count,
+        directed_edges,
+        optional_entry,
+        entry_level,
+        Int(node_offset),
+        Int(vector_offset),
+        Int(count_offset),
+        Int(edge_offset),
+    )
+    view.validate_structure()
+    return view^
+
+
 def try_read_compatible_hnsw_snapshot_owned(
     path: String,
     config: CollectionConfig,
@@ -693,10 +830,8 @@ def try_read_compatible_hnsw_snapshot_owned(
     _require_v1_config(config)
     if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
-    if (
-        not hnsw_snapshot_identity_matches(
-            bytes, config, sequence, manifest_live_point_count
-        )
+    if not hnsw_snapshot_identity_matches(
+        bytes, config, sequence, manifest_live_point_count
     ):
         return Optional[HnswIndex]()
 
@@ -981,3 +1116,33 @@ def _read_u64_at(bytes: List[UInt8], offset: Int) -> UInt64:
         | (UInt64(bytes[offset + 6]) << UInt64(48))
         | (UInt64(bytes[offset + 7]) << UInt64(56))
     )
+
+
+def _mapped_u16(mapping: MappedFile, offset: Int) raises -> UInt16:
+    return UInt16(mapping.byte_at(offset)) | (
+        UInt16(mapping.byte_at(offset + 1)) << UInt16(8)
+    )
+
+
+def _mapped_u32(mapping: MappedFile, offset: Int) raises -> UInt32:
+    var value = UInt32(0)
+    for index in range(4):
+        value |= UInt32(mapping.byte_at(offset + index)) << UInt32(index * 8)
+    return value
+
+
+def _mapped_u64(mapping: MappedFile, offset: Int) raises -> UInt64:
+    var value = UInt64(0)
+    for index in range(8):
+        value |= UInt64(mapping.byte_at(offset + index)) << UInt64(index * 8)
+    return value
+
+
+def _validate_mapped_zero_padding(
+    mapping: MappedFile, start: UInt64, end: UInt64
+) raises:
+    if start > end or end > UInt64(mapping.byte_length()):
+        raise Error("HNSW snapshot alignment padding range is invalid")
+    for offset in range(Int(start), Int(end)):
+        if mapping.byte_at(offset) != UInt8(0):
+            raise Error("nonzero HNSW snapshot alignment padding")

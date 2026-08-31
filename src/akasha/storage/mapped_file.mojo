@@ -169,6 +169,10 @@ struct MappedFile(Movable):
         self._ensure_open()
         return self._descriptor
 
+    def _is_open(self) -> Bool:
+        """Internal state query for owners implementing non-raising traits."""
+        return not self._closed
+
     def _ensure_open(self) raises:
         if self._closed:
             raise Error("mapped file is closed")

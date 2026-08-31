@@ -7,6 +7,53 @@ comptime _UINT32_MAX_AS_INT = 4_294_967_295
 comptime _UINT16_MAX_AS_INT = 65_535
 
 
+trait HnswGraphAccess:
+    """Read-only graph contract used by the allocation-free search core."""
+
+    def validate_search_ready(self) raises:
+        ...
+
+    def validate_structure(self) raises:
+        ...
+
+    def slot_count(self) -> Int:
+        ...
+
+    def graph_dimension(self) -> Int:
+        ...
+
+    def graph_m(self) -> Int:
+        ...
+
+    def graph_m0(self) -> Int:
+        ...
+
+    def id_at(self, slot: UInt32) raises -> Int:
+        ...
+
+    def level(self, slot: UInt32) raises -> Int:
+        ...
+
+    def is_current(self, slot: UInt32) -> Bool:
+        ...
+
+    def distance_to_slot(
+        self,
+        dispatcher: MetricDispatcher,
+        query: List[Float32],
+        slot: UInt32,
+    ) raises -> Float32:
+        ...
+
+    def neighbor_count(self, slot: UInt32, level: Int) raises -> Int:
+        ...
+
+    def neighbor_at(
+        self, slot: UInt32, level: Int, index: Int
+    ) raises -> UInt32:
+        ...
+
+
 def _validate_append_slot_count(slot_count: UInt64) raises -> UInt32:
     """Return the next slot while reserving UInt32.MAX as the empty marker."""
     if slot_count >= UInt64(UInt32.MAX):
@@ -14,7 +61,7 @@ def _validate_append_slot_count(slot_count: UInt64) raises -> UInt32:
     return UInt32(slot_count)
 
 
-struct HnswStorage:
+struct HnswStorage(HnswGraphAccess):
     """Append-only flat mutable storage for an HNSW graph.
 
     Public IDs are kept in ``ids`` and ``_current_slots`` only. Graph edges
@@ -74,6 +121,19 @@ struct HnswStorage:
     def is_valid(self) -> Bool:
         """Whether this graph may be exposed to approximate search."""
         return self._valid
+
+    def validate_search_ready(self) raises:
+        if not self._valid:
+            raise Error("cannot search an invalid HNSW graph")
+
+    def graph_dimension(self) -> Int:
+        return self.dimension
+
+    def graph_m(self) -> Int:
+        return self.m
+
+    def graph_m0(self) -> Int:
+        return self.m0
 
     def mark_invalid(mut self):
         """Permanently quarantine a graph after an interrupted link update."""
@@ -430,9 +490,7 @@ struct HnswStorage:
                         self._validate_neighbor(slot, neighbor)
                         var key = Int(neighbor)
                         if key in seen_neighbors:
-                            raise Error(
-                                "HNSW neighbor tape has a duplicate"
-                            )
+                            raise Error("HNSW neighbor tape has a duplicate")
                         seen_neighbors[key] = True
                     elif neighbor != HNSW_EMPTY_NEIGHBOR:
                         raise Error("HNSW unused neighbor cell is not empty")
@@ -494,13 +552,6 @@ struct HnswStorage:
         product: Float32,
         squared_l2: Float32,
     ) -> Float32:
-        if dispatcher.metric_name() == "l2":
-            return squared_l2
-        if dispatcher.metric_name() == "dot":
-            return -product
-        var clamped = product
-        if clamped < -1.0:
-            clamped = -1.0
-        elif clamped > 1.0:
-            clamped = 1.0
-        return 1.0 - clamped
+        return dispatcher._finish_prepared_f32_accumulations(
+            product, squared_l2
+        )

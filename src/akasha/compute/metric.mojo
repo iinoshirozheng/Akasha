@@ -149,6 +149,16 @@ struct MetricDispatcher(Copyable, Movable):
             return -canonical_distance
         return 1.0 - canonical_distance
 
+    def _finish_prepared_f32_accumulations(
+        self, product: Float32, squared_l2: Float32
+    ) -> Float32:
+        """Finish scalar accumulations for a prevalidated F32 hot path."""
+        if self._metric == MetricKind.l2():
+            return squared_l2
+        if self._metric == MetricKind.dot():
+            return -product
+        return 1.0 - _clamp_similarity_f32(product)
+
     def require_supported_backend(self) raises:
         """Validate the backend once before entering a distance hot loop."""
         if self._scalar != ScalarKind.f32():
