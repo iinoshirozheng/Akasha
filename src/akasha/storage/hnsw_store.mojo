@@ -551,6 +551,70 @@ def read_hnsw_snapshot_owned(
     )
 
 
+def try_read_compatible_hnsw_snapshot_owned(
+    path: String,
+    config: CollectionConfig,
+    sequence: UInt64,
+    manifest_checksum: UInt32,
+    manifest_live_point_count: UInt64,
+) raises -> Optional[HnswIndex]:
+    """Return an owned compatible sidecar or `None` for stale metadata.
+
+    Internal CRC validation deliberately runs before metadata classification.
+    Matching committed metadata receives full structural validation; invalid
+    layout then remains a storage error rather than a rebuildable cache miss.
+    """
+    _require_v1_config(config)
+    var bytes = read_file_bytes_bounded(path, _MAX_SNAPSHOT_BYTES)
+    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    var checksum_offset = len(bytes) - _CHECKSUM_BYTES
+    var stored_checksum = _read_u32_at(bytes, checksum_offset)
+    if crc32_range(bytes, 0, checksum_offset) != stored_checksum:
+        raise Error("HNSW snapshot checksum mismatch")
+
+    # Preflight only the fixed identity fields. Format/flags/reserved failures
+    # are unsafe layout and therefore errors even before compatibility checks.
+    var reader = BinaryReader(bytes.copy())
+    _read_magic(reader)
+    if reader.read_u16() != HNSW_SNAPSHOT_VERSION:
+        raise Error("unsupported HNSW snapshot version")
+    if reader.read_u16() != UInt16(0):
+        raise Error("unsupported HNSW snapshot flags")
+    if reader.read_u32() != UInt32(HNSW_SNAPSHOT_HEADER_BYTES):
+        raise Error("unsupported HNSW snapshot header size")
+    if reader.read_u32() != UInt32(0):
+        raise Error("nonzero HNSW snapshot reserved header bytes")
+    var fingerprint = reader.read_u64()
+    var encoded_sequence = reader.read_u64()
+    var dimension = reader.read_u32()
+    var metric = reader.read_u8()
+    var scalar = reader.read_u8()
+    var m = reader.read_u16()
+    var m0 = reader.read_u16()
+    var max_level = reader.read_u16()
+    if reader.read_u32() != UInt32(0):
+        raise Error("nonzero HNSW snapshot reserved config bytes")
+    _ = reader.read_u64()  # slot count
+    var live_point_count = reader.read_u64()
+    if (
+        stored_checksum != manifest_checksum
+        or fingerprint != config.fingerprint()
+        or encoded_sequence != sequence
+        or dimension != UInt32(config.dimension)
+        or metric != config.ann_metric.tag()
+        or scalar != config.scalar_kind.tag()
+        or m != UInt16(config.m)
+        or m0 != UInt16(config.m0)
+        or max_level != UInt16(config.max_level)
+        or live_point_count != manifest_live_point_count
+    ):
+        return Optional[HnswIndex]()
+
+    var decoded = decode_hnsw_snapshot_owned(bytes^, config, sequence)
+    return Optional(decoded^)
+
+
 def _slot_flag(index: HnswIndex, slot: UInt32) raises -> UInt8:
     if index.graph.is_current(slot):
         return _CURRENT_FLAG

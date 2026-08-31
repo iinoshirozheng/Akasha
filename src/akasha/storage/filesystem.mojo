@@ -111,6 +111,16 @@ def remove_file_if_exists(path: String) raises:
         remove(path)
 
 
+def remove_file_and_sync_directory_if_exists(
+    directory: String, path: String
+) raises:
+    """Durably remove one explicitly named file without directory scanning."""
+    if not exists(path):
+        return
+    remove(path)
+    sync_directory(directory)
+
+
 def atomic_replace(source: String, destination: String) raises:
     var source_path = source
     var destination_path = destination

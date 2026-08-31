@@ -145,7 +145,7 @@ def test_metric_mismatch_returns_exact_equivalent_results() raises:
     assert_equal(collection.last_dense_plan_reason(), "metric_mismatch")
 
 
-def test_small_and_unavailable_graph_plans_are_exact_equivalent() raises:
+def test_small_and_recovered_graph_plans_are_correct() raises:
     var small_path = String("/tmp/akasha-task18-small-plan")
     _reset(small_path)
     var small = PersistentCollection.open(small_path, 1)
@@ -164,12 +164,13 @@ def test_small_and_unavailable_graph_plans_are_exact_equivalent() raises:
         original.upsert(id, [Float32(id)])
     original.close()
     var recovered = PersistentCollection.open(recovery_path, 1)
-    assert_equal(recovered.hnsw_available(), False)
+    # Task 22 rebuilds when no committed sidecar exists.
+    assert_equal(recovered.hnsw_available(), True)
     var recovered_exact = recovered.search_l2([79.0], 3)
     var recovered_approx = recovered.search_l2_approx([79.0], 3, 32)
     for index in range(len(recovered_exact)):
         assert_equal(recovered_approx[index].id, recovered_exact[index].id)
-    assert_equal(recovered.last_dense_plan_reason(), "graph_unavailable")
+    assert_equal(recovered.last_dense_plan_reason(), "ann")
 
 
 def test_graph_mutation_failure_keeps_authoritative_exact_search() raises:
@@ -355,8 +356,7 @@ def test_open_and_unfiltered_queries_do_not_build_filter_id_lookup() raises:
     original.close()
 
     var reopened = PersistentCollection.open(path, 1)
-    # Incremental history makes this default-config cache non-lossless, so
-    # reopen exercises the cache-miss/unavailable path.
+    # With no committed checkpoint sidecar, reopen rebuilds authoritative data.
     assert_equal(reopened.hnsw_cache_hit(), False)
     assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
     _ = reopened.search_l2_approx([79.0], 3, 32)

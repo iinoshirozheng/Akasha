@@ -155,15 +155,15 @@ partially usable ANN index.
 ## Publication and compatibility
 
 Writing a sidecar synchronously writes the requested path. The checkpoint
-publisher supplies a temporary filename, renames completed immutable files, and
-commits their reference through manifest v3 in Task 22. The filename sequence,
-header sequence, and manifest sequence must agree.
+publisher supplies a temporary filename, fsyncs dense, sparse, and HNSW files,
+renames all three, syncs the directory, and then commits their reference through
+manifest v3. The filename sequence, header sequence, and manifest sequence must
+agree. WAL rotation follows the manifest commit; cleanup removes only a prior
+valid manifest's explicitly named, superseded sidecar.
 
-The legacy `hnsw.cache` envelope and payload remain readable and rebuildable
-during the transition. This v1 codec never writes or replaces `hnsw.cache`, so
-it cannot create a second independently authoritative graph. The sidecar
-supersedes that optional derived cache only after the manifest v3 commit point.
-Once a v3 manifest commits a compatible sidecar, recovery must not prefer a
-stale legacy cache over it. Older manifests without a committed sidecar continue
-to treat `hnsw.cache` as optional derived state and may rebuild from authoritative
-records.
+The legacy `hnsw.cache` envelope and payload remain readable and rebuildable for
+older manifests without a sidecar. Once a v3 manifest commits a sidecar,
+recovery does not open or prefer the legacy cache. Missing files and stale
+identity/checksum/count metadata rebuild from authoritative records. A sidecar
+whose committed identity matches but whose internal CRC or layout is corrupt is
+a storage error. Newer WAL mutations replay incrementally into the owned graph.

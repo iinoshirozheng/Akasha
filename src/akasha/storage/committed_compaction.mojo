@@ -110,12 +110,25 @@ def compact_committed_segments(
             sparse_name,
         )
     )
-    var compacted = Manifest.with_segments(
-        dimension,
-        previous.generation + 1,
-        sequence,
-        descriptors^,
-    )
+    var compacted: Manifest
+    if Bool(previous.hnsw_name):
+        compacted = Manifest.with_hnsw(
+            dimension,
+            previous.generation + 1,
+            sequence,
+            descriptors^,
+            previous.hnsw_name.value(),
+            previous.hnsw_checksum.value(),
+            previous.hnsw_config_fingerprint.value(),
+            previous.hnsw_point_count.value(),
+        )
+    else:
+        compacted = Manifest.with_segments(
+            dimension,
+            previous.generation + 1,
+            sequence,
+            descriptors^,
+        )
     publish_manifest(directory, compacted)
 
     var removed = List[String]()

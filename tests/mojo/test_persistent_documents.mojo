@@ -177,7 +177,7 @@ def test_v1_database_opens_and_flushes_as_v3_base_segment() raises:
     collection.close()
 
     var manifest = load_manifest(path, 1)
-    assert_equal(manifest.format_version, 2)
+    assert_equal(manifest.format_version, 3)
     assert_equal(manifest.segments[0].level, 1)
     var segment = read_file_bytes(path + "/segment-base-1.bin")
     assert_equal(segment[4], UInt8(3))

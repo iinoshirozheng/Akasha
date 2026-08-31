@@ -294,7 +294,7 @@ def test_later_flush_appends_delta_and_preserves_referenced_base() raises:
     collection.flush()
 
     var manifest = load_manifest(path, 1)
-    assert_equal(manifest.format_version, 2)
+    assert_equal(manifest.format_version, 3)
     assert_equal(manifest.generation, UInt64(2))
     assert_equal(len(manifest.segments), 2)
     assert_equal(manifest.segments[0].level, 1)

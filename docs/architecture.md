@@ -26,9 +26,9 @@ validate vector + flat typed fields
    -> exact SIMD search
 
 flush
-   -> changed dense/sparse records into paired base-or-delta segments + fsync
-   -> atomic segment renames + directory fsync
-   -> atomic Manifest v2 generation publish + directory fsync
+   -> changed dense/sparse records plus HNSW sidecar into temporary files + fsync
+   -> atomic data-file renames + directory fsync
+   -> atomic Manifest v3 generation publish + directory fsync
    -> atomic empty WAL replacement + directory fsync
    -> threshold signal coalesces into one background maintenance request
    -> worker locks the same writer boundary and may publish one full base
@@ -50,14 +50,16 @@ then search performs greedy upper-layer descent and best-first layer-zero
 expansion. The planner keeps small or selective queries on exact scan. Filtered
 HNSW search over-fetches, evaluates the Boolean expression, retains exact metric
 scores, and falls back to exact filtered scan when the graph candidates cannot
-fill `k`. Recovered WAL/segment state remains authoritative. A versioned CRC32
-`hnsw.cache` stores graph bytes only as a rebuildable acceleration artifact;
-generation, sequence, source fingerprint, payload structure, or checksum
-mismatch becomes a cache miss.
+fill `k`. Recovered WAL/segment state remains authoritative. Manifest v3 commits
+a versioned CRC32 `hnsw-<sequence>.bin` sidecar. Compatible sidecars decode into
+owned graph storage and newer WAL mutations replay incrementally. Missing or
+stale metadata rebuilds from the MemTable; matching committed checksum or layout
+corruption fails recovery. Legacy `hnsw.cache` remains readable only for
+manifests without a sidecar and is never preferred over a v3 reference.
 
 Sparse vectors are a companion durable state keyed by the same point IDs. A
 checksummed sparse WAL shares the collection sequence space, and every
-Manifest v2 descriptor pairs its dense base/delta with a sparse base/delta.
+Each v2/v3 manifest descriptor pairs its dense base/delta with a sparse base/delta.
 Both are fsynced before manifest publication. Open replays paired descriptors
 in sequence order, then newer sparse WAL records, and removes sparse records
 whose dense point is not live.

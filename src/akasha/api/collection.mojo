@@ -7,7 +7,7 @@ from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import DeviceBatchResult
 from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.api.batch import BatchMutation, BatchWriteResult
-from akasha.common.config import CollectionConfig, MetricKind
+from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.document.record import (
     clone_fields,
     DocumentField,
@@ -47,7 +47,13 @@ from akasha.storage.filesystem import (
     atomic_replace,
     ensure_durable_directory,
     path_exists,
+    remove_file_and_sync_directory_if_exists,
     sync_directory,
+)
+from akasha.storage.hnsw_store import (
+    HnswSnapshotInfo,
+    try_read_compatible_hnsw_snapshot_owned,
+    write_hnsw_snapshot,
 )
 from akasha.storage.collection_config import (
     collection_config_exists,
@@ -169,6 +175,7 @@ struct PersistentCollection:
     var _maintenance: MaintenanceController
     var _cache_generation: UInt64
     var _source_checksum: UInt32
+    var _hnsw_checkpoint_was_hit: Bool
     var _hnsw_cache_was_hit: Bool
     var _metadata_cache_was_hit: Bool
 
@@ -186,6 +193,7 @@ struct PersistentCollection:
         maintenance_library_path: String,
         cache_generation: UInt64,
         source_checksum: UInt32,
+        hnsw_checkpoint_hit: Bool,
         hnsw_cache_hit: Bool,
         metadata_cache_hit: Bool,
         hnsw_available: Bool,
@@ -233,6 +241,7 @@ struct PersistentCollection:
         )
         self._cache_generation = cache_generation
         self._source_checksum = source_checksum
+        self._hnsw_checkpoint_was_hit = hnsw_checkpoint_hit
         self._hnsw_cache_was_hit = hnsw_cache_hit
         self._metadata_cache_was_hit = metadata_cache_hit
 
@@ -301,6 +310,13 @@ struct PersistentCollection:
                     raise Error("compacted manifest entry must be a base")
                 memtable.apply_recovered_entries(snapshot.entries)
             snapshot_sequence = manifest.last_sequence
+
+        # Preserve the exact committed dense identity before newer WAL replay.
+        # A sidecar describes this checkpoint, not the post-WAL MemTable.
+        var checkpoint_live_ids = Dict[Int, Bool]()
+        for ordinal in range(memtable.slot_count()):
+            if memtable.is_live_at(ordinal):
+                checkpoint_live_ids[memtable.id_at(ordinal)] = True
 
         var dense_wal = preflight_wal(path + "/wal.bin", dimension)
         var last_sequence = snapshot_sequence
@@ -446,24 +462,21 @@ struct PersistentCollection:
             if not Bool(memtable.get(recovered_sparse[index].id)):
                 sparse.delete(recovered_sparse[index].id)
 
-        # Publishing the immutable identity is the migration commit point.
-        # Every authoritative dense and sparse source has been decoded above,
-        # without truncating a torn WAL tail. Repair happens only afterward.
-        if resolved.needs_publication:
-            publish_collection_config(path, config)
-        repair_wal_tail(path + "/wal.bin", dense_wal)
-        repair_sparse_wal_tail(path + "/sparse.wal", sparse_wal)
-
         var source_checksum = authoritative_index_checksum(memtable)
-        var hnsw_load = _load_hnsw_cache(
+        var hnsw_load = _load_or_rebuild_hnsw(
             path,
             config,
             cache_generation,
+            snapshot_sequence,
             last_sequence,
             source_checksum,
+            checkpoint_live_ids,
+            dense_wal.records,
             memtable,
         )
-        var hnsw_cache_hit = hnsw_load.hit
+        var hnsw_cache_hit = hnsw_load.legacy_cache_hit
+        var hnsw_checkpoint_hit = hnsw_load.sidecar_hit
+        var hnsw_replayed_mutations = hnsw_load.replayed_mutations
         var hnsw = hnsw_load.take_index()
         var metadata_load = _load_or_build_metadata_cache(
             path,
@@ -475,7 +488,16 @@ struct PersistentCollection:
         )
         var metadata_cache_hit = metadata_load.hit
         var metadata = metadata_load.take_index()
-        var recovered_point_count = metadata.live_count()
+
+        # Publishing the immutable identity is the migration commit point.
+        # Every authoritative source and any matching committed sidecar has
+        # been decoded without truncating a torn WAL tail. Repair happens only
+        # after the complete recovery preflight succeeds.
+        if resolved.needs_publication:
+            publish_collection_config(path, config)
+        repair_wal_tail(path + "/wal.bin", dense_wal)
+        repair_sparse_wal_tail(path + "/sparse.wal", sparse_wal)
+
         var collection = PersistentCollection(
             path,
             config,
@@ -489,10 +511,12 @@ struct PersistentCollection:
             maintenance_library_path,
             cache_generation,
             source_checksum,
+            hnsw_checkpoint_hit,
             hnsw_cache_hit,
             metadata_cache_hit,
-            recovered_point_count == 0 or hnsw_cache_hit,
+            True,
         )
+        collection._hnsw_mutations_since_rebuild = hnsw_replayed_mutations
         return collection^
 
     def collection_config(self) -> CollectionConfig:
@@ -1275,26 +1299,73 @@ struct PersistentCollection:
         var previous_sequence = UInt64(0)
         var generation = UInt64(1)
         var has_previous_manifest = False
+        var previous_hnsw_name = String()
+        var previous_hnsw_metadata_matches = False
         var descriptors = List[SegmentDescriptor]()
         if path_exists(self._path + "/manifest.bin"):
             var previous_manifest = load_manifest(self._path, self._config.dimension)
             previous_sequence = previous_manifest.last_sequence
             has_previous_manifest = True
+            if Bool(previous_manifest.hnsw_name):
+                previous_hnsw_name = previous_manifest.hnsw_name.value().copy()
+                previous_hnsw_metadata_matches = (
+                    self._hnsw_checkpoint_was_hit and
+                    previous_manifest.hnsw_config_fingerprint.value()
+                    == self._config.fingerprint()
+                    and previous_manifest.hnsw_point_count.value()
+                    == UInt64(
+                        self._hnsw.point_count() - self._hnsw.inactive_count()
+                    )
+                    and path_exists(
+                        self._path + "/" + previous_hnsw_name
+                    )
+                )
             if self._last_sequence < previous_sequence:
                 raise Error("collection sequence precedes checkpoint")
-            if self._last_sequence == previous_sequence:
-                rotate_wal(self._path)
-                rotate_sparse_wal(self._path)
-                self._sparse_pending = List[SparseWalRecord]()
-                self._maintain_hnsw_for_flush()
-                self._publish_index_caches_best_effort()
-                return
-            if previous_manifest.format_version == 2:
+            if previous_manifest.format_version >= 2:
                 if previous_manifest.generation == UInt64.MAX:
                     raise Error("manifest generation exhausted")
                 generation = previous_manifest.generation + 1
             for index in range(len(previous_manifest.segments)):
                 descriptors.append(previous_manifest.segments[index].clone())
+
+        # Task 19 policy is evaluated before any checkpoint artifact is
+        # encoded so the sidecar represents the same authoritative sequence.
+        self._maintain_hnsw_for_flush()
+        if has_previous_manifest and self._last_sequence == previous_sequence:
+            if (
+                not previous_hnsw_metadata_matches
+                and self._hnsw_available
+                and self._config.scalar_kind == ScalarKind.f32()
+            ):
+                var hnsw_name = (
+                    "hnsw-" + String(self._last_sequence) + ".bin"
+                )
+                var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
+                var hnsw_info = write_hnsw_snapshot(
+                    hnsw_temporary, self._hnsw, self._last_sequence
+                )
+                atomic_replace(
+                    hnsw_temporary, self._path + "/" + hnsw_name
+                )
+                sync_directory(self._path)
+                var upgraded = Manifest.with_hnsw(
+                    self._config.dimension,
+                    generation,
+                    self._last_sequence,
+                    descriptors^,
+                    hnsw_name,
+                    hnsw_info.checksum,
+                    hnsw_info.config_fingerprint,
+                    hnsw_info.live_point_count,
+                )
+                publish_manifest(self._path, upgraded)
+                self._hnsw_checkpoint_was_hit = True
+            rotate_wal(self._path)
+            rotate_sparse_wal(self._path)
+            self._sparse_pending = List[SparseWalRecord]()
+            self._publish_index_caches_best_effort()
+            return
 
         var sparse_kind = SPARSE_SEGMENT_KIND_BASE
         var sparse_prefix = String("sparse-base-")
@@ -1320,8 +1391,6 @@ struct PersistentCollection:
             self._last_sequence,
             sparse_mutations,
         )
-        atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
-        sync_directory(self._path)
 
         var kind = SEGMENT_KIND_BASE
         var level = 1
@@ -1345,7 +1414,25 @@ struct PersistentCollection:
             self._last_sequence,
             entries,
         )
+        var hnsw_name = "hnsw-" + String(self._last_sequence) + ".bin"
+        var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
+        var hnsw_info = Optional[HnswSnapshotInfo]()
+        if (
+            self._hnsw_available
+            and self._config.scalar_kind == ScalarKind.f32()
+        ):
+            hnsw_info = Optional(
+                write_hnsw_snapshot(
+                    hnsw_temporary, self._hnsw, self._last_sequence
+                )
+            )
+
+        # Every immutable data file is durable before the manifest commit
+        # point. One directory barrier covers all completed renames.
+        atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
         atomic_replace(temporary_path, final_path)
+        if Bool(hnsw_info):
+            atomic_replace(hnsw_temporary, self._path + "/" + hnsw_name)
         sync_directory(self._path)
         descriptors.append(
             SegmentDescriptor.with_sparse(
@@ -1358,17 +1445,37 @@ struct PersistentCollection:
                 sparse_name,
             )
         )
-        var manifest = Manifest.with_segments(
-            self._config.dimension,
-            generation,
-            self._last_sequence,
-            descriptors^,
-        )
+        var manifest: Manifest
+        if Bool(hnsw_info):
+            manifest = Manifest.with_hnsw(
+                self._config.dimension,
+                generation,
+                self._last_sequence,
+                descriptors^,
+                hnsw_name,
+                hnsw_info.value().checksum,
+                hnsw_info.value().config_fingerprint,
+                hnsw_info.value().live_point_count,
+            )
+        else:
+            manifest = Manifest.with_segments(
+                self._config.dimension,
+                generation,
+                self._last_sequence,
+                descriptors^,
+            )
         publish_manifest(self._path, manifest)
+        self._hnsw_checkpoint_was_hit = Bool(hnsw_info)
         rotate_wal(self._path)
         rotate_sparse_wal(self._path)
         self._sparse_pending = List[SparseWalRecord]()
-        self._maintain_hnsw_for_flush()
+        if (
+            previous_hnsw_name.byte_length() > 0
+            and previous_hnsw_name != hnsw_name
+        ):
+            remove_file_and_sync_directory_if_exists(
+                self._path, self._path + "/" + previous_hnsw_name
+            )
         self._publish_index_caches_best_effort()
         var policy = CompactionPolicy(4)
         if policy.should_compact(manifest):
@@ -1445,12 +1552,25 @@ struct PersistentCollection:
                 sparse_name,
             )
         )
-        var compacted = Manifest.with_segments(
-            self._config.dimension,
-            previous.generation + 1,
-            self._last_sequence,
-            descriptors^,
-        )
+        var compacted: Manifest
+        if Bool(previous.hnsw_name):
+            compacted = Manifest.with_hnsw(
+                self._config.dimension,
+                previous.generation + 1,
+                self._last_sequence,
+                descriptors^,
+                previous.hnsw_name.value(),
+                previous.hnsw_checksum.value(),
+                previous.hnsw_config_fingerprint.value(),
+                previous.hnsw_point_count.value(),
+            )
+        else:
+            compacted = Manifest.with_segments(
+                self._config.dimension,
+                previous.generation + 1,
+                self._last_sequence,
+                descriptors^,
+            )
         publish_manifest(self._path, compacted)
 
         self._publish_index_caches_best_effort()
@@ -1829,6 +1949,7 @@ struct PersistentCollection:
     def _mark_hnsw_unavailable(mut self, reason: String):
         self._hnsw_available = False
         self._hnsw_unavailable_reason = String(copy=reason)
+        self._hnsw_checkpoint_was_hit = False
 
     def _hnsw_requires_maintenance(self) -> Bool:
         return (
@@ -1859,6 +1980,7 @@ struct PersistentCollection:
         self._hnsw_available = True
         self._hnsw_unavailable_reason = ""
         self._hnsw_mutations_since_rebuild = 0
+        self._hnsw_checkpoint_was_hit = False
         self._hnsw_cache_was_hit = False
 
     def _metric_compatible(self, metric: Int) -> Bool:
@@ -2153,6 +2275,32 @@ struct _HnswCacheLoad(Movable):
         return result^
 
 
+struct _HnswRecoveryLoad(Movable):
+    var index: HnswIndex
+    var sidecar_hit: Bool
+    var legacy_cache_hit: Bool
+    var replayed_mutations: Int
+
+    def __init__(
+        out self,
+        var index: HnswIndex,
+        sidecar_hit: Bool,
+        legacy_cache_hit: Bool,
+        replayed_mutations: Int,
+    ):
+        self.index = index^
+        self.sidecar_hit = sidecar_hit
+        self.legacy_cache_hit = legacy_cache_hit
+        self.replayed_mutations = replayed_mutations
+
+    def take_index(mut self) raises -> HnswIndex:
+        var config = self.index.config.copy()
+        var replacement = HnswIndex(config)
+        var result = self.index^
+        self.index = replacement^
+        return result^
+
+
 struct _MetadataCacheLoad(Movable):
     var index: MetadataIndex
     var hit: Bool
@@ -2206,6 +2354,122 @@ def _load_hnsw_cache(
             pass
     var empty = HnswIndex(config)
     return _HnswCacheLoad(empty^, False)
+
+
+def _load_or_rebuild_hnsw(
+    path: String,
+    config: CollectionConfig,
+    generation: UInt64,
+    checkpoint_sequence: UInt64,
+    last_sequence: UInt64,
+    source_checksum: UInt32,
+    checkpoint_live_ids: Dict[Int, Bool],
+    wal_records: List[WalRecord],
+    memtable: MemTable,
+) raises -> _HnswRecoveryLoad:
+    """Recover the committed graph, then apply authoritative newer WAL."""
+    var has_manifest = path_exists(path + "/manifest.bin")
+    if has_manifest:
+        var manifest = load_manifest(path, config.dimension)
+        if Bool(manifest.hnsw_name):
+            var metadata_matches = (
+                manifest.hnsw_config_fingerprint.value()
+                == config.fingerprint()
+                and manifest.hnsw_point_count.value()
+                == UInt64(len(checkpoint_live_ids))
+            )
+            var sidecar_path = path + "/" + manifest.hnsw_name.value()
+            if metadata_matches and path_exists(sidecar_path):
+                var compatible = try_read_compatible_hnsw_snapshot_owned(
+                    sidecar_path,
+                    config,
+                    checkpoint_sequence,
+                    manifest.hnsw_checksum.value(),
+                    manifest.hnsw_point_count.value(),
+                )
+                if Bool(compatible):
+                    var decoded = compatible.take()
+                    if _hnsw_matches_ids(decoded, checkpoint_live_ids):
+                        try:
+                            var replayed = _replay_hnsw_wal(
+                                decoded,
+                                checkpoint_sequence,
+                                wal_records,
+                                config,
+                            )
+                            if _hnsw_matches_memtable(decoded, memtable):
+                                decoded.validate_structure()
+                                # A committed v3 sidecar always wins. Legacy
+                                # cache bytes are not even opened on this path.
+                                return _HnswRecoveryLoad(
+                                    decoded^, True, False, replayed
+                                )
+                        except:
+                            pass
+            # Missing files and stale descriptor/header metadata are derived
+            # acceleration misses. They never invalidate authoritative data.
+            var rebuilt = _build_hnsw(memtable, config)
+            return _HnswRecoveryLoad(rebuilt^, False, False, 0)
+
+    # Legacy manifests may still use the optional cache during migration.
+    # A miss always rebuilds from the fully recovered authoritative MemTable.
+    var legacy = _load_hnsw_cache(
+        path,
+        config,
+        generation,
+        last_sequence,
+        source_checksum,
+        memtable,
+    )
+    if legacy.hit:
+        var cached = legacy.take_index()
+        return _HnswRecoveryLoad(cached^, False, True, 0)
+    var rebuilt = _build_hnsw(memtable, config)
+    return _HnswRecoveryLoad(rebuilt^, False, False, 0)
+
+
+def _hnsw_matches_ids(
+    index: HnswIndex, ids: Dict[Int, Bool]
+) -> Bool:
+    if index.point_count() - index.inactive_count() != len(ids):
+        return False
+    for id in ids:
+        if not Bool(index.graph.current_slot(id)):
+            return False
+    return True
+
+
+def _hnsw_matches_memtable(
+    index: HnswIndex, memtable: MemTable
+) raises -> Bool:
+    var ids = Dict[Int, Bool]()
+    for ordinal in range(memtable.slot_count()):
+        if memtable.is_live_at(ordinal):
+            ids[memtable.id_at(ordinal)] = True
+    return _hnsw_matches_ids(index, ids)
+
+
+def _replay_hnsw_wal(
+    mut index: HnswIndex,
+    checkpoint_sequence: UInt64,
+    records: List[WalRecord],
+    config: CollectionConfig,
+) raises -> Int:
+    var replayed = 0
+    for record_index in range(len(records)):
+        if records[record_index].sequence <= checkpoint_sequence:
+            continue
+        if records[record_index].is_delete:
+            _ = index.delete(records[record_index].id)
+            if not index.valid:
+                raise Error("HNSW WAL delete replay invalidated graph")
+        else:
+            index.upsert(
+                records[record_index].id, records[record_index].values
+            )
+        if replayed < config.delta_max_points:
+            replayed += 1
+    return replayed
 
 
 def _load_or_build_metadata_cache(

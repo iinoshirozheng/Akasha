@@ -22,6 +22,12 @@ from akasha.storage.index_cache import (
     decode_cache_bytes,
     publish_cache,
 )
+from akasha.storage.manifest import (
+    load_manifest,
+    Manifest,
+    publish_manifest,
+    SegmentDescriptor,
+)
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 
@@ -55,6 +61,7 @@ def _reset(path: String) raises:
         remove_file_if_exists(
             path + "/sparse-delta-" + String(sequence) + ".bin"
         )
+        remove_file_if_exists(path + "/hnsw-" + String(sequence) + ".bin")
 
 
 def _expression() raises -> FilterExpression:
@@ -100,6 +107,17 @@ def _legacy_two_point_hnsw_payload() -> List[UInt8]:
     return writer.take_bytes()
 
 
+def _downgrade_manifest_without_hnsw(path: String, dimension: Int) raises:
+    var current = load_manifest(path, dimension)
+    var descriptors = List[SegmentDescriptor]()
+    for index in range(len(current.segments)):
+        descriptors.append(current.segments[index].clone())
+    var legacy = Manifest.with_segments(
+        dimension, current.generation, current.last_sequence, descriptors^
+    )
+    publish_manifest(path, legacy)
+
+
 def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     var path = String("/tmp/akasha-phase12-persisted-cache")
     _reset(path)
@@ -122,7 +140,8 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     collection.close()
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
-    assert_true(reopened.hnsw_cache_hit())
+    # Manifest v3 sidecars supersede the still-readable legacy cache.
+    assert_false(reopened.hnsw_cache_hit())
     assert_true(reopened.metadata_cache_hit())
     var actual = reopened.search_l2_approx([1.0, 2.0], 3, 80)
     for index in range(3):
@@ -186,6 +205,7 @@ def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
         legacy^,
     )
     publish_cache(path, "hnsw.cache", artifact)
+    _downgrade_manifest_without_hnsw(path, 1)
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_true(reopened.hnsw_cache_hit())
@@ -260,6 +280,7 @@ def test_crc_valid_hostile_legacy_cache_is_a_safe_miss() raises:
     )
     # publish_cache gives the hostile payload a valid outer CRC/envelope.
     publish_cache(path, "hnsw.cache", artifact)
+    _downgrade_manifest_without_hnsw(path, 1)
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_false(reopened.hnsw_cache_hit())
@@ -291,11 +312,12 @@ def test_same_count_wrong_id_hnsw_cache_is_a_safe_miss() raises:
         wrong_payload^,
     )
     publish_cache(path, "hnsw.cache", artifact)
+    _downgrade_manifest_without_hnsw(path, 1)
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_false(reopened.hnsw_cache_hit())
-    assert_false(reopened.hnsw_available())
-    assert_equal(reopened.hnsw_unavailable_reason(), "cache_miss")
+    assert_true(reopened.hnsw_available())
+    assert_equal(reopened.hnsw_unavailable_reason(), "")
     assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
     assert_equal(reopened.search_l2_approx([1.0], 1, 8)[0].id, 10)
     assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
