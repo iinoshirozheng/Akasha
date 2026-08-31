@@ -28,23 +28,22 @@ comptime _STAT_WORDS = _STAT_BYTES // 8
 
 
 struct MappedFile(Movable):
-    """Owns one validated read-only private POSIX file mapping."""
+    """Owns one validated read-only private POSIX file mapping.
+
+    The mapped inode must not be truncated or rewritten until this owner closes.
+    """
 
     var _base: Optional[Pointer[UInt8, ImmUntrackedOrigin]]
     var _length: Int
     var _descriptor: Int32
     var _closed: Bool
 
-    def __init__(
-        out self,
-        base: Optional[Pointer[UInt8, ImmUntrackedOrigin]],
-        length: Int,
-        descriptor: Int32,
-    ):
-        self._base = base
-        self._length = length
-        self._descriptor = descriptor
-        self._closed = False
+    def __init__(out self):
+        """Creates a harmless closed owner with no adopted resources."""
+        self._base = None
+        self._length = 0
+        self._descriptor = -1
+        self._closed = True
 
     def __init__(out self, *, deinit move: Self):
         """Transfers the sole mapping ownership and disarms the source."""
@@ -106,7 +105,10 @@ struct MappedFile(Movable):
         # POSIX mmap rejects a zero length. Keep the descriptor under the same
         # RAII owner and represent the empty file without a base pointer.
         if length == 0:
-            return MappedFile(None, 0, descriptor)
+            var empty = MappedFile()
+            empty._descriptor = descriptor
+            empty._closed = False
+            return empty^
 
         var null_address: Optional[OpaquePointer[MutUntrackedOrigin]] = None
         var mapped = external_call["mmap", OpaquePointer[MutUntrackedOrigin]](
@@ -123,7 +125,12 @@ struct MappedFile(Movable):
             raise Error("readonly mmap failed: " + String(error_number))
 
         var bytes = mapped.unsafe_bitcast[UInt8]().as_imm()
-        return MappedFile(bytes, length, descriptor)
+        var result = MappedFile()
+        result._base = bytes
+        result._length = length
+        result._descriptor = descriptor
+        result._closed = False
+        return result^
 
     def __deinit__(deinit self):
         self._close()
@@ -156,6 +163,11 @@ struct MappedFile(Movable):
         """Releases mapping and descriptor ownership; safe to call repeatedly.
         """
         self._close()
+
+    def _descriptor_for_testing(self) raises -> Int32:
+        """Returns the borrowed descriptor number for lifecycle assertions."""
+        self._ensure_open()
+        return self._descriptor
 
     def _ensure_open(self) raises:
         if self._closed:

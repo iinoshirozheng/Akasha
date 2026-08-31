@@ -65,15 +65,26 @@ Compilation is restricted to the exact supported Linux triple and the Pixi
 macOS ARM64 target; another target must use the owned loader.
 
 `MappedFile` stores the immutable byte base, file length, descriptor, and closed
-state. Its explicit move initializer transfers the sole ownership. Explicit
-`close()` and the destructor share one idempotent, non-raising release path:
+state. Its only public construction path without I/O creates a harmless closed
+owner. There is no raw-parts constructor or factory: only `open_readonly`
+populates the resource fields after successful validation and acquisition.
+Mojo 1.0 does not provide a reliable Rust-style field-privacy boundary, so the
+resource fields remain underscore-prefixed module implementation details. A
+compile contract prevents the ordinary safe API from regaining a
+`MappedFile(base, length, descriptor)` adoption path; code must not mutate
+underscore-prefixed fields across the module boundary.
+
+The explicit move initializer transfers the sole ownership. Explicit `close()`
+and the destructor share one idempotent, non-raising release path:
 unmap a non-empty mapping, close the descriptor, clear all resource state, and
 mark the owner closed. An empty file is valid and has length zero, but creates no
 zero-length POSIX mapping; its descriptor remains RAII-owned until close.
 Because neither `close()` nor a destructor may raise under this interface,
-`munmap` and final `close` status values are intentionally ignored after the
-ownership state is cleared. Acquisition failures preserve `errno` before any
-cleanup call and do raise.
+`munmap` and final `close` status values are intentionally ignored and the
+ownership state is then cleared. This means cleanup cannot report a late kernel
+error to the caller; it does not retain or retry ownership after attempting the
+release. Acquisition failures preserve `errno` before any cleanup call and do
+raise.
 
 `MappedBytes` never stores or returns a pointer into mapped pages. It stores an
 origin-tracked safe pointer to its `MappedFile` owner plus a validated offset and
@@ -88,6 +99,17 @@ path, but it must then perform the normal size, checksum, layout, and structural
 validation before accepting the file. Mapping failure never relaxes validation
 or turns committed corruption into usable data.
 
+The mapped inode is immutable for the complete lifetime of every `MappedFile`
+that refers to it. It must not be truncated or rewritten in place. POSIX cannot
+turn all violations of this rule into a Mojo `Error`: reading a mapped page past
+a concurrently truncated file can instead deliver `SIGBUS` to the process.
+Akasha's collection sidecar lifecycle satisfies this precondition. It writes a
+new `hnsw-<sequence>.bin.tmp`, syncs it, publishes it with `atomic_replace`, and
+later unlinks the superseded name. Even a replacement at the same final pathname
+changes the directory entry to a new inode; it does not truncate the inode held
+by an existing mapping. `write_hnsw_snapshot` must therefore continue to target
+the temporary pathname, never a live mapped final sidecar.
+
 Error text uses `std.sys._libc_errno.get_errno`, the same existing internal
 standard-library dependency already used by Akasha's filesystem and collection
 lock wrappers. Mojo 1.0 has no public errno accessor. This dependency is kept at
@@ -95,14 +117,21 @@ the FFI boundary and should migrate when a public API becomes available.
 
 ## Verification
 
-On the development macOS ARM64 host (Mojo 1.0.0), the capability test opens a
-page-sized fixture and verifies first/last bytes, checked slices, overflow and
-bounds rejection, empty and missing files, double close, post-close slice
-rejection, and scope-based destructor cleanup. A native SDK C probe reported
+On the development macOS ARM64 host (Mojo 1.0.0), eight capability tests open a
+page-sized fixture and verify first/last bytes, checked slices, overflow and
+bounds rejection, empty and missing files, a harmless default owner, double
+close, post-close slice rejection, observable descriptor cleanup after scope
+exit, and explicit-move exactly-once ownership. The descriptor assertions use
+`fcntl(F_GETFD)` and require `EBADF` after cleanup. A native SDK C probe reported
 `sizeof(struct stat) == 144` and `offsetof(st_size) == 96`.
-A compile-fail ownership probe also confirms that
-`MappedBytes[origin_of(mapped)]` cannot be returned as an untracked-origin
-value, so its safe owner pointer cannot outlive the `MappedFile`.
+Two reproducible compile contracts confirm that the raw-parts constructor is
+not callable and that `MappedBytes[origin_of(mapped)]` cannot be returned as an
+untracked-origin value, so its safe owner pointer cannot outlive the
+`MappedFile`. Run them with:
+
+```bash
+pixi run pytest tests/python/test_mapped_file_compile_contract.py -q
+```
 
 For Linux x86-64, a Debian bookworm glibc C probe running in a `linux/amd64`
 container reported `144` and `48`, and Mojo successfully emitted an x86-64 ELF

@@ -1,6 +1,8 @@
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
 from akasha.storage.mapped_file import MappedFile
 from std.ffi import c_int, external_call
+from std.sys.info import platform_map
+from std.sys._libc_errno import get_errno
 from std.testing import (
     assert_equal,
     assert_raises,
@@ -10,6 +12,8 @@ from std.testing import (
 
 
 comptime _PAGE_BYTES = 4096
+comptime _F_GETFD = 1
+comptime _EBADF = platform_map["EBADF", linux=9, macos=9]()
 
 
 def _fixture_path(suffix: String) -> String:
@@ -22,6 +26,21 @@ def _write_page_fixture(path: String) raises:
     for index in range(_PAGE_BYTES):
         bytes.append(UInt8(index % 251))
     write_file_sync(path, bytes)
+
+
+def _fcntl_getfd(descriptor: Int32) -> Int32:
+    return external_call["fcntl", c_int, num_fixed_args=2](
+        c_int(descriptor), c_int(_F_GETFD)
+    )
+
+
+def _assert_descriptor_open(descriptor: Int32) raises:
+    assert_true(_fcntl_getfd(descriptor) >= 0)
+
+
+def _assert_descriptor_closed(descriptor: Int32) raises:
+    assert_equal(_fcntl_getfd(descriptor), Int32(-1))
+    assert_equal(get_errno().value, Int32(_EBADF))
 
 
 def test_readonly_page_and_checked_slice() raises:
@@ -108,6 +127,14 @@ def _read_with_scoped_mapping(path: String) raises -> UInt8:
     return bytes.byte_at(0)
 
 
+def _descriptor_from_scoped_mapping(path: String) raises -> Int32:
+    var mapped = MappedFile.open_readonly(path)
+    var descriptor = mapped._descriptor_for_testing()
+    _assert_descriptor_open(descriptor)
+    _ = mapped.byte_at(0)
+    return descriptor
+
+
 def test_mapping_and_slice_lifetime_cleanup() raises:
     var path = _fixture_path("lifetime")
     remove_file_if_exists(path)
@@ -119,6 +146,54 @@ def test_mapping_and_slice_lifetime_cleanup() raises:
     var reopened = MappedFile.open_readonly(path)
     assert_true(reopened.byte_length() > 0)
     assert_equal(reopened.byte_at(64), UInt8(64))
+
+    var descriptor = reopened._descriptor_for_testing()
+    reopened.close()
+    _assert_descriptor_closed(descriptor)
+
+
+def test_scoped_owner_destructor_closes_observed_descriptor() raises:
+    var path = _fixture_path("scoped-descriptor")
+    remove_file_if_exists(path)
+    _write_page_fixture(path)
+
+    var descriptor = _descriptor_from_scoped_mapping(path)
+    _assert_descriptor_closed(descriptor)
+
+
+def test_explicit_move_transfers_the_only_descriptor_owner() raises:
+    var path = _fixture_path("move")
+    remove_file_if_exists(path)
+    _write_page_fixture(path)
+
+    var source = MappedFile.open_readonly(path)
+    var descriptor = source._descriptor_for_testing()
+    var moved = source^
+    _assert_descriptor_open(descriptor)
+    assert_equal(moved.byte_at(0), UInt8(0))
+    assert_equal(moved.byte_at(_PAGE_BYTES - 1), UInt8((_PAGE_BYTES - 1) % 251))
+
+    moved.close()
+    _assert_descriptor_closed(descriptor)
+
+    # The OS reuses the just-closed lowest descriptor. A second owner close
+    # must not close this unrelated handle, proving close is exactly once.
+    var sentinel = open(path, "r")
+    assert_equal(sentinel.handle, Int(descriptor))
+    moved.close()
+    assert_true(_fcntl_getfd(Int32(sentinel.handle)) >= 0)
+    sentinel.close()
+
+
+def test_default_owner_is_closed_and_harmless() raises:
+    var mapped = MappedFile()
+    assert_equal(mapped.byte_length(), 0)
+    mapped.close()
+    mapped.close()
+    with assert_raises():
+        _ = mapped.byte_at(0)
+    with assert_raises():
+        _ = mapped.checked_slice(UInt64(0), UInt64(0))
 
 
 def main() raises:
