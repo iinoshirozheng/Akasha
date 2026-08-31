@@ -8,6 +8,7 @@ from .collection_config import (
 from .index_cache import CacheArtifact
 from .hnsw_store import HnswSnapshotInfo
 from .manifest import Manifest
+from .mapped_file import MappedBytes, MappedFile
 from .memtable import MemTable, MemTableEntry
 from .operations import StorageInspection
 from .segment import SegmentSnapshot
