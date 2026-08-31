@@ -57,6 +57,27 @@ struct HnswSnapshotInfo(Movable):
         self.byte_length = byte_length
 
 
+struct HnswSnapshotEligibility(Movable):
+    """Typed result of checking whether a graph has a v1 representation."""
+
+    var eligible: Bool
+    var graph_usable: Bool
+    var encoded_bytes: UInt64
+    var reason: String
+
+    def __init__(
+        out self,
+        eligible: Bool,
+        graph_usable: Bool,
+        encoded_bytes: UInt64,
+        reason: String,
+    ):
+        self.eligible = eligible
+        self.graph_usable = graph_usable
+        self.encoded_bytes = encoded_bytes
+        self.reason = String(copy=reason)
+
+
 struct _DecodedNodes(Movable):
     var ids: List[Int]
     var levels: List[Int]
@@ -219,6 +240,103 @@ def encode_hnsw_snapshot(
     complete.write_bytes(body)
     complete.write_u32(checksum)
     return complete.take_bytes()
+
+
+def hnsw_snapshot_max_bytes() -> UInt64:
+    """Return the durable v1 codec's maximum representable byte length."""
+    return UInt64(_MAX_SNAPSHOT_BYTES)
+
+
+def hnsw_snapshot_eligibility(
+    index: HnswIndex, maximum_bytes: UInt64
+) raises -> HnswSnapshotEligibility:
+    """Preflight v1 representation without allocating the encoded payload."""
+    if not is_64bit():
+        return HnswSnapshotEligibility(
+            False, False, 0, "unsupported_target"
+        )
+    if index.config.scalar_kind != ScalarKind.f32():
+        return HnswSnapshotEligibility(
+            False, False, 0, "unsupported_scalar"
+        )
+    try:
+        index.config.validate()
+        index.validate_structure()
+    except:
+        return HnswSnapshotEligibility(False, False, 0, "invalid_graph")
+    try:
+        var slots = index.graph.slot_count()
+        if slots > _MAX_SLOTS:
+            return HnswSnapshotEligibility(
+                False, True, 0, "slot_limit"
+            )
+        var level_cells = UInt64(0)
+        var directed_edges = UInt64(0)
+        var allocated_neighbor_cells = UInt64(0)
+        for slot_index in range(slots):
+            var slot = UInt32(slot_index)
+            level_cells = _checked_add_u64(
+                level_cells, UInt64(index.graph.level(slot)) + UInt64(1)
+            )
+            allocated_neighbor_cells = _checked_add_u64(
+                allocated_neighbor_cells,
+                UInt64(index.graph.allocated_neighbor_slot_count(slot)),
+            )
+            for level in range(index.graph.level(slot) + 1):
+                directed_edges = _checked_add_u64(
+                    directed_edges,
+                    UInt64(index.graph.neighbor_count(slot, level)),
+                )
+        var node_length = _checked_mul_u64(
+            UInt64(slots), UInt64(HNSW_SNAPSHOT_NODE_BYTES)
+        )
+        var vector_length = _checked_mul_u64(
+            _checked_mul_u64(
+                UInt64(slots), UInt64(index.config.dimension)
+            ),
+            UInt64(4),
+        )
+        var count_length = _checked_mul_u64(level_cells, UInt64(4))
+        var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
+        var vector_offset = _align8(
+            _checked_add_u64(
+                UInt64(HNSW_SNAPSHOT_HEADER_BYTES), node_length
+            )
+        )
+        var count_offset = _align8(
+            _checked_add_u64(vector_offset, vector_length)
+        )
+        var edge_offset = _align8(
+            _checked_add_u64(count_offset, count_length)
+        )
+        var file_length = _checked_add_u64(
+            _checked_add_u64(edge_offset, edge_length),
+            UInt64(_CHECKSUM_BYTES),
+        )
+        if (
+            file_length > UInt64(_MAX_SNAPSHOT_BYTES)
+            or file_length > UInt64(Int.MAX)
+            or file_length > maximum_bytes
+        ):
+            return HnswSnapshotEligibility(
+                False, True, file_length, "size_limit"
+            )
+        try:
+            _validate_decode_allocation(
+                file_length,
+                UInt64(slots),
+                UInt64(index.config.dimension),
+                level_cells,
+                directed_edges,
+                allocated_neighbor_cells,
+            )
+        except:
+            return HnswSnapshotEligibility(
+                False, True, file_length, "allocation_limit"
+            )
+        return HnswSnapshotEligibility(True, True, file_length, "")
+    except:
+        return HnswSnapshotEligibility(False, True, 0, "codec_limit")
 
 
 def decode_hnsw_snapshot_owned(
@@ -560,59 +678,52 @@ def try_read_compatible_hnsw_snapshot_owned(
 ) raises -> Optional[HnswIndex]:
     """Return an owned compatible sidecar or `None` for stale metadata.
 
-    Internal CRC validation deliberately runs before metadata classification.
-    Matching committed metadata receives full structural validation; invalid
-    layout then remains a storage error rather than a rebuildable cache miss.
+    The manifest checksum is compared with the bounded trailer first. Only a
+    file matching that committed identity receives CRC and layout validation.
     """
-    _require_v1_config(config)
     var bytes = read_file_bytes_bounded(path, _MAX_SNAPSHOT_BYTES)
-    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+    if len(bytes) < _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     var checksum_offset = len(bytes) - _CHECKSUM_BYTES
     var stored_checksum = _read_u32_at(bytes, checksum_offset)
+    if stored_checksum != manifest_checksum:
+        return Optional[HnswIndex]()
+    _require_v1_config(config)
+    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if (
+        not hnsw_snapshot_identity_matches(
+            bytes, config, sequence, manifest_live_point_count
+        )
+    ):
+        return Optional[HnswIndex]()
     if crc32_range(bytes, 0, checksum_offset) != stored_checksum:
         raise Error("HNSW snapshot checksum mismatch")
 
-    # Preflight only the fixed identity fields. Format/flags/reserved failures
-    # are unsafe layout and therefore errors even before compatibility checks.
-    var reader = BinaryReader(bytes.copy())
-    _read_magic(reader)
-    if reader.read_u16() != HNSW_SNAPSHOT_VERSION:
-        raise Error("unsupported HNSW snapshot version")
-    if reader.read_u16() != UInt16(0):
-        raise Error("unsupported HNSW snapshot flags")
-    if reader.read_u32() != UInt32(HNSW_SNAPSHOT_HEADER_BYTES):
-        raise Error("unsupported HNSW snapshot header size")
-    if reader.read_u32() != UInt32(0):
-        raise Error("nonzero HNSW snapshot reserved header bytes")
-    var fingerprint = reader.read_u64()
-    var encoded_sequence = reader.read_u64()
-    var dimension = reader.read_u32()
-    var metric = reader.read_u8()
-    var scalar = reader.read_u8()
-    var m = reader.read_u16()
-    var m0 = reader.read_u16()
-    var max_level = reader.read_u16()
-    if reader.read_u32() != UInt32(0):
-        raise Error("nonzero HNSW snapshot reserved config bytes")
-    _ = reader.read_u64()  # slot count
-    var live_point_count = reader.read_u64()
-    if (
-        stored_checksum != manifest_checksum
-        or fingerprint != config.fingerprint()
-        or encoded_sequence != sequence
-        or dimension != UInt32(config.dimension)
-        or metric != config.ann_metric.tag()
-        or scalar != config.scalar_kind.tag()
-        or m != UInt16(config.m)
-        or m0 != UInt16(config.m0)
-        or max_level != UInt16(config.max_level)
-        or live_point_count != manifest_live_point_count
-    ):
-        return Optional[HnswIndex]()
-
     var decoded = decode_hnsw_snapshot_owned(bytes^, config, sequence)
     return Optional(decoded^)
+
+
+def hnsw_snapshot_identity_matches(
+    bytes: List[UInt8],
+    config: CollectionConfig,
+    sequence: UInt64,
+    live_point_count: UInt64,
+) -> Bool:
+    """Compare only fixed identity fields without copying the snapshot."""
+    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+        return False
+    return (
+        _read_u64_at(bytes, 16) == config.fingerprint()
+        and _read_u64_at(bytes, 24) == sequence
+        and _read_u32_at(bytes, 32) == UInt32(config.dimension)
+        and bytes[36] == config.ann_metric.tag()
+        and bytes[37] == config.scalar_kind.tag()
+        and _read_u16_at(bytes, 38) == UInt16(config.m)
+        and _read_u16_at(bytes, 40) == UInt16(config.m0)
+        and _read_u16_at(bytes, 42) == UInt16(config.max_level)
+        and _read_u64_at(bytes, 56) == live_point_count
+    )
 
 
 def _slot_flag(index: HnswIndex, slot: UInt32) raises -> UInt8:
@@ -845,4 +956,21 @@ def _read_u32_at(bytes: List[UInt8], offset: Int) -> UInt32:
         | (UInt32(bytes[offset + 1]) << UInt32(8))
         | (UInt32(bytes[offset + 2]) << UInt32(16))
         | (UInt32(bytes[offset + 3]) << UInt32(24))
+    )
+
+
+def _read_u16_at(bytes: List[UInt8], offset: Int) -> UInt16:
+    return UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << UInt16(8))
+
+
+def _read_u64_at(bytes: List[UInt8], offset: Int) -> UInt64:
+    return (
+        UInt64(bytes[offset])
+        | (UInt64(bytes[offset + 1]) << UInt64(8))
+        | (UInt64(bytes[offset + 2]) << UInt64(16))
+        | (UInt64(bytes[offset + 3]) << UInt64(24))
+        | (UInt64(bytes[offset + 4]) << UInt64(32))
+        | (UInt64(bytes[offset + 5]) << UInt64(40))
+        | (UInt64(bytes[offset + 6]) << UInt64(48))
+        | (UInt64(bytes[offset + 7]) << UInt64(56))
     )

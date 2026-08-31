@@ -11,6 +11,8 @@ from akasha.storage.hnsw_store import (
     _validate_hnsw_snapshot_header_allocation,
     decode_hnsw_snapshot_owned,
     encode_hnsw_snapshot,
+    hnsw_snapshot_eligibility,
+    hnsw_snapshot_identity_matches,
     read_hnsw_snapshot_owned,
     write_hnsw_snapshot,
 )
@@ -87,6 +89,35 @@ def _assert_same_graph(lhs: HnswIndex, rhs: HnswIndex) raises:
                 )
     lhs.validate_structure()
     rhs.validate_structure()
+
+
+def test_identity_preflight_reads_fixed_header_without_payload_copy() raises:
+    var config = _config()
+    var index = _graph(config.copy(), 12)
+    var bytes = encode_hnsw_snapshot(index, UInt64(44))
+    assert_true(
+        hnsw_snapshot_identity_matches(
+            bytes, config, UInt64(44), UInt64(12)
+        )
+    )
+    # Compatibility classification is deliberately independent of payload
+    # traversal; CRC/layout validation follows only for matching identity.
+    bytes[160] ^= UInt8(1)
+    assert_true(
+        hnsw_snapshot_identity_matches(
+            bytes, config, UInt64(44), UInt64(12)
+        )
+    )
+
+
+def test_eligibility_distinguishes_invalid_graph_from_codec_limit() raises:
+    var config = _config()
+    var index = _graph(config, 4)
+    index.valid = False
+    var eligibility = hnsw_snapshot_eligibility(index, UInt64.MAX)
+    assert_false(eligibility.eligible)
+    assert_false(eligibility.graph_usable)
+    assert_equal(eligibility.reason, "invalid_graph")
 
 
 def _u16_at(bytes: List[UInt8], offset: Int) -> UInt16:

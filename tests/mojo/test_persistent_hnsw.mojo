@@ -53,7 +53,7 @@ def _reset(directory: String) raises:
     ]
     for name in names:
         remove_file_if_exists(directory + "/" + name)
-    for sequence in range(100):
+    for sequence in range(256):
         remove_file_if_exists(
             directory + "/segment-" + String(sequence) + ".bin"
         )
@@ -87,6 +87,16 @@ def _cacheable_l2_config(dimension: Int) -> CollectionConfig:
     var config = CollectionConfig.defaults(dimension)
     config.m0 = config.m
     return config^
+
+
+def _stored_hnsw_checksum(bytes: List[UInt8]) -> UInt32:
+    var offset = len(bytes) - 4
+    return (
+        UInt32(bytes[offset])
+        | (UInt32(bytes[offset + 1]) << UInt32(8))
+        | (UInt32(bytes[offset + 2]) << UInt32(16))
+        | (UInt32(bytes[offset + 3]) << UInt32(24))
+    )
 
 
 def test_small_collection_approximate_api_uses_exact_plan() raises:
@@ -263,6 +273,33 @@ def test_flush_commits_v3_hnsw_and_reopen_uses_owned_sidecar() raises:
     reopened.close()
 
 
+def test_queries_match_ids_and_scores_before_and_after_sidecar_reopen() raises:
+    var path = String("/tmp/akasha-task22-query-equivalence")
+    _reset(path)
+    var config = _cacheable_l2_config(2)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    for id in range(1, 81):
+        collection.upsert(id, [Float32(id), Float32(id % 9)])
+    var before_a = collection.search_l2_approx([80.0, 8.0], 5, 80)
+    var before_b = collection.search_l2_approx([37.0, 1.0], 5, 80)
+    var before_c = collection.search_l2_approx([1.0, 1.0], 5, 80)
+    collection.flush()
+    collection.close()
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    var after_a = reopened.search_l2_approx([80.0, 8.0], 5, 80)
+    var after_b = reopened.search_l2_approx([37.0, 1.0], 5, 80)
+    var after_c = reopened.search_l2_approx([1.0, 1.0], 5, 80)
+    for index in range(5):
+        assert_equal(after_a[index].id, before_a[index].id)
+        assert_equal(after_a[index].score, before_a[index].score)
+        assert_equal(after_b[index].id, before_b[index].id)
+        assert_equal(after_b[index].score, before_b[index].score)
+        assert_equal(after_c[index].id, before_c[index].id)
+        assert_equal(after_c[index].score, before_c[index].score)
+    reopened.close()
+
+
 def test_reopen_replays_newer_wal_mutations_into_owned_sidecar() raises:
     var path = String("/tmp/akasha-task22-sidecar-wal-replay")
     var config = _build_checkpoint(path)
@@ -300,6 +337,26 @@ def test_manifest_without_sidecar_rebuilds_from_authoritative_records() raises:
     reopened.close()
 
 
+def test_true_v1_manifest_rebuilds_from_authoritative_segment() raises:
+    var path = String("/tmp/akasha-task22-v1-rebuild")
+    var config = _build_checkpoint(path)
+    var current = load_manifest(path, 1)
+    var descriptor = current.segments[0].clone()
+    var legacy = Manifest(
+        1,
+        current.last_sequence,
+        descriptor.checksum,
+        descriptor.name,
+    )
+    publish_manifest(path, legacy)
+    remove_file_if_exists(path + "/hnsw.cache")
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_true(reopened.hnsw_available())
+    assert_true(reopened.hnsw_build_distance_evaluations() > 0)
+    assert_equal(reopened.search_l2_approx([80.0], 1, 80)[0].id, 80)
+    reopened.close()
+
+
 def test_non_f32_checkpoint_remains_authoritative_without_v1_sidecar() raises:
     var path = String("/tmp/akasha-task22-non-f32-checkpoint")
     _reset(path)
@@ -311,6 +368,46 @@ def test_non_f32_checkpoint_remains_authoritative_without_v1_sidecar() raises:
     var manifest = load_manifest(path, 1)
     assert_false(Bool(manifest.hnsw_name))
     assert_equal(manifest.format_version, 2)
+
+
+def test_nonempty_bf16_flush_reopen_keeps_exact_data_and_ann_unavailable() raises:
+    var path = String("/tmp/akasha-task22-bf16-reopen")
+    _reset(path)
+    var config = CollectionConfig.defaults(1)
+    config.scalar_kind = ScalarKind.bf16()
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    for id in range(1, 6):
+        collection.upsert(id, [Float32(id)])
+    collection.flush()
+    collection.close()
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_false(reopened.hnsw_available())
+    assert_equal(reopened.hnsw_unavailable_reason(), "rebuild_failed")
+    assert_equal(reopened.search_dot([1.0], 5)[0].id, 5)
+    for id in range(1, 6):
+        var record = reopened.get(id)
+        assert_true(Bool(record))
+        assert_equal(record.value().vector[0], Float32(id))
+    reopened.close()
+
+
+def test_sidecar_size_preflight_falls_back_to_v2_and_rotates_wal() raises:
+    var path = String("/tmp/akasha-task22-sidecar-limit")
+    _reset(path)
+    var config = CollectionConfig.defaults(1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    collection.upsert(1, [1.0])
+    collection._hnsw_sidecar_max_bytes_for_test = UInt64(160)
+    collection.flush()
+    var manifest = load_manifest(path, 1)
+    assert_equal(manifest.format_version, 2)
+    assert_false(Bool(manifest.hnsw_name))
+    assert_equal(len(read_file_bytes(path + "/wal.bin")), 0)
+    collection.close()
+    var reopened = PersistentCollection.open(path, 1)
+    assert_equal(reopened.get(1).value().vector[0], 1.0)
+    reopened.close()
 
 
 def test_missing_sidecar_rebuilds_safely() raises:
@@ -408,6 +505,18 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     # The filename and manifest describe sequence 81, but these internally
     # valid bytes describe sequence 80.
     write_file_sync(sequence_path + "/hnsw-81.bin", old_bytes)
+    var sequence_manifest = load_manifest(sequence_path, 1)
+    var stale_sequence = Manifest.with_hnsw(
+        1,
+        sequence_manifest.generation,
+        sequence_manifest.last_sequence,
+        _clone_descriptors(sequence_manifest),
+        sequence_manifest.hnsw_name.value(),
+        _stored_hnsw_checksum(old_bytes),
+        sequence_manifest.hnsw_config_fingerprint.value(),
+        sequence_manifest.hnsw_point_count.value(),
+    )
+    publish_manifest(sequence_path, stale_sequence)
     var rebuilt_sequence = PersistentCollection.open_with_config(
         sequence_path, config.copy()
     )
@@ -421,14 +530,52 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     var wrong = HnswIndex(alternate.copy())
     for id in range(1, 81):
         wrong.add(id, [Float32(id)])
-    _ = write_hnsw_snapshot(
+    var wrong_info = write_hnsw_snapshot(
         config_path + "/hnsw-80.bin", wrong, UInt64(80)
     )
+    var config_manifest = load_manifest(config_path, 1)
+    var stale_config = Manifest.with_hnsw(
+        1,
+        config_manifest.generation,
+        config_manifest.last_sequence,
+        _clone_descriptors(config_manifest),
+        config_manifest.hnsw_name.value(),
+        wrong_info.checksum,
+        config_manifest.hnsw_config_fingerprint.value(),
+        config_manifest.hnsw_point_count.value(),
+    )
+    publish_manifest(config_path, stale_config)
     var rebuilt_config = PersistentCollection.open_with_config(
         config_path, expected.copy()
     )
     assert_true(rebuilt_config.hnsw_build_distance_evaluations() > 0)
     rebuilt_config.close()
+
+
+def test_stale_manifest_checksum_precedes_corrupt_file_validation() raises:
+    var path = String("/tmp/akasha-task22-stale-checksum-corrupt-file")
+    var config = _build_checkpoint(path)
+    var current = load_manifest(path, 1)
+    var sidecar_path = path + "/" + current.hnsw_name.value()
+    var bytes = read_file_bytes(sidecar_path)
+    bytes[160] ^= UInt8(1)
+    write_file_sync(sidecar_path, bytes)
+    var stale = Manifest.with_hnsw(
+        1,
+        current.generation,
+        current.last_sequence,
+        _clone_descriptors(current),
+        current.hnsw_name.value(),
+        current.hnsw_checksum.value() + UInt32(1),
+        current.hnsw_config_fingerprint.value(),
+        current.hnsw_point_count.value(),
+    )
+    publish_manifest(path, stale)
+    var rebuilt = PersistentCollection.open_with_config(path, config.copy())
+    assert_true(rebuilt.hnsw_available())
+    assert_true(rebuilt.hnsw_build_distance_evaluations() > 0)
+    assert_equal(rebuilt.search_l2_approx([80.0], 1, 80)[0].id, 80)
+    rebuilt.close()
 
 
 def test_corrupt_committed_matching_sidecar_fails_open() raises:
@@ -460,6 +607,17 @@ def test_valid_crc_with_unsafe_committed_layout_fails_open() raises:
             checksum >> UInt32(byte_index * 8)
         )
     write_file_sync(sidecar_path, bytes)
+    var matching = Manifest.with_hnsw(
+        1,
+        manifest.generation,
+        manifest.last_sequence,
+        _clone_descriptors(manifest),
+        manifest.hnsw_name.value(),
+        checksum,
+        manifest.hnsw_config_fingerprint.value(),
+        manifest.hnsw_point_count.value(),
+    )
+    publish_manifest(path, matching)
     with assert_raises():
         _ = PersistentCollection.open_with_config(path, config.copy())
 

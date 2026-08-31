@@ -51,6 +51,8 @@ from akasha.storage.filesystem import (
     sync_directory,
 )
 from akasha.storage.hnsw_store import (
+    hnsw_snapshot_eligibility,
+    hnsw_snapshot_max_bytes,
     HnswSnapshotInfo,
     try_read_compatible_hnsw_snapshot_owned,
     write_hnsw_snapshot,
@@ -176,6 +178,7 @@ struct PersistentCollection:
     var _cache_generation: UInt64
     var _source_checksum: UInt32
     var _hnsw_checkpoint_was_hit: Bool
+    var _hnsw_sidecar_max_bytes_for_test: UInt64
     var _hnsw_cache_was_hit: Bool
     var _metadata_cache_was_hit: Bool
 
@@ -197,6 +200,7 @@ struct PersistentCollection:
         hnsw_cache_hit: Bool,
         metadata_cache_hit: Bool,
         hnsw_available: Bool,
+        hnsw_unavailable_reason: String,
     ):
         self.path = String(copy=path)
         self.dimension = config.dimension
@@ -213,7 +217,7 @@ struct PersistentCollection:
         self._hnsw_id_lookup_builds = 0
         self._hnsw_available = hnsw_available
         self._hnsw_unavailable_reason = (
-            "" if hnsw_available else "cache_miss"
+            "" if hnsw_available else String(copy=hnsw_unavailable_reason)
         )
         self._hnsw_mutations_since_rebuild = 0
         self._last_dense_plan_reason = ""
@@ -242,6 +246,7 @@ struct PersistentCollection:
         self._cache_generation = cache_generation
         self._source_checksum = source_checksum
         self._hnsw_checkpoint_was_hit = hnsw_checkpoint_hit
+        self._hnsw_sidecar_max_bytes_for_test = hnsw_snapshot_max_bytes()
         self._hnsw_cache_was_hit = hnsw_cache_hit
         self._metadata_cache_was_hit = metadata_cache_hit
 
@@ -477,6 +482,8 @@ struct PersistentCollection:
         var hnsw_cache_hit = hnsw_load.legacy_cache_hit
         var hnsw_checkpoint_hit = hnsw_load.sidecar_hit
         var hnsw_replayed_mutations = hnsw_load.replayed_mutations
+        var hnsw_available = hnsw_load.available
+        var hnsw_unavailable_reason = hnsw_load.failure_reason.copy()
         var hnsw = hnsw_load.take_index()
         var metadata_load = _load_or_build_metadata_cache(
             path,
@@ -514,7 +521,8 @@ struct PersistentCollection:
             hnsw_checkpoint_hit,
             hnsw_cache_hit,
             metadata_cache_hit,
-            True,
+            hnsw_available,
+            hnsw_unavailable_reason,
         )
         collection._hnsw_mutations_since_rebuild = hnsw_replayed_mutations
         return collection^
@@ -1333,34 +1341,53 @@ struct PersistentCollection:
         # encoded so the sidecar represents the same authoritative sequence.
         self._maintain_hnsw_for_flush()
         if has_previous_manifest and self._last_sequence == previous_sequence:
-            if (
-                not previous_hnsw_metadata_matches
-                and self._hnsw_available
-                and self._config.scalar_kind == ScalarKind.f32()
-            ):
-                var hnsw_name = (
-                    "hnsw-" + String(self._last_sequence) + ".bin"
-                )
-                var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
-                var hnsw_info = write_hnsw_snapshot(
-                    hnsw_temporary, self._hnsw, self._last_sequence
-                )
-                atomic_replace(
-                    hnsw_temporary, self._path + "/" + hnsw_name
-                )
-                sync_directory(self._path)
-                var upgraded = Manifest.with_hnsw(
-                    self._config.dimension,
-                    generation,
-                    self._last_sequence,
-                    descriptors^,
-                    hnsw_name,
-                    hnsw_info.checksum,
-                    hnsw_info.config_fingerprint,
-                    hnsw_info.live_point_count,
-                )
-                publish_manifest(self._path, upgraded)
-                self._hnsw_checkpoint_was_hit = True
+            if not previous_hnsw_metadata_matches:
+                var wrote_hnsw = False
+                if self._hnsw_available:
+                    var eligibility = hnsw_snapshot_eligibility(
+                        self._hnsw, self._hnsw_sidecar_max_bytes_for_test
+                    )
+                    if not eligibility.graph_usable:
+                        self._mark_hnsw_unavailable("eligibility_failed")
+                    if eligibility.eligible:
+                        var hnsw_name = (
+                            "hnsw-" + String(self._last_sequence) + ".bin"
+                        )
+                        var hnsw_temporary = (
+                            self._path + "/" + hnsw_name + ".tmp"
+                        )
+                        var hnsw_info = write_hnsw_snapshot(
+                            hnsw_temporary, self._hnsw, self._last_sequence
+                        )
+                        atomic_replace(
+                            hnsw_temporary, self._path + "/" + hnsw_name
+                        )
+                        sync_directory(self._path)
+                        var upgraded = Manifest.with_hnsw(
+                            self._config.dimension,
+                            generation,
+                            self._last_sequence,
+                            _clone_segment_descriptors(descriptors),
+                            hnsw_name,
+                            hnsw_info.checksum,
+                            hnsw_info.config_fingerprint,
+                            hnsw_info.live_point_count,
+                        )
+                        publish_manifest(self._path, upgraded)
+                        self._hnsw_checkpoint_was_hit = True
+                        wrote_hnsw = True
+                if not wrote_hnsw and previous_hnsw_name.byte_length() > 0:
+                    var downgraded = Manifest.with_segments(
+                        self._config.dimension,
+                        generation,
+                        self._last_sequence,
+                        _clone_segment_descriptors(descriptors),
+                    )
+                    publish_manifest(self._path, downgraded)
+                    self._hnsw_checkpoint_was_hit = False
+                    remove_file_and_sync_directory_if_exists(
+                        self._path, self._path + "/" + previous_hnsw_name
+                    )
             rotate_wal(self._path)
             rotate_sparse_wal(self._path)
             self._sparse_pending = List[SparseWalRecord]()
@@ -1417,15 +1444,18 @@ struct PersistentCollection:
         var hnsw_name = "hnsw-" + String(self._last_sequence) + ".bin"
         var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
         var hnsw_info = Optional[HnswSnapshotInfo]()
-        if (
-            self._hnsw_available
-            and self._config.scalar_kind == ScalarKind.f32()
-        ):
-            hnsw_info = Optional(
-                write_hnsw_snapshot(
-                    hnsw_temporary, self._hnsw, self._last_sequence
-                )
+        if self._hnsw_available:
+            var eligibility = hnsw_snapshot_eligibility(
+                self._hnsw, self._hnsw_sidecar_max_bytes_for_test
             )
+            if not eligibility.graph_usable:
+                self._mark_hnsw_unavailable("eligibility_failed")
+            if eligibility.eligible:
+                hnsw_info = Optional(
+                    write_hnsw_snapshot(
+                        hnsw_temporary, self._hnsw, self._last_sequence
+                    )
+                )
 
         # Every immutable data file is durable before the manifest commit
         # point. One directory barrier covers all completed renames.
@@ -2259,6 +2289,15 @@ def _build_hnsw_id_lookup(
     return HnswIdOrdinalLookup(ordinals^, metadata.slot_count())
 
 
+def _clone_segment_descriptors(
+    descriptors: List[SegmentDescriptor],
+) raises -> List[SegmentDescriptor]:
+    var cloned = List[SegmentDescriptor](capacity=len(descriptors))
+    for index in range(len(descriptors)):
+        cloned.append(descriptors[index].clone())
+    return cloned^
+
+
 struct _HnswCacheLoad(Movable):
     var index: HnswIndex
     var hit: Bool
@@ -2280,6 +2319,8 @@ struct _HnswRecoveryLoad(Movable):
     var sidecar_hit: Bool
     var legacy_cache_hit: Bool
     var replayed_mutations: Int
+    var available: Bool
+    var failure_reason: String
 
     def __init__(
         out self,
@@ -2287,11 +2328,15 @@ struct _HnswRecoveryLoad(Movable):
         sidecar_hit: Bool,
         legacy_cache_hit: Bool,
         replayed_mutations: Int,
+        available: Bool,
+        failure_reason: String,
     ):
         self.index = index^
         self.sidecar_hit = sidecar_hit
         self.legacy_cache_hit = legacy_cache_hit
         self.replayed_mutations = replayed_mutations
+        self.available = available
+        self.failure_reason = String(copy=failure_reason)
 
     def take_index(mut self) raises -> HnswIndex:
         var config = self.index.config.copy()
@@ -2373,6 +2418,8 @@ def _load_or_rebuild_hnsw(
         var manifest = load_manifest(path, config.dimension)
         if Bool(manifest.hnsw_name):
             var metadata_matches = (
+                config.scalar_kind == ScalarKind.f32()
+                and
                 manifest.hnsw_config_fingerprint.value()
                 == config.fingerprint()
                 and manifest.hnsw_point_count.value()
@@ -2402,14 +2449,13 @@ def _load_or_rebuild_hnsw(
                                 # A committed v3 sidecar always wins. Legacy
                                 # cache bytes are not even opened on this path.
                                 return _HnswRecoveryLoad(
-                                    decoded^, True, False, replayed
+                                    decoded^, True, False, replayed, True, ""
                                 )
                         except:
                             pass
             # Missing files and stale descriptor/header metadata are derived
             # acceleration misses. They never invalidate authoritative data.
-            var rebuilt = _build_hnsw(memtable, config)
-            return _HnswRecoveryLoad(rebuilt^, False, False, 0)
+            return _rebuild_hnsw_for_recovery(memtable, config)
 
     # Legacy manifests may still use the optional cache during migration.
     # A miss always rebuilds from the fully recovered authoritative MemTable.
@@ -2423,9 +2469,25 @@ def _load_or_rebuild_hnsw(
     )
     if legacy.hit:
         var cached = legacy.take_index()
-        return _HnswRecoveryLoad(cached^, False, True, 0)
-    var rebuilt = _build_hnsw(memtable, config)
-    return _HnswRecoveryLoad(rebuilt^, False, False, 0)
+        return _HnswRecoveryLoad(cached^, False, True, 0, True, "")
+    return _rebuild_hnsw_for_recovery(memtable, config)
+
+
+def _rebuild_hnsw_for_recovery(
+    memtable: MemTable, config: CollectionConfig
+) raises -> _HnswRecoveryLoad:
+    try:
+        var rebuilt = _build_hnsw(memtable, config)
+        return _HnswRecoveryLoad(
+            rebuilt^, False, False, 0, True, ""
+        )
+    except:
+        # Authoritative records remain queryable through exact plans when the
+        # configured graph backend cannot represent this scalar/layout.
+        var unavailable = HnswIndex(config)
+        return _HnswRecoveryLoad(
+            unavailable^, False, False, 0, False, "rebuild_failed"
+        )
 
 
 def _hnsw_matches_ids(
