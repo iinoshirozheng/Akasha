@@ -103,6 +103,7 @@ def encode_hnsw_snapshot(
     """Encode one deterministic, owned HNSW snapshot in sectioned v1."""
     _require_v1_config(index.config)
     index.validate_structure()
+    _validate_snapshot_graph_vectors(index)
 
     var slots = index.graph.slot_count()
     if slots > _MAX_SLOTS:
@@ -113,8 +114,6 @@ def encode_hnsw_snapshot(
     var live_points = UInt64(0)
     for slot_index in range(slots):
         var slot = UInt32(slot_index)
-        var prepared = _copy_graph_vector(index, slot)
-        index.metric.validate_prepared_vector(prepared)
         level_cells = _checked_add_u64(
             level_cells, UInt64(index.graph.level(slot)) + UInt64(1)
         )
@@ -262,6 +261,7 @@ def hnsw_snapshot_eligibility(
     try:
         index.config.validate()
         index.validate_structure()
+        _validate_snapshot_graph_vectors(index)
     except:
         return HnswSnapshotEligibility(False, False, 0, "invalid_graph")
     try:
@@ -688,6 +688,8 @@ def try_read_compatible_hnsw_snapshot_owned(
     var stored_checksum = _read_u32_at(bytes, checksum_offset)
     if stored_checksum != manifest_checksum:
         return Optional[HnswIndex]()
+    if crc32_range(bytes, 0, checksum_offset) != stored_checksum:
+        raise Error("HNSW snapshot checksum mismatch")
     _require_v1_config(config)
     if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
@@ -697,8 +699,6 @@ def try_read_compatible_hnsw_snapshot_owned(
         )
     ):
         return Optional[HnswIndex]()
-    if crc32_range(bytes, 0, checksum_offset) != stored_checksum:
-        raise Error("HNSW snapshot checksum mismatch")
 
     var decoded = decode_hnsw_snapshot_owned(bytes^, config, sequence)
     return Optional(decoded^)
@@ -749,6 +749,13 @@ def _copy_graph_vector(index: HnswIndex, slot: UInt32) raises -> List[Float32]:
     for component in range(index.config.dimension):
         values.append(index.graph.vector_value(slot, component))
     return values^
+
+
+def _validate_snapshot_graph_vectors(index: HnswIndex) raises:
+    """Apply the codec's prepared-vector contract without encoding bytes."""
+    for slot_index in range(index.graph.slot_count()):
+        var prepared = _copy_graph_vector(index, UInt32(slot_index))
+        index.metric.validate_prepared_vector(prepared)
 
 
 def _count_directed_edges(index: HnswIndex) raises -> UInt64:

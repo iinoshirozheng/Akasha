@@ -1341,6 +1341,7 @@ struct PersistentCollection:
         # encoded so the sidecar represents the same authoritative sequence.
         self._maintain_hnsw_for_flush()
         if has_previous_manifest and self._last_sequence == previous_sequence:
+            var hnsw_to_cleanup = String()
             if not previous_hnsw_metadata_matches:
                 var wrote_hnsw = False
                 if self._hnsw_available:
@@ -1385,11 +1386,13 @@ struct PersistentCollection:
                     )
                     publish_manifest(self._path, downgraded)
                     self._hnsw_checkpoint_was_hit = False
-                    remove_file_and_sync_directory_if_exists(
-                        self._path, self._path + "/" + previous_hnsw_name
-                    )
+                    hnsw_to_cleanup = previous_hnsw_name.copy()
             rotate_wal(self._path)
             rotate_sparse_wal(self._path)
+            if hnsw_to_cleanup.byte_length() > 0:
+                remove_file_and_sync_directory_if_exists(
+                    self._path, self._path + "/" + hnsw_to_cleanup
+                )
             self._sparse_pending = List[SparseWalRecord]()
             self._publish_index_caches_best_effort()
             return

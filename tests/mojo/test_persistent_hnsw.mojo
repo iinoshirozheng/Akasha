@@ -410,6 +410,35 @@ def test_sidecar_size_preflight_falls_back_to_v2_and_rotates_wal() raises:
     reopened.close()
 
 
+def test_invalid_prepared_graph_quarantines_ann_and_flushes_v2() raises:
+    var path = String("/tmp/akasha-task22-invalid-prepared-flush")
+    _reset(path)
+    var config = CollectionConfig.defaults(2)
+    config.ann_metric = MetricKind.cosine()
+    var collection = PersistentCollection.open_with_config(path, config.copy())
+    for id in range(1, 81):
+        collection.upsert(id, [Float32(id), 1.0])
+    collection._hnsw.graph.vector_scalars[0] = 0.0
+    collection._hnsw.graph.vector_scalars[1] = 0.0
+
+    collection.flush()
+
+    var manifest = load_manifest(path, 2)
+    assert_equal(manifest.format_version, 2)
+    assert_false(Bool(manifest.hnsw_name))
+    assert_equal(len(read_file_bytes(path + "/wal.bin")), 0)
+    assert_false(collection.hnsw_available())
+    assert_equal(collection.hnsw_unavailable_reason(), "eligibility_failed")
+    assert_equal(collection.get(1).value().vector[0], 1.0)
+    assert_equal(collection.get(1).value().vector[1], 1.0)
+    collection.close()
+
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_equal(reopened.get(1).value().vector[0], 1.0)
+    assert_equal(reopened.get(1).value().vector[1], 1.0)
+    reopened.close()
+
+
 def test_missing_sidecar_rebuilds_safely() raises:
     var missing_path = String("/tmp/akasha-task22-missing-sidecar")
     var config = _build_checkpoint(missing_path)
@@ -499,7 +528,9 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     var collection = PersistentCollection.open_with_config(
         sequence_path, config.copy()
     )
-    collection.upsert(81, [81.0])
+    # Replace an existing point so the committed live count remains 80; the
+    # stale sidecar can then differ only in its encoded sequence.
+    collection.upsert(80, [81.0])
     collection.flush()
     collection.close()
     # The filename and manifest describe sequence 81, but these internally
@@ -550,6 +581,18 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     )
     assert_true(rebuilt_config.hnsw_build_distance_evaluations() > 0)
     rebuilt_config.close()
+
+
+def test_identity_bit_flip_without_crc_rewrite_is_committed_corruption() raises:
+    var path = String("/tmp/akasha-task22-identity-bitflip-crc")
+    var config = _build_checkpoint(path)
+    var manifest = load_manifest(path, 1)
+    var sidecar_path = path + "/" + manifest.hnsw_name.value()
+    var bytes = read_file_bytes(sidecar_path)
+    bytes[24] ^= UInt8(1)  # Encoded sequence identity byte.
+    write_file_sync(sidecar_path, bytes)
+    with assert_raises():
+        _ = PersistentCollection.open_with_config(path, config.copy())
 
 
 def test_stale_manifest_checksum_precedes_corrupt_file_validation() raises:
