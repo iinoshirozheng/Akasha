@@ -1,3 +1,7 @@
+from akasha.compute.dispatch import (
+    DistanceExecutionStats,
+    portable_simd_width,
+)
 from akasha.compute.gpu.planner import (
     GpuExecutionOptions,
     GpuPlan,
@@ -8,6 +12,7 @@ from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
     BATCH_DOT_METRIC,
     BATCH_L2_METRIC,
+    batch_metric_name,
     execute_exact_batch,
 )
 from akasha.storage.memtable import MemTable
@@ -26,6 +31,7 @@ struct DeviceBatchResult(Movable):
     var used_gpu: Bool
     var reason: String
     var required_bytes: UInt64
+    var stats: DistanceExecutionStats
 
     def __init__(
         out self,
@@ -33,17 +39,42 @@ struct DeviceBatchResult(Movable):
         used_gpu: Bool,
         reason: String,
         required_bytes: UInt64,
+        var stats: DistanceExecutionStats,
     ):
         self.results = results^
         self.used_gpu = used_gpu
         self.reason = String(copy=reason)
         self.required_bytes = required_bytes
+        self.stats = stats^
 
     def take_results(mut self) -> List[List[SearchResult]]:
         var replacement = List[List[SearchResult]]()
         var result = self.results^
         self.results = replacement^
         return result^
+
+
+def _execution_stats(
+    metric: Int,
+    reason: String,
+    used_gpu: Bool,
+    evaluations: Int,
+) raises -> DistanceExecutionStats:
+    var backend_name = String("gpu")
+    var fallback_reason = String()
+    if not used_gpu:
+        backend_name = String("portable-simd-", portable_simd_width())
+        fallback_reason = String(copy=reason)
+    return DistanceExecutionStats(
+        backend_name^,
+        batch_metric_name(metric),
+        "f32",
+        fallback_reason^,
+        0,
+        0,
+        evaluations,
+        evaluations,
+    )
 
 
 def _score_kernel[
@@ -102,9 +133,7 @@ def _topk_kernel[
     scores: TileTensor[DType.float32, ScoresLayout, MutAnyOrigin],
     ids: TileTensor[DType.int64, IdsLayout, MutAnyOrigin],
     output_ids: TileTensor[DType.int64, OutputIdsLayout, MutAnyOrigin],
-    output_scores: TileTensor[
-        DType.float32, OutputScoresLayout, MutAnyOrigin
-    ],
+    output_scores: TileTensor[DType.float32, OutputScoresLayout, MutAnyOrigin],
     point_count_device: Int32,
     query_count_device: Int32,
     result_count_device: Int32,
@@ -161,7 +190,9 @@ def _topk_kernel[
         ](best_score)
 
 
-def execute_device_batch[use_accelerator: Bool](
+def execute_device_batch[
+    use_accelerator: Bool
+](
     memtable: MemTable,
     queries: List[List[Float32]],
     k: Int,
@@ -213,7 +244,16 @@ def execute_device_batch[use_accelerator: Bool](
                     plan.required_bytes,
                 )
                 return DeviceBatchResult(
-                    results^, True, "gpu executed", plan.required_bytes
+                    results^,
+                    True,
+                    "gpu executed",
+                    plan.required_bytes,
+                    _execution_stats(
+                        metric,
+                        "gpu executed",
+                        True,
+                        len(queries) * len(memtable.live_entries()),
+                    ),
                 )
             except error:
                 var fallback_results = execute_exact_batch(
@@ -224,10 +264,18 @@ def execute_device_batch[use_accelerator: Bool](
                     False,
                     "gpu failure: " + String(error),
                     plan.required_bytes,
+                    _execution_stats(
+                        metric,
+                        "gpu failure: " + String(error),
+                        False,
+                        len(queries) * len(memtable.live_entries()),
+                    ),
                 )
 
 
-def execute_device_candidate_batch[use_accelerator: Bool](
+def execute_device_candidate_batch[
+    use_accelerator: Bool
+](
     dimension: Int,
     queries: List[List[Float32]],
     candidates: List[List[MemTableEntry]],
@@ -242,6 +290,9 @@ def execute_device_candidate_batch[use_accelerator: Bool](
     var every_query_used_gpu = len(queries) > 0
     var reason = String("gpu executed")
     var required_bytes = UInt64(0)
+    var evaluations = 0
+    var any_gpu = False
+    var any_cpu = False
     for query_index in range(len(queries)):
         var table = MemTable(dimension)
         for candidate_index in range(len(candidates[query_index])):
@@ -258,6 +309,9 @@ def execute_device_candidate_batch[use_accelerator: Bool](
         )
         if result.required_bytes > required_bytes:
             required_bytes = result.required_bytes
+        evaluations += result.stats.distance_evaluations
+        any_gpu = any_gpu or result.used_gpu
+        any_cpu = any_cpu or not result.used_gpu
         if not result.used_gpu:
             every_query_used_gpu = False
             if reason == "gpu executed":
@@ -266,8 +320,13 @@ def execute_device_candidate_batch[use_accelerator: Bool](
         output.append(query_results.pop())
     if len(queries) == 0:
         reason = "empty workload"
+    var stats = _execution_stats(
+        metric, reason, every_query_used_gpu, evaluations
+    )
+    if any_gpu and any_cpu:
+        stats.backend_name = "mixed"
     return DeviceBatchResult(
-        output^, every_query_used_gpu, reason, required_bytes
+        output^, every_query_used_gpu, reason, required_bytes, stats^
     )
 
 
@@ -279,8 +338,13 @@ def _cpu_fallback(
     plan: GpuPlan,
 ) raises -> DeviceBatchResult:
     var results = execute_exact_batch(memtable, queries, k, metric, 0)
+    var evaluations = len(queries) * len(memtable.live_entries())
     return DeviceBatchResult(
-        results^, False, plan.reason, plan.required_bytes
+        results^,
+        False,
+        plan.reason,
+        plan.required_bytes,
+        _execution_stats(metric, plan.reason, False, evaluations),
     )
 
 
@@ -315,7 +379,9 @@ def _execute_gpu_batch(
     var queries_buffer = context.enqueue_create_buffer[DType.float32](
         query_value_count
     )
-    var scores_buffer = context.enqueue_create_buffer[DType.float32](score_count)
+    var scores_buffer = context.enqueue_create_buffer[DType.float32](
+        score_count
+    )
     var ids_buffer = context.enqueue_create_buffer[DType.int64](point_count)
     var output_ids_buffer = context.enqueue_create_buffer[DType.int64](
         output_count

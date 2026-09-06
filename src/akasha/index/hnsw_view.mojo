@@ -1,5 +1,21 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
+from akasha.compute.dispatch import (
+    DISTANCE_DOT_F32,
+    DISTANCE_L2_F32,
+    DISTANCE_COSINE_F32,
+    DISTANCE_DOT_BF16,
+    DISTANCE_L2_BF16,
+    DISTANCE_COSINE_BF16,
+    DISTANCE_DOT_F16,
+    DISTANCE_L2_F16,
+    DISTANCE_COSINE_F16,
+    DISTANCE_DOT_I8,
+    DISTANCE_COSINE_I8,
+    DistanceBackend,
+    finish_distance,
+    select_distance_backend,
+)
 from akasha.compute.quantization import (
     decode_bf16,
     decode_f16,
@@ -23,6 +39,7 @@ from akasha.index.hnsw_storage import HnswGraphAccess
 from akasha.storage.mapped_file import MappedFile
 from std.collections import Dict
 from std.memory import bitcast
+from std.sys import simd_width_of
 
 
 comptime _NODE_BYTES = 40
@@ -64,6 +81,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     var _mapping: MappedFile
     var _config: CollectionConfig
     var _metric: MetricDispatcher
+    var _distance_backend: DistanceBackend
     var _scratch: HnswSearchScratch
     var _last_stats: HnswSearchStats
     var _last_search_query_preparations: Int
@@ -90,6 +108,32 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._metric = MetricDispatcher(
             config.ann_metric, config.scalar_kind, config.dimension
         )
+        self._distance_backend = select_distance_backend(config)
+        self._scratch = HnswSearchScratch()
+        self._last_stats = HnswSearchStats()
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
+        self._slots = 0
+        self._live_points = 0
+        self._level_cells = 0
+        self._directed_edges = 0
+        self._entry_slot = Optional[UInt32]()
+        self._entry_level = -1
+        self._node_offset = 0
+        self._vector_offset = 0
+        self._vector_width = 4
+        self._scale_offset = 0
+        self._scale_width = 0
+        self._count_offset = 0
+        self._edge_offset = 0
+
+    def __init__(out self, config: CollectionConfig) raises:
+        config.validate()
+        var backend = select_distance_backend(config)
+        self._mapping = MappedFile()
+        self._config = config.copy()
+        self._metric = backend.dispatcher()
+        self._distance_backend = backend^
         self._scratch = HnswSearchScratch()
         self._last_stats = HnswSearchStats()
         self._last_search_query_preparations = 0
@@ -127,12 +171,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         edge_offset: Int,
     ) raises -> HnswGraphView:
         config.validate()
-        var result = HnswGraphView()
+        var result = HnswGraphView(config)
         result._mapping = mapping^
         result._config = config.copy()
-        result._metric = MetricDispatcher(
-            config.ann_metric, config.scalar_kind, config.dimension
-        )
         result._slots = slots
         result._live_points = live_points
         result._level_cells = level_cells
@@ -199,6 +240,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     def last_search_upper_descents(self) -> Int:
         return self._last_search_upper_descents
 
+    def distance_backend_selection_count(self) -> Int:
+        return self._distance_backend.selection_count()
+
+    def distance_backend_hot_loop_selection_count(self) -> Int:
+        return self._distance_backend.hot_loop_selection_count()
+
     def id_at(self, slot: UInt32) raises -> Int:
         var node = self._node_record(slot)
         return Int(bitcast[DType.int64](self._read_u64(node)))
@@ -229,20 +276,18 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 self._read_u32(self._vector_offset + scalar * 4)
             )
         if self._config.scalar_kind == ScalarKind.bf16():
-            return decode_bf16(
-                self._read_u16(self._vector_offset + scalar * 2)
-            )
+            return decode_bf16(self._read_u16(self._vector_offset + scalar * 2))
         if self._config.scalar_kind == ScalarKind.f16():
-            return decode_f16(
-                self._read_u16(self._vector_offset + scalar * 2)
-            )
+            return decode_f16(self._read_u16(self._vector_offset + scalar * 2))
         var scale = Float32(1.0 / 127.0)
         if self._config.ann_metric == MetricKind.dot():
             scale = bitcast[DType.float32](
                 self._read_u32(self._scale_offset + Int(slot) * 4)
             )
         return decode_symmetric_i8(
-            bitcast[DType.int8](self._mapping.byte_at(self._vector_offset + scalar)),
+            bitcast[DType.int8](
+                self._mapping.byte_at(self._vector_offset + scalar)
+            ),
             scale,
         )
 
@@ -300,6 +345,137 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return dispatcher._finish_prepared_f32_accumulations(
             product, squared_l2
         )
+
+    def _distance_to_slot_backend[
+        backend_tag: Int
+    ](
+        self,
+        _dispatcher: MetricDispatcher,
+        query: List[Float32],
+        slot: UInt32,
+    ) raises -> Float32:
+        """Specialized mapped query/member kernel selected before traversal."""
+        var expected_query = self._config.dimension
+        comptime if (
+            backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
+        ):
+            expected_query += 1
+        if len(query) != expected_query:
+            raise Error("prepared query dimension does not match graph")
+        _ = self._slot_index(slot)
+        comptime width = simd_width_of[DType.float32]()
+        var scalar_base = Int(slot) * self._config.dimension
+        comptime if (
+            backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
+        ):
+            var lanes = SIMD[DType.int32, width](0)
+            var component = 0
+            while component + width <= self._config.dimension:
+                var left = SIMD[DType.int32, width](0)
+                var right = SIMD[DType.int32, width](0)
+                for lane in range(width):
+                    left[lane] = Int32(query[component + lane])
+                    right[lane] = Int32(
+                        bitcast[DType.int8](
+                            self._mapping.byte_at(
+                                self._vector_offset
+                                + scalar_base
+                                + component
+                                + lane
+                            )
+                        )
+                    )
+                lanes += left * right
+                component += width
+            var accumulator = lanes.reduce_add()
+            while component < self._config.dimension:
+                accumulator += Int32(query[component]) * Int32(
+                    bitcast[DType.int8](
+                        self._mapping.byte_at(
+                            self._vector_offset + scalar_base + component
+                        )
+                    )
+                )
+                component += 1
+            var vector_scale = Float32(1.0 / 127.0)
+            comptime if backend_tag == DISTANCE_DOT_I8:
+                vector_scale = bitcast[DType.float32](
+                    self._read_u32(self._scale_offset + Int(slot) * 4)
+                )
+            return finish_distance[backend_tag](
+                scaled_i8_accumulator(
+                    accumulator,
+                    query[self._config.dimension],
+                    vector_scale,
+                ),
+                0.0,
+            )
+        else:
+            var product_lanes = SIMD[DType.float32, width](0.0)
+            var l2_lanes = SIMD[DType.float32, width](0.0)
+            var component = 0
+            while component + width <= self._config.dimension:
+                var left = query.unsafe_ptr().unsafe_load[width=width](
+                    component
+                )
+                var right = SIMD[DType.float32, width](0.0)
+                for lane in range(width):
+                    var scalar = scalar_base + component + lane
+                    comptime if (
+                        backend_tag == DISTANCE_DOT_F32
+                        or backend_tag == DISTANCE_L2_F32
+                        or backend_tag == DISTANCE_COSINE_F32
+                    ):
+                        right[lane] = bitcast[DType.float32](
+                            self._read_u32(self._vector_offset + scalar * 4)
+                        )
+                    elif (
+                        backend_tag == DISTANCE_DOT_BF16
+                        or backend_tag == DISTANCE_L2_BF16
+                        or backend_tag == DISTANCE_COSINE_BF16
+                    ):
+                        right[lane] = decode_bf16(
+                            self._read_u16(self._vector_offset + scalar * 2)
+                        )
+                    else:
+                        right[lane] = decode_f16(
+                            self._read_u16(self._vector_offset + scalar * 2)
+                        )
+                product_lanes += left * right
+                var difference = left - right
+                l2_lanes += difference * difference
+                component += width
+            var product = product_lanes.reduce_add()
+            var squared_l2 = l2_lanes.reduce_add()
+            while component < self._config.dimension:
+                var scalar = scalar_base + component
+                var right: Float32
+                comptime if (
+                    backend_tag == DISTANCE_DOT_F32
+                    or backend_tag == DISTANCE_L2_F32
+                    or backend_tag == DISTANCE_COSINE_F32
+                ):
+                    right = bitcast[DType.float32](
+                        self._read_u32(self._vector_offset + scalar * 4)
+                    )
+                elif (
+                    backend_tag == DISTANCE_DOT_BF16
+                    or backend_tag == DISTANCE_L2_BF16
+                    or backend_tag == DISTANCE_COSINE_BF16
+                ):
+                    right = decode_bf16(
+                        self._read_u16(self._vector_offset + scalar * 2)
+                    )
+                else:
+                    right = decode_f16(
+                        self._read_u16(self._vector_offset + scalar * 2)
+                    )
+                var left = query[component]
+                product += left * right
+                var difference = left - right
+                squared_l2 += difference * difference
+                component += 1
+            return finish_distance[backend_tag](product, squared_l2)
 
     def neighbor_count(self, slot: UInt32, level: Int) raises -> Int:
         self._validate_level(slot, level)
@@ -461,6 +637,42 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         *,
         ef_search: Int = -1,
     ) raises -> List[SearchResult]:
+        var tag = self._distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_backend[DISTANCE_DOT_F32](query, k, ef_search)
+        if tag == DISTANCE_L2_F32:
+            return self._search_backend[DISTANCE_L2_F32](query, k, ef_search)
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_backend[DISTANCE_COSINE_F32](
+                query, k, ef_search
+            )
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_backend[DISTANCE_DOT_BF16](query, k, ef_search)
+        if tag == DISTANCE_L2_BF16:
+            return self._search_backend[DISTANCE_L2_BF16](query, k, ef_search)
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_backend[DISTANCE_COSINE_BF16](
+                query, k, ef_search
+            )
+        if tag == DISTANCE_DOT_F16:
+            return self._search_backend[DISTANCE_DOT_F16](query, k, ef_search)
+        if tag == DISTANCE_L2_F16:
+            return self._search_backend[DISTANCE_L2_F16](query, k, ef_search)
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_backend[DISTANCE_COSINE_F16](
+                query, k, ef_search
+            )
+        if tag == DISTANCE_DOT_I8:
+            return self._search_backend[DISTANCE_DOT_I8](query, k, ef_search)
+        if tag == DISTANCE_COSINE_I8:
+            return self._search_backend[DISTANCE_COSINE_I8](query, k, ef_search)
+        raise Error("distance backend tag is invalid")
+
+    def _search_backend[
+        backend_tag: Int
+    ](mut self, query: List[Float32], k: Int, ef_search: Int) raises -> List[
+        SearchResult
+    ]:
         self.validate_search_ready()
         if k <= 0:
             raise Error("HNSW search k must be positive")
@@ -499,7 +711,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
 
         var current = self._entry_slot.value()
         for level in range(self._entry_level, 0, -1):
-            current = greedy_descent(
+            current = greedy_descent[backend_tag=backend_tag](
                 self, self._metric, prepared, current, level, stats
             ).slot
         var admission = HnswSearchAdmission()
@@ -507,7 +719,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         # scratch's mutable borrow have distinct origins under Mojo 1.0.
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var candidates = search_layer(
+        var candidates = search_layer[backend_tag=backend_tag](
             self,
             self._metric,
             prepared,
@@ -612,12 +824,70 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         admitted_count: Int,
         admission: AdmissionType,
     ) raises -> List[SearchResult]:
+        var tag = self._distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_prepared_backend[backend_tag=DISTANCE_DOT_F32](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_L2_F32:
+            return self._search_prepared_backend[backend_tag=DISTANCE_L2_F32](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_prepared_backend[
+                backend_tag=DISTANCE_COSINE_F32
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_prepared_backend[backend_tag=DISTANCE_DOT_BF16](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_L2_BF16:
+            return self._search_prepared_backend[backend_tag=DISTANCE_L2_BF16](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_prepared_backend[
+                backend_tag=DISTANCE_COSINE_BF16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_F16:
+            return self._search_prepared_backend[backend_tag=DISTANCE_DOT_F16](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_L2_F16:
+            return self._search_prepared_backend[backend_tag=DISTANCE_L2_F16](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_prepared_backend[
+                backend_tag=DISTANCE_COSINE_F16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_I8:
+            return self._search_prepared_backend[backend_tag=DISTANCE_DOT_I8](
+                prepared, k, initial_ef, max_ef, admitted_count, admission
+            )
+        return self._search_prepared_backend[backend_tag=DISTANCE_COSINE_I8](
+            prepared, k, initial_ef, max_ef, admitted_count, admission
+        )
+
+    def _search_prepared_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
+        mut self,
+        prepared: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var outcome = search_prepared_allowed_with_widening_core(
+        var outcome = search_prepared_allowed_with_widening_core[
+            backend_tag=backend_tag
+        ](
             self,
             self._metric,
             prepared,
@@ -652,12 +922,155 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
+        var tag = self._distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_widening_backend[backend_tag=DISTANCE_DOT_F32](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_F32:
+            return self._search_widening_backend[backend_tag=DISTANCE_L2_F32](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_widening_backend[
+                backend_tag=DISTANCE_COSINE_F32
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_widening_backend[backend_tag=DISTANCE_DOT_BF16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_BF16:
+            return self._search_widening_backend[backend_tag=DISTANCE_L2_BF16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_widening_backend[
+                backend_tag=DISTANCE_COSINE_BF16
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_F16:
+            return self._search_widening_backend[backend_tag=DISTANCE_DOT_F16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_F16:
+            return self._search_widening_backend[backend_tag=DISTANCE_L2_F16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_widening_backend[
+                backend_tag=DISTANCE_COSINE_F16
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_I8:
+            return self._search_widening_backend[backend_tag=DISTANCE_DOT_I8](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        return self._search_widening_backend[backend_tag=DISTANCE_COSINE_I8](
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            eligible_count,
+            allowed,
+            return_search_breadth,
+            exact_fallback,
+        )
+
+    def _search_widening_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        eligible_count: Int,
+        allowed: AdmissionType,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
+    ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var outcome = search_allowed_with_widening_core(
+        var outcome = search_allowed_with_widening_core[
+            backend_tag=backend_tag
+        ](
             self,
             self._metric,
             query,

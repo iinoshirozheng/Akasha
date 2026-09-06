@@ -4,6 +4,20 @@ from akasha.common.config import (
     ScalarKind,
 )
 from akasha.compute.metric import MetricDispatcher
+from akasha.compute.dispatch import (
+    DISTANCE_DOT_F32,
+    DISTANCE_L2_F32,
+    DISTANCE_COSINE_F32,
+    DISTANCE_DOT_BF16,
+    DISTANCE_L2_BF16,
+    DISTANCE_COSINE_BF16,
+    DISTANCE_DOT_F16,
+    DISTANCE_L2_F16,
+    DISTANCE_COSINE_F16,
+    DISTANCE_DOT_I8,
+    DISTANCE_COSINE_I8,
+    finish_distance,
+)
 from akasha.compute.quantization import (
     decode_bf16,
     decode_f16,
@@ -18,6 +32,7 @@ from akasha.compute.quantization import (
 from std.collections import Dict
 from std.math import isfinite
 from std.memory import bitcast
+from std.sys import simd_width_of
 
 
 comptime HNSW_EMPTY_NEIGHBOR = UInt32.MAX
@@ -56,6 +71,16 @@ trait HnswGraphAccess:
         ...
 
     def distance_to_slot(
+        self,
+        dispatcher: MetricDispatcher,
+        query: List[Float32],
+        slot: UInt32,
+    ) raises -> Float32:
+        ...
+
+    def _distance_to_slot_backend[
+        backend_tag: Int
+    ](
         self,
         dispatcher: MetricDispatcher,
         query: List[Float32],
@@ -140,10 +165,7 @@ struct HnswStorage(HnswGraphAccess):
             raise Error("HNSW storage scalar and metric kinds must be valid")
         if scalar_kind == ScalarKind.i8() and metric_kind == MetricKind.l2():
             raise Error("HNSW I8 storage does not support L2")
-        if (
-            scalar_kind == ScalarKind.i8()
-            and dimension > I8_MAX_SAFE_DIMENSION
-        ):
+        if scalar_kind == ScalarKind.i8() and dimension > I8_MAX_SAFE_DIMENSION:
             raise Error("HNSW I8 dimension exceeds the Int32 accumulator bound")
 
         self.dimension = dimension
@@ -260,11 +282,7 @@ struct HnswStorage(HnswGraphAccess):
                     magnitude = -magnitude
                 if magnitude > maximum_code:
                     maximum_code = magnitude
-                encoded.append(
-                    bitcast[DType.uint8](
-                        Int8(Int(values[index]))
-                    )
-                )
+                encoded.append(bitcast[DType.uint8](Int8(Int(values[index]))))
             if self.metric_kind == MetricKind.cosine():
                 if vector_scale != Float32(1.0 / 127.0):
                     raise Error("HNSW I8 cosine scale must be fixed")
@@ -405,9 +423,7 @@ struct HnswStorage(HnswGraphAccess):
         if magnitude < 0:
             magnitude = -magnitude
         var scale = self._i8_vector_scale(slot)
-        validate_i8_decoded_component_bound(
-            magnitude, scale, self.dimension
-        )
+        validate_i8_decoded_component_bound(magnitude, scale, self.dimension)
         return decode_symmetric_i8(code, scale)
 
     def distance_to_slot(
@@ -490,6 +506,327 @@ struct HnswStorage(HnswGraphAccess):
             var difference = left - right
             squared_l2 += difference * difference
         return self._finish_distance(dispatcher, product, squared_l2)
+
+    def _distance_to_slot_backend[
+        backend_tag: Int
+    ](
+        self,
+        _dispatcher: MetricDispatcher,
+        query: List[Float32],
+        slot: UInt32,
+    ) raises -> Float32:
+        """Specialized query/member kernel selected before graph traversal."""
+        var expected_query = self.dimension
+        comptime if (
+            backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
+        ):
+            expected_query += 1
+        if len(query) != expected_query:
+            raise Error("prepared query dimension does not match graph")
+        var offset = self.vector_offset(slot)
+        comptime width = simd_width_of[DType.float32]()
+        comptime if (
+            backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
+        ):
+            var lanes = SIMD[DType.int32, width](0)
+            var maximum_code = 0
+            var component = 0
+            while component + width <= self.dimension:
+                var left = SIMD[DType.int32, width](0)
+                var right = SIMD[DType.int32, width](0)
+                for lane in range(width):
+                    left[lane] = Int32(query[component + lane])
+                    var code = bitcast[DType.int8](
+                        self.vector_bytes[offset + component + lane]
+                    )
+                    right[lane] = Int32(code)
+                    var magnitude = Int(code)
+                    if magnitude < 0:
+                        magnitude = -magnitude
+                    if magnitude > maximum_code:
+                        maximum_code = magnitude
+                lanes += left * right
+                component += width
+            var accumulator = lanes.reduce_add()
+            while component < self.dimension:
+                var code = bitcast[DType.int8](
+                    self.vector_bytes[offset + component]
+                )
+                accumulator += Int32(query[component]) * Int32(code)
+                var magnitude = Int(code)
+                if magnitude < 0:
+                    magnitude = -magnitude
+                if magnitude > maximum_code:
+                    maximum_code = magnitude
+                component += 1
+            var vector_scale = self._i8_vector_scale(slot)
+            validate_i8_decoded_component_bound(
+                maximum_code, vector_scale, self.dimension
+            )
+            return finish_distance[backend_tag](
+                scaled_i8_accumulator(
+                    accumulator,
+                    query[self.dimension],
+                    vector_scale,
+                ),
+                0.0,
+            )
+        else:
+            var product_lanes = SIMD[DType.float32, width](0.0)
+            var l2_lanes = SIMD[DType.float32, width](0.0)
+            var component = 0
+            while component + width <= self.dimension:
+                var left = query.unsafe_ptr().unsafe_load[width=width](
+                    component
+                )
+                var right = SIMD[DType.float32, width](0.0)
+                comptime if (
+                    backend_tag == DISTANCE_DOT_F32
+                    or backend_tag == DISTANCE_L2_F32
+                    or backend_tag == DISTANCE_COSINE_F32
+                ):
+                    right = self.vector_scalars.unsafe_ptr().unsafe_load[
+                        width=width
+                    ](offset + component)
+                elif (
+                    backend_tag == DISTANCE_DOT_BF16
+                    or backend_tag == DISTANCE_L2_BF16
+                    or backend_tag == DISTANCE_COSINE_BF16
+                ):
+                    for lane in range(width):
+                        var scalar = (offset + component + lane) * 2
+                        var bits = UInt16(self.vector_bytes[scalar]) | (
+                            UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
+                        )
+                        right[lane] = decode_bf16(bits)
+                else:
+                    for lane in range(width):
+                        var scalar = (offset + component + lane) * 2
+                        var bits = UInt16(self.vector_bytes[scalar]) | (
+                            UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
+                        )
+                        right[lane] = decode_f16(bits)
+                product_lanes += left * right
+                var difference = left - right
+                l2_lanes += difference * difference
+                component += width
+            var product = product_lanes.reduce_add()
+            var squared_l2 = l2_lanes.reduce_add()
+            while component < self.dimension:
+                var left = query[component]
+                var right: Float32
+                comptime if (
+                    backend_tag == DISTANCE_DOT_F32
+                    or backend_tag == DISTANCE_L2_F32
+                    or backend_tag == DISTANCE_COSINE_F32
+                ):
+                    right = self.vector_scalars[offset + component]
+                elif (
+                    backend_tag == DISTANCE_DOT_BF16
+                    or backend_tag == DISTANCE_L2_BF16
+                    or backend_tag == DISTANCE_COSINE_BF16
+                ):
+                    var scalar = (offset + component) * 2
+                    var bits = UInt16(self.vector_bytes[scalar]) | (
+                        UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
+                    )
+                    right = decode_bf16(bits)
+                else:
+                    var scalar = (offset + component) * 2
+                    var bits = UInt16(self.vector_bytes[scalar]) | (
+                        UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
+                    )
+                    right = decode_f16(bits)
+                product += left * right
+                var difference = left - right
+                squared_l2 += difference * difference
+                component += 1
+            return finish_distance[backend_tag](product, squared_l2)
+
+    def _distance_between_backend[
+        backend_tag: Int
+    ](
+        self,
+        _dispatcher: MetricDispatcher,
+        lhs: UInt32,
+        rhs: UInt32,
+    ) raises -> Float32:
+        """Specialized member/member kernel selected before insertion."""
+        var lhs_offset = self.vector_offset(lhs)
+        var rhs_offset = self.vector_offset(rhs)
+        comptime width = simd_width_of[DType.float32]()
+        comptime if (
+            backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
+        ):
+            var lanes = SIMD[DType.int32, width](0)
+            var lhs_maximum = 0
+            var rhs_maximum = 0
+            var component = 0
+            while component + width <= self.dimension:
+                var left = SIMD[DType.int32, width](0)
+                var right = SIMD[DType.int32, width](0)
+                for lane in range(width):
+                    var lhs_code = bitcast[DType.int8](
+                        self.vector_bytes[lhs_offset + component + lane]
+                    )
+                    var rhs_code = bitcast[DType.int8](
+                        self.vector_bytes[rhs_offset + component + lane]
+                    )
+                    left[lane] = Int32(lhs_code)
+                    right[lane] = Int32(rhs_code)
+                    var lhs_magnitude = Int(lhs_code)
+                    if lhs_magnitude < 0:
+                        lhs_magnitude = -lhs_magnitude
+                    if lhs_magnitude > lhs_maximum:
+                        lhs_maximum = lhs_magnitude
+                    var rhs_magnitude = Int(rhs_code)
+                    if rhs_magnitude < 0:
+                        rhs_magnitude = -rhs_magnitude
+                    if rhs_magnitude > rhs_maximum:
+                        rhs_maximum = rhs_magnitude
+                lanes += left * right
+                component += width
+            var accumulator = lanes.reduce_add()
+            while component < self.dimension:
+                var lhs_code = bitcast[DType.int8](
+                    self.vector_bytes[lhs_offset + component]
+                )
+                var rhs_code = bitcast[DType.int8](
+                    self.vector_bytes[rhs_offset + component]
+                )
+                accumulator += Int32(lhs_code) * Int32(rhs_code)
+                var lhs_magnitude = Int(lhs_code)
+                if lhs_magnitude < 0:
+                    lhs_magnitude = -lhs_magnitude
+                if lhs_magnitude > lhs_maximum:
+                    lhs_maximum = lhs_magnitude
+                var rhs_magnitude = Int(rhs_code)
+                if rhs_magnitude < 0:
+                    rhs_magnitude = -rhs_magnitude
+                if rhs_magnitude > rhs_maximum:
+                    rhs_maximum = rhs_magnitude
+                component += 1
+            var lhs_scale = self._i8_vector_scale(lhs)
+            var rhs_scale = self._i8_vector_scale(rhs)
+            validate_i8_decoded_component_bound(
+                lhs_maximum, lhs_scale, self.dimension
+            )
+            validate_i8_decoded_component_bound(
+                rhs_maximum, rhs_scale, self.dimension
+            )
+            return finish_distance[backend_tag](
+                scaled_i8_accumulator(
+                    accumulator,
+                    lhs_scale,
+                    rhs_scale,
+                ),
+                0.0,
+            )
+        else:
+            var product_lanes = SIMD[DType.float32, width](0.0)
+            var l2_lanes = SIMD[DType.float32, width](0.0)
+            var component = 0
+            while component + width <= self.dimension:
+                var left = SIMD[DType.float32, width](0.0)
+                var right = SIMD[DType.float32, width](0.0)
+                comptime if (
+                    backend_tag == DISTANCE_DOT_F32
+                    or backend_tag == DISTANCE_L2_F32
+                    or backend_tag == DISTANCE_COSINE_F32
+                ):
+                    left = self.vector_scalars.unsafe_ptr().unsafe_load[
+                        width=width
+                    ](lhs_offset + component)
+                    right = self.vector_scalars.unsafe_ptr().unsafe_load[
+                        width=width
+                    ](rhs_offset + component)
+                else:
+                    for lane in range(width):
+                        comptime if (
+                            backend_tag == DISTANCE_DOT_BF16
+                            or backend_tag == DISTANCE_L2_BF16
+                            or backend_tag == DISTANCE_COSINE_BF16
+                        ):
+                            var lhs_scalar = (lhs_offset + component + lane) * 2
+                            var rhs_scalar = (rhs_offset + component + lane) * 2
+                            var lhs_bits = UInt16(
+                                self.vector_bytes[lhs_scalar]
+                            ) | (
+                                UInt16(self.vector_bytes[lhs_scalar + 1])
+                                << UInt16(8)
+                            )
+                            var rhs_bits = UInt16(
+                                self.vector_bytes[rhs_scalar]
+                            ) | (
+                                UInt16(self.vector_bytes[rhs_scalar + 1])
+                                << UInt16(8)
+                            )
+                            left[lane] = decode_bf16(lhs_bits)
+                            right[lane] = decode_bf16(rhs_bits)
+                        else:
+                            var lhs_scalar = (lhs_offset + component + lane) * 2
+                            var rhs_scalar = (rhs_offset + component + lane) * 2
+                            var lhs_bits = UInt16(
+                                self.vector_bytes[lhs_scalar]
+                            ) | (
+                                UInt16(self.vector_bytes[lhs_scalar + 1])
+                                << UInt16(8)
+                            )
+                            var rhs_bits = UInt16(
+                                self.vector_bytes[rhs_scalar]
+                            ) | (
+                                UInt16(self.vector_bytes[rhs_scalar + 1])
+                                << UInt16(8)
+                            )
+                            left[lane] = decode_f16(lhs_bits)
+                            right[lane] = decode_f16(rhs_bits)
+                product_lanes += left * right
+                var difference = left - right
+                l2_lanes += difference * difference
+                component += width
+            var product = product_lanes.reduce_add()
+            var squared_l2 = l2_lanes.reduce_add()
+            while component < self.dimension:
+                var left: Float32
+                var right: Float32
+                comptime if (
+                    backend_tag == DISTANCE_DOT_F32
+                    or backend_tag == DISTANCE_L2_F32
+                    or backend_tag == DISTANCE_COSINE_F32
+                ):
+                    left = self.vector_scalars[lhs_offset + component]
+                    right = self.vector_scalars[rhs_offset + component]
+                elif (
+                    backend_tag == DISTANCE_DOT_BF16
+                    or backend_tag == DISTANCE_L2_BF16
+                    or backend_tag == DISTANCE_COSINE_BF16
+                ):
+                    var lhs_scalar = (lhs_offset + component) * 2
+                    var rhs_scalar = (rhs_offset + component) * 2
+                    var lhs_bits = UInt16(self.vector_bytes[lhs_scalar]) | (
+                        UInt16(self.vector_bytes[lhs_scalar + 1]) << UInt16(8)
+                    )
+                    var rhs_bits = UInt16(self.vector_bytes[rhs_scalar]) | (
+                        UInt16(self.vector_bytes[rhs_scalar + 1]) << UInt16(8)
+                    )
+                    left = decode_bf16(lhs_bits)
+                    right = decode_bf16(rhs_bits)
+                else:
+                    var lhs_scalar = (lhs_offset + component) * 2
+                    var rhs_scalar = (rhs_offset + component) * 2
+                    var lhs_bits = UInt16(self.vector_bytes[lhs_scalar]) | (
+                        UInt16(self.vector_bytes[lhs_scalar + 1]) << UInt16(8)
+                    )
+                    var rhs_bits = UInt16(self.vector_bytes[rhs_scalar]) | (
+                        UInt16(self.vector_bytes[rhs_scalar + 1]) << UInt16(8)
+                    )
+                    left = decode_f16(lhs_bits)
+                    right = decode_f16(rhs_bits)
+                product += left * right
+                var difference = left - right
+                squared_l2 += difference * difference
+                component += 1
+            return finish_distance[backend_tag](product, squared_l2)
 
     def level_capacity(self, slot: UInt32, level: Int) raises -> Int:
         self._validate_level(slot, level)
@@ -593,12 +930,9 @@ struct HnswStorage(HnswGraphAccess):
             raise Error("HNSW neighbor capacities must fit UInt32")
         if not self.scalar_kind.is_valid() or not self.metric_kind.is_valid():
             raise Error("HNSW storage scalar and metric kinds must be valid")
-        if (
-            self.scalar_kind == ScalarKind.i8()
-            and (
-                self.metric_kind == MetricKind.l2()
-                or self.dimension > I8_MAX_SAFE_DIMENSION
-            )
+        if self.scalar_kind == ScalarKind.i8() and (
+            self.metric_kind == MetricKind.l2()
+            or self.dimension > I8_MAX_SAFE_DIMENSION
         ):
             raise Error("HNSW I8 storage configuration is invalid")
 
@@ -667,7 +1001,9 @@ struct HnswStorage(HnswGraphAccess):
                         if scale != Float32(1.0 / 127.0):
                             raise Error("HNSW I8 cosine scale must be fixed")
                         if not has_nonzero_code:
-                            raise Error("HNSW I8 cosine vector must be non-zero")
+                            raise Error(
+                                "HNSW I8 cosine vector must be non-zero"
+                            )
                     elif scale == 0.0 and has_nonzero_code:
                         raise Error(
                             "a zero HNSW I8 scale requires all-zero codes"

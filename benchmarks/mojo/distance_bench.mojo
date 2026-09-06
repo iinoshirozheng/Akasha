@@ -1,4 +1,6 @@
 from akasha.compute.distance import dot_product
+from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
+from akasha.compute.dispatch import select_distance_backend
 from akasha.compute.simd import simd_dot_product
 from std.time import perf_counter_ns
 
@@ -6,6 +8,10 @@ from std.time import perf_counter_ns
 def main() raises:
     comptime dimension = 768
     comptime iterations = 20_000
+    var config = CollectionConfig.defaults(dimension)
+    config.ann_metric = MetricKind.dot()
+    config.scalar_kind = ScalarKind.f32()
+    var backend = select_distance_backend(config)
     var lhs = List[Float32](capacity=dimension)
     var rhs = List[Float32](capacity=dimension)
     for i in range(dimension):
@@ -24,7 +30,18 @@ def main() raises:
         simd_checksum += simd_dot_product(lhs, rhs)
     var simd_elapsed = perf_counter_ns() - simd_start
 
-    print("dimension", dimension, "iterations", iterations)
+    print(
+        "metric",
+        backend.metric_name(),
+        "scalar",
+        backend.scalar_name(),
+        "backend",
+        backend.backend_name(),
+        "dimension",
+        dimension,
+        "iterations",
+        iterations,
+    )
     print(
         "scalar dot ns/call",
         Float64(scalar_elapsed) / Float64(iterations),

@@ -1,5 +1,20 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
+from akasha.compute.dispatch import (
+    DISTANCE_DOT_F32,
+    DISTANCE_L2_F32,
+    DISTANCE_COSINE_F32,
+    DISTANCE_DOT_BF16,
+    DISTANCE_L2_BF16,
+    DISTANCE_COSINE_BF16,
+    DISTANCE_DOT_F16,
+    DISTANCE_L2_F16,
+    DISTANCE_COSINE_F16,
+    DISTANCE_DOT_I8,
+    DISTANCE_COSINE_I8,
+    DistanceBackend,
+    select_distance_backend,
+)
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
     HnswEligibility,
@@ -97,6 +112,7 @@ struct HnswIndex:
 
     var config: CollectionConfig
     var metric: MetricDispatcher
+    var distance_backend: DistanceBackend
     var graph: HnswStorage
     var scratch: HnswSearchScratch
     var _construction_scratch: HnswSearchScratch
@@ -120,9 +136,9 @@ struct HnswIndex:
         config.validate()
         var owned = config.copy()
         self.config = owned.copy()
-        self.metric = MetricDispatcher(
-            owned.ann_metric, owned.scalar_kind, owned.dimension
-        )
+        var backend = select_distance_backend(owned)
+        self.metric = backend.dispatcher()
+        self.distance_backend = backend^
         self.graph = HnswStorage(
             owned.dimension,
             owned.m,
@@ -151,9 +167,9 @@ struct HnswIndex:
     ) raises:
         var owned = _legacy_config(dimension, m, max_level)
         self.config = owned.copy()
-        self.metric = MetricDispatcher(
-            owned.ann_metric, owned.scalar_kind, owned.dimension
-        )
+        var backend = select_distance_backend(owned)
+        self.metric = backend.dispatcher()
+        self.distance_backend = backend^
         self.graph = HnswStorage(dimension, m, m)
         self.scratch = HnswSearchScratch()
         self._construction_scratch = HnswSearchScratch()
@@ -253,6 +269,12 @@ struct HnswIndex:
     def last_search_upper_descents(self) -> Int:
         return self._last_search_upper_descents
 
+    def distance_backend_selection_count(self) -> Int:
+        return self.distance_backend.selection_count()
+
+    def distance_backend_hot_loop_selection_count(self) -> Int:
+        return self.distance_backend.hot_loop_selection_count()
+
     def _validate_bound_identity(self) raises:
         if self.config != self._identity_config:
             raise Error("HNSW public config diverged from immutable identity")
@@ -264,10 +286,8 @@ struct HnswIndex:
             raise Error("HNSW compatibility fields diverged from identity")
         if (
             self.metric.dimension() != self._identity_config.dimension
-            or self.metric.metric_name()
-            != self._identity_config.metric_name()
-            or self.metric.scalar_name()
-            != self._identity_config.scalar_name()
+            or self.metric.metric_name() != self._identity_config.metric_name()
+            or self.metric.scalar_name() != self._identity_config.scalar_name()
         ):
             raise Error("HNSW metric dispatcher diverged from identity")
         if (
@@ -314,6 +334,32 @@ struct HnswIndex:
             raise Error("HNSW build statistics maximum level is inconsistent")
 
     def add(mut self, id: Int, values: List[Float32]) raises:
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._add_backend[DISTANCE_DOT_F32](id, values)
+        if tag == DISTANCE_L2_F32:
+            return self._add_backend[DISTANCE_L2_F32](id, values)
+        if tag == DISTANCE_COSINE_F32:
+            return self._add_backend[DISTANCE_COSINE_F32](id, values)
+        if tag == DISTANCE_DOT_BF16:
+            return self._add_backend[DISTANCE_DOT_BF16](id, values)
+        if tag == DISTANCE_L2_BF16:
+            return self._add_backend[DISTANCE_L2_BF16](id, values)
+        if tag == DISTANCE_COSINE_BF16:
+            return self._add_backend[DISTANCE_COSINE_BF16](id, values)
+        if tag == DISTANCE_DOT_F16:
+            return self._add_backend[DISTANCE_DOT_F16](id, values)
+        if tag == DISTANCE_L2_F16:
+            return self._add_backend[DISTANCE_L2_F16](id, values)
+        if tag == DISTANCE_COSINE_F16:
+            return self._add_backend[DISTANCE_COSINE_F16](id, values)
+        if tag == DISTANCE_DOT_I8:
+            return self._add_backend[DISTANCE_DOT_I8](id, values)
+        return self._add_backend[DISTANCE_COSINE_I8](id, values)
+
+    def _add_backend[
+        backend_tag: Int
+    ](mut self, id: Int, values: List[Float32]) raises:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot mutate an invalid HNSW index")
@@ -328,12 +374,38 @@ struct HnswIndex:
             self._level_multiplier,
             self._identity_config.max_level,
         )
-        self._insert_prepared(
+        self._insert_prepared[backend_tag](
             id, prepared^, new_level, False, self._active_count() > 0
         )
 
     def upsert(mut self, id: Int, values: List[Float32]) raises:
         """Insert or replace one public ID without rebuilding the graph."""
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._upsert_backend[DISTANCE_DOT_F32](id, values)
+        if tag == DISTANCE_L2_F32:
+            return self._upsert_backend[DISTANCE_L2_F32](id, values)
+        if tag == DISTANCE_COSINE_F32:
+            return self._upsert_backend[DISTANCE_COSINE_F32](id, values)
+        if tag == DISTANCE_DOT_BF16:
+            return self._upsert_backend[DISTANCE_DOT_BF16](id, values)
+        if tag == DISTANCE_L2_BF16:
+            return self._upsert_backend[DISTANCE_L2_BF16](id, values)
+        if tag == DISTANCE_COSINE_BF16:
+            return self._upsert_backend[DISTANCE_COSINE_BF16](id, values)
+        if tag == DISTANCE_DOT_F16:
+            return self._upsert_backend[DISTANCE_DOT_F16](id, values)
+        if tag == DISTANCE_L2_F16:
+            return self._upsert_backend[DISTANCE_L2_F16](id, values)
+        if tag == DISTANCE_COSINE_F16:
+            return self._upsert_backend[DISTANCE_COSINE_F16](id, values)
+        if tag == DISTANCE_DOT_I8:
+            return self._upsert_backend[DISTANCE_DOT_I8](id, values)
+        return self._upsert_backend[DISTANCE_COSINE_I8](id, values)
+
+    def _upsert_backend[
+        backend_tag: Int
+    ](mut self, id: Int, values: List[Float32]) raises:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot mutate an invalid HNSW index")
@@ -351,15 +423,14 @@ struct HnswIndex:
         var replacing_entry = False
         if Bool(old):
             replacing_entry = (
-                Bool(self.entry_slot)
-                and self.entry_slot.value() == old.value()
+                Bool(self.entry_slot) and self.entry_slot.value() == old.value()
             )
             _ = self.graph.mark_replaced(id)
             self.build_stats.inactive_slots += 1
 
         var has_other_live = self._active_count() > 0
         try:
-            self._insert_prepared(
+            self._insert_prepared[backend_tag](
                 id,
                 prepared^,
                 new_level,
@@ -389,7 +460,9 @@ struct HnswIndex:
     def _active_count(self) -> Int:
         return self.graph.slot_count() - self.build_stats.inactive_slots
 
-    def _insert_prepared(
+    def _insert_prepared[
+        backend_tag: Int
+    ](
         mut self,
         id: Int,
         var prepared: List[Float32],
@@ -400,9 +473,7 @@ struct HnswIndex:
         """Link a prepared staging slot, then publish its current-ID map."""
 
         if not Bool(self.entry_slot) or not has_other_live:
-            var first = self.graph._append_unpublished(
-                id, prepared, new_level
-            )
+            var first = self.graph._append_unpublished(id, prepared, new_level)
             self.graph._publish_current(id, first)
             self.entry_slot = Optional(first)
             self.entry_level = new_level
@@ -410,16 +481,14 @@ struct HnswIndex:
             self.build_stats.maximum_level = new_level
             return
 
-        var new_slot = self.graph._append_unpublished(
-            id, prepared, new_level
-        )
+        var new_slot = self.graph._append_unpublished(id, prepared, new_level)
         var local_build = _copy_build_stats(self.build_stats)
         var construction_stats = HnswSearchStats()
         try:
             var current = self.entry_slot.value()
             var upper_level = self.entry_level
             while upper_level > new_level:
-                var descended = greedy_descent(
+                var descended = greedy_descent[backend_tag=backend_tag](
                     self.graph,
                     self.metric,
                     prepared,
@@ -437,7 +506,7 @@ struct HnswIndex:
                 shared_level = self.entry_level
             var admission = HnswSearchAdmission()
             while shared_level >= 0:
-                var candidates = search_layer(
+                var candidates = search_layer[backend_tag=backend_tag](
                     self.graph,
                     self.metric,
                     prepared,
@@ -453,7 +522,7 @@ struct HnswIndex:
                 if len(candidates) > 0:
                     next_entry = candidates[0].slot
                 var excluded = Optional(new_slot)
-                var selected = select_neighbors_heuristic(
+                var selected = select_neighbors_heuristic[backend_tag](
                     self.graph,
                     self.metric,
                     candidates,
@@ -462,7 +531,7 @@ struct HnswIndex:
                     True,
                     local_build,
                 )
-                connect_bidirectional(
+                connect_bidirectional[backend_tag](
                     self.graph,
                     self.metric,
                     new_slot,
@@ -615,12 +684,70 @@ struct HnswIndex:
         admitted_count: Int,
         admission: AdmissionType,
     ) raises -> List[SearchResult]:
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_DOT_F32
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_L2_F32:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_L2_F32
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_COSINE_F32
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_DOT_BF16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_L2_BF16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_L2_BF16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_COSINE_BF16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_F16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_DOT_F16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_L2_F16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_L2_F16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_COSINE_F16
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        if tag == DISTANCE_DOT_I8:
+            return self._search_admitted_prepared_backend[
+                backend_tag=DISTANCE_DOT_I8
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        return self._search_admitted_prepared_backend[
+            backend_tag=DISTANCE_COSINE_I8
+        ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+
+    def _search_admitted_prepared_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
+        mut self,
+        prepared: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot search an invalid HNSW index")
         if max_ef > self._identity_config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
-        var outcome = search_prepared_allowed_with_widening_core(
+        var outcome = search_prepared_allowed_with_widening_core[
+            backend_tag=backend_tag
+        ](
             self.graph,
             self.metric,
             prepared,
@@ -654,12 +781,155 @@ struct HnswIndex:
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_admitted_backend[backend_tag=DISTANCE_DOT_F32](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_F32:
+            return self._search_admitted_backend[backend_tag=DISTANCE_L2_F32](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_admitted_backend[
+                backend_tag=DISTANCE_COSINE_F32
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_admitted_backend[backend_tag=DISTANCE_DOT_BF16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_BF16:
+            return self._search_admitted_backend[backend_tag=DISTANCE_L2_BF16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_admitted_backend[
+                backend_tag=DISTANCE_COSINE_BF16
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_F16:
+            return self._search_admitted_backend[backend_tag=DISTANCE_DOT_F16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_L2_F16:
+            return self._search_admitted_backend[backend_tag=DISTANCE_L2_F16](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_admitted_backend[
+                backend_tag=DISTANCE_COSINE_F16
+            ](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        if tag == DISTANCE_DOT_I8:
+            return self._search_admitted_backend[backend_tag=DISTANCE_DOT_I8](
+                query,
+                k,
+                initial_ef,
+                max_ef,
+                eligible_count,
+                allowed,
+                return_search_breadth,
+                exact_fallback,
+            )
+        return self._search_admitted_backend[backend_tag=DISTANCE_COSINE_I8](
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            eligible_count,
+            allowed,
+            return_search_breadth,
+            exact_fallback,
+        )
+
+    def _search_admitted_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        eligible_count: Int,
+        allowed: AdmissionType,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
+    ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot search an invalid HNSW index")
         if max_ef > self._identity_config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
-        var outcome = search_allowed_with_widening_core(
+        var outcome = search_allowed_with_widening_core[
+            backend_tag=backend_tag
+        ](
             self.graph,
             self.metric,
             query,
@@ -727,7 +997,9 @@ struct HnswIndex:
         )
         return stats^
 
-    def _search_base_prepared[AdmissionType: HnswResultAdmission](
+    def _search_base_prepared[
+        AdmissionType: HnswResultAdmission, backend_tag: Int = -1
+    ](
         mut self,
         prepared: List[Float32],
         current: UInt32,
@@ -741,7 +1013,7 @@ struct HnswIndex:
         var stats = _copy_search_stats(upper_stats)
         stats.requested_ef = requested_ef
         stats.effective_ef = effective_ef
-        var candidates = search_layer(
+        var candidates = search_layer[backend_tag=backend_tag](
             self.graph,
             self.metric,
             prepared,
@@ -764,7 +1036,63 @@ struct HnswIndex:
         self.last_search_stats = stats^
         return results^
 
-    def _search_bound[AdmissionType: HnswResultAdmission](
+    def _search_bound[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        allowed: AdmissionType,
+    ) raises -> List[SearchResult]:
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            return self._search_bound_backend[backend_tag=DISTANCE_DOT_F32](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_L2_F32:
+            return self._search_bound_backend[backend_tag=DISTANCE_L2_F32](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_COSINE_F32:
+            return self._search_bound_backend[backend_tag=DISTANCE_COSINE_F32](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_DOT_BF16:
+            return self._search_bound_backend[backend_tag=DISTANCE_DOT_BF16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_L2_BF16:
+            return self._search_bound_backend[backend_tag=DISTANCE_L2_BF16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_COSINE_BF16:
+            return self._search_bound_backend[backend_tag=DISTANCE_COSINE_BF16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_DOT_F16:
+            return self._search_bound_backend[backend_tag=DISTANCE_DOT_F16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_L2_F16:
+            return self._search_bound_backend[backend_tag=DISTANCE_L2_F16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_COSINE_F16:
+            return self._search_bound_backend[backend_tag=DISTANCE_COSINE_F16](
+                query, k, ef_search, allowed
+            )
+        if tag == DISTANCE_DOT_I8:
+            return self._search_bound_backend[backend_tag=DISTANCE_DOT_I8](
+                query, k, ef_search, allowed
+            )
+        return self._search_bound_backend[backend_tag=DISTANCE_COSINE_I8](
+            query, k, ef_search, allowed
+        )
+
+    def _search_bound_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
         mut self,
         query: List[Float32],
         k: Int,
@@ -814,7 +1142,7 @@ struct HnswIndex:
         var level = self.entry_level
         var upper_descents = 0
         while level > 0:
-            var descended = greedy_descent(
+            var descended = greedy_descent[backend_tag=backend_tag](
                 self.graph,
                 self.metric,
                 prepared,
@@ -826,7 +1154,7 @@ struct HnswIndex:
             current = descended.slot
             level -= 1
 
-        var results = self._search_base_prepared(
+        var results = self._search_base_prepared[backend_tag=backend_tag](
             prepared,
             current,
             target_count,
@@ -845,9 +1173,7 @@ struct HnswIndex:
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot serialize an invalid HNSW index")
         if self.inactive_count() != 0:
-            raise Error(
-                "legacy HNSW cache cannot encode mutation tombstones"
-            )
+            raise Error("legacy HNSW cache cannot encode mutation tombstones")
         if (
             self._identity_config.ann_metric != MetricKind.l2()
             or self._identity_config.scalar_kind != ScalarKind.f32()
@@ -918,9 +1244,7 @@ struct HnswIndex:
         dimension: Int, var payload: List[UInt8]
     ) raises -> HnswIndex:
         var parsed = _preflight_cache(dimension, payload^)
-        var index = HnswIndex(
-            dimension, m=parsed.m, max_level=parsed.max_level
-        )
+        var index = HnswIndex(dimension, m=parsed.m, max_level=parsed.max_level)
         return _materialize_cache(index^, parsed^)
 
     @staticmethod
@@ -994,9 +1318,7 @@ def _validate_cache_allocation(
     level_cells: UInt64,
     neighbor_cells: UInt64,
 ) raises:
-    var vector_cells = _checked_mul_u64(
-        UInt64(point_count), UInt64(dimension)
-    )
+    var vector_cells = _checked_mul_u64(UInt64(point_count), UInt64(dimension))
     # Account for both preflight tapes and final packed tapes conservatively.
     var estimated = _checked_mul_u64(vector_cells, UInt64(8))
     estimated = _checked_add_u64(
@@ -1069,9 +1391,7 @@ def _preflight_cache(
         var node_neighbor_cells = _checked_mul_u64(
             UInt64(result.m), node_level_cells
         )
-        neighbor_cells = _checked_add_u64(
-            neighbor_cells, node_neighbor_cells
-        )
+        neighbor_cells = _checked_add_u64(neighbor_cells, node_neighbor_cells)
         _validate_cache_allocation(
             result.serialized_bytes,
             result.point_count,
@@ -1087,10 +1407,7 @@ def _preflight_cache(
             result.vector_scalars.append(value)
         for _ in range(level + 1):
             var neighbor_count = Int(reader.read_u16())
-            if (
-                reader.read_u16() != UInt16(0)
-                or neighbor_count > result.m
-            ):
+            if reader.read_u16() != UInt16(0) or neighbor_count > result.m:
                 raise Error("HNSW cache neighbor header is invalid")
             result.edge_counts.append(neighbor_count)
             result.directed_edges += neighbor_count
@@ -1102,9 +1419,7 @@ def _preflight_cache(
                 if neighbor == slot_index:
                     raise Error("HNSW cache self edges are not allowed")
                 if neighbor in seen_neighbors:
-                    raise Error(
-                        "HNSW cache neighbor list contains a duplicate"
-                    )
+                    raise Error("HNSW cache neighbor list contains a duplicate")
                 seen_neighbors[neighbor] = True
                 result.edge_slots.append(UInt32(neighbor))
 
@@ -1167,9 +1482,9 @@ def _materialize_cache(
             if level > 0:
                 base += index.graph.m0 + (level - 1) * index.graph.m
             for edge_index in range(count):
-                index.graph.neighbor_slots[base + edge_index] = (
-                    parsed.edge_slots[edge_offset]
-                )
+                index.graph.neighbor_slots[
+                    base + edge_index
+                ] = parsed.edge_slots[edge_offset]
                 edge_offset += 1
             var count_index = (
                 index.graph.neighbor_count_bases[slot_index] + level

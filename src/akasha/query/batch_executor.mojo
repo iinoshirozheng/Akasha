@@ -1,3 +1,7 @@
+from akasha.compute.dispatch import (
+    DistanceExecutionStats,
+    portable_simd_width,
+)
 from akasha.compute.simd import (
     prevalidated_simd_cosine_similarity,
     prevalidated_simd_dot_product,
@@ -13,6 +17,54 @@ from std.math import isfinite
 comptime BATCH_DOT_METRIC = 0
 comptime BATCH_L2_METRIC = 1
 comptime BATCH_COSINE_METRIC = 2
+
+
+struct ExactBatchExecution(Movable):
+    """Exact batch results plus common distance-execution statistics."""
+
+    var results: List[List[SearchResult]]
+    var stats: DistanceExecutionStats
+
+    def __init__(
+        out self,
+        var results: List[List[SearchResult]],
+        var stats: DistanceExecutionStats,
+    ):
+        self.results = results^
+        self.stats = stats^
+
+
+def batch_metric_name(metric: Int) raises -> String:
+    if metric == BATCH_DOT_METRIC:
+        return "dot"
+    if metric == BATCH_L2_METRIC:
+        return "l2"
+    if metric == BATCH_COSINE_METRIC:
+        return "cosine"
+    raise Error("unknown batch query metric")
+
+
+def execute_exact_batch_reported(
+    memtable: MemTable,
+    queries: List[List[Float32]],
+    k: Int,
+    metric: Int,
+    num_workers: Int,
+) raises -> ExactBatchExecution:
+    """Execute exact batch search and report its selected CPU backend."""
+    var results = execute_exact_batch(memtable, queries, k, metric, num_workers)
+    var evaluations = len(queries) * len(memtable.live_entries())
+    var stats = DistanceExecutionStats(
+        String("portable-simd-", portable_simd_width()),
+        batch_metric_name(metric),
+        "f32",
+        "",
+        0,
+        0,
+        evaluations,
+        evaluations,
+    )
+    return ExactBatchExecution(results^, stats^)
 
 
 def execute_exact_batch(

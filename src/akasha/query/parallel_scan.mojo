@@ -1,3 +1,7 @@
+from akasha.compute.dispatch import (
+    DistanceExecutionStats,
+    portable_simd_width,
+)
 from akasha.compute.simd import (
     prevalidated_simd_cosine_similarity,
     prevalidated_simd_dot_product,
@@ -9,10 +13,52 @@ from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
     BATCH_DOT_METRIC,
     BATCH_L2_METRIC,
+    batch_metric_name,
 )
 from akasha.storage.memtable import MemTableEntry
 from max.algorithm import parallelize
 from std.math import isfinite
+
+
+struct ParallelScanExecution(Movable):
+    """Parallel scan results plus common distance-execution statistics."""
+
+    var results: List[SearchResult]
+    var stats: DistanceExecutionStats
+
+    def __init__(
+        out self,
+        var results: List[SearchResult],
+        var stats: DistanceExecutionStats,
+    ):
+        self.results = results^
+        self.stats = stats^
+
+
+def execute_parallel_scan_reported(
+    dimension: Int,
+    entries: List[MemTableEntry],
+    query: List[Float32],
+    k: Int,
+    metric: Int,
+    num_workers: Int,
+) raises -> ParallelScanExecution:
+    """Execute parallel exact scan and report its selected CPU backend."""
+    var results = execute_parallel_scan(
+        dimension, entries, query, k, metric, num_workers
+    )
+    var evaluations = len(entries)
+    var stats = DistanceExecutionStats(
+        String("portable-simd-", portable_simd_width()),
+        batch_metric_name(metric),
+        "f32",
+        "",
+        0,
+        0,
+        evaluations,
+        evaluations,
+    )
+    return ParallelScanExecution(results^, stats^)
 
 
 def execute_parallel_scan(

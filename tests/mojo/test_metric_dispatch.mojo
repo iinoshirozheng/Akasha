@@ -66,12 +66,12 @@ def test_dispatcher_names_are_stable() raises:
     var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 3)
     assert_equal(dot.metric_name(), "dot")
     assert_equal(dot.scalar_name(), "f32")
-    assert_equal(dot.backend_name(), "simd-f32")
+    assert_true(dot.backend_name().startswith("portable-simd-"))
 
     var compact = MetricDispatcher(MetricKind.cosine(), ScalarKind.bf16(), 3)
     assert_equal(compact.metric_name(), "cosine")
     assert_equal(compact.scalar_name(), "bf16")
-    assert_equal(compact.backend_name(), "scalar-bf16-f32accum")
+    assert_true(compact.backend_name().startswith("portable-simd-"))
 
 
 def test_constructor_rejects_invalid_dimension_tags_and_compatibility() raises:
@@ -320,7 +320,9 @@ def test_compact_scalar_backends_prepare_and_accumulate_in_f32() raises:
     var i8_rhs = i8.prepare_graph_vector(values)
     assert_equal(len(bf16_query), 2)
     assert_almost_equal(f16_distance, -1.0, atol=1.0e-6)
-    assert_almost_equal(i8.canonical_prepared(i8_lhs, i8_rhs), -1.0, atol=1.0e-6)
+    assert_almost_equal(
+        i8.canonical_prepared(i8_lhs, i8_rhs), -1.0, atol=1.0e-6
+    )
     bf16.require_supported_backend()
     f16.require_supported_backend()
     i8.require_supported_backend()
@@ -348,9 +350,7 @@ def test_i8_dispatcher_enforces_accumulator_dimension_at_public_boundary() raise
     var boundary = MetricDispatcher(
         MetricKind.dot(), ScalarKind.i8(), I8_MAX_SAFE_DIMENSION
     )
-    var zeros = List[Float32](
-        length=I8_MAX_SAFE_DIMENSION, fill=Float32(0.0)
-    )
+    var zeros = List[Float32](length=I8_MAX_SAFE_DIMENSION, fill=Float32(0.0))
     var prepared = boundary.prepare_query(zeros^)
     assert_equal(len(prepared), I8_MAX_SAFE_DIMENSION + 1)
     assert_equal(
@@ -361,13 +361,10 @@ def test_i8_dispatcher_enforces_accumulator_dimension_at_public_boundary() raise
 def test_i8_prepared_dot_rejects_unsafe_decoded_component_magnitude() raises:
     var dispatcher = MetricDispatcher(MetricKind.dot(), ScalarKind.i8(), 2)
     with assert_raises():
-        dispatcher.validate_prepared_vector(
-            [127.0, 0.0, Float32.MAX_FINITE]
-        )
+        dispatcher.validate_prepared_vector([127.0, 0.0, Float32.MAX_FINITE])
 
 
-def test_i8_cosine_preserves_nonzero_high_dimension_ties_deterministically(
-) raises:
+def test_i8_cosine_preserves_nonzero_high_dimension_ties_deterministically() raises:
     var dimension = 65_536
     var smallest = nextafter(Float32(0.0), Float32(1.0))
     var dispatcher = MetricDispatcher(
@@ -385,9 +382,7 @@ def test_i8_cosine_preserves_nonzero_high_dimension_ties_deterministically(
     assert_equal(negative_codes[0], Float32(-1.0))
     for index in range(1, dimension):
         assert_equal(negative_codes[index], Float32(0.0))
-    var distance = dispatcher.canonical_prepared(
-        positive_codes, negative_codes
-    )
+    var distance = dispatcher.canonical_prepared(positive_codes, negative_codes)
     assert_true(isfinite(distance))
     assert_true(isfinite(dispatcher.public_score(distance)))
 

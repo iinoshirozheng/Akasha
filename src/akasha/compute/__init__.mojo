@@ -1,4 +1,10 @@
 from .distance import cosine_similarity, dot_product, l2_squared_distance
+from .dispatch import (
+    DistanceBackend,
+    DistanceExecutionStats,
+    portable_simd_width,
+    select_distance_backend,
+)
 from .gpu import DeviceBatchResult, GpuExecutionOptions, GpuPlan
 from .metric import MetricDispatcher
 from .quantization import (

@@ -17,6 +17,7 @@ from akasha.compute.quantization import (
     validate_i8_decoded_component_bound,
 )
 from std.math import isfinite, sqrt
+from std.sys import simd_width_of
 
 
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
@@ -81,13 +82,7 @@ struct MetricDispatcher(Copyable, Movable):
         )
 
     def backend_name(self) -> String:
-        if self._scalar == ScalarKind.f32():
-            return "simd-f32"
-        if self._scalar == ScalarKind.bf16():
-            return "scalar-bf16-f32accum"
-        if self._scalar == ScalarKind.f16():
-            return "scalar-f16-f32accum"
-        return "scalar-i8-f32accum"
+        return String("portable-simd-", simd_width_of[DType.float32]())
 
     def validate_query(self, values: List[Float32]) raises:
         self._validate_values(values)
@@ -128,9 +123,7 @@ struct MetricDispatcher(Copyable, Movable):
             var prepared_lhs = self._prepare_validated(lhs)
             var prepared_rhs = self._prepare_validated(rhs)
             return self._require_finite_distance(
-                self._canonical_prepared_unchecked(
-                    prepared_lhs, prepared_rhs
-                )
+                self._canonical_prepared_unchecked(prepared_lhs, prepared_rhs)
             )
 
         if self._metric == MetricKind.l2():

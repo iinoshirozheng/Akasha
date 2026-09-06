@@ -31,6 +31,10 @@ def main() raises:
     print(
         "HNSW metric",
         config.metric_name(),
+        "scalar",
+        config.scalar_name(),
+        "backend",
+        index.distance_backend.backend_name(),
         "M",
         config.m,
         "M0",

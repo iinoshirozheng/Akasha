@@ -1,3 +1,13 @@
+from akasha.compute.dispatch import (
+    DISTANCE_DOT_F32,
+    DISTANCE_COSINE_F32,
+    DISTANCE_DOT_BF16,
+    DISTANCE_COSINE_BF16,
+    DISTANCE_DOT_F16,
+    DISTANCE_COSINE_F16,
+    DISTANCE_DOT_I8,
+    DISTANCE_COSINE_I8,
+)
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
@@ -135,7 +145,7 @@ struct _HnswEligibilityState:
         self.lookup = lookup
 
 
-struct HnswEligibility(HnswResultAdmission, Copyable, Movable):
+struct HnswEligibility(Copyable, HnswResultAdmission, Movable):
     """Metadata-bitmap result eligibility addressed strictly by public ID.
 
     The bitmap is query-specific and owned. The shared ID lookup is an
@@ -270,7 +280,9 @@ def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
     return lhs.slot < rhs.slot
 
 
-def _select_neighbors_heuristic(
+def _select_neighbors_heuristic[
+    backend_tag: Int = -1
+](
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
     candidates: List[HnswHeapItem],
@@ -313,12 +325,14 @@ def _select_neighbors_heuristic(
         excluded = excluded_slot.value()
         _ = graph.id_at(excluded)
 
-    # Resolve the metric classification once. `metric_name` is the current
-    # dispatcher seam until Task 27 introduces enum-backed one-time distance
-    # dispatch; the candidate and pair loops use only these cheap booleans.
-    var metric_name = dispatcher.metric_name()
-    var is_dot = metric_name == "dot"
-    var is_cosine = metric_name == "cosine"
+    # Direct core tests retain a runtime dispatcher seam. Public index paths
+    # pass a backend tag, so their metric validation is compile-time only.
+    var is_dot = False
+    var is_cosine = False
+    comptime if backend_tag < 0:
+        var metric_name = dispatcher.metric_name()
+        is_dot = metric_name == "dot"
+        is_cosine = metric_name == "cosine"
     var ordered_heap = CandidateMinHeap()
     ordered_heap.reserve(len(candidates))
     for index in range(len(candidates)):
@@ -330,10 +344,32 @@ def _select_neighbors_heuristic(
             raise Error("HNSW neighbor selection requires current candidates")
         if not isfinite(candidate.distance):
             raise Error("HNSW candidate distance must be finite")
-        if not is_dot and candidate.distance < 0.0:
-            raise Error("L2 and cosine candidate distances cannot be negative")
-        if is_cosine and candidate.distance > 2.0:
-            raise Error("cosine candidate distance cannot exceed two")
+        comptime if backend_tag < 0:
+            if not is_dot and candidate.distance < 0.0:
+                raise Error(
+                    "L2 and cosine candidate distances cannot be negative"
+                )
+            if is_cosine and candidate.distance > 2.0:
+                raise Error("cosine candidate distance cannot exceed two")
+        else:
+            comptime if backend_tag not in (
+                DISTANCE_DOT_F32,
+                DISTANCE_DOT_BF16,
+                DISTANCE_DOT_F16,
+                DISTANCE_DOT_I8,
+            ):
+                if candidate.distance < 0.0:
+                    raise Error(
+                        "L2 and cosine candidate distances cannot be negative"
+                    )
+            comptime if backend_tag in (
+                DISTANCE_COSINE_F32,
+                DISTANCE_COSINE_BF16,
+                DISTANCE_COSINE_F16,
+                DISTANCE_COSINE_I8,
+            ):
+                if candidate.distance > 2.0:
+                    raise Error("cosine candidate distance cannot exceed two")
         if has_excluded and candidate.slot == excluded:
             continue
         ordered_heap.push(candidate)
@@ -367,16 +403,48 @@ def _select_neighbors_heuristic(
         var candidate = ordered[candidate_index].copy()
         var diverse = True
         for selected_index in range(len(selected)):
-            var pair_distance = graph.distance_between(
-                dispatcher, candidate.slot, selected[selected_index]
-            )
+            var pair_distance: Float32
+            comptime if backend_tag < 0:
+                pair_distance = graph.distance_between(
+                    dispatcher, candidate.slot, selected[selected_index]
+                )
+            else:
+                pair_distance = graph._distance_between_backend[backend_tag](
+                    dispatcher, candidate.slot, selected[selected_index]
+                )
             evaluation_count += 1
             if not isfinite(pair_distance):
                 raise Error("HNSW neighbor-pair distance must be finite")
-            if not is_dot and pair_distance < 0.0:
-                raise Error("L2 and cosine pair distances cannot be negative")
-            if is_cosine and pair_distance > 2.0:
-                raise Error("cosine neighbor-pair distance cannot exceed two")
+            comptime if backend_tag < 0:
+                if not is_dot and pair_distance < 0.0:
+                    raise Error(
+                        "L2 and cosine pair distances cannot be negative"
+                    )
+                if is_cosine and pair_distance > 2.0:
+                    raise Error(
+                        "cosine neighbor-pair distance cannot exceed two"
+                    )
+            else:
+                comptime if backend_tag not in (
+                    DISTANCE_DOT_F32,
+                    DISTANCE_DOT_BF16,
+                    DISTANCE_DOT_F16,
+                    DISTANCE_DOT_I8,
+                ):
+                    if pair_distance < 0.0:
+                        raise Error(
+                            "L2 and cosine pair distances cannot be negative"
+                        )
+                comptime if backend_tag in (
+                    DISTANCE_COSINE_F32,
+                    DISTANCE_COSINE_BF16,
+                    DISTANCE_COSINE_F16,
+                    DISTANCE_COSINE_I8,
+                ):
+                    if pair_distance > 2.0:
+                        raise Error(
+                            "cosine neighbor-pair distance cannot exceed two"
+                        )
             if pair_distance < candidate.distance:
                 diverse = False
                 break
@@ -395,7 +463,9 @@ def _select_neighbors_heuristic(
     return selected^
 
 
-def select_neighbors_heuristic(
+def select_neighbors_heuristic[
+    backend_tag: Int = -1
+](
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
     candidates: List[HnswHeapItem],
@@ -405,7 +475,7 @@ def select_neighbors_heuristic(
     mut stats: HnswBuildStats,
 ) raises -> List[UInt32]:
     """Select current construction candidates using the HNSW heuristic."""
-    return _select_neighbors_heuristic(
+    return _select_neighbors_heuristic[backend_tag](
         graph,
         dispatcher,
         candidates,
@@ -424,7 +494,9 @@ def _slot_in_list(values: List[UInt32], slot: UInt32) -> Bool:
     return False
 
 
-def _adjacency_with_candidate(
+def _adjacency_with_candidate[
+    backend_tag: Int = -1
+](
     graph: HnswStorage,
     dispatcher: MetricDispatcher,
     center: UInt32,
@@ -446,19 +518,20 @@ def _adjacency_with_candidate(
 
     var candidates = List[HnswHeapItem](capacity=len(values))
     for value in values:
-        candidates.append(
-            HnswHeapItem(
-                value,
-                graph.id_at(value),
-                graph.distance_between(dispatcher, center, value),
+        var distance: Float32
+        comptime if backend_tag < 0:
+            distance = graph.distance_between(dispatcher, center, value)
+        else:
+            distance = graph._distance_between_backend[backend_tag](
+                dispatcher, center, value
             )
-        )
+        candidates.append(HnswHeapItem(value, graph.id_at(value), distance))
         stats.distance_evaluations += 1
     var no_exclusion = Optional[UInt32]()
     # Existing adjacency may intentionally retain inactive historical nodes as
     # navigation bridges. The public construction selector remains strict;
     # this internal pruning path alone accepts those structurally valid slots.
-    return _select_neighbors_heuristic(
+    return _select_neighbors_heuristic[backend_tag](
         graph,
         dispatcher,
         candidates,
@@ -595,7 +668,9 @@ def validate_bidirectional_links[
     validate_bidirectional_links_with_stats(graph, stats)
 
 
-def connect_bidirectional(
+def connect_bidirectional[
+    backend_tag: Int = -1
+](
     mut graph: HnswStorage,
     dispatcher: MetricDispatcher,
     endpoint: UInt32,
@@ -642,7 +717,7 @@ def connect_bidirectional(
         for neighbor in proposals:
             var endpoint_original = _copy_adjacency(graph, endpoint, level)
             var neighbor_original = _copy_adjacency(graph, neighbor, level)
-            var endpoint_final = _adjacency_with_candidate(
+            var endpoint_final = _adjacency_with_candidate[backend_tag](
                 graph,
                 dispatcher,
                 endpoint,
@@ -650,7 +725,7 @@ def connect_bidirectional(
                 level,
                 local_stats,
             )
-            var neighbor_final = _adjacency_with_candidate(
+            var neighbor_final = _adjacency_with_candidate[backend_tag](
                 graph,
                 dispatcher,
                 neighbor,
@@ -753,7 +828,7 @@ def _validate_search_boundary[
 
 
 def greedy_descent[
-    GraphType: HnswGraphAccess
+    GraphType: HnswGraphAccess, backend_tag: Int = -1
 ](
     graph: GraphType,
     dispatcher: MetricDispatcher,
@@ -774,7 +849,13 @@ def greedy_descent[
     _validate_search_boundary(graph, dispatcher, query, entry, level)
 
     var current_slot = entry
-    var current_distance = graph.distance_to_slot(dispatcher, query, entry)
+    var current_distance: Float32
+    comptime if backend_tag < 0:
+        current_distance = graph.distance_to_slot(dispatcher, query, entry)
+    else:
+        current_distance = graph._distance_to_slot_backend[backend_tag](
+            dispatcher, query, entry
+        )
     # Upper layers are sparse. Cache only the slots actually encountered,
     # avoiding an O(total_slots) allocation before a logarithmic descent.
     var distances = Dict[Int, Float32]()
@@ -795,9 +876,14 @@ def greedy_descent[
             var neighbor_index = Int(neighbor)
             var neighbor_distance: Float32
             if neighbor_index not in distances:
-                neighbor_distance = graph.distance_to_slot(
-                    dispatcher, query, neighbor
-                )
+                comptime if backend_tag < 0:
+                    neighbor_distance = graph.distance_to_slot(
+                        dispatcher, query, neighbor
+                    )
+                else:
+                    neighbor_distance = graph._distance_to_slot_backend[
+                        backend_tag
+                    ](dispatcher, query, neighbor)
                 distances[neighbor_index] = neighbor_distance
                 stats.upper_visited += 1
                 stats.distance_evaluations += 1
@@ -839,7 +925,9 @@ def _consider_result_admission[
 
 
 def search_layer[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+    GraphType: HnswGraphAccess,
+    AdmissionType: HnswResultAdmission,
+    backend_tag: Int = -1,
 ](
     graph: GraphType,
     dispatcher: MetricDispatcher,
@@ -879,7 +967,13 @@ def search_layer[
     var is_filtered = not admission.is_allow_all()
     scratch.begin(graph.slot_count(), ef, prepare_filtered=is_filtered)
     _ = scratch.visit(entry)
-    var entry_distance = graph.distance_to_slot(dispatcher, query, entry)
+    var entry_distance: Float32
+    comptime if backend_tag < 0:
+        entry_distance = graph.distance_to_slot(dispatcher, query, entry)
+    else:
+        entry_distance = graph._distance_to_slot_backend[backend_tag](
+            dispatcher, query, entry
+        )
     var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)
     stats.base_visited += 1
     stats.distance_evaluations += 1
@@ -911,7 +1005,13 @@ def search_layer[
             if not scratch.visit(neighbor):
                 continue
 
-            var distance = graph.distance_to_slot(dispatcher, query, neighbor)
+            var distance: Float32
+            comptime if backend_tag < 0:
+                distance = graph.distance_to_slot(dispatcher, query, neighbor)
+            else:
+                distance = graph._distance_to_slot_backend[backend_tag](
+                    dispatcher, query, neighbor
+                )
             var item = HnswHeapItem(neighbor, graph.id_at(neighbor), distance)
             stats.base_visited += 1
             stats.distance_evaluations += 1
@@ -958,7 +1058,9 @@ def _next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
 
 
 def search_allowed_with_widening_core[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+    GraphType: HnswGraphAccess,
+    AdmissionType: HnswResultAdmission,
+    backend_tag: Int = -1,
 ](
     graph: GraphType,
     dispatcher: MetricDispatcher,
@@ -988,7 +1090,9 @@ def search_allowed_with_widening_core[
         raise Error("HNSW eligible count cannot be negative")
     allowed.validate(graph.slot_count())
     var prepared = dispatcher.prepare_query(query)
-    var outcome = search_prepared_allowed_with_widening_core(
+    var outcome = search_prepared_allowed_with_widening_core[
+        backend_tag=backend_tag
+    ](
         graph,
         dispatcher,
         prepared,
@@ -1009,7 +1113,9 @@ def search_allowed_with_widening_core[
 
 
 def search_prepared_allowed_with_widening_core[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+    GraphType: HnswGraphAccess,
+    AdmissionType: HnswResultAdmission,
+    backend_tag: Int = -1,
 ](
     graph: GraphType,
     dispatcher: MetricDispatcher,
@@ -1065,9 +1171,7 @@ def search_prepared_allowed_with_widening_core[
     if target_count == 0 or not Bool(entry_slot):
         stats.requested_ef = 0
         stats.effective_ef = 0
-        return HnswWideningOutcome(
-            List[SearchResult](), stats^, 0, 0
-        )
+        return HnswWideningOutcome(List[SearchResult](), stats^, 0, 0)
 
     var current_ef = initial_ef
     if current_ef < target_count:
@@ -1080,7 +1184,7 @@ def search_prepared_allowed_with_widening_core[
     var current = entry_slot.value()
     var upper_descents = 0
     for level in range(entry_level, 0, -1):
-        current = greedy_descent(
+        current = greedy_descent[backend_tag=backend_tag](
             graph, dispatcher, prepared, current, level, stats
         ).slot
         upper_descents += 1
@@ -1100,7 +1204,7 @@ def search_prepared_allowed_with_widening_core[
         var result_limit = target_count
         if return_search_breadth:
             result_limit = current_ef
-        var candidates = search_layer(
+        var candidates = search_layer[backend_tag=backend_tag](
             graph,
             dispatcher,
             prepared,
@@ -1137,14 +1241,14 @@ def search_prepared_allowed_with_widening_core[
             var id = graph.id_at(slot)
             if not graph.is_current(slot) or not allowed._allows_item(slot, id):
                 continue
-            retained.offer(
-                HnswHeapItem(
-                    slot,
-                    id,
-                    graph.distance_to_slot(dispatcher, prepared, slot),
-                ),
-                target_count,
-            )
+            var distance: Float32
+            comptime if backend_tag < 0:
+                distance = graph.distance_to_slot(dispatcher, prepared, slot)
+            else:
+                distance = graph._distance_to_slot_backend[backend_tag](
+                    dispatcher, prepared, slot
+                )
+            retained.offer(HnswHeapItem(slot, id, distance), target_count)
         var exact = retained.take_sorted_best()
         results = List[SearchResult](capacity=len(exact))
         for candidate in exact:
@@ -1155,6 +1259,4 @@ def search_prepared_allowed_with_widening_core[
                 )
             )
         stats.fallback_reason = "filtered_ann_exhausted"
-    return HnswWideningOutcome(
-        results^, stats^, 0, upper_descents
-    )
+    return HnswWideningOutcome(results^, stats^, 0, upper_descents)
