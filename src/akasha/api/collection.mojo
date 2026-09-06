@@ -1338,8 +1338,11 @@ struct PersistentCollection:
             for index in range(len(previous_manifest.segments)):
                 descriptors.append(previous_manifest.segments[index].clone())
 
-        # Task 19 policy is evaluated before any checkpoint artifact is
-        # encoded so the sidecar represents the same authoritative sequence.
+        # A first delta-only graph is already the complete graph and can become
+        # the checkpoint base by ownership transfer even at the threshold.
+        # Maintenance is evaluated afterwards so only a base+delta overlay
+        # that meets policy, or another rebuild condition, rebuilds fully.
+        self._ensure_owned_hnsw_checkpoint()
         self._maintain_hnsw_for_flush()
         if has_previous_manifest and self._last_sequence == previous_sequence:
             var hnsw_to_cleanup = String()
@@ -1405,11 +1408,6 @@ struct PersistentCollection:
             self._sparse_pending = List[SparseWalRecord]()
             self._publish_index_caches_best_effort()
             return
-
-        # A first delta-only graph can become the base by ownership transfer.
-        # A base plus a below-threshold overlay remains segmented: the
-        # authoritative data checkpoint commits without an HNSW sidecar.
-        self._ensure_owned_hnsw_checkpoint()
 
         var sparse_kind = SPARSE_SEGMENT_KIND_BASE
         var sparse_prefix = String("sparse-base-")

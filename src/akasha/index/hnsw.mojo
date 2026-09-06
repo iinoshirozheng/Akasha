@@ -517,7 +517,7 @@ struct HnswIndex:
     ) raises -> List[SearchResult]:
         """Widen from the eligibility bitmap's authoritative cardinality."""
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed
+            query, k, initial_ef, max_ef, allowed, False, True
         )
 
     def search_allowed_with_widening(
@@ -536,7 +536,20 @@ struct HnswIndex:
                 "HNSW matched count does not match eligibility cardinality"
             )
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed
+            query, k, initial_ef, max_ef, allowed, False, True
+        )
+
+    def search_allowed_candidates_with_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Return the final search breadth without source-local fallback."""
+        return self._search_allowed_with_actual_widening(
+            query, k, initial_ef, max_ef, allowed, True, False
         )
 
     def _search_allowed_with_actual_widening(
@@ -546,6 +559,8 @@ struct HnswIndex:
         initial_ef: Int,
         max_ef: Int,
         allowed: HnswEligibility,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
     ) raises -> List[SearchResult]:
         """Use the shared owned-or-mapped widening core."""
         self._validate_bound_identity()
@@ -561,6 +576,8 @@ struct HnswIndex:
             initial_ef,
             max_ef,
             allowed.eligible_count(),
+            return_search_breadth,
+            exact_fallback,
             self.entry_slot,
             self.entry_level,
             "packed-f32",

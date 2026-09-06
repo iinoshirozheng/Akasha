@@ -218,8 +218,10 @@ def test_filtered_ann_uses_bitmap_admission_and_authoritative_rerank() raises:
     assert_true(
         collection._hnsw.last_search_stats().filtered_rejections > 0
     )
-    assert_equal(collection.last_hnsw_rerank_candidate_count(), 5)
-    assert_equal(collection.last_hnsw_rerank_ordinal_lookups(), 5)
+    # The final result remains Top-5, but authoritative rerank receives the
+    # complete max(k, ef) candidate pool from the active source.
+    assert_equal(collection.last_hnsw_rerank_candidate_count(), 8)
+    assert_equal(collection.last_hnsw_rerank_ordinal_lookups(), 8)
     assert_equal(collection.last_hnsw_rerank_linear_id_scans(), 0)
     assert_equal(collection.last_hnsw_rerank_payload_clones(), 0)
     assert_equal(len(approximate), len(exact))

@@ -928,13 +928,20 @@ def search_allowed_with_widening_core[
     initial_ef: Int,
     max_ef: Int,
     eligible_count: Int,
+    return_search_breadth: Bool,
+    exact_fallback: Bool,
     entry_slot: Optional[UInt32],
     entry_level: Int,
     storage_name: String,
     allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
 ) raises -> HnswWideningOutcome:
-    """Prepare and descend once, widening only reusable base-layer rounds."""
+    """Prepare and descend once, widening only reusable base-layer rounds.
+
+    Normal index queries return ``k`` results and may exact-complete one graph.
+    Segmented callers instead request the final ``ef`` candidate breadth and
+    defer exact fallback until all graph sources have been merged.
+    """
     graph.validate_search_ready()
     dispatcher.require_supported_backend()
     if dispatcher.dimension() != graph.graph_dimension():
@@ -999,13 +1006,16 @@ def search_allowed_with_widening_core[
         stats.metric_name = upper_stats.metric_name.copy()
         stats.scalar_name = upper_stats.scalar_name.copy()
         stats.storage_name = upper_stats.storage_name.copy()
+        var result_limit = target_count
+        if return_search_breadth:
+            result_limit = current_ef
         var candidates = search_layer(
             graph,
             dispatcher,
             prepared,
             current,
             0,
-            target_count,
+            result_limit,
             current_ef,
             allowed,
             scratch,
@@ -1028,7 +1038,7 @@ def search_allowed_with_widening_core[
         widening_rounds += 1
 
     stats.widening_rounds = widening_rounds
-    if len(results) < target_count:
+    if len(results) < target_count and exact_fallback:
         var retained = ResultMaxHeap()
         retained.reserve(target_count)
         for slot_index in range(graph.slot_count()):

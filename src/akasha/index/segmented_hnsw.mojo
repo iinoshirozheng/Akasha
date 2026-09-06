@@ -461,8 +461,10 @@ struct SegmentedHnsw(Movable):
         ):
             raise Error("segmented HNSW widening range is invalid")
         var stats = HnswSearchStats()
-        stats.requested_ef = initial_ef
-        stats.effective_ef = initial_ef
+        # Aggregate the effective breadth actually searched by each non-empty
+        # source; a tiny source may cap an arbitrarily large requested ef.
+        stats.requested_ef = 0
+        stats.effective_ef = 0
         stats.backend_name = self._metric.backend_name()
         stats.metric_name = self._metric.metric_name()
         stats.scalar_name = self._metric.scalar_name()
@@ -481,8 +483,10 @@ struct SegmentedHnsw(Movable):
         if base_live > 0:
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
-                base_results = self._mapped_base.search_allowed_with_widening(
+                base_results = (
+                    self._mapped_base.search_allowed_candidates_with_widening(
                     query, k, initial_ef, max_ef, allowed
+                    )
                 )
                 var source_stats = self._mapped_base.last_search_stats()
                 self._accumulate_filtered_source_stats(stats, source_stats)
@@ -493,8 +497,10 @@ struct SegmentedHnsw(Movable):
                     self._mapped_base.last_search_upper_descents()
                 )
             else:
-                base_results = self._owned_base.search_allowed_with_widening(
+                base_results = (
+                    self._owned_base.search_allowed_candidates_with_widening(
                     query, k, initial_ef, max_ef, allowed
+                    )
                 )
                 self._accumulate_filtered_source_stats(
                     stats, self._owned_base.last_search_stats
@@ -518,8 +524,10 @@ struct SegmentedHnsw(Movable):
                     self._last_candidate_merge_insertions += 1
 
         if delta_live > 0:
-            var delta_results = self._delta.search_allowed_with_widening(
-                query, k, initial_ef, max_ef, allowed
+            var delta_results = (
+                self._delta.search_allowed_candidates_with_widening(
+                    query, k, initial_ef, max_ef, allowed
+                )
             )
             self._accumulate_filtered_source_stats(
                 stats, self._delta.last_search_stats
@@ -581,9 +589,44 @@ struct SegmentedHnsw(Movable):
         var target = k
         if target > allowed.eligible_count():
             target = allowed.eligible_count()
+        if self._last_stats.fallback_reason != "":
+            self.validate_structure()
+            return self._exact_search_allowed(
+                query, target, memtable, lookup, allowed
+            )
         return self._rerank_allowed_candidates(
             query, target, candidates^, memtable, lookup, allowed
         )
+
+    def _exact_search_allowed(
+        mut self,
+        query: List[Float32],
+        target: Int,
+        memtable: MemTable,
+        lookup: HnswIdOrdinalLookup,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Complete only a globally exhausted segmented filtered query."""
+        self._reset_rerank_counters(memtable, lookup)
+        if target == 0:
+            self._last_stats.reranked_candidates = 0
+            self._last_stats.retained_candidates = 0
+            return List[SearchResult]()
+        var topk = BoundedTopK(target, smaller_is_better=True)
+        var scored = 0
+        for ordinal in range(memtable.slot_count()):
+            if not memtable.is_live_at(ordinal):
+                continue
+            var id = memtable.id_at(ordinal)
+            if not allowed.allows(id):
+                continue
+            if lookup.ordinal_for(id) != ordinal:
+                raise Error("HNSW ID lookup does not match MemTable ordinal")
+            ref entry = memtable.entry_ref_at(ordinal)
+            topk.offer(id, self._metric.canonical(query, entry.values))
+            scored += 1
+        self._last_stats.reranked_candidates = scored
+        return self._finish_topk(topk^)
 
     def _rerank_candidates(
         mut self,
@@ -685,8 +728,6 @@ struct SegmentedHnsw(Movable):
         if source.effective_ef > target.effective_ef:
             target.effective_ef = source.effective_ef
         target.widening_rounds += source.widening_rounds
-        if source.fallback_reason != "":
-            target.fallback_reason = source.fallback_reason.copy()
 
     def _base_live_count(self) -> Int:
         if self._base_kind == _MAPPED_BASE:

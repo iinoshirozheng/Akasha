@@ -321,6 +321,33 @@ def test_owned_and_mapped_filtered_widening_share_prepare_once_core() raises:
         original.last_search_upper_descents(),
     )
 
+    var candidate_bitmap = Bitmap(24)
+    for id in range(1, 25):
+        if id % 2 == 0:
+            candidate_bitmap.set(id - 1)
+    var owned_candidate_allowed = HnswEligibility(
+        candidate_bitmap.clone(), lookup
+    )
+    var mapped_candidate_allowed = HnswEligibility(candidate_bitmap^, lookup)
+    var owned_candidates = original.search_allowed_candidates_with_widening(
+        query, 5, 8, 8, owned_candidate_allowed
+    )
+    var mapped_candidates = view.search_allowed_candidates_with_widening(
+        query, 5, 8, 8, mapped_candidate_allowed
+    )
+    assert_equal(len(owned_candidates), 8)
+    assert_equal(len(mapped_candidates), len(owned_candidates))
+    for index in range(len(owned_candidates)):
+        assert_equal(mapped_candidates[index].id, owned_candidates[index].id)
+        assert_almost_equal(
+            mapped_candidates[index].score,
+            owned_candidates[index].score,
+            atol=1.0e-6,
+        )
+    _assert_search_stats_equal(
+        view.last_search_stats(), original.last_search_stats
+    )
+
 
 def test_view_rejects_misalignment_aliasing_order_and_truncation() raises:
     var config = _config(MetricKind.l2())

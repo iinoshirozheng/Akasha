@@ -62,6 +62,31 @@ def _chain_base(config: CollectionConfig, mut table: MemTable) raises -> HnswInd
     return index^
 
 
+def _long_chain_base(
+    config: CollectionConfig, mut table: MemTable
+) raises -> HnswIndex:
+    var index = HnswIndex(config)
+    for ordinal in range(6):
+        var id = 20 + ordinal
+        var values: List[Float32] = [Float32(ordinal)]
+        table.apply_upsert(id, UInt64(id), values.copy())
+        var slot = index.graph.append(id, values^, 0)
+        if ordinal == 0:
+            index.entry_slot = Optional(slot)
+            index.entry_level = 0
+    for ordinal in range(6):
+        var neighbors = List[UInt32]()
+        if ordinal > 0:
+            neighbors.append(UInt32(ordinal - 1))
+        if ordinal + 1 < 6:
+            neighbors.append(UInt32(ordinal + 1))
+        index.graph.set_neighbors(UInt32(ordinal), 0, neighbors^)
+    index.build_stats.slot_count = 6
+    index.build_stats.maximum_level = 0
+    index.build_stats.directed_edges = 10
+    return index^
+
+
 def test_base_only_and_delta_only_fast_paths() raises:
     var config = _config()
     var base_table = MemTable(1)
@@ -244,6 +269,100 @@ def test_filtered_saturation_uses_source_exact_fallback_and_final_stats() raises
     )
     assert_equal(index.last_search_query_preparations(), 1)
     assert_equal(index.last_search_upper_descents(), 1)
+
+
+def test_filtered_merge_reranks_max_k_or_ef_candidates_from_each_source() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var base = _base(config.copy(), table)
+    var index = SegmentedHnsw.from_owned(base^)
+    for id in range(10, 14):
+        var values: List[Float32] = [Float32(id)]
+        table.apply_upsert(id, UInt64(id), values.copy())
+        index.upsert(id, values^)
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(table.slot_count())
+    for ordinal in range(table.slot_count()):
+        allowed_bitmap.set(ordinal)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    var results = index.search_allowed(
+        [6.0], 2, 4, 4, allowed, table, lookup
+    )
+
+    assert_equal(len(results), 2)
+    assert_equal(index.last_search_stats().base_candidates, 4)
+    assert_equal(index.last_search_stats().delta_candidates, 4)
+    assert_equal(index.last_search_stats().reranked_candidates, 8)
+    assert_equal(index.last_rerank_ordinal_lookups(), 8)
+
+
+def test_filtered_stats_cap_large_initial_ef_to_tiny_source_capacity() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var index = SegmentedHnsw(config)
+    for id in range(1, 3):
+        var values: List[Float32] = [Float32(id)]
+        table.apply_upsert(id, UInt64(id), values.copy())
+        index.upsert(id, values^)
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(table.slot_count())
+    allowed_bitmap.set(0)
+    allowed_bitmap.set(1)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    _ = index.search_allowed([1.0], 1, 64, 128, allowed, table, lookup)
+
+    assert_equal(index.last_search_stats().requested_ef, 2)
+    assert_equal(index.last_search_stats().effective_ef, 2)
+
+
+def test_filtered_source_exhaustion_does_not_pollute_complete_merge() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var base = _base(config.copy(), table)
+    var index = SegmentedHnsw.from_owned(base^)
+    for id in range(10, 12):
+        var values: List[Float32] = [Float32(id)]
+        table.apply_upsert(id, UInt64(id), values.copy())
+        index.upsert(id, values^)
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(table.slot_count())
+    allowed_bitmap.set(0)
+    allowed_bitmap.set(1)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    var results = index.search_allowed(
+        [1.0], 2, 2, 4, allowed, table, lookup
+    )
+
+    assert_equal(len(results), 2)
+    assert_equal(index.last_search_stats().base_candidates, 2)
+    assert_equal(index.last_search_stats().delta_candidates, 0)
+    assert_equal(index.last_search_stats().fallback_reason, "")
+
+
+def test_filtered_candidate_pool_expands_with_final_widened_ef() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var base = _long_chain_base(config.copy(), table)
+    var index = SegmentedHnsw.from_owned(base^)
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(table.slot_count())
+    for ordinal in range(2, 6):
+        allowed_bitmap.set(ordinal)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    var results = index.search_allowed(
+        [0.0], 3, 3, 6, allowed, table, lookup
+    )
+
+    assert_equal(len(results), 3)
+    assert_equal(index.last_search_stats().effective_ef, 6)
+    assert_equal(index.last_search_stats().widening_rounds, 1)
+    assert_equal(index.last_search_stats().base_candidates, 4)
+    assert_equal(index.last_search_stats().reranked_candidates, 4)
+    assert_equal(index.last_rerank_ordinal_lookups(), 4)
 
 
 def test_large_memtable_small_k_reranks_only_bounded_candidates() raises:

@@ -225,6 +225,33 @@ def test_flush_rebuilds_only_at_dense_delta_threshold() raises:
     assert_equal(collection.hnsw_slot_count(), 5)
 
 
+def test_first_delta_only_flush_at_threshold_promotes_without_rebuild() raises:
+    var path = String("/tmp/akasha-task25-threshold-promotion")
+    _reset(path)
+    var collection = PersistentCollection.open_with_config(
+        path, _config(inactive_percent=90, delta_max_points=3)
+    )
+    collection.upsert(1, [1.0])
+    collection.upsert(2, [2.0])
+    collection.upsert(3, [3.0])
+    assert_true(collection._hnsw.needs_rebuild())
+    var promoted_distance_count = 100_000
+    collection._hnsw._delta.build_stats.distance_evaluations = (
+        promoted_distance_count
+    )
+
+    collection.flush()
+
+    assert_true(collection._hnsw.checkpoint_ready())
+    assert_equal(collection._hnsw.base_slot_count(), 3)
+    assert_equal(collection._hnsw.delta_slot_count(), 0)
+    assert_equal(collection._hnsw_mutations_since_rebuild, 0)
+    assert_equal(
+        collection.hnsw_build_distance_evaluations(),
+        promoted_distance_count,
+    )
+
+
 def test_flush_rebuilds_only_at_frozen_base_stale_threshold() raises:
     var path = String("/tmp/akasha-task19-inactive-flush-threshold")
     _reset(path)

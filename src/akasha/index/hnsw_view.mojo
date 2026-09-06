@@ -446,6 +446,33 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
         """Run the same prepare-once widening core as an owned graph."""
+        return self._search_allowed_with_actual_widening(
+            query, k, initial_ef, max_ef, allowed, False, True
+        )
+
+    def search_allowed_candidates_with_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Return the final search breadth without source-local fallback."""
+        return self._search_allowed_with_actual_widening(
+            query, k, initial_ef, max_ef, allowed, True, False
+        )
+
+    def _search_allowed_with_actual_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        allowed: HnswEligibility,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
+    ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
@@ -459,6 +486,8 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             initial_ef,
             max_ef,
             allowed.eligible_count(),
+            return_search_breadth,
+            exact_fallback,
             self._entry_slot,
             self._entry_level,
             "mapped-f32",
