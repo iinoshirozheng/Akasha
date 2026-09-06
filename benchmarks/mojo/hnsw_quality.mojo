@@ -229,6 +229,10 @@ def run_dataset(
         + dataset
         + " metric="
         + metric.name()
+        + " scalar="
+        + config.scalar_name()
+        + " backend="
+        + approximate.distance_backend.backend_name()
         + " points="
         + String(point_count)
         + " dimension="

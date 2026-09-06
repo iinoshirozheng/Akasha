@@ -1,6 +1,9 @@
 from akasha.compute.distance import dot_product
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
-from akasha.compute.dispatch import select_distance_backend
+from akasha.compute.dispatch import (
+    DistanceDispatchCounters,
+    select_distance_backend,
+)
 from akasha.compute.simd import simd_dot_product
 from std.time import perf_counter_ns
 
@@ -11,7 +14,8 @@ def main() raises:
     var config = CollectionConfig.defaults(dimension)
     config.ann_metric = MetricKind.dot()
     config.scalar_kind = ScalarKind.f32()
-    var backend = select_distance_backend(config)
+    var counters = DistanceDispatchCounters()
+    var backend = select_distance_backend(config, counters)
     var lhs = List[Float32](capacity=dimension)
     var rhs = List[Float32](capacity=dimension)
     for i in range(dimension):

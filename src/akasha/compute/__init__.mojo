@@ -1,5 +1,6 @@
 from .distance import cosine_similarity, dot_product, l2_squared_distance
 from .dispatch import (
+    DistanceDispatchCounters,
     DistanceBackend,
     DistanceExecutionStats,
     portable_simd_width,

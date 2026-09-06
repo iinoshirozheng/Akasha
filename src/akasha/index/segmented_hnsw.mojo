@@ -1,4 +1,20 @@
 from akasha.common.config import CollectionConfig
+from akasha.compute.dispatch import (
+    DISTANCE_DOT_F32,
+    DISTANCE_L2_F32,
+    DISTANCE_COSINE_F32,
+    DISTANCE_DOT_BF16,
+    DISTANCE_L2_BF16,
+    DISTANCE_COSINE_BF16,
+    DISTANCE_DOT_F16,
+    DISTANCE_L2_F16,
+    DISTANCE_COSINE_F16,
+    DISTANCE_DOT_I8,
+    DISTANCE_COSINE_I8,
+    DistanceBackend,
+    DistanceDispatchCounters,
+    select_distance_backend,
+)
 from akasha.compute.topk import BoundedTopK
 from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
@@ -92,13 +108,11 @@ struct _CurrentSourceLookup(Copyable, Movable):
             self._state[].base_count -= 1
 
 
-struct _SourceAdmission(HnswResultAdmission, Copyable, Movable):
+struct _SourceAdmission(Copyable, HnswResultAdmission, Movable):
     var _sources: _CurrentSourceLookup
     var _delta: Bool
 
-    def __init__(
-        out self, sources: _CurrentSourceLookup, delta: Bool
-    ):
+    def __init__(out self, sources: _CurrentSourceLookup, delta: Bool):
         self._sources = sources.copy()
         self._delta = delta
 
@@ -116,7 +130,7 @@ struct _SourceAdmission(HnswResultAdmission, Copyable, Movable):
         return source == Int(slot) + 1
 
 
-struct _FilteredSourceAdmission(HnswResultAdmission, Copyable, Movable):
+struct _FilteredSourceAdmission(Copyable, HnswResultAdmission, Movable):
     var _source: _SourceAdmission
     var _eligibility: HnswEligibility
 
@@ -137,10 +151,9 @@ struct _FilteredSourceAdmission(HnswResultAdmission, Copyable, Movable):
         self._eligibility.validate(slot_count)
 
     def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
-        return (
-            self._source._allows_item(slot, id)
-            and self._eligibility._allows_item(slot, id)
-        )
+        return self._source._allows_item(
+            slot, id
+        ) and self._eligibility._allows_item(slot, id)
 
 
 def _accumulate_search_stats(
@@ -163,6 +176,8 @@ struct SegmentedHnsw(Movable):
     """
 
     var config: CollectionConfig
+    var distance_backend: DistanceBackend
+    var _distance_dispatch_counters: DistanceDispatchCounters
     var _base_kind: Int
     var _owned_base: HnswIndex
     var _mapped_base: HnswGraphView
@@ -179,11 +194,40 @@ struct SegmentedHnsw(Movable):
 
     def __init__(out self, config: CollectionConfig) raises:
         config.validate()
+        var counters = DistanceDispatchCounters()
+        var backend = select_distance_backend(config, counters)
         self.config = config.copy()
+        self.distance_backend = backend.copy()
+        self._distance_dispatch_counters = counters^
         self._base_kind = _NO_BASE
-        self._owned_base = HnswIndex(config)
-        self._mapped_base = HnswGraphView()
-        self._delta = HnswIndex(config)
+        self._owned_base = HnswIndex(config, backend)
+        self._mapped_base = HnswGraphView(config, backend)
+        self._delta = HnswIndex(config, backend)
+        self._sources = _CurrentSourceLookup()
+        self._base_stale_count = 0
+        self._delta_mutations = 0
+        self._last_stats = HnswSearchStats()
+        self._last_candidate_merge_insertions = 0
+        self._last_rerank_ordinal_lookups = 0
+        self._last_rerank_linear_id_scans = 0
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
+
+    def __init__(
+        out self,
+        config: CollectionConfig,
+        backend: DistanceBackend,
+        counters: DistanceDispatchCounters,
+    ) raises:
+        """Initialize from one selection already made by an adoption path."""
+        config.validate()
+        self.config = config.copy()
+        self.distance_backend = backend.copy()
+        self._distance_dispatch_counters = counters.copy()
+        self._base_kind = _NO_BASE
+        self._owned_base = HnswIndex(config, backend)
+        self._mapped_base = HnswGraphView(config, backend)
+        self._delta = HnswIndex(config, backend)
         self._sources = _CurrentSourceLookup()
         self._base_stale_count = 0
         self._delta_mutations = 0
@@ -197,7 +241,11 @@ struct SegmentedHnsw(Movable):
     @staticmethod
     def from_owned(var base: HnswIndex) raises -> SegmentedHnsw:
         base.validate_structure()
-        var result = SegmentedHnsw(base.config)
+        var identity = base.config.copy()
+        var counters = DistanceDispatchCounters()
+        var backend = select_distance_backend(identity, counters)
+        var result = SegmentedHnsw(identity, backend, counters)
+        base._bind_distance_backend(backend)
         result._owned_base = base^
         result._base_kind = _OWNED_BASE
         result._index_owned_base_sources()
@@ -210,7 +258,10 @@ struct SegmentedHnsw(Movable):
         base.validate_search_ready()
         # Adopt an explicit copy of the view's already validated identity.
         var identity = base.config()
-        var result = SegmentedHnsw(identity)
+        var counters = DistanceDispatchCounters()
+        var backend = select_distance_backend(identity, counters)
+        var result = SegmentedHnsw(identity, backend, counters)
+        base._bind_distance_backend(backend)
         result._mapped_base = base^
         result._base_kind = _MAPPED_BASE
         result._index_mapped_base_sources()
@@ -302,8 +353,7 @@ struct SegmentedHnsw(Movable):
         return (
             slots > 0
             and inactive > 0
-            and inactive * 100
-            >= slots * self.config.rebuild_inactive_percent
+            and inactive * 100 >= slots * self.config.rebuild_inactive_percent
         )
 
     def last_search_stats(self) -> HnswSearchStats:
@@ -341,6 +391,15 @@ struct SegmentedHnsw(Movable):
 
     def last_search_upper_descents(self) -> Int:
         return self._last_search_upper_descents
+
+    def distance_backend_selection_count(self) -> Int:
+        return self._distance_dispatch_counters.selection_count()
+
+    def distance_backend_public_switch_count(self) -> Int:
+        return self._distance_dispatch_counters.public_boundary_switch_count()
+
+    def distance_backend_hot_loop_selection_count(self) -> Int:
+        return self._distance_dispatch_counters.hot_loop_selection_count()
 
     def validate_structure(self) raises:
         if self._base_kind == _OWNED_BASE:
@@ -390,7 +449,7 @@ struct SegmentedHnsw(Movable):
             raise Error("segmented HNSW already has a non-empty base")
         self._delta.validate_structure()
         var identity = self.config.copy()
-        var replacement = HnswIndex(identity)
+        var replacement = HnswIndex(identity, self.distance_backend)
         self._mapped_base.close()
         self._owned_base = self._delta^
         self._delta = replacement^
@@ -405,9 +464,10 @@ struct SegmentedHnsw(Movable):
         if base.config != self.config:
             raise Error("segmented HNSW replacement config mismatch")
         base.validate_structure()
+        base._bind_distance_backend(self.distance_backend)
         self._mapped_base.close()
         self._owned_base = base^
-        self._delta = HnswIndex(self.config)
+        self._delta = HnswIndex(self.config, self.distance_backend)
         self._base_kind = _OWNED_BASE
         self._sources = _CurrentSourceLookup()
         self._index_owned_base_sources()
@@ -416,10 +476,31 @@ struct SegmentedHnsw(Movable):
 
     def upsert(mut self, id: Int, values: List[Float32]) raises:
         self._validate_identity()
-        var replaced_base = (
-            self._sources.source_for(id) > 0
-        )
-        self._delta.upsert(id, values)
+        self._distance_dispatch_counters.record_public_boundary_switch()
+        var replaced_base = self._sources.source_for(id) > 0
+        var tag = self.distance_backend.tag()
+        if tag == DISTANCE_DOT_F32:
+            self._delta._upsert_backend[DISTANCE_DOT_F32](id, values)
+        elif tag == DISTANCE_L2_F32:
+            self._delta._upsert_backend[DISTANCE_L2_F32](id, values)
+        elif tag == DISTANCE_COSINE_F32:
+            self._delta._upsert_backend[DISTANCE_COSINE_F32](id, values)
+        elif tag == DISTANCE_DOT_BF16:
+            self._delta._upsert_backend[DISTANCE_DOT_BF16](id, values)
+        elif tag == DISTANCE_L2_BF16:
+            self._delta._upsert_backend[DISTANCE_L2_BF16](id, values)
+        elif tag == DISTANCE_COSINE_BF16:
+            self._delta._upsert_backend[DISTANCE_COSINE_BF16](id, values)
+        elif tag == DISTANCE_DOT_F16:
+            self._delta._upsert_backend[DISTANCE_DOT_F16](id, values)
+        elif tag == DISTANCE_L2_F16:
+            self._delta._upsert_backend[DISTANCE_L2_F16](id, values)
+        elif tag == DISTANCE_COSINE_F16:
+            self._delta._upsert_backend[DISTANCE_COSINE_F16](id, values)
+        elif tag == DISTANCE_DOT_I8:
+            self._delta._upsert_backend[DISTANCE_DOT_I8](id, values)
+        else:
+            self._delta._upsert_backend[DISTANCE_COSINE_I8](id, values)
         if replaced_base:
             self._base_stale_count += 1
         self._sources.set_delta(id)
@@ -448,7 +529,53 @@ struct SegmentedHnsw(Movable):
         lookup: HnswIdOrdinalLookup,
     ) raises -> List[SearchResult]:
         self._validate_identity()
-        var candidates = self._collect_candidates(query, k, ef_search)
+        self._distance_dispatch_counters.record_public_boundary_switch()
+        var tag = self.distance_backend.tag()
+        var candidates: List[Int]
+        if tag == DISTANCE_DOT_F32:
+            candidates = self._collect_candidates[DISTANCE_DOT_F32](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_L2_F32:
+            candidates = self._collect_candidates[DISTANCE_L2_F32](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_COSINE_F32:
+            candidates = self._collect_candidates[DISTANCE_COSINE_F32](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_DOT_BF16:
+            candidates = self._collect_candidates[DISTANCE_DOT_BF16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_L2_BF16:
+            candidates = self._collect_candidates[DISTANCE_L2_BF16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_COSINE_BF16:
+            candidates = self._collect_candidates[DISTANCE_COSINE_BF16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_DOT_F16:
+            candidates = self._collect_candidates[DISTANCE_DOT_F16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_L2_F16:
+            candidates = self._collect_candidates[DISTANCE_L2_F16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_COSINE_F16:
+            candidates = self._collect_candidates[DISTANCE_COSINE_F16](
+                query, k, ef_search
+            )
+        elif tag == DISTANCE_DOT_I8:
+            candidates = self._collect_candidates[DISTANCE_DOT_I8](
+                query, k, ef_search
+            )
+        else:
+            candidates = self._collect_candidates[DISTANCE_COSINE_I8](
+                query, k, ef_search
+            )
         return self._rerank(query, k, candidates^, memtable, lookup)
 
     def search_allowed(
@@ -465,16 +592,62 @@ struct SegmentedHnsw(Movable):
         if max_ef <= 0 or ef_search > max_ef:
             raise Error("segmented HNSW widening range is invalid")
         allowed.validate(memtable.slot_count())
-        var candidates = self._collect_allowed_candidates(
-            query, k, ef_search, max_ef, allowed
-        )
+        self._distance_dispatch_counters.record_public_boundary_switch()
+        var tag = self.distance_backend.tag()
+        var candidates: List[Int]
+        if tag == DISTANCE_DOT_F32:
+            candidates = self._collect_allowed_candidates[DISTANCE_DOT_F32](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_L2_F32:
+            candidates = self._collect_allowed_candidates[DISTANCE_L2_F32](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_COSINE_F32:
+            candidates = self._collect_allowed_candidates[DISTANCE_COSINE_F32](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_DOT_BF16:
+            candidates = self._collect_allowed_candidates[DISTANCE_DOT_BF16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_L2_BF16:
+            candidates = self._collect_allowed_candidates[DISTANCE_L2_BF16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_COSINE_BF16:
+            candidates = self._collect_allowed_candidates[DISTANCE_COSINE_BF16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_DOT_F16:
+            candidates = self._collect_allowed_candidates[DISTANCE_DOT_F16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_L2_F16:
+            candidates = self._collect_allowed_candidates[DISTANCE_L2_F16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_COSINE_F16:
+            candidates = self._collect_allowed_candidates[DISTANCE_COSINE_F16](
+                query, k, ef_search, max_ef, allowed
+            )
+        elif tag == DISTANCE_DOT_I8:
+            candidates = self._collect_allowed_candidates[DISTANCE_DOT_I8](
+                query, k, ef_search, max_ef, allowed
+            )
+        else:
+            candidates = self._collect_allowed_candidates[DISTANCE_COSINE_I8](
+                query, k, ef_search, max_ef, allowed
+            )
         return self._rerank_allowed(
             query, k, candidates^, memtable, lookup, allowed
         )
 
-    def _collect_candidates(
-        mut self, query: List[Float32], k: Int, ef_search: Int
-    ) raises -> List[Int]:
+    def _collect_candidates[
+        backend_tag: Int
+    ](mut self, query: List[Float32], k: Int, ef_search: Int) raises -> List[
+        Int
+    ]:
         if k <= 0:
             raise Error("segmented HNSW k must be positive")
         if ef_search <= 0 or ef_search > self.config.max_ef_search:
@@ -484,14 +657,14 @@ struct SegmentedHnsw(Movable):
             per_source = ef_search
         if per_source > self.config.max_ef_search:
             per_source = self.config.max_ef_search
-        var prepared = self._delta.metric.prepare_query(query)
+        var prepared = self.distance_backend.prepare_query(query)
 
         var stats = HnswSearchStats()
         stats.requested_ef = 0
         stats.effective_ef = 0
-        stats.backend_name = self._delta.metric.backend_name()
-        stats.metric_name = self._delta.metric.metric_name()
-        stats.scalar_name = self._delta.metric.scalar_name()
+        stats.backend_name = self.distance_backend.backend_name()
+        stats.metric_name = self.distance_backend.metric_name()
+        stats.scalar_name = self.distance_backend.scalar_name()
         stats.storage_name = String("segmented-", self.config.scalar_name())
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
@@ -506,7 +679,9 @@ struct SegmentedHnsw(Movable):
             var base_admission = _SourceAdmission(self._sources, False)
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
-                base_results = self._mapped_base._search_admitted_prepared_candidates_with_widening(
+                base_results = self._mapped_base._search_prepared_backend[
+                    backend_tag=backend_tag
+                ](
                     prepared,
                     per_source,
                     ef_search,
@@ -520,13 +695,17 @@ struct SegmentedHnsw(Movable):
                     self._mapped_base.last_search_upper_descents()
                 )
             else:
-                base_results = self._owned_base._search_admitted_prepared_candidates_with_widening(
-                    prepared,
-                    per_source,
-                    ef_search,
-                    self.config.max_ef_search,
-                    base_live,
-                    base_admission,
+                base_results = (
+                    self._owned_base._search_admitted_prepared_backend[
+                        backend_tag=backend_tag
+                    ](
+                        prepared,
+                        per_source,
+                        ef_search,
+                        self.config.max_ef_search,
+                        base_live,
+                        base_admission,
+                    )
                 )
                 self._accumulate_source_stats(
                     stats, self._owned_base.last_search_stats
@@ -545,7 +724,9 @@ struct SegmentedHnsw(Movable):
 
         if delta_live > 0:
             var delta_admission = _SourceAdmission(self._sources, True)
-            var delta_results = self._delta._search_admitted_prepared_candidates_with_widening(
+            var delta_results = self._delta._search_admitted_prepared_backend[
+                backend_tag=backend_tag
+            ](
                 prepared,
                 per_source,
                 ef_search,
@@ -553,9 +734,7 @@ struct SegmentedHnsw(Movable):
                 delta_live,
                 delta_admission,
             )
-            self._accumulate_source_stats(
-                stats, self._delta.last_search_stats
-            )
+            self._accumulate_source_stats(stats, self._delta.last_search_stats)
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
@@ -572,7 +751,9 @@ struct SegmentedHnsw(Movable):
         self._last_stats = stats^
         return merged^
 
-    def _collect_allowed_candidates(
+    def _collect_allowed_candidates[
+        backend_tag: Int
+    ](
         mut self,
         query: List[Float32],
         k: Int,
@@ -589,15 +770,15 @@ struct SegmentedHnsw(Movable):
             or max_ef > self.config.max_ef_search
         ):
             raise Error("segmented HNSW widening range is invalid")
-        var prepared = self._delta.metric.prepare_query(query)
+        var prepared = self.distance_backend.prepare_query(query)
         var stats = HnswSearchStats()
         # Aggregate the effective breadth actually searched by each non-empty
         # source; a tiny source may cap an arbitrarily large requested ef.
         stats.requested_ef = 0
         stats.effective_ef = 0
-        stats.backend_name = self._delta.metric.backend_name()
-        stats.metric_name = self._delta.metric.metric_name()
-        stats.scalar_name = self._delta.metric.scalar_name()
+        stats.backend_name = self.distance_backend.backend_name()
+        stats.metric_name = self.distance_backend.metric_name()
+        stats.scalar_name = self.distance_backend.scalar_name()
         stats.storage_name = String("segmented-", self.config.scalar_name())
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
@@ -614,15 +795,15 @@ struct SegmentedHnsw(Movable):
             )
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
-                base_results = (
-                    self._mapped_base._search_admitted_prepared_candidates_with_widening(
-                        prepared,
-                        k,
-                        initial_ef,
-                        max_ef,
-                        base_live,
-                        base_admission,
-                    )
+                base_results = self._mapped_base._search_prepared_backend[
+                    backend_tag=backend_tag
+                ](
+                    prepared,
+                    k,
+                    initial_ef,
+                    max_ef,
+                    base_live,
+                    base_admission,
                 )
                 var source_stats = self._mapped_base.last_search_stats()
                 self._accumulate_source_stats(stats, source_stats)
@@ -631,7 +812,9 @@ struct SegmentedHnsw(Movable):
                 )
             else:
                 base_results = (
-                    self._owned_base._search_admitted_prepared_candidates_with_widening(
+                    self._owned_base._search_admitted_prepared_backend[
+                        backend_tag=backend_tag
+                    ](
                         prepared,
                         k,
                         initial_ef,
@@ -659,19 +842,17 @@ struct SegmentedHnsw(Movable):
             var delta_admission = _FilteredSourceAdmission(
                 self._sources, True, allowed
             )
-            var delta_results = (
-                self._delta._search_admitted_prepared_candidates_with_widening(
-                    prepared,
-                    k,
-                    initial_ef,
-                    max_ef,
-                    delta_live,
-                    delta_admission,
-                )
+            var delta_results = self._delta._search_admitted_prepared_backend[
+                backend_tag=backend_tag
+            ](
+                prepared,
+                k,
+                initial_ef,
+                max_ef,
+                delta_live,
+                delta_admission,
             )
-            self._accumulate_source_stats(
-                stats, self._delta.last_search_stats
-            )
+            self._accumulate_source_stats(stats, self._delta.last_search_stats)
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
@@ -883,9 +1064,7 @@ struct SegmentedHnsw(Movable):
             self._last_stats.fallback_reason = "filtered_ann_exhausted"
         return self._finish_topk(topk^)
 
-    def _finish_topk(
-        mut self, var topk: BoundedTopK
-    ) -> List[SearchResult]:
+    def _finish_topk(mut self, var topk: BoundedTopK) -> List[SearchResult]:
         var retained = topk.sorted_entries()
         var result = List[SearchResult](capacity=len(retained))
         for entry in retained:
@@ -976,6 +1155,12 @@ struct SegmentedHnsw(Movable):
 
     def _validate_identity(self) raises:
         self.config.validate()
+        if (
+            self.distance_backend.dimension() != self.config.dimension
+            or self.distance_backend.metric_name() != self.config.metric_name()
+            or self.distance_backend.scalar_name() != self.config.scalar_name()
+        ):
+            raise Error("segmented HNSW distance backend mismatch")
         if self._delta.config != self.config:
             raise Error("segmented HNSW delta config diverged from identity")
         if self._base_kind == _OWNED_BASE:

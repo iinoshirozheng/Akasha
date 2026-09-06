@@ -13,6 +13,7 @@ from akasha.compute.dispatch import (
     DISTANCE_DOT_I8,
     DISTANCE_COSINE_I8,
     DistanceBackend,
+    DistanceDispatchCounters,
     finish_distance,
     select_distance_backend,
 )
@@ -82,6 +83,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     var _config: CollectionConfig
     var _metric: MetricDispatcher
     var _distance_backend: DistanceBackend
+    var _distance_dispatch_counters: DistanceDispatchCounters
     var _scratch: HnswSearchScratch
     var _last_stats: HnswSearchStats
     var _last_search_query_preparations: Int
@@ -108,7 +110,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._metric = MetricDispatcher(
             config.ann_metric, config.scalar_kind, config.dimension
         )
-        self._distance_backend = select_distance_backend(config)
+        var counters = DistanceDispatchCounters()
+        self._distance_backend = select_distance_backend(config, counters)
+        self._distance_dispatch_counters = counters^
         self._scratch = HnswSearchScratch()
         self._last_stats = HnswSearchStats()
         self._last_search_query_preparations = 0
@@ -129,11 +133,49 @@ struct HnswGraphView(HnswGraphAccess, Movable):
 
     def __init__(out self, config: CollectionConfig) raises:
         config.validate()
-        var backend = select_distance_backend(config)
+        var counters = DistanceDispatchCounters()
+        var backend = select_distance_backend(config, counters)
         self._mapping = MappedFile()
         self._config = config.copy()
         self._metric = backend.dispatcher()
         self._distance_backend = backend^
+        self._distance_dispatch_counters = counters^
+        self._scratch = HnswSearchScratch()
+        self._last_stats = HnswSearchStats()
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
+        self._slots = 0
+        self._live_points = 0
+        self._level_cells = 0
+        self._directed_edges = 0
+        self._entry_slot = Optional[UInt32]()
+        self._entry_level = -1
+        self._node_offset = 0
+        self._vector_offset = 0
+        self._vector_width = 4
+        self._scale_offset = 0
+        self._scale_width = 0
+        self._count_offset = 0
+        self._edge_offset = 0
+
+    def __init__(
+        out self, config: CollectionConfig, backend: DistanceBackend
+    ) raises:
+        """Create a closed view using an aggregate owner's selected backend."""
+        config.validate()
+        if (
+            backend.dimension() != config.dimension
+            or backend.metric_name() != config.metric_name()
+            or backend.scalar_name() != config.scalar_name()
+        ):
+            raise Error(
+                "injected mapped distance backend does not match config"
+            )
+        self._mapping = MappedFile()
+        self._config = config.copy()
+        self._metric = backend.dispatcher()
+        self._distance_backend = backend.copy()
+        self._distance_dispatch_counters = DistanceDispatchCounters()
         self._scratch = HnswSearchScratch()
         self._last_stats = HnswSearchStats()
         self._last_search_query_preparations = 0
@@ -241,10 +283,24 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return self._last_search_upper_descents
 
     def distance_backend_selection_count(self) -> Int:
-        return self._distance_backend.selection_count()
+        return self._distance_dispatch_counters.selection_count()
+
+    def distance_backend_public_switch_count(self) -> Int:
+        return self._distance_dispatch_counters.public_boundary_switch_count()
 
     def distance_backend_hot_loop_selection_count(self) -> Int:
-        return self._distance_backend.hot_loop_selection_count()
+        return self._distance_dispatch_counters.hot_loop_selection_count()
+
+    def _bind_distance_backend(mut self, backend: DistanceBackend) raises:
+        if (
+            backend.dimension() != self._config.dimension
+            or backend.metric_name() != self._config.metric_name()
+            or backend.scalar_name() != self._config.scalar_name()
+        ):
+            raise Error("injected mapped distance backend does not match view")
+        self._metric = backend.dispatcher()
+        self._distance_backend = backend.copy()
+        self._distance_dispatch_counters = DistanceDispatchCounters()
 
     def id_at(self, slot: UInt32) raises -> Int:
         var node = self._node_record(slot)
@@ -637,6 +693,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         *,
         ef_search: Int = -1,
     ) raises -> List[SearchResult]:
+        self._distance_dispatch_counters.record_public_boundary_switch()
         var tag = self._distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_backend[DISTANCE_DOT_F32](query, k, ef_search)
@@ -824,6 +881,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         admitted_count: Int,
         admission: AdmissionType,
     ) raises -> List[SearchResult]:
+        self._distance_dispatch_counters.record_public_boundary_switch()
         var tag = self._distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_prepared_backend[backend_tag=DISTANCE_DOT_F32](
@@ -922,6 +980,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
+        self._distance_dispatch_counters.record_public_boundary_switch()
         var tag = self._distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_widening_backend[backend_tag=DISTANCE_DOT_F32](

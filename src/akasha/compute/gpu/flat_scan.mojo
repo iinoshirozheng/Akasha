@@ -77,6 +77,23 @@ def _execution_stats(
     )
 
 
+def _candidate_execution_stats(
+    metric: Int,
+    reason: String,
+    any_gpu: Bool,
+    any_cpu: Bool,
+    evaluations: Int,
+) raises -> DistanceExecutionStats:
+    """Construct deterministic aggregate labels without requiring a device."""
+    var stats = _execution_stats(
+        metric, reason, any_gpu and not any_cpu, evaluations
+    )
+    if any_gpu and any_cpu:
+        stats.backend_name = "mixed"
+        stats.fallback_reason = String(copy=reason)
+    return stats^
+
+
 def _score_kernel[
     VectorsLayout: TensorLayout,
     QueriesLayout: TensorLayout,
@@ -320,11 +337,9 @@ def execute_device_candidate_batch[
         output.append(query_results.pop())
     if len(queries) == 0:
         reason = "empty workload"
-    var stats = _execution_stats(
-        metric, reason, every_query_used_gpu, evaluations
+    var stats = _candidate_execution_stats(
+        metric, reason, any_gpu, any_cpu, evaluations
     )
-    if any_gpu and any_cpu:
-        stats.backend_name = "mixed"
     return DeviceBatchResult(
         output^, every_query_used_gpu, reason, required_bytes, stats^
     )

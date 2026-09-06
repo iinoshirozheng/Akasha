@@ -80,6 +80,34 @@ struct DistanceExecutionStats(Movable, Writable):
         self.distance_evaluations = distance_evaluations
 
 
+struct DistanceDispatchCounters(Copyable, Movable):
+    """Per-owner evidence that dispatch stays outside distance hot loops."""
+
+    var _selection_count: Int
+    var _public_boundary_switch_count: Int
+    var _hot_loop_selection_count: Int
+
+    def __init__(out self):
+        self._selection_count = 0
+        self._public_boundary_switch_count = 0
+        self._hot_loop_selection_count = 0
+
+    def record_selection(mut self):
+        self._selection_count += 1
+
+    def record_public_boundary_switch(mut self):
+        self._public_boundary_switch_count += 1
+
+    def selection_count(self) -> Int:
+        return self._selection_count
+
+    def public_boundary_switch_count(self) -> Int:
+        return self._public_boundary_switch_count
+
+    def hot_loop_selection_count(self) -> Int:
+        return self._hot_loop_selection_count
+
+
 struct DistanceBackend(Copyable, Movable):
     """One construction-time metric/scalar selection.
 
@@ -107,13 +135,8 @@ struct DistanceBackend(Copyable, Movable):
     def scalar_name(self) -> String:
         return self._dispatcher.scalar_name()
 
-    def selection_count(self) -> Int:
-        """Each value represents exactly one construction-time selection."""
-        return 1
-
-    def hot_loop_selection_count(self) -> Int:
-        """Selection is structurally absent from dimension/traversal loops."""
-        return 0
+    def dimension(self) -> Int:
+        return self._dispatcher.dimension()
 
     def dispatcher(self) -> MetricDispatcher:
         return self._dispatcher.copy()
@@ -163,7 +186,9 @@ struct DistanceBackend(Copyable, Movable):
         )
 
 
-def select_distance_backend(config: CollectionConfig) raises -> DistanceBackend:
+def select_distance_backend(
+    config: CollectionConfig, mut counters: DistanceDispatchCounters
+) raises -> DistanceBackend:
     """Select one enabled metric/scalar combination for an index."""
     var dispatcher = MetricDispatcher(
         config.ann_metric, config.scalar_kind, config.dimension
@@ -194,4 +219,5 @@ def select_distance_backend(config: CollectionConfig) raises -> DistanceBackend:
         tag = DISTANCE_DOT_I8
     else:
         tag = DISTANCE_COSINE_I8
+    counters.record_selection()
     return DistanceBackend(dispatcher^, tag)
