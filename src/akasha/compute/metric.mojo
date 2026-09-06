@@ -3,6 +3,17 @@ from akasha.compute.simd import (
     _simd_dot_product_unchecked,
     _simd_l2_squared_unchecked,
 )
+from akasha.compute.quantization import (
+    decode_bf16,
+    decode_f16,
+    decode_symmetric_i8,
+    encode_bf16,
+    encode_f16,
+    encode_symmetric_i8,
+    normalize_for_cosine_i8,
+    scaled_i8_accumulator,
+    symmetric_i8_scale,
+)
 from std.math import isfinite, sqrt
 
 
@@ -57,10 +68,24 @@ struct MetricDispatcher(Copyable, Movable):
     def scalar_name(self) -> String:
         return self._scalar.name()
 
+    def matches_storage_identity(
+        self, metric: MetricKind, scalar: ScalarKind, dimension: Int
+    ) -> Bool:
+        """Check storage width and compact prepared-vector semantics."""
+        return (
+            self._scalar == scalar
+            and self._dimension == dimension
+            and (scalar == ScalarKind.f32() or self._metric == metric)
+        )
+
     def backend_name(self) -> String:
         if self._scalar == ScalarKind.f32():
             return "simd-f32"
-        return "unimplemented"
+        if self._scalar == ScalarKind.bf16():
+            return "scalar-bf16-f32accum"
+        if self._scalar == ScalarKind.f16():
+            return "scalar-f16-f32accum"
+        return "scalar-i8-f32accum"
 
     def validate_query(self, values: List[Float32]) raises:
         self._validate_values(values)
@@ -96,6 +121,15 @@ struct MetricDispatcher(Copyable, Movable):
         self.require_supported_backend()
         self.validate_query(lhs)
         self.validate_vector(rhs)
+
+        if self._scalar != ScalarKind.f32():
+            var prepared_lhs = self._prepare_validated(lhs)
+            var prepared_rhs = self._prepare_validated(rhs)
+            return self._require_finite_distance(
+                self._canonical_prepared_unchecked(
+                    prepared_lhs, prepared_rhs
+                )
+            )
 
         if self._metric == MetricKind.l2():
             return self._require_finite_distance(
@@ -133,6 +167,16 @@ struct MetricDispatcher(Copyable, Movable):
         `prepare_graph_vector` guarantee a finite result; cosine is clamped so
         its canonical distance is always in the closed interval [0, 2].
         """
+        if self._scalar == ScalarKind.i8():
+            var accumulator = Int32(0)
+            for index in range(self._dimension):
+                accumulator += Int32(lhs[index]) * Int32(rhs[index])
+            var product = scaled_i8_accumulator(
+                accumulator, lhs[self._dimension], rhs[self._dimension]
+            )
+            if self._metric == MetricKind.dot():
+                return -product
+            return 1.0 - _clamp_similarity_f32(product)
         if self._metric == MetricKind.l2():
             return _simd_l2_squared_unchecked(lhs, rhs)
         if self._metric == MetricKind.dot():
@@ -161,8 +205,8 @@ struct MetricDispatcher(Copyable, Movable):
 
     def require_supported_backend(self) raises:
         """Validate the backend once before entering a distance hot loop."""
-        if self._scalar != ScalarKind.f32():
-            raise Error("scalar backend not implemented")
+        if not self._scalar.is_valid():
+            raise Error("scalar backend is unknown")
 
     def _validate_values(self, values: List[Float32]) raises:
         if len(values) != self._dimension:
@@ -186,6 +230,32 @@ struct MetricDispatcher(Copyable, Movable):
             raise Error("cosine distance requires a non-zero vector")
 
     def _validate_prepared_values(self, values: List[Float32]) raises:
+        if self._scalar == ScalarKind.i8():
+            if len(values) != self._dimension + 1:
+                raise Error("prepared I8 vector has an invalid length")
+            var scale = values[self._dimension]
+            if not isfinite(scale) or scale < 0.0:
+                raise Error("prepared I8 vector scale is invalid")
+            var has_nonzero_code = False
+            for index in range(self._dimension):
+                var code = values[index]
+                if (
+                    not isfinite(code)
+                    or code < -127.0
+                    or code > 127.0
+                    or Float32(Int(code)) != code
+                ):
+                    raise Error("prepared I8 vector code is invalid")
+                if code != 0.0:
+                    has_nonzero_code = True
+            if self._metric == MetricKind.cosine():
+                if scale != Float32(1.0 / 127.0):
+                    raise Error("prepared I8 cosine scale must be fixed")
+                if not has_nonzero_code:
+                    raise Error("prepared I8 cosine vector must be non-zero")
+            elif scale == 0.0 and has_nonzero_code:
+                raise Error("a zero I8 scale requires an all-zero code vector")
+            return
         self._validate_values(values)
         if self._metric != MetricKind.cosine():
             return
@@ -194,7 +264,10 @@ struct MetricDispatcher(Copyable, Movable):
         var error = norm - 1.0
         if error < 0.0:
             error = -error
-        if error > _COSINE_UNIT_NORM_TOLERANCE:
+        var tolerance = _COSINE_UNIT_NORM_TOLERANCE
+        if self._scalar != ScalarKind.f32():
+            tolerance = 2.0e-2
+        if error > tolerance:
             raise Error("prepared cosine vector must have unit norm")
 
     def _safe_component_limit(self) -> Float64:
@@ -216,17 +289,40 @@ struct MetricDispatcher(Copyable, Movable):
         return distance
 
     def _prepare_validated(self, values: List[Float32]) raises -> List[Float32]:
-        if self._metric != MetricKind.cosine():
-            return values.copy()
-
-        var norm = _stable_norm(values)
         var prepared = List[Float32](capacity=self._dimension)
-        for i in range(self._dimension):
-            var component = Float32(Float64(values[i]) / norm)
-            if not isfinite(component):
-                raise Error("prepared cosine vector must be finite")
-            prepared.append(component)
-        return prepared^
+        if self._metric != MetricKind.cosine():
+            for value in values:
+                prepared.append(value)
+        elif self._scalar == ScalarKind.i8():
+            prepared = normalize_for_cosine_i8(values)
+        else:
+            var norm = _stable_norm(values)
+            for i in range(self._dimension):
+                var component = Float32(Float64(values[i]) / norm)
+                if not isfinite(component):
+                    raise Error("prepared cosine vector must be finite")
+                prepared.append(component)
+
+        if self._scalar == ScalarKind.f32():
+            return prepared^
+        if self._scalar == ScalarKind.bf16():
+            for index in range(self._dimension):
+                prepared[index] = decode_bf16(encode_bf16(prepared[index]))
+            return prepared^
+        if self._scalar == ScalarKind.f16():
+            for index in range(self._dimension):
+                prepared[index] = decode_f16(encode_f16(prepared[index]))
+            return prepared^
+
+        var scale = Float32(1.0 / 127.0)
+        if self._metric == MetricKind.dot():
+            scale = symmetric_i8_scale(prepared)
+        var codes = List[Float32](capacity=self._dimension + 1)
+        for index in range(self._dimension):
+            codes.append(Float32(encode_symmetric_i8(prepared[index], scale)))
+        codes.append(scale)
+        self._validate_prepared_values(codes)
+        return codes^
 
 
 def _stable_norm(values: List[Float32]) -> Float64:

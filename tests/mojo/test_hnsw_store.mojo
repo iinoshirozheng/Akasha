@@ -371,7 +371,7 @@ def test_encoder_rejects_mutated_unprepared_graph_vector() raises:
         _ = encode_hnsw_snapshot(dot, UInt64(37))
 
 
-def test_v1_rejects_non_f32_empty_and_nonempty_graphs() raises:
+def test_compact_writers_use_v2_while_v1_rejects_non_f32_tags() raises:
     assert_true(is_64bit())
     var f32_config = _config(MetricKind.dot())
     var f32_empty = HnswIndex(f32_config)
@@ -388,18 +388,13 @@ def test_v1_rejects_non_f32_empty_and_nonempty_graphs() raises:
         config.scalar_kind = scalar.copy()
 
         var empty = HnswIndex(config)
-        with assert_raises():
-            _ = encode_hnsw_snapshot(empty, UInt64(38))
+        var compact_empty = encode_hnsw_snapshot(empty, UInt64(38))
+        assert_equal(_u16_at(compact_empty, 4), UInt16(2))
 
         var nonempty = HnswIndex(config)
-        _ = nonempty.graph.append(7, _vector(1.0, 2.0), 0)
-        nonempty.entry_slot = Optional(UInt32(0))
-        nonempty.entry_level = 0
-        nonempty.build_stats.slot_count = 1
-        nonempty.build_stats.maximum_level = 0
-        nonempty.validate_structure()
-        with assert_raises():
-            _ = encode_hnsw_snapshot(nonempty, UInt64(38))
+        nonempty.add(7, _vector(1.0, 2.0))
+        var compact_nonempty = encode_hnsw_snapshot(nonempty, UInt64(38))
+        assert_equal(_u16_at(compact_nonempty, 4), UInt16(2))
 
         var bytes = encoded_empty.copy()
         _put_u64(bytes, 16, config.fingerprint())

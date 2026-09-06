@@ -1,5 +1,22 @@
+from akasha.common.config import (
+    I8_MAX_SAFE_DIMENSION,
+    MetricKind,
+    ScalarKind,
+)
 from akasha.compute.metric import MetricDispatcher
+from akasha.compute.quantization import (
+    decode_bf16,
+    decode_f16,
+    decode_symmetric_i8,
+    encode_bf16,
+    encode_f16,
+    encode_symmetric_i8,
+    scaled_i8_accumulator,
+    symmetric_i8_scale,
+)
 from std.collections import Dict
+from std.math import isfinite
+from std.memory import bitcast
 
 
 comptime HNSW_EMPTY_NEIGHBOR = UInt32.MAX
@@ -74,17 +91,26 @@ struct HnswStorage(HnswGraphAccess):
     into the per-level ``neighbor_counts`` tape. Every append reserves exactly
     ``m0 + level * m`` edge cells once, so graph mutation never creates nested
     neighbor collections.
+
+    F32 vectors use ``vector_scalars``. BF16/F16/I8 vectors use their native
+    byte-width ``vector_bytes`` tape, and I8 dot additionally retains one F32
+    scale per slot. Compact member-to-member distance never materializes or
+    requantizes a full F32 vector.
     """
 
     var dimension: Int
     var m: Int
     var m0: Int
+    var scalar_kind: ScalarKind
+    var metric_kind: MetricKind
     var ids: List[Int]
     var levels: List[UInt16]
     var current_flags: List[Bool]
     var deleted_flags: List[Bool]
     var replaced_flags: List[Bool]
     var vector_scalars: List[Float32]
+    var vector_bytes: List[UInt8]
+    var vector_scales: List[Float32]
     var neighbor_bases: List[Int]
     var neighbor_count_bases: List[Int]
     var neighbor_counts: List[UInt32]
@@ -92,7 +118,15 @@ struct HnswStorage(HnswGraphAccess):
     var _current_slots: Dict[Int, UInt32]
     var _valid: Bool
 
-    def __init__(out self, dimension: Int, m: Int, m0: Int) raises:
+    def __init__(
+        out self,
+        dimension: Int,
+        m: Int,
+        m0: Int,
+        *,
+        scalar_kind: ScalarKind = ScalarKind.f32(),
+        metric_kind: MetricKind = MetricKind.l2(),
+    ) raises:
         if dimension <= 0:
             raise Error("HNSW storage dimension must be positive")
         if dimension > _UINT32_MAX_AS_INT:
@@ -101,16 +135,29 @@ struct HnswStorage(HnswGraphAccess):
             raise Error("HNSW neighbor capacities must be positive")
         if m > _UINT32_MAX_AS_INT or m0 > _UINT32_MAX_AS_INT:
             raise Error("HNSW neighbor capacities must fit UInt32")
+        if not scalar_kind.is_valid() or not metric_kind.is_valid():
+            raise Error("HNSW storage scalar and metric kinds must be valid")
+        if scalar_kind == ScalarKind.i8() and metric_kind == MetricKind.l2():
+            raise Error("HNSW I8 storage does not support L2")
+        if (
+            scalar_kind == ScalarKind.i8()
+            and dimension > I8_MAX_SAFE_DIMENSION
+        ):
+            raise Error("HNSW I8 dimension exceeds the Int32 accumulator bound")
 
         self.dimension = dimension
         self.m = m
         self.m0 = m0
+        self.scalar_kind = scalar_kind.copy()
+        self.metric_kind = metric_kind.copy()
         self.ids = List[Int]()
         self.levels = List[UInt16]()
         self.current_flags = List[Bool]()
         self.deleted_flags = List[Bool]()
         self.replaced_flags = List[Bool]()
         self.vector_scalars = List[Float32]()
+        self.vector_bytes = List[UInt8]()
+        self.vector_scales = List[Float32]()
         self.neighbor_bases = List[Int]()
         self.neighbor_count_bases = List[Int]()
         self.neighbor_counts = List[UInt32]()
@@ -166,12 +213,58 @@ struct HnswStorage(HnswGraphAccess):
         can participate as the link endpoint while public ID resolution still
         names no replacement until every reciprocal link has succeeded.
         """
-        if len(values) != self.dimension:
+        var expected_values = self.dimension
+        if self.scalar_kind == ScalarKind.i8():
+            expected_values += 1
+        if len(values) != expected_values:
             raise Error("HNSW vector dimension mismatch")
         if level < 0 or level > _UINT16_MAX_AS_INT:
             raise Error("HNSW level must fit UInt16")
         if Bool(self.current_slot(id)):
             raise Error("HNSW public ID already has a current slot")
+
+        var encoded = List[UInt8]()
+        var vector_scale = Float32(0.0)
+        if self.scalar_kind == ScalarKind.bf16():
+            encoded = List[UInt8](capacity=self.dimension * 2)
+            for value in values:
+                var bits = encode_bf16(value)
+                encoded.append(UInt8(bits))
+                encoded.append(UInt8(bits >> UInt16(8)))
+        elif self.scalar_kind == ScalarKind.f16():
+            encoded = List[UInt8](capacity=self.dimension * 2)
+            for value in values:
+                var bits = encode_f16(value)
+                encoded.append(UInt8(bits))
+                encoded.append(UInt8(bits >> UInt16(8)))
+        elif self.scalar_kind == ScalarKind.i8():
+            encoded = List[UInt8](capacity=self.dimension)
+            vector_scale = values[self.dimension]
+            if not isfinite(vector_scale) or vector_scale < 0.0:
+                raise Error("HNSW I8 vector scale is invalid")
+            var has_nonzero_code = False
+            for index in range(self.dimension):
+                if (
+                    not isfinite(values[index])
+                    or values[index] < -127.0
+                    or values[index] > 127.0
+                    or Float32(Int(values[index])) != values[index]
+                ):
+                    raise Error("HNSW I8 vector code is invalid")
+                if values[index] != 0.0:
+                    has_nonzero_code = True
+                encoded.append(
+                    bitcast[DType.uint8](
+                        Int8(Int(values[index]))
+                    )
+                )
+            if self.metric_kind == MetricKind.cosine():
+                if vector_scale != Float32(1.0 / 127.0):
+                    raise Error("HNSW I8 cosine scale must be fixed")
+                if not has_nonzero_code:
+                    raise Error("HNSW I8 cosine vector must be non-zero")
+            elif vector_scale == 0.0 and has_nonzero_code:
+                raise Error("a zero HNSW I8 scale requires all-zero codes")
 
         var slot = _validate_append_slot_count(UInt64(len(self.ids)))
         var neighbor_cell_count = self.m0 + level * self.m
@@ -183,8 +276,14 @@ struct HnswStorage(HnswGraphAccess):
         self.current_flags.append(True)
         self.deleted_flags.append(False)
         self.replaced_flags.append(False)
-        for index in range(self.dimension):
-            self.vector_scalars.append(values[index])
+        if self.scalar_kind == ScalarKind.f32():
+            for index in range(self.dimension):
+                self.vector_scalars.append(values[index])
+        else:
+            for byte in encoded:
+                self.vector_bytes.append(byte)
+            if self.scalar_kind == ScalarKind.i8():
+                self.vector_scales.append(vector_scale)
         self.neighbor_bases.append(neighbor_base)
         self.neighbor_count_bases.append(count_base)
         for _ in range(level + 1):
@@ -272,7 +371,25 @@ struct HnswStorage(HnswGraphAccess):
     def vector_value(self, slot: UInt32, component: Int) raises -> Float32:
         if component < 0 or component >= self.dimension:
             raise Error("HNSW vector component out of bounds")
-        return self.vector_scalars[self.vector_offset(slot) + component]
+        var scalar = self.vector_offset(slot) + component
+        if self.scalar_kind == ScalarKind.f32():
+            return self.vector_scalars[scalar]
+        if self.scalar_kind == ScalarKind.bf16():
+            var offset = scalar * 2
+            var bits = UInt16(self.vector_bytes[offset]) | (
+                UInt16(self.vector_bytes[offset + 1]) << UInt16(8)
+            )
+            return decode_bf16(bits)
+        if self.scalar_kind == ScalarKind.f16():
+            var offset = scalar * 2
+            var bits = UInt16(self.vector_bytes[offset]) | (
+                UInt16(self.vector_bytes[offset + 1]) << UInt16(8)
+            )
+            return decode_f16(bits)
+        return decode_symmetric_i8(
+            bitcast[DType.int8](self.vector_bytes[scalar]),
+            self.vector_scales[Int(slot)],
+        )
 
     def distance_to_slot(
         self,
@@ -287,9 +404,14 @@ struct HnswStorage(HnswGraphAccess):
         materializing a temporary List for every graph edge.
         """
         dispatcher.require_supported_backend()
-        if dispatcher.dimension() != self.dimension:
-            raise Error("metric dispatcher dimension does not match graph")
-        if len(query) != self.dimension:
+        if not dispatcher.matches_storage_identity(
+            self.metric_kind, self.scalar_kind, self.dimension
+        ):
+            raise Error("metric dispatcher identity does not match graph")
+        var expected_query = self.dimension
+        if self.scalar_kind == ScalarKind.i8():
+            expected_query += 1
+        if len(query) != expected_query:
             raise Error("prepared query dimension does not match graph")
         var offset = self.vector_offset(slot)
         return self._distance_query_to_offset(dispatcher, query, offset)
@@ -298,15 +420,35 @@ struct HnswStorage(HnswGraphAccess):
         self, dispatcher: MetricDispatcher, lhs: UInt32, rhs: UInt32
     ) raises -> Float32:
         dispatcher.require_supported_backend()
-        if dispatcher.dimension() != self.dimension:
-            raise Error("metric dispatcher dimension does not match graph")
+        if not dispatcher.matches_storage_identity(
+            self.metric_kind, self.scalar_kind, self.dimension
+        ):
+            raise Error("metric dispatcher identity does not match graph")
         var lhs_offset = self.vector_offset(lhs)
         var rhs_offset = self.vector_offset(rhs)
+        if self.scalar_kind == ScalarKind.i8():
+            var accumulator = Int32(0)
+            for component in range(self.dimension):
+                accumulator += Int32(
+                    bitcast[DType.int8](
+                        self.vector_bytes[lhs_offset + component]
+                    )
+                ) * Int32(
+                    bitcast[DType.int8](
+                        self.vector_bytes[rhs_offset + component]
+                    )
+                )
+            var product = scaled_i8_accumulator(
+                accumulator,
+                self.vector_scales[Int(lhs)],
+                self.vector_scales[Int(rhs)],
+            )
+            return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)
         var squared_l2 = Float32(0.0)
         for component in range(self.dimension):
-            var left = self.vector_scalars[lhs_offset + component]
-            var right = self.vector_scalars[rhs_offset + component]
+            var left = self.vector_value(lhs, component)
+            var right = self.vector_value(rhs, component)
             product += left * right
             var difference = left - right
             squared_l2 += difference * difference
@@ -412,6 +554,16 @@ struct HnswStorage(HnswGraphAccess):
             raise Error("HNSW neighbor capacities are invalid")
         if self.m > _UINT32_MAX_AS_INT or self.m0 > _UINT32_MAX_AS_INT:
             raise Error("HNSW neighbor capacities must fit UInt32")
+        if not self.scalar_kind.is_valid() or not self.metric_kind.is_valid():
+            raise Error("HNSW storage scalar and metric kinds must be valid")
+        if (
+            self.scalar_kind == ScalarKind.i8()
+            and (
+                self.metric_kind == MetricKind.l2()
+                or self.dimension > I8_MAX_SAFE_DIMENSION
+            )
+        ):
+            raise Error("HNSW I8 storage configuration is invalid")
 
         # Phase one: prove every tape length and base offset before indexing
         # neighbor_counts or neighbor_slots.
@@ -430,8 +582,60 @@ struct HnswStorage(HnswGraphAccess):
         if slots > 0 and self.dimension > Int.MAX // slots:
             raise Error("HNSW flat vector tape length overflows Int")
         var expected_vector_scalars = slots * self.dimension
-        if len(self.vector_scalars) != expected_vector_scalars:
-            raise Error("HNSW flat vector tape has an invalid length")
+        if self.scalar_kind == ScalarKind.f32():
+            if (
+                len(self.vector_scalars) != expected_vector_scalars
+                or len(self.vector_bytes) != 0
+                or len(self.vector_scales) != 0
+            ):
+                raise Error("HNSW F32 vector tape has an invalid length")
+        else:
+            var width = 1 if self.scalar_kind == ScalarKind.i8() else 2
+            if expected_vector_scalars > Int.MAX // width:
+                raise Error("HNSW compact vector tape length overflows Int")
+            if (
+                len(self.vector_scalars) != 0
+                or len(self.vector_bytes) != expected_vector_scalars * width
+            ):
+                raise Error("HNSW compact vector tape has an invalid length")
+            if self.scalar_kind == ScalarKind.i8():
+                if len(self.vector_scales) != slots:
+                    raise Error("HNSW I8 scale tape has an invalid length")
+                for slot_index in range(slots):
+                    var has_nonzero_code = False
+                    var base = slot_index * self.dimension
+                    for component in range(self.dimension):
+                        var code = bitcast[DType.int8](
+                            self.vector_bytes[base + component]
+                        )
+                        if code == Int8(-128):
+                            raise Error("HNSW I8 vector code is invalid")
+                        if code != Int8(0):
+                            has_nonzero_code = True
+                    var scale = self.vector_scales[slot_index]
+                    if not isfinite(scale) or scale < 0.0:
+                        raise Error("HNSW I8 vector scale is invalid")
+                    if self.metric_kind == MetricKind.cosine():
+                        if scale != Float32(1.0 / 127.0):
+                            raise Error("HNSW I8 cosine scale must be fixed")
+                        if not has_nonzero_code:
+                            raise Error("HNSW I8 cosine vector must be non-zero")
+                    elif scale == 0.0 and has_nonzero_code:
+                        raise Error(
+                            "a zero HNSW I8 scale requires all-zero codes"
+                        )
+            elif len(self.vector_scales) != 0:
+                raise Error("HNSW half vector tape cannot contain scales")
+            else:
+                for scalar in range(expected_vector_scalars):
+                    var offset = scalar * 2
+                    var bits = UInt16(self.vector_bytes[offset]) | (
+                        UInt16(self.vector_bytes[offset + 1]) << UInt16(8)
+                    )
+                    if self.scalar_kind == ScalarKind.bf16():
+                        _ = decode_bf16(bits)
+                    else:
+                        _ = decode_f16(bits)
 
         var expected_neighbor_base = 0
         var expected_count_base = 0
@@ -535,12 +739,28 @@ struct HnswStorage(HnswGraphAccess):
         dispatcher: MetricDispatcher,
         query: List[Float32],
         offset: Int,
-    ) -> Float32:
+    ) raises -> Float32:
+        if self.scalar_kind == ScalarKind.i8():
+            var accumulator = Int32(0)
+            for component in range(self.dimension):
+                accumulator += Int32(query[component]) * Int32(
+                    bitcast[DType.int8](
+                        self.vector_bytes[offset + component]
+                    )
+                )
+            var product = scaled_i8_accumulator(
+                accumulator,
+                query[self.dimension],
+                self.vector_scales[offset // self.dimension],
+            )
+            return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)
         var squared_l2 = Float32(0.0)
         for component in range(self.dimension):
             var left = query[component]
-            var right = self.vector_scalars[offset + component]
+            var right = self.vector_value(
+                UInt32(offset // self.dimension), component
+            )
             product += left * right
             var difference = left - right
             squared_l2 += difference * difference

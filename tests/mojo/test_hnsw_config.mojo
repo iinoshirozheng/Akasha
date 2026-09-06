@@ -300,6 +300,19 @@ def test_scalar_metric_compatibility_is_explicit() raises:
     cosine_f32.validate()
 
 
+def test_i8_dimension_is_bounded_by_int32_accumulator() raises:
+    var safe = _valid_config()
+    safe.ann_metric = MetricKind.dot()
+    safe.scalar_kind = ScalarKind.i8()
+    safe.dimension = 133_144
+    safe.validate()
+
+    var unsafe = safe.copy()
+    unsafe.dimension = 133_145
+    with assert_raises():
+        unsafe.validate()
+
+
 def test_fingerprint_is_stable_for_equal_configs() raises:
     var first = _valid_config()
     var second = _valid_config()

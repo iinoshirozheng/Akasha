@@ -11,6 +11,7 @@ comptime _FNV_OFFSET_BASIS = UInt64(14695981039346656037)
 comptime _FNV_PRIME = UInt64(1099511628211)
 comptime _UINT16_MAX_AS_INT = 65_535
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
+comptime I8_MAX_SAFE_DIMENSION = 133_144
 
 
 struct MetricKind(Copyable, Equatable, Movable, Writable):
@@ -235,6 +236,11 @@ struct CollectionConfig(Copyable, Equatable, Movable, Writable):
             and self.ann_metric == MetricKind.l2()
         ):
             raise Error("scalar_kind i8 is not compatible with ann_metric l2")
+        if (
+            self.scalar_kind == ScalarKind.i8()
+            and self.dimension > I8_MAX_SAFE_DIMENSION
+        ):
+            raise Error("i8 dimension exceeds the Int32 accumulator bound")
 
     def metric_name(self) -> String:
         return self.ann_metric.name()

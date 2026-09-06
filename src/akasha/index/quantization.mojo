@@ -1,4 +1,5 @@
 from akasha.compute.topk import BoundedTopK
+from akasha.compute.quantization import round_clamp_u8
 from akasha.index.flat import SearchResult
 from std.math import isfinite, sqrt
 
@@ -86,14 +87,11 @@ struct Sq8Codebook(Movable):
             if self._scales[column] == 0.0:
                 codes.append(UInt8(0))
                 continue
-            var quantized = Int(
-                (value - self._minimums[column]) / self._scales[column] + 0.5
+            codes.append(
+                round_clamp_u8(
+                    (value - self._minimums[column]) / self._scales[column]
+                )
             )
-            if quantized < 0:
-                quantized = 0
-            elif quantized > 255:
-                quantized = 255
-            codes.append(UInt8(quantized))
         return codes^
 
     def decode(self, codes: List[UInt8]) raises -> List[Float32]:

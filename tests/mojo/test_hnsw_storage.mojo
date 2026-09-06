@@ -1,4 +1,4 @@
-from akasha.common.config import MetricKind, ScalarKind
+from akasha.common.config import I8_MAX_SAFE_DIMENSION, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_storage import (
     _validate_append_slot_count,
@@ -196,16 +196,59 @@ def test_flat_distances_match_dispatcher_for_prepared_vectors() raises:
         )
 
 
-def test_flat_distance_rejects_unsupported_dispatcher_backend() raises:
-    var graph = HnswStorage(3, 2, 4)
-    var stored = _vector(1.0, 0.0, 0.0)
-    _ = graph.append(1, stored^, 0)
-    var query = _vector(1.0, 0.0, 0.0)
+def test_compact_storage_requires_matching_dispatcher_identity() raises:
     var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.bf16(), 3)
+    var graph = HnswStorage(
+        3,
+        2,
+        4,
+        scalar_kind=ScalarKind.bf16(),
+        metric_kind=MetricKind.cosine(),
+    )
+    var raw = _vector(1.0, 0.0, 0.0)
+    var stored = dispatcher.prepare_graph_vector(raw.copy())
+    var query = dispatcher.prepare_query(raw^)
+    _ = graph.append(1, stored^, 0)
+    assert_equal(
+        graph.distance_to_slot(dispatcher, query, UInt32(0)), Float32(0.0)
+    )
+    assert_equal(
+        graph.distance_between(dispatcher, UInt32(0), UInt32(0)), Float32(0.0)
+    )
+    var wrong_scalar = MetricDispatcher(
+        MetricKind.cosine(), ScalarKind.f32(), 3
+    )
     with assert_raises():
-        _ = graph.distance_to_slot(dispatcher, query, UInt32(0))
+        _ = graph.distance_to_slot(wrong_scalar, query.copy(), UInt32(0))
+    var wrong_metric = MetricDispatcher(
+        MetricKind.dot(), ScalarKind.bf16(), 3
+    )
     with assert_raises():
-        _ = graph.distance_between(dispatcher, UInt32(0), UInt32(0))
+        _ = graph.distance_between(wrong_metric, UInt32(0), UInt32(0))
+
+    var i8_cosine = HnswStorage(
+        3,
+        2,
+        4,
+        scalar_kind=ScalarKind.i8(),
+        metric_kind=MetricKind.cosine(),
+    )
+    with assert_raises():
+        _ = i8_cosine.append(1, [127.0, 0.0, 0.0, 0.5], 0)
+    with assert_raises():
+        _ = i8_cosine.append(
+            1, [0.0, 0.0, 0.0, Float32(1.0 / 127.0)], 0
+        )
+
+    var i8_dot = HnswStorage(
+        3,
+        2,
+        4,
+        scalar_kind=ScalarKind.i8(),
+        metric_kind=MetricKind.dot(),
+    )
+    with assert_raises():
+        _ = i8_dot.append(1, [1.0, 0.0, 0.0, 0.0], 0)
 
 
 def test_constructor_append_and_access_bounds_are_checked() raises:
@@ -217,6 +260,14 @@ def test_constructor_append_and_access_bounds_are_checked() raises:
         _ = HnswStorage(3, 0, 4)
     with assert_raises():
         _ = HnswStorage(3, 2, 0)
+    with assert_raises():
+        _ = HnswStorage(
+            I8_MAX_SAFE_DIMENSION + 1,
+            2,
+            4,
+            scalar_kind=ScalarKind.i8(),
+            metric_kind=MetricKind.dot(),
+        )
 
     var graph = HnswStorage(3, 2, 4)
     var short: List[Float32] = [1.0, 2.0]

@@ -2432,8 +2432,6 @@ def _load_or_rebuild_hnsw(
         var manifest = load_manifest(path, config.dimension)
         if Bool(manifest.hnsw_name):
             var metadata_matches = (
-                config.scalar_kind == ScalarKind.f32()
-                and
                 manifest.hnsw_config_fingerprint.value()
                 == config.fingerprint()
                 and manifest.hnsw_point_count.value()

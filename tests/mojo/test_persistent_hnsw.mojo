@@ -434,7 +434,7 @@ def test_true_v1_manifest_rebuilds_from_authoritative_segment() raises:
     reopened.close()
 
 
-def test_non_f32_checkpoint_remains_authoritative_without_v1_sidecar() raises:
+def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v3() raises:
     var path = String("/tmp/akasha-task22-non-f32-checkpoint")
     _reset(path)
     var config = CollectionConfig.defaults(1)
@@ -443,11 +443,14 @@ def test_non_f32_checkpoint_remains_authoritative_without_v1_sidecar() raises:
     collection.flush()
     collection.close()
     var manifest = load_manifest(path, 1)
-    assert_false(Bool(manifest.hnsw_name))
-    assert_equal(manifest.format_version, 2)
+    assert_true(Bool(manifest.hnsw_name))
+    assert_equal(manifest.format_version, 3)
+    var sidecar = read_file_bytes(path + "/" + manifest.hnsw_name.value())
+    assert_equal(sidecar[4], UInt8(2))
+    assert_equal(sidecar[5], UInt8(0))
 
 
-def test_nonempty_bf16_flush_reopen_keeps_exact_data_and_ann_unavailable() raises:
+def test_nonempty_bf16_flush_reopen_keeps_exact_data_and_mapped_ann() raises:
     var path = String("/tmp/akasha-task22-bf16-reopen")
     _reset(path)
     var config = CollectionConfig.defaults(1)
@@ -459,8 +462,9 @@ def test_nonempty_bf16_flush_reopen_keeps_exact_data_and_ann_unavailable() raise
     collection.close()
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
-    assert_false(reopened.hnsw_available())
-    assert_equal(reopened.hnsw_unavailable_reason(), "rebuild_failed")
+    assert_true(reopened.hnsw_available())
+    assert_true(reopened._hnsw.base_is_mapped())
+    assert_equal(reopened.hnsw_build_distance_evaluations(), 0)
     assert_equal(reopened.search_dot([1.0], 5)[0].id, 5)
     for id in range(1, 6):
         var record = reopened.get(id)

@@ -1,4 +1,11 @@
-from akasha.common.config import CollectionConfig, ScalarKind
+from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
+from akasha.compute.quantization import (
+    decode_bf16,
+    decode_f16,
+    encode_bf16,
+    encode_f16,
+    encode_symmetric_i8,
+)
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.checksum import (
@@ -10,12 +17,15 @@ from akasha.storage.checksum import (
 from akasha.storage.filesystem import read_file_bytes_bounded, write_file_sync
 from akasha.storage.mapped_file import MappedFile
 from std.collections import Dict
+from std.math import isfinite
 from std.memory import bitcast
 from std.sys.info import is_64bit
 
 
 comptime HNSW_SNAPSHOT_VERSION = UInt16(1)
+comptime HNSW_SNAPSHOT_V2_VERSION = UInt16(2)
 comptime HNSW_SNAPSHOT_HEADER_BYTES = 160
+comptime HNSW_SNAPSHOT_V2_HEADER_BYTES = 192
 comptime HNSW_SNAPSHOT_NODE_BYTES = 40
 comptime _CHECKSUM_BYTES = 4
 comptime _MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024
@@ -47,6 +57,7 @@ struct HnswSnapshotInfo(Movable):
 
     def __init__(
         out self,
+        version: UInt16,
         sequence: UInt64,
         config_fingerprint: UInt64,
         checksum: UInt32,
@@ -55,7 +66,7 @@ struct HnswSnapshotInfo(Movable):
         directed_edge_count: UInt64,
         byte_length: UInt64,
     ):
-        self.version = HNSW_SNAPSHOT_VERSION
+        self.version = version
         self.sequence = sequence
         self.config_fingerprint = config_fingerprint
         self.checksum = checksum
@@ -66,7 +77,7 @@ struct HnswSnapshotInfo(Movable):
 
 
 struct HnswSnapshotEligibility(Movable):
-    """Typed result of checking whether a graph has a v1 representation."""
+    """Typed result of checking whether a graph has a sidecar representation."""
 
     var eligible: Bool
     var graph_usable: Bool
@@ -136,8 +147,8 @@ struct _DecodedNodes(Movable):
 def encode_hnsw_snapshot(
     index: HnswIndex, sequence: UInt64
 ) raises -> List[UInt8]:
-    """Encode one deterministic, owned HNSW snapshot in sectioned v1."""
-    _require_v1_config(index.config)
+    """Encode deterministic F32 v1 or compact-vector v2 graph bytes."""
+    _require_snapshot_config(index.config)
     index.validate_structure()
     _validate_snapshot_graph_vectors(index)
 
@@ -171,12 +182,24 @@ def encode_hnsw_snapshot(
     var vector_scalars = _checked_mul_u64(
         UInt64(slots), UInt64(index.config.dimension)
     )
-    var vector_length = _checked_mul_u64(vector_scalars, UInt64(4))
+    var version = _snapshot_version(index.config.scalar_kind)
+    var header_bytes = _snapshot_header_bytes(version)
+    var vector_width = _snapshot_vector_width(index.config.scalar_kind)
+    var scale_width = _snapshot_scale_width(
+        index.config.ann_metric, index.config.scalar_kind
+    )
+    var vector_length = _checked_mul_u64(
+        vector_scalars, UInt64(vector_width)
+    )
+    var scale_length = _checked_mul_u64(
+        UInt64(slots), UInt64(scale_width)
+    )
     var count_length = _checked_mul_u64(level_cells, UInt64(4))
     var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
-    var node_offset = UInt64(HNSW_SNAPSHOT_HEADER_BYTES)
+    var node_offset = UInt64(header_bytes)
     var vector_offset = _align8(_checked_add_u64(node_offset, node_length))
-    var count_offset = _align8(_checked_add_u64(vector_offset, vector_length))
+    var scale_offset = _align8(_checked_add_u64(vector_offset, vector_length))
+    var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
     var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
     var body_length = _checked_add_u64(edge_offset, edge_length)
     var file_length = _checked_add_u64(body_length, UInt64(_CHECKSUM_BYTES))
@@ -192,9 +215,9 @@ def encode_hnsw_snapshot(
 
     var writer = BinaryWriter()
     _write_magic(writer)
-    writer.write_u16(HNSW_SNAPSHOT_VERSION)
+    writer.write_u16(version)
     writer.write_u16(UInt16(0))
-    writer.write_u32(UInt32(HNSW_SNAPSHOT_HEADER_BYTES))
+    writer.write_u32(UInt32(header_bytes))
     writer.write_u32(UInt32(0))
     writer.write_u64(index.config.fingerprint())
     writer.write_u64(sequence)
@@ -221,7 +244,16 @@ def encode_hnsw_snapshot(
     writer.write_u64(count_length)
     writer.write_u64(edge_offset)
     writer.write_u64(edge_length)
-    writer.write_u64(UInt64(0))
+    if version == HNSW_SNAPSHOT_VERSION:
+        writer.write_u64(UInt64(0))
+    else:
+        writer.write_u8(UInt8(vector_width))
+        writer.write_u8(UInt8(scale_width))
+        _write_zeros(writer, 6)
+        writer.write_u64(scale_offset)
+        writer.write_u64(scale_length)
+        writer.write_u64(UInt64(0))
+        writer.write_u64(UInt64(0))
 
     var count_base = UInt64(0)
     var edge_base = UInt64(0)
@@ -249,10 +281,26 @@ def encode_hnsw_snapshot(
     _write_zeros(writer, Int(vector_offset - (node_offset + node_length)))
     for slot_index in range(slots):
         var slot = UInt32(slot_index)
+        var scale = _graph_i8_scale(index, slot)
         for component in range(index.config.dimension):
-            writer.write_f32(index.graph.vector_value(slot, component))
+            var value = index.graph.vector_value(slot, component)
+            if index.config.scalar_kind == ScalarKind.f32():
+                writer.write_f32(value)
+            elif index.config.scalar_kind == ScalarKind.bf16():
+                writer.write_u16(encode_bf16(value))
+            elif index.config.scalar_kind == ScalarKind.f16():
+                writer.write_u16(encode_f16(value))
+            else:
+                writer.write_u8(
+                    bitcast[DType.uint8](encode_symmetric_i8(value, scale))
+                )
 
-    _write_zeros(writer, Int(count_offset - (vector_offset + vector_length)))
+    _write_zeros(writer, Int(scale_offset - (vector_offset + vector_length)))
+    if scale_width == 4:
+        for slot_index in range(slots):
+            writer.write_f32(_graph_i8_scale(index, UInt32(slot_index)))
+
+    _write_zeros(writer, Int(count_offset - (scale_offset + scale_length)))
     for slot_index in range(slots):
         var slot = UInt32(slot_index)
         for level in range(index.graph.level(slot) + 1):
@@ -278,18 +326,16 @@ def encode_hnsw_snapshot(
 
 
 def hnsw_snapshot_max_bytes() -> UInt64:
-    """Return the durable v1 codec's maximum representable byte length."""
+    """Return the durable sidecar codec's maximum representable byte length."""
     return UInt64(_MAX_SNAPSHOT_BYTES)
 
 
 def hnsw_snapshot_eligibility(
     index: HnswIndex, maximum_bytes: UInt64
 ) raises -> HnswSnapshotEligibility:
-    """Preflight v1 representation without allocating the encoded payload."""
+    """Preflight the selected sidecar version without encoding its payload."""
     if not is_64bit():
         return HnswSnapshotEligibility(False, False, 0, "unsupported_target")
-    if index.config.scalar_kind != ScalarKind.f32():
-        return HnswSnapshotEligibility(False, False, 0, "unsupported_scalar")
     try:
         index.config.validate()
         index.validate_structure()
@@ -320,17 +366,29 @@ def hnsw_snapshot_eligibility(
         var node_length = _checked_mul_u64(
             UInt64(slots), UInt64(HNSW_SNAPSHOT_NODE_BYTES)
         )
+        var version = _snapshot_version(index.config.scalar_kind)
+        var header_bytes = _snapshot_header_bytes(version)
+        var vector_width = _snapshot_vector_width(index.config.scalar_kind)
+        var scale_width = _snapshot_scale_width(
+            index.config.ann_metric, index.config.scalar_kind
+        )
         var vector_length = _checked_mul_u64(
             _checked_mul_u64(UInt64(slots), UInt64(index.config.dimension)),
-            UInt64(4),
+            UInt64(vector_width),
+        )
+        var scale_length = _checked_mul_u64(
+            UInt64(slots), UInt64(scale_width)
         )
         var count_length = _checked_mul_u64(level_cells, UInt64(4))
         var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
         var vector_offset = _align8(
-            _checked_add_u64(UInt64(HNSW_SNAPSHOT_HEADER_BYTES), node_length)
+            _checked_add_u64(UInt64(header_bytes), node_length)
+        )
+        var scale_offset = _align8(
+            _checked_add_u64(vector_offset, vector_length)
         )
         var count_offset = _align8(
-            _checked_add_u64(vector_offset, vector_length)
+            _checked_add_u64(scale_offset, scale_length)
         )
         var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
         var file_length = _checked_add_u64(
@@ -368,9 +426,9 @@ def decode_hnsw_snapshot_owned(
     config: CollectionConfig,
     sequence: UInt64,
 ) raises -> HnswIndex:
-    """Fully validate and materialize one owned HNSW snapshot."""
-    _require_v1_config(config)
-    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+    """Fully validate and materialize one owned v1 or v2 HNSW snapshot."""
+    _require_snapshot_config(config)
+    if len(bytes) < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     if len(bytes) > _MAX_SNAPSHOT_BYTES:
         raise Error("HNSW snapshot exceeds implementation size limit")
@@ -382,11 +440,17 @@ def decode_hnsw_snapshot_owned(
     var encoded_size = len(bytes)
     var reader = BinaryReader(bytes^)
     _read_magic(reader)
-    if reader.read_u16() != HNSW_SNAPSHOT_VERSION:
-        raise Error("unsupported HNSW snapshot version")
+    var version = reader.read_u16()
+    var header_bytes = _snapshot_header_bytes(version)
+    if encoded_size < header_bytes + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if version == HNSW_SNAPSHOT_VERSION:
+        _require_v1_config(config)
+    elif config.scalar_kind == ScalarKind.f32():
+        raise Error("HNSW snapshot v2 requires a compact scalar kind")
     if reader.read_u16() != UInt16(0):
         raise Error("unsupported HNSW snapshot flags")
-    if reader.read_u32() != UInt32(HNSW_SNAPSHOT_HEADER_BYTES):
+    if reader.read_u32() != UInt32(header_bytes):
         raise Error("unsupported HNSW snapshot header size")
     if reader.read_u32() != UInt32(0):
         raise Error("nonzero HNSW snapshot reserved header bytes")
@@ -422,9 +486,30 @@ def decode_hnsw_snapshot_owned(
     var count_length = reader.read_u64()
     var edge_offset = reader.read_u64()
     var edge_length = reader.read_u64()
-    if reader.read_u64() != UInt64(0):
-        raise Error("nonzero HNSW snapshot reserved extension bytes")
-    if reader.position() != HNSW_SNAPSHOT_HEADER_BYTES:
+    var vector_width = 4
+    var scale_width = 0
+    var scale_offset = count_offset
+    var scale_length = UInt64(0)
+    if version == HNSW_SNAPSHOT_VERSION:
+        if reader.read_u64() != UInt64(0):
+            raise Error("nonzero HNSW snapshot reserved extension bytes")
+    else:
+        vector_width = Int(reader.read_u8())
+        scale_width = Int(reader.read_u8())
+        for _ in range(6):
+            if reader.read_u8() != UInt8(0):
+                raise Error("nonzero HNSW snapshot reserved extension bytes")
+        scale_offset = reader.read_u64()
+        scale_length = reader.read_u64()
+        if reader.read_u64() != UInt64(0) or reader.read_u64() != UInt64(0):
+            raise Error("nonzero HNSW snapshot reserved extension bytes")
+        if vector_width != _snapshot_vector_width(config.scalar_kind):
+            raise Error("HNSW snapshot scalar width mismatch")
+        if scale_width != _snapshot_scale_width(
+            config.ann_metric, config.scalar_kind
+        ):
+            raise Error("HNSW snapshot scale width mismatch")
+    if reader.position() != header_bytes:
         raise Error("HNSW snapshot header decoder size mismatch")
 
     var slots = _bounded_count(slot_count_u64, _MAX_SLOTS, "slot")
@@ -463,6 +548,11 @@ def decode_hnsw_snapshot_owned(
         count_length,
         edge_offset,
         edge_length,
+        header_bytes,
+        vector_width,
+        scale_offset,
+        scale_length,
+        scale_width,
     )
 
     var nodes = _DecodedNodes(slots)
@@ -535,21 +625,55 @@ def decode_hnsw_snapshot_owned(
     _read_zero_padding(reader, Int(vector_offset - (node_offset + node_length)))
     var vector_scalars = List[Float32](
         capacity=_bounded_count(
-            vector_length // UInt64(4), Int.MAX, "vector scalar"
+            _checked_mul_u64(slot_count_u64, UInt64(config.dimension)),
+            Int.MAX,
+            "vector scalar",
         )
+    )
+    var vector_codes = List[Int8](
+        capacity=(slots * config.dimension if config.scalar_kind == ScalarKind.i8() else 0)
     )
     for _ in range(slots):
         var prepared = List[Float32](capacity=config.dimension)
         for _ in range(config.dimension):
-            var value = reader.read_f32()
-            prepared.append(value)
-        index.metric.validate_prepared_vector(prepared)
-        for value in prepared:
-            vector_scalars.append(value)
+            if config.scalar_kind == ScalarKind.f32():
+                prepared.append(reader.read_f32())
+            elif config.scalar_kind == ScalarKind.bf16():
+                prepared.append(decode_bf16(reader.read_u16()))
+            elif config.scalar_kind == ScalarKind.f16():
+                prepared.append(decode_f16(reader.read_u16()))
+            else:
+                vector_codes.append(bitcast[DType.int8](reader.read_u8()))
+        if config.scalar_kind != ScalarKind.i8():
+            index.metric.validate_prepared_vector(prepared)
+            for value in prepared:
+                vector_scalars.append(value)
 
     _read_zero_padding(
-        reader, Int(count_offset - (vector_offset + vector_length))
+        reader, Int(scale_offset - (vector_offset + vector_length))
     )
+    var vector_scales = List[Float32](capacity=slots)
+    if scale_width == 4:
+        for _ in range(slots):
+            var scale = reader.read_f32()
+            if not isfinite(scale) or scale < 0.0:
+                raise Error("HNSW snapshot I8 scale is invalid")
+            vector_scales.append(scale)
+    elif config.scalar_kind == ScalarKind.i8():
+        for _ in range(slots):
+            vector_scales.append(Float32(1.0 / 127.0))
+    if config.scalar_kind == ScalarKind.i8():
+        var code_index = 0
+        for slot_index in range(slots):
+            var prepared = List[Float32](capacity=config.dimension + 1)
+            for _ in range(config.dimension):
+                var code = vector_codes[code_index]
+                code_index += 1
+                prepared.append(Float32(code))
+            prepared.append(vector_scales[slot_index])
+            index.metric.validate_prepared_vector(prepared)
+
+    _read_zero_padding(reader, Int(count_offset - (scale_offset + scale_length)))
     var level_edge_counts = List[Int](capacity=level_count)
     var total_edges_from_counts = 0
     var count_index = 0
@@ -619,10 +743,19 @@ def decode_hnsw_snapshot_owned(
     var vector_index = 0
     var inactive_count = 0
     for slot_index in range(slots):
-        var vector = List[Float32](capacity=config.dimension)
-        for _ in range(config.dimension):
-            vector.append(vector_scalars[vector_index])
-            vector_index += 1
+        var vector = List[Float32](
+            capacity=config.dimension
+            + (1 if config.scalar_kind == ScalarKind.i8() else 0)
+        )
+        if config.scalar_kind == ScalarKind.i8():
+            var code_base = slot_index * config.dimension
+            for component in range(config.dimension):
+                vector.append(Float32(vector_codes[code_base + component]))
+            vector.append(vector_scales[slot_index])
+        else:
+            for _ in range(config.dimension):
+                vector.append(vector_scalars[vector_index])
+                vector_index += 1
         var slot = index.graph.append(
             nodes.ids[slot_index], vector^, nodes.levels[slot_index]
         )
@@ -674,6 +807,7 @@ def write_hnsw_snapshot(
     var checksum = _read_u32_at(bytes, len(bytes) - _CHECKSUM_BYTES)
     write_file_sync(path, bytes)
     return HnswSnapshotInfo(
+        _snapshot_version(index.config.scalar_kind),
         sequence,
         index.config.fingerprint(),
         checksum,
@@ -696,8 +830,8 @@ def read_hnsw_snapshot_owned(
 def open_hnsw_snapshot_view(
     path: String, config: CollectionConfig, sequence: UInt64
 ) raises -> HnswGraphView:
-    """Map, completely validate, and return one immutable v1 graph view."""
-    _require_v1_config(config)
+    """Map, completely validate, and return one immutable graph view."""
+    _require_snapshot_config(config)
     var mapping = MappedFile.open_readonly(path)
     return _open_hnsw_snapshot_view_from_mapping(
         mapping^, config, sequence, False
@@ -717,7 +851,7 @@ def try_open_compatible_hnsw_snapshot_view(
     has the manifest's checksum identity, checksum or layout corruption raises
     and must never be mistaken for a recoverable stale acceleration artifact.
     """
-    _require_v1_config(config)
+    _require_snapshot_config(config)
     var mapping: MappedFile
     try:
         mapping = MappedFile.open_readonly(path)
@@ -732,7 +866,7 @@ def try_open_compatible_hnsw_snapshot_view(
     var stored_checksum = _mapped_u32(mapping, checksum_offset)
     if stored_checksum != manifest_checksum:
         return HnswMappedSnapshotLoad(0, HnswGraphView())
-    if encoded_size < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+    if encoded_size < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     var checksum = UInt32(0xFFFFFFFF)
     for offset in range(checksum_offset):
@@ -756,7 +890,7 @@ def _open_hnsw_snapshot_view_from_mapping(
     checksum_already_validated: Bool,
 ) raises -> HnswGraphView:
     var encoded_size = mapping.byte_length()
-    if encoded_size < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+    if encoded_size < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     if encoded_size > _MAX_SNAPSHOT_BYTES:
         raise Error("HNSW snapshot exceeds implementation size limit")
@@ -777,11 +911,17 @@ def _open_hnsw_snapshot_view_from_mapping(
         or mapping.byte_at(3) != UInt8(0x47)
     ):
         raise Error("invalid HNSW snapshot magic")
-    if _mapped_u16(mapping, 4) != HNSW_SNAPSHOT_VERSION:
-        raise Error("unsupported HNSW snapshot version")
+    var version = _mapped_u16(mapping, 4)
+    var header_bytes = _snapshot_header_bytes(version)
+    if encoded_size < header_bytes + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if version == HNSW_SNAPSHOT_VERSION:
+        _require_v1_config(config)
+    elif config.scalar_kind == ScalarKind.f32():
+        raise Error("HNSW snapshot v2 requires a compact scalar kind")
     if _mapped_u16(mapping, 6) != UInt16(0):
         raise Error("unsupported HNSW snapshot flags")
-    if _mapped_u32(mapping, 8) != UInt32(HNSW_SNAPSHOT_HEADER_BYTES):
+    if _mapped_u32(mapping, 8) != UInt32(header_bytes):
         raise Error("unsupported HNSW snapshot header size")
     if _mapped_u32(mapping, 12) != UInt32(0):
         raise Error("nonzero HNSW snapshot reserved header bytes")
@@ -803,9 +943,6 @@ def _open_hnsw_snapshot_view_from_mapping(
         raise Error("HNSW snapshot graph configuration mismatch")
     if _mapped_u32(mapping, 44) != UInt32(0):
         raise Error("nonzero HNSW snapshot reserved config bytes")
-    if _mapped_u64(mapping, 152) != UInt64(0):
-        raise Error("nonzero HNSW snapshot reserved extension bytes")
-
     var slot_count_u64 = _mapped_u64(mapping, 48)
     var live_count_u64 = _mapped_u64(mapping, 56)
     var directed_edges_u64 = _mapped_u64(mapping, 64)
@@ -819,6 +956,32 @@ def _open_hnsw_snapshot_view_from_mapping(
     var count_length = _mapped_u64(mapping, 128)
     var edge_offset = _mapped_u64(mapping, 136)
     var edge_length = _mapped_u64(mapping, 144)
+    var vector_width = 4
+    var scale_width = 0
+    var scale_offset = count_offset
+    var scale_length = UInt64(0)
+    if version == HNSW_SNAPSHOT_VERSION:
+        if _mapped_u64(mapping, 152) != UInt64(0):
+            raise Error("nonzero HNSW snapshot reserved extension bytes")
+    else:
+        vector_width = Int(mapping.byte_at(152))
+        scale_width = Int(mapping.byte_at(153))
+        for offset in range(154, 160):
+            if mapping.byte_at(offset) != UInt8(0):
+                raise Error("nonzero HNSW snapshot reserved extension bytes")
+        scale_offset = _mapped_u64(mapping, 160)
+        scale_length = _mapped_u64(mapping, 168)
+        if (
+            _mapped_u64(mapping, 176) != UInt64(0)
+            or _mapped_u64(mapping, 184) != UInt64(0)
+        ):
+            raise Error("nonzero HNSW snapshot reserved extension bytes")
+        if vector_width != _snapshot_vector_width(config.scalar_kind):
+            raise Error("HNSW snapshot scalar width mismatch")
+        if scale_width != _snapshot_scale_width(
+            config.ann_metric, config.scalar_kind
+        ):
+            raise Error("HNSW snapshot scale width mismatch")
 
     var slots = _bounded_count(slot_count_u64, _MAX_SLOTS, "slot")
     if live_count_u64 > slot_count_u64:
@@ -853,12 +1016,20 @@ def _open_hnsw_snapshot_view_from_mapping(
         count_length,
         edge_offset,
         edge_length,
+        header_bytes,
+        vector_width,
+        scale_offset,
+        scale_length,
+        scale_width,
     )
     _validate_mapped_zero_padding(
         mapping, node_offset + node_length, vector_offset
     )
     _validate_mapped_zero_padding(
-        mapping, vector_offset + vector_length, count_offset
+        mapping, vector_offset + vector_length, scale_offset
+    )
+    _validate_mapped_zero_padding(
+        mapping, scale_offset + scale_length, count_offset
     )
     _validate_mapped_zero_padding(
         mapping, count_offset + count_length, edge_offset
@@ -884,6 +1055,9 @@ def _open_hnsw_snapshot_view_from_mapping(
         entry_level,
         Int(node_offset),
         Int(vector_offset),
+        vector_width,
+        Int(scale_offset),
+        scale_width,
         Int(count_offset),
         Int(edge_offset),
     )
@@ -912,8 +1086,8 @@ def try_read_compatible_hnsw_snapshot_owned(
         return Optional[HnswIndex]()
     if crc32_range(bytes, 0, checksum_offset) != stored_checksum:
         raise Error("HNSW snapshot checksum mismatch")
-    _require_v1_config(config)
-    if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
+    _require_snapshot_config(config)
+    if len(bytes) < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
     if not hnsw_snapshot_identity_matches(
         bytes, config, sequence, manifest_live_point_count
@@ -986,6 +1160,54 @@ def _require_v1_config(config: CollectionConfig) raises:
         raise Error("HNSW snapshot v1 requires scalar kind f32")
 
 
+def _require_snapshot_config(config: CollectionConfig) raises:
+    config.validate()
+    if not is_64bit():
+        raise Error("HNSW snapshots require a 64-bit Int target")
+
+
+def _snapshot_version(scalar: ScalarKind) raises -> UInt16:
+    if scalar == ScalarKind.f32():
+        return HNSW_SNAPSHOT_VERSION
+    if (
+        scalar == ScalarKind.bf16()
+        or scalar == ScalarKind.f16()
+        or scalar == ScalarKind.i8()
+    ):
+        return HNSW_SNAPSHOT_V2_VERSION
+    raise Error("unsupported HNSW snapshot scalar kind")
+
+
+def _snapshot_header_bytes(version: UInt16) raises -> Int:
+    if version == HNSW_SNAPSHOT_VERSION:
+        return HNSW_SNAPSHOT_HEADER_BYTES
+    if version == HNSW_SNAPSHOT_V2_VERSION:
+        return HNSW_SNAPSHOT_V2_HEADER_BYTES
+    raise Error("unsupported HNSW snapshot version")
+
+
+def _snapshot_vector_width(scalar: ScalarKind) raises -> Int:
+    if scalar == ScalarKind.f32():
+        return 4
+    if scalar == ScalarKind.bf16() or scalar == ScalarKind.f16():
+        return 2
+    if scalar == ScalarKind.i8():
+        return 1
+    raise Error("unsupported HNSW snapshot scalar kind")
+
+
+def _snapshot_scale_width(metric: MetricKind, scalar: ScalarKind) -> Int:
+    if scalar == ScalarKind.i8() and metric == MetricKind.dot():
+        return 4
+    return 0
+
+
+def _graph_i8_scale(index: HnswIndex, slot: UInt32) raises -> Float32:
+    if index.config.scalar_kind != ScalarKind.i8():
+        return Float32(0.0)
+    return index.graph.vector_scales[Int(slot)]
+
+
 def _copy_graph_vector(index: HnswIndex, slot: UInt32) raises -> List[Float32]:
     var values = List[Float32](capacity=index.config.dimension)
     for component in range(index.config.dimension):
@@ -996,7 +1218,19 @@ def _copy_graph_vector(index: HnswIndex, slot: UInt32) raises -> List[Float32]:
 def _validate_snapshot_graph_vectors(index: HnswIndex) raises:
     """Apply the codec's prepared-vector contract without encoding bytes."""
     for slot_index in range(index.graph.slot_count()):
-        var prepared = _copy_graph_vector(index, UInt32(slot_index))
+        var prepared: List[Float32]
+        if index.config.scalar_kind == ScalarKind.i8():
+            prepared = List[Float32](capacity=index.config.dimension + 1)
+            var base = slot_index * index.config.dimension
+            for component in range(index.config.dimension):
+                prepared.append(
+                    Float32(
+                        bitcast[DType.int8](index.graph.vector_bytes[base + component])
+                    )
+                )
+            prepared.append(index.graph.vector_scales[slot_index])
+        else:
+            prepared = _copy_graph_vector(index, UInt32(slot_index))
         index.metric.validate_prepared_vector(prepared)
 
 
@@ -1147,21 +1381,37 @@ def _validate_section_layout(
     count_length: UInt64,
     edge_offset: UInt64,
     edge_length: UInt64,
+    header_bytes: Int = HNSW_SNAPSHOT_HEADER_BYTES,
+    vector_width: Int = 4,
+    scale_offset: UInt64 = UInt64(0),
+    scale_length: UInt64 = UInt64(0),
+    scale_width: Int = 0,
 ) raises:
     var expected_node_length = _checked_mul_u64(
         slot_count, UInt64(HNSW_SNAPSHOT_NODE_BYTES)
     )
     var expected_vector_length = _checked_mul_u64(
-        _checked_mul_u64(slot_count, dimension), UInt64(4)
+        _checked_mul_u64(slot_count, dimension), UInt64(vector_width)
     )
+    var expected_scale_length = _checked_mul_u64(
+        slot_count, UInt64(scale_width)
+    )
+    var expected_scale_offset = _align8(
+        _checked_add_u64(vector_offset, vector_length)
+    )
+    var actual_scale_offset = scale_offset
+    if scale_offset == UInt64(0):
+        actual_scale_offset = expected_scale_offset
     var expected_edge_length = _checked_mul_u64(directed_edges, UInt64(4))
     if (
-        node_offset != UInt64(HNSW_SNAPSHOT_HEADER_BYTES)
+        node_offset != UInt64(header_bytes)
         or node_length != expected_node_length
         or vector_offset != _align8(_checked_add_u64(node_offset, node_length))
         or vector_length != expected_vector_length
+        or actual_scale_offset != expected_scale_offset
+        or scale_length != expected_scale_length
         or count_offset
-        != _align8(_checked_add_u64(vector_offset, vector_length))
+        != _align8(_checked_add_u64(actual_scale_offset, scale_length))
         or edge_offset != _align8(_checked_add_u64(count_offset, count_length))
         or edge_length != expected_edge_length
     ):

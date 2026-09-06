@@ -35,6 +35,35 @@ The construction-work gate builds the identical L2 dataset prefix at 512 and
 respectively, for a 2.843 ratio. The required limits are recall@10 >= 0.95 for
 every metric and a 2N/N construction-distance ratio < 3.5.
 
+## Compact-vector production quality gate
+
+Task 26 reuses the deterministic Task 1 uniform and eight-cluster generators
+with the smoke-sized 256 points, 16 dimensions, 12 queries, `k=10`,
+`efSearch=64`, `M=24`, `M0=48`, `efConstruction=192`, maximum level 16, and
+seed `0xA5A5D00D12345678`. The production path collects compact-HNSW candidate
+breadth and exact-reranks it against authoritative F32 MemTable vectors through
+`SegmentedHnsw` and `HnswIdOrdinalLookup`. Every supported cell below records
+F32 recall@10 1.0, compact recall@10 1.0, and loss 0.0:
+
+| Scalar | Metrics | Uniform loss | Eight-cluster loss |
+|---|---|---:|---:|
+| BF16 | Dot, squared L2, cosine | 0.0 | 0.0 |
+| F16 | Dot, squared L2, cosine | 0.0 | 0.0 |
+| I8 | Dot, cosine | 0.0 | 0.0 |
+
+I8 squared L2 remains a configuration error. A direct graph-only diagnostic,
+which intentionally omits the required authoritative rerank, exposes
+tie-sensitive worst losses of 0.141667 for BF16 cosine, 0.033333 for F16
+cosine, and 0.25 for I8 cosine on the eight-cluster fixture. Those values are
+not the public search path or the shipping gate, but remain printed by the test
+so changes to candidate quality stay visible.
+
+At dimension 16, the F32 vector section is 64 bytes/point, BF16 and F16 are 32
+bytes/point (2x smaller), and the I8 vector tape is 16 bytes/point (4x smaller).
+I8 dot also stores a four-byte F32 scale per point: its actual vector-plus-scale
+payload is 20 bytes/point, a 3.2x reduction. I8 cosine uses the fixed `1/127`
+scale and has no per-vector scale section.
+
 ## Non-smoke quality benchmark
 
 Command:

@@ -122,7 +122,13 @@ struct HnswIndex:
         self.metric = MetricDispatcher(
             owned.ann_metric, owned.scalar_kind, owned.dimension
         )
-        self.graph = HnswStorage(owned.dimension, owned.m, owned.m0)
+        self.graph = HnswStorage(
+            owned.dimension,
+            owned.m,
+            owned.m0,
+            scalar_kind=owned.scalar_kind,
+            metric_kind=owned.ann_metric,
+        )
         self.scratch = HnswSearchScratch()
         self._construction_scratch = HnswSearchScratch()
         self.entry_slot = Optional[UInt32]()
@@ -267,6 +273,8 @@ struct HnswIndex:
             self.graph.dimension != self._identity_config.dimension
             or self.graph.m != self._identity_config.m
             or self.graph.m0 != self._identity_config.m0
+            or self.graph.metric_kind != self._identity_config.ann_metric
+            or self.graph.scalar_kind != self._identity_config.scalar_kind
         ):
             raise Error("HNSW packed storage diverged from identity")
 
@@ -625,7 +633,7 @@ struct HnswIndex:
             exact_fallback,
             self.entry_slot,
             self.entry_level,
-            "packed-f32",
+            String("packed-", self._identity_config.scalar_name()),
             allowed,
             self.scratch,
         )
@@ -676,7 +684,9 @@ struct HnswIndex:
         stats.backend_name = self.metric.backend_name()
         stats.metric_name = self.metric.metric_name()
         stats.scalar_name = self.metric.scalar_name()
-        stats.storage_name = "packed-f32"
+        stats.storage_name = String(
+            "packed-", self._identity_config.scalar_name()
+        )
         return stats^
 
     def _search_base_prepared[AdmissionType: HnswResultAdmission](

@@ -1,5 +1,11 @@
-from akasha.common.config import CollectionConfig
+from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
+from akasha.compute.quantization import (
+    decode_bf16,
+    decode_f16,
+    decode_symmetric_i8,
+    scaled_i8_accumulator,
+)
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
     _audit_bidirectional_links,
@@ -47,7 +53,7 @@ def _copy_stats(stats: HnswSearchStats) -> HnswSearchStats:
 
 
 struct HnswGraphView(HnswGraphAccess, Movable):
-    """Immutable graph access over one fully validated mapped v1 sidecar.
+    """Immutable graph access over one fully validated mapped v1/v2 sidecar.
 
     Only the mapping owner and scalar offsets are retained. Every access goes
     through ``MappedFile.byte_at`` so no interior pointer can escape or outlive
@@ -69,6 +75,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     var _entry_level: Int
     var _node_offset: Int
     var _vector_offset: Int
+    var _vector_width: Int
+    var _scale_offset: Int
+    var _scale_width: Int
     var _count_offset: Int
     var _edge_offset: Int
 
@@ -92,6 +101,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._entry_level = -1
         self._node_offset = 0
         self._vector_offset = 0
+        self._vector_width = 4
+        self._scale_offset = 0
+        self._scale_width = 0
         self._count_offset = 0
         self._edge_offset = 0
 
@@ -107,6 +119,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         entry_level: Int,
         node_offset: Int,
         vector_offset: Int,
+        vector_width: Int,
+        scale_offset: Int,
+        scale_width: Int,
         count_offset: Int,
         edge_offset: Int,
     ) raises -> HnswGraphView:
@@ -125,6 +140,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         result._entry_level = entry_level
         result._node_offset = node_offset
         result._vector_offset = vector_offset
+        result._vector_width = vector_width
+        result._scale_offset = scale_offset
+        result._scale_width = scale_width
         result._count_offset = count_offset
         result._edge_offset = edge_offset
         return result^
@@ -205,8 +223,26 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             raise Error("HNSW vector component out of bounds")
         _ = self._slot_index(slot)
         var scalar = Int(slot) * self._config.dimension + component
-        return bitcast[DType.float32](
-            self._read_u32(self._vector_offset + scalar * 4)
+        if self._config.scalar_kind == ScalarKind.f32():
+            return bitcast[DType.float32](
+                self._read_u32(self._vector_offset + scalar * 4)
+            )
+        if self._config.scalar_kind == ScalarKind.bf16():
+            return decode_bf16(
+                self._read_u16(self._vector_offset + scalar * 2)
+            )
+        if self._config.scalar_kind == ScalarKind.f16():
+            return decode_f16(
+                self._read_u16(self._vector_offset + scalar * 2)
+            )
+        var scale = Float32(1.0 / 127.0)
+        if self._config.ann_metric == MetricKind.dot():
+            scale = bitcast[DType.float32](
+                self._read_u32(self._scale_offset + Int(slot) * 4)
+            )
+        return decode_symmetric_i8(
+            bitcast[DType.int8](self._mapping.byte_at(self._vector_offset + scalar)),
+            scale,
         )
 
     def distance_to_slot(
@@ -216,11 +252,42 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         slot: UInt32,
     ) raises -> Float32:
         dispatcher.require_supported_backend()
-        if dispatcher.dimension() != self._config.dimension:
-            raise Error("metric dispatcher dimension does not match graph")
-        if len(query) != self._config.dimension:
+        if not dispatcher.matches_storage_identity(
+            self._config.ann_metric,
+            self._config.scalar_kind,
+            self._config.dimension,
+        ):
+            raise Error("metric dispatcher identity does not match graph")
+        var expected_query = self._config.dimension
+        if self._config.scalar_kind == ScalarKind.i8():
+            expected_query += 1
+        if len(query) != expected_query:
             raise Error("prepared query dimension does not match graph")
         _ = self._slot_index(slot)
+        if self._config.scalar_kind == ScalarKind.i8():
+            var accumulator = Int32(0)
+            var scalar_base = Int(slot) * self._config.dimension
+            for component in range(self._config.dimension):
+                accumulator += Int32(query[component]) * Int32(
+                    bitcast[DType.int8](
+                        self._mapping.byte_at(
+                            self._vector_offset + scalar_base + component
+                        )
+                    )
+                )
+            var vector_scale = Float32(1.0 / 127.0)
+            if self._config.ann_metric == MetricKind.dot():
+                vector_scale = bitcast[DType.float32](
+                    self._read_u32(self._scale_offset + Int(slot) * 4)
+                )
+            return dispatcher._finish_prepared_f32_accumulations(
+                scaled_i8_accumulator(
+                    accumulator,
+                    query[self._config.dimension],
+                    vector_scale,
+                ),
+                0.0,
+            )
         var product = Float32(0.0)
         var squared_l2 = Float32(0.0)
         for component in range(self._config.dimension):
@@ -304,9 +371,33 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             expected_count_base += UInt64(level + 1)
             expected_edge_base += node_edges
 
-            var prepared = List[Float32](capacity=self._config.dimension)
-            for component in range(self._config.dimension):
-                prepared.append(self.vector_value(slot, component))
+            var prepared = List[Float32](
+                capacity=self._config.dimension
+                + (1 if self._config.scalar_kind == ScalarKind.i8() else 0)
+            )
+            if self._config.scalar_kind == ScalarKind.i8():
+                var scalar_base = slot_index * self._config.dimension
+                for component in range(self._config.dimension):
+                    prepared.append(
+                        Float32(
+                            bitcast[DType.int8](
+                                self._mapping.byte_at(
+                                    self._vector_offset
+                                    + scalar_base
+                                    + component
+                                )
+                            )
+                        )
+                    )
+                var vector_scale = Float32(1.0 / 127.0)
+                if self._config.ann_metric == MetricKind.dot():
+                    vector_scale = bitcast[DType.float32](
+                        self._read_u32(self._scale_offset + slot_index * 4)
+                    )
+                prepared.append(vector_scale)
+            else:
+                for component in range(self._config.dimension):
+                    prepared.append(self.vector_value(slot, component))
             self._metric.validate_prepared_vector(prepared)
 
             if flag == _CURRENT_FLAG:
@@ -398,10 +489,11 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         stats.backend_name = self._metric.backend_name()
         stats.metric_name = self._metric.metric_name()
         stats.scalar_name = self._metric.scalar_name()
-        stats.storage_name = "mapped-f32"
+        stats.storage_name = String("mapped-", self._config.scalar_name())
         if target_count == 0 or not Bool(self._entry_slot):
             stats.effective_ef = 0
             self._last_stats = stats^
+            self._last_search_query_preparations = 1
             return List[SearchResult]()
 
         var current = self._entry_slot.value()
@@ -436,6 +528,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 )
             )
         self._last_stats = stats^
+        self._last_search_query_preparations = 1
         return results^
 
     def search_allowed_with_widening(
@@ -537,7 +630,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             exact_fallback,
             self._entry_slot,
             self._entry_level,
-            "mapped-f32",
+            String("mapped-", self._config.scalar_name()),
             allowed,
             scratch,
         )

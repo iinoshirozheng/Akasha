@@ -66,7 +66,7 @@ def test_dispatcher_names_are_stable() raises:
     var compact = MetricDispatcher(MetricKind.cosine(), ScalarKind.bf16(), 3)
     assert_equal(compact.metric_name(), "cosine")
     assert_equal(compact.scalar_name(), "bf16")
-    assert_equal(compact.backend_name(), "unimplemented")
+    assert_equal(compact.backend_name(), "scalar-bf16-f32accum")
 
 
 def test_constructor_rejects_invalid_dimension_tags_and_compatibility() raises:
@@ -301,7 +301,7 @@ def test_cosine_rejects_zero_norm_at_every_checked_boundary() raises:
         _ = dispatcher.canonical(zero, unit)
 
 
-def test_compact_scalar_backends_are_representable_but_not_executable() raises:
+def test_compact_scalar_backends_prepare_and_accumulate_in_f32() raises:
     var values: List[Float32] = [1.0, 0.0]
     var bf16 = MetricDispatcher(MetricKind.cosine(), ScalarKind.bf16(), 2)
     var f16 = MetricDispatcher(MetricKind.dot(), ScalarKind.f16(), 2)
@@ -309,18 +309,27 @@ def test_compact_scalar_backends_are_representable_but_not_executable() raises:
 
     assert_equal(bf16.scalar_name(), "bf16")
     assert_almost_equal(bf16.public_score(0.25), 0.75, atol=1.0e-6)
+    var bf16_query = bf16.prepare_query(values)
+    var f16_distance = f16.canonical(values, values)
+    var i8_lhs = i8.prepare_query(values)
+    var i8_rhs = i8.prepare_graph_vector(values)
+    assert_equal(len(bf16_query), 2)
+    assert_almost_equal(f16_distance, -1.0, atol=1.0e-6)
+    assert_almost_equal(i8.canonical_prepared(i8_lhs, i8_rhs), -1.0, atol=1.0e-6)
+    bf16.require_supported_backend()
+    f16.require_supported_backend()
+    i8.require_supported_backend()
+
+
+def test_i8_prepared_contract_rejects_invalid_scale_and_zero_cosine_code() raises:
+    var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.i8(), 2)
+    var cosine = MetricDispatcher(MetricKind.cosine(), ScalarKind.i8(), 2)
     with assert_raises():
-        _ = bf16.prepare_query(values)
+        dot.validate_prepared_vector([1.0, 0.0, 0.0])
     with assert_raises():
-        _ = f16.canonical(values, values)
+        cosine.validate_prepared_vector([127.0, 0.0, 0.5])
     with assert_raises():
-        _ = i8.canonical_prepared(values, values)
-    with assert_raises():
-        bf16.require_supported_backend()
-    with assert_raises():
-        f16.require_supported_backend()
-    with assert_raises():
-        i8.require_supported_backend()
+        cosine.validate_prepared_vector([0.0, 0.0, Float32(1.0 / 127.0)])
 
 
 def main() raises:

@@ -302,8 +302,10 @@ def _select_neighbors_heuristic(
     dispatcher.require_supported_backend()
     if graph.dimension <= 0 or graph.m <= 0 or graph.m0 <= 0:
         raise Error("HNSW graph configuration is invalid")
-    if dispatcher.dimension() != graph.dimension:
-        raise Error("metric dispatcher dimension does not match HNSW graph")
+    if not dispatcher.matches_storage_identity(
+        graph.metric_kind, graph.scalar_kind, graph.dimension
+    ):
+        raise Error("metric dispatcher identity does not match HNSW graph")
 
     var has_excluded = Bool(excluded_slot)
     var excluded = UInt32(0)

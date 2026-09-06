@@ -491,7 +491,7 @@ struct SegmentedHnsw(Movable):
         stats.backend_name = self._delta.metric.backend_name()
         stats.metric_name = self._delta.metric.metric_name()
         stats.scalar_name = self._delta.metric.scalar_name()
-        stats.storage_name = "segmented-f32"
+        stats.storage_name = String("segmented-", self.config.scalar_name())
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
         self._last_candidate_merge_insertions = 0
@@ -605,7 +605,7 @@ struct SegmentedHnsw(Movable):
         stats.backend_name = self._delta.metric.backend_name()
         stats.metric_name = self._delta.metric.metric_name()
         stats.scalar_name = self._delta.metric.scalar_name()
-        stats.storage_name = "segmented-f32"
+        stats.storage_name = String("segmented-", self.config.scalar_name())
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
         self._last_candidate_merge_insertions = 0
