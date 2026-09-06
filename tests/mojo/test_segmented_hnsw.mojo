@@ -3,11 +3,17 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
+from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
+from akasha.storage.hnsw_store import (
+    encode_hnsw_snapshot,
+    open_hnsw_snapshot_view,
+)
 from akasha.storage.memtable import MemTable
 from std.collections import Dict
 from std.testing import (
     assert_equal,
     assert_false,
+    assert_raises,
     assert_true,
     TestSuite,
 )
@@ -153,6 +159,60 @@ def test_replaced_and_deleted_base_ids_are_rejected_after_traversal() raises:
     assert_equal(deleted[0].id, 3)
 
 
+def test_owned_overlay_admits_current_base_nodes_during_search() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var base = _long_chain_base(config.copy(), table)
+    var index = SegmentedHnsw.from_owned(base^)
+    for ordinal in range(4):
+        var id = 20 + ordinal
+        table.apply_upsert(id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)])
+        index.upsert(id, [100.0 + Float32(ordinal)])
+
+    var lookup = _lookup(table)
+    var results = index.search([0.0], 2, 2, table, lookup)
+
+    assert_equal(len(results), 2)
+    assert_equal(results[0].id, 24)
+    assert_equal(results[1].id, 25)
+    assert_equal(index.last_search_stats().fallback_reason, "")
+    assert_equal(index.last_rerank_linear_id_scans(), 0)
+
+
+def test_mapped_overlay_admits_current_base_nodes_during_filtered_search() raises:
+    var config = _config()
+    config.m0 = config.m
+    var table = MemTable(1)
+    var base = _long_chain_base(config.copy(), table)
+    var path = String("/tmp/akasha-task25-source-admission.bin")
+    remove_file_if_exists(path)
+    write_file_sync(path, encode_hnsw_snapshot(base, UInt64(19)))
+    var view = open_hnsw_snapshot_view(path, config, UInt64(19))
+    var index = SegmentedHnsw.from_mapped(view^)
+    for ordinal in range(4):
+        var id = 20 + ordinal
+        table.apply_upsert(id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)])
+        index.upsert(id, [100.0 + Float32(ordinal)])
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(table.slot_count())
+    for ordinal in range(table.slot_count()):
+        allowed_bitmap.set(ordinal)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    var results = index.search_allowed(
+        [0.0], 2, 2, 6, allowed, table, lookup
+    )
+
+    assert_equal(len(results), 2)
+    assert_equal(results[0].id, 24)
+    assert_equal(results[1].id, 25)
+    assert_equal(index.last_search_stats().fallback_reason, "")
+    assert_true(index.last_search_stats().reranked_candidates < 6)
+    assert_equal(index.last_rerank_linear_id_scans(), 0)
+    index.close()
+    remove_file_if_exists(path)
+
+
 def test_delta_delete_reinsert_and_candidate_deduplication() raises:
     var config = _config()
     var table = MemTable(1)
@@ -269,6 +329,7 @@ def test_filtered_saturation_uses_source_exact_fallback_and_final_stats() raises
     )
     assert_equal(index.last_search_query_preparations(), 1)
     assert_equal(index.last_search_upper_descents(), 1)
+    assert_equal(index.last_rerank_ordinal_lookups(), 2)
 
 
 def test_filtered_merge_reranks_max_k_or_ef_candidates_from_each_source() raises:
@@ -315,6 +376,56 @@ def test_filtered_stats_cap_large_initial_ef_to_tiny_source_capacity() raises:
 
     assert_equal(index.last_search_stats().requested_ef, 2)
     assert_equal(index.last_search_stats().effective_ef, 2)
+
+
+def test_unfiltered_stats_cap_large_ef_to_tiny_source_capacity() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var index = SegmentedHnsw(config)
+    for id in range(1, 3):
+        var values: List[Float32] = [Float32(id)]
+        table.apply_upsert(id, UInt64(id), values.copy())
+        index.upsert(id, values^)
+    var lookup = _lookup(table)
+
+    _ = index.search([1.0], 1, 64, table, lookup)
+
+    assert_equal(index.last_search_stats().requested_ef, 2)
+    assert_equal(index.last_search_stats().effective_ef, 2)
+
+
+def test_lookup_growth_invalidates_preexisting_eligibility_domain() raises:
+    var table = MemTable(1)
+    table.apply_upsert(1, UInt64(1), [1.0])
+    table.apply_upsert(2, UInt64(2), [2.0])
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(2)
+    allowed_bitmap.set(0)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    lookup.append(3, 2)
+
+    with assert_raises():
+        allowed.validate(3)
+
+
+def test_global_exact_completion_rejects_live_id_without_graph_source() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var index = SegmentedHnsw(config)
+    for id in range(1, 3):
+        table.apply_upsert(id, UInt64(id), [Float32(id)])
+        index.upsert(id, [Float32(id)])
+    table.apply_upsert(3, UInt64(3), [3.0])
+    var lookup = _lookup(table)
+    var allowed_bitmap = Bitmap(3)
+    allowed_bitmap.set(0)
+    allowed_bitmap.set(1)
+    allowed_bitmap.set(2)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
+
+    with assert_raises():
+        _ = index.search_allowed([1.0], 3, 2, 4, allowed, table, lookup)
 
 
 def test_filtered_source_exhaustion_does_not_pollute_complete_merge() raises:

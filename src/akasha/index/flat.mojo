@@ -31,9 +31,10 @@ struct _VectorRecord(Movable):
         self.values = values^
 
 
-def _score(
+def authoritative_f32_score(
     metric: Int, query: List[Float32], candidate: List[Float32]
 ) raises -> Float32:
+    """Use the exact-search F32 arithmetic for authoritative public scores."""
     if metric == _DOT_METRIC:
         return simd_dot_product(query, candidate)
     if metric == _L2_METRIC:
@@ -98,7 +99,9 @@ struct FlatIndex:
         for record_index in range(len(self._records)):
             topk.offer(
                 self._records[record_index].id,
-                _score(metric, query, self._records[record_index].values),
+                authoritative_f32_score(
+                    metric, query, self._records[record_index].values
+                ),
             )
 
         var entries = topk.sorted_entries()

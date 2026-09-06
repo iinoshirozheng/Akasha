@@ -1,19 +1,146 @@
 from akasha.common.config import CollectionConfig
-from akasha.compute.metric import MetricDispatcher
 from akasha.compute.topk import BoundedTopK
-from akasha.index.flat import SearchResult
+from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
-from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.hnsw_core import (
+    HnswEligibility,
+    HnswIdOrdinalLookup,
+    HnswResultAdmission,
+)
 from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.memtable import MemTable
 from std.collections import Dict
+from std.memory import ArcPointer
 
 
 comptime _NO_BASE = 0
 comptime _OWNED_BASE = 1
 comptime _MAPPED_BASE = 2
 comptime _DELTA_SOURCE = -1
+
+
+struct _CurrentSourceState:
+    var sources: Dict[Int, Int]
+    var base_count: Int
+    var delta_count: Int
+
+    def __init__(out self):
+        self.sources = Dict[Int, Int]()
+        self.base_count = 0
+        self.delta_count = 0
+
+
+struct _CurrentSourceLookup(Copyable, Movable):
+    """The one Arc-shared authoritative ID-to-segment source map."""
+
+    var _state: ArcPointer[_CurrentSourceState]
+
+    def __init__(out self):
+        self._state = ArcPointer(_CurrentSourceState())
+
+    def entry_count(self) -> Int:
+        return len(self._state[].sources)
+
+    def base_count(self) -> Int:
+        return self._state[].base_count
+
+    def delta_count(self) -> Int:
+        return self._state[].delta_count
+
+    def contains(self, id: Int) -> Bool:
+        return id in self._state[].sources
+
+    def source_for(self, id: Int) raises -> Int:
+        if id in self._state[].sources:
+            return self._state[].sources[id]
+        return 0
+
+    def set_base(mut self, id: Int, source: Int) raises:
+        if source <= 0:
+            raise Error("HNSW base source must encode a graph slot")
+        self._replace(id, source)
+
+    def set_delta(mut self, id: Int) raises:
+        self._replace(id, _DELTA_SOURCE)
+
+    def remove(mut self, id: Int) raises -> Bool:
+        if id not in self._state[].sources:
+            return False
+        var source = self._state[].sources[id]
+        self._decrement(source)
+        _ = self._state[].sources.pop(id)
+        return True
+
+    def _replace(mut self, id: Int, source: Int) raises:
+        if id in self._state[].sources:
+            self._decrement(self._state[].sources[id])
+        self._state[].sources[id] = source
+        if source == _DELTA_SOURCE:
+            self._state[].delta_count += 1
+        else:
+            self._state[].base_count += 1
+
+    def _decrement(mut self, source: Int) raises:
+        if source == _DELTA_SOURCE:
+            if self._state[].delta_count <= 0:
+                raise Error("HNSW delta source count underflow")
+            self._state[].delta_count -= 1
+        else:
+            if self._state[].base_count <= 0:
+                raise Error("HNSW base source count underflow")
+            self._state[].base_count -= 1
+
+
+struct _SourceAdmission(HnswResultAdmission, Copyable, Movable):
+    var _sources: _CurrentSourceLookup
+    var _delta: Bool
+
+    def __init__(
+        out self, sources: _CurrentSourceLookup, delta: Bool
+    ):
+        self._sources = sources.copy()
+        self._delta = delta
+
+    def is_allow_all(self) -> Bool:
+        return False
+
+    def validate(self, slot_count: Int) raises:
+        if slot_count < 0:
+            raise Error("HNSW admission slot count cannot be negative")
+
+    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
+        var source = self._sources.source_for(id)
+        if self._delta:
+            return source == _DELTA_SOURCE
+        return source == Int(slot) + 1
+
+
+struct _FilteredSourceAdmission(HnswResultAdmission, Copyable, Movable):
+    var _source: _SourceAdmission
+    var _eligibility: HnswEligibility
+
+    def __init__(
+        out self,
+        sources: _CurrentSourceLookup,
+        delta: Bool,
+        eligibility: HnswEligibility,
+    ):
+        self._source = _SourceAdmission(sources, delta)
+        self._eligibility = eligibility.copy()
+
+    def is_allow_all(self) -> Bool:
+        return False
+
+    def validate(self, slot_count: Int) raises:
+        self._source.validate(slot_count)
+        self._eligibility.validate(slot_count)
+
+    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
+        return (
+            self._source._allows_item(slot, id)
+            and self._eligibility._allows_item(slot, id)
+        )
 
 
 def _accumulate_search_stats(
@@ -36,12 +163,11 @@ struct SegmentedHnsw(Movable):
     """
 
     var config: CollectionConfig
-    var _metric: MetricDispatcher
     var _base_kind: Int
     var _owned_base: HnswIndex
     var _mapped_base: HnswGraphView
     var _delta: HnswIndex
-    var _sources: Dict[Int, Int]
+    var _sources: _CurrentSourceLookup
     var _base_stale_count: Int
     var _delta_mutations: Int
     var _last_stats: HnswSearchStats
@@ -54,14 +180,11 @@ struct SegmentedHnsw(Movable):
     def __init__(out self, config: CollectionConfig) raises:
         config.validate()
         self.config = config.copy()
-        self._metric = MetricDispatcher(
-            config.ann_metric, config.scalar_kind, config.dimension
-        )
         self._base_kind = _NO_BASE
         self._owned_base = HnswIndex(config)
         self._mapped_base = HnswGraphView()
         self._delta = HnswIndex(config)
-        self._sources = Dict[Int, Int]()
+        self._sources = _CurrentSourceLookup()
         self._base_stale_count = 0
         self._delta_mutations = 0
         self._last_stats = HnswSearchStats()
@@ -123,10 +246,10 @@ struct SegmentedHnsw(Movable):
         return self._delta.point_count()
 
     def current_point_count(self) -> Int:
-        return len(self._sources)
+        return self._sources.entry_count()
 
     def contains_current(self, id: Int) -> Bool:
-        return id in self._sources
+        return self._sources.contains(id)
 
     def inactive_count(self) -> Int:
         var base_inactive = 0
@@ -231,10 +354,12 @@ struct SegmentedHnsw(Movable):
         self._validate_identity()
         self._delta.validate_structure()
         var observed_base_sources = 0
-        for entry in self._sources.items():
+        var observed_delta_sources = 0
+        for entry in self._sources._state[].sources.items():
             if entry.value == _DELTA_SOURCE:
                 if not Bool(self._delta.graph.current_slot(entry.key)):
                     raise Error("segmented HNSW delta source is not current")
+                observed_delta_sources += 1
             elif not self._base_source_matches(entry.key, entry.value):
                 raise Error("segmented HNSW base source is inconsistent")
             else:
@@ -244,12 +369,19 @@ struct SegmentedHnsw(Movable):
             != self._base_stale_count
         ):
             raise Error("segmented HNSW stale base count is inconsistent")
+        if (
+            observed_base_sources != self._sources.base_count()
+            or observed_delta_sources != self._sources.delta_count()
+            or observed_base_sources + observed_delta_sources
+            != self._sources.entry_count()
+        ):
+            raise Error("segmented HNSW cached source counts are inconsistent")
         for slot_index in range(self._delta.graph.slot_count()):
             var slot = UInt32(slot_index)
             if not self._delta.graph.is_current(slot):
                 continue
             var id = self._delta.graph.id_at(slot)
-            if id not in self._sources or self._sources[id] != _DELTA_SOURCE:
+            if self._sources.source_for(id) != _DELTA_SOURCE:
                 raise Error("segmented HNSW current delta slot has no source")
 
     def promote_delta_base(mut self) raises:
@@ -263,7 +395,7 @@ struct SegmentedHnsw(Movable):
         self._owned_base = self._delta^
         self._delta = replacement^
         self._base_kind = _OWNED_BASE
-        self._sources = Dict[Int, Int]()
+        self._sources = _CurrentSourceLookup()
         self._index_owned_base_sources()
         self._base_stale_count = 0
         self._delta_mutations = 0
@@ -277,7 +409,7 @@ struct SegmentedHnsw(Movable):
         self._owned_base = base^
         self._delta = HnswIndex(self.config)
         self._base_kind = _OWNED_BASE
-        self._sources = Dict[Int, Int]()
+        self._sources = _CurrentSourceLookup()
         self._index_owned_base_sources()
         self._base_stale_count = 0
         self._delta_mutations = 0
@@ -285,25 +417,25 @@ struct SegmentedHnsw(Movable):
     def upsert(mut self, id: Int, values: List[Float32]) raises:
         self._validate_identity()
         var replaced_base = (
-            id in self._sources and self._sources[id] > 0
+            self._sources.source_for(id) > 0
         )
         self._delta.upsert(id, values)
         if replaced_base:
             self._base_stale_count += 1
-        self._sources[id] = _DELTA_SOURCE
+        self._sources.set_delta(id)
         self._record_mutation()
 
     def delete(mut self, id: Int) raises -> Bool:
         self._validate_identity()
-        if id not in self._sources:
+        if not self._sources.contains(id):
             return False
-        var source = self._sources[id]
+        var source = self._sources.source_for(id)
         if source == _DELTA_SOURCE:
             if not self._delta.delete(id):
                 return False
         else:
             self._base_stale_count += 1
-        _ = self._sources.pop(id)
+        _ = self._sources.remove(id)
         self._record_mutation()
         return True
 
@@ -354,11 +486,11 @@ struct SegmentedHnsw(Movable):
             per_source = self.config.max_ef_search
 
         var stats = HnswSearchStats()
-        stats.requested_ef = ef_search
-        stats.effective_ef = per_source
-        stats.backend_name = self._metric.backend_name()
-        stats.metric_name = self._metric.metric_name()
-        stats.scalar_name = self._metric.scalar_name()
+        stats.requested_ef = 0
+        stats.effective_ef = 0
+        stats.backend_name = self._delta.metric.backend_name()
+        stats.metric_name = self._delta.metric.metric_name()
+        stats.scalar_name = self._delta.metric.scalar_name()
         stats.storage_name = "segmented-f32"
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
@@ -366,30 +498,39 @@ struct SegmentedHnsw(Movable):
         self._last_search_query_preparations = 0
         self._last_search_upper_descents = 0
 
-        var base_live = self._base_live_count()
-        var delta_live = (
-            self._delta.point_count() - self._delta.inactive_count()
-        )
+        var base_live = self._sources.base_count()
+        var delta_live = self._sources.delta_count()
         var single_source = base_live == 0 or delta_live == 0
         if base_live > 0:
-            var wanted = per_source
-            if wanted > base_live:
-                wanted = base_live
+            var base_admission = _SourceAdmission(self._sources, False)
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
-                base_results = self._mapped_base.search(
-                    query, wanted, ef_search=per_source
+                base_results = self._mapped_base._search_admitted_candidates_with_widening(
+                    query,
+                    per_source,
+                    ef_search,
+                    self.config.max_ef_search,
+                    base_live,
+                    base_admission,
                 )
-                _accumulate_search_stats(
-                    stats, self._mapped_base.last_search_stats()
+                var source_stats = self._mapped_base.last_search_stats()
+                self._accumulate_source_stats(stats, source_stats)
+                self._last_search_query_preparations += (
+                    self._mapped_base.last_search_query_preparations()
                 )
-                self._last_search_query_preparations += 1
-                self._last_search_upper_descents += self._mapped_base.entry_level()
+                self._last_search_upper_descents += (
+                    self._mapped_base.last_search_upper_descents()
+                )
             else:
-                base_results = self._owned_base.search(
-                    query, wanted, ef_search=per_source
+                base_results = self._owned_base._search_admitted_candidates_with_widening(
+                    query,
+                    per_source,
+                    ef_search,
+                    self.config.max_ef_search,
+                    base_live,
+                    base_admission,
                 )
-                _accumulate_search_stats(
+                self._accumulate_source_stats(
                     stats, self._owned_base.last_search_stats
                 )
                 self._last_search_query_preparations += (
@@ -399,9 +540,6 @@ struct SegmentedHnsw(Movable):
                     self._owned_base.last_search_upper_descents()
                 )
             for candidate in base_results:
-                if not self._is_current_base_id(candidate.id):
-                    stats.inactive_rejections += 1
-                    continue
                 stats.base_candidates += 1
                 if single_source:
                     merged.append(candidate.id)
@@ -411,13 +549,18 @@ struct SegmentedHnsw(Movable):
                     self._last_candidate_merge_insertions += 1
 
         if delta_live > 0:
-            var wanted = per_source
-            if wanted > delta_live:
-                wanted = delta_live
-            var delta_results = self._delta.search(
-                query, wanted, ef_search=per_source
+            var delta_admission = _SourceAdmission(self._sources, True)
+            var delta_results = self._delta._search_admitted_candidates_with_widening(
+                query,
+                per_source,
+                ef_search,
+                self.config.max_ef_search,
+                delta_live,
+                delta_admission,
             )
-            _accumulate_search_stats(stats, self._delta.last_search_stats)
+            self._accumulate_source_stats(
+                stats, self._delta.last_search_stats
+            )
             self._last_search_query_preparations += (
                 self._delta.last_search_query_preparations()
             )
@@ -425,12 +568,6 @@ struct SegmentedHnsw(Movable):
                 self._delta.last_search_upper_descents()
             )
             for candidate in delta_results:
-                if (
-                    candidate.id not in self._sources
-                    or self._sources[candidate.id] != _DELTA_SOURCE
-                ):
-                    stats.inactive_rejections += 1
-                    continue
                 stats.delta_candidates += 1
                 if single_source:
                     merged.append(candidate.id)
@@ -465,9 +602,9 @@ struct SegmentedHnsw(Movable):
         # source; a tiny source may cap an arbitrarily large requested ef.
         stats.requested_ef = 0
         stats.effective_ef = 0
-        stats.backend_name = self._metric.backend_name()
-        stats.metric_name = self._metric.metric_name()
-        stats.scalar_name = self._metric.scalar_name()
+        stats.backend_name = self._delta.metric.backend_name()
+        stats.metric_name = self._delta.metric.metric_name()
+        stats.scalar_name = self._delta.metric.scalar_name()
         stats.storage_name = "segmented-f32"
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
@@ -475,21 +612,27 @@ struct SegmentedHnsw(Movable):
         self._last_search_query_preparations = 0
         self._last_search_upper_descents = 0
 
-        var base_live = self._base_live_count()
-        var delta_live = (
-            self._delta.point_count() - self._delta.inactive_count()
-        )
+        var base_live = self._sources.base_count()
+        var delta_live = self._sources.delta_count()
         var single_source = base_live == 0 or delta_live == 0
         if base_live > 0:
+            var base_admission = _FilteredSourceAdmission(
+                self._sources, False, allowed
+            )
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
                 base_results = (
-                    self._mapped_base.search_allowed_candidates_with_widening(
-                    query, k, initial_ef, max_ef, allowed
+                    self._mapped_base._search_admitted_candidates_with_widening(
+                        query,
+                        k,
+                        initial_ef,
+                        max_ef,
+                        base_live,
+                        base_admission,
                     )
                 )
                 var source_stats = self._mapped_base.last_search_stats()
-                self._accumulate_filtered_source_stats(stats, source_stats)
+                self._accumulate_source_stats(stats, source_stats)
                 self._last_search_query_preparations += (
                     self._mapped_base.last_search_query_preparations()
                 )
@@ -498,11 +641,16 @@ struct SegmentedHnsw(Movable):
                 )
             else:
                 base_results = (
-                    self._owned_base.search_allowed_candidates_with_widening(
-                    query, k, initial_ef, max_ef, allowed
+                    self._owned_base._search_admitted_candidates_with_widening(
+                        query,
+                        k,
+                        initial_ef,
+                        max_ef,
+                        base_live,
+                        base_admission,
                     )
                 )
-                self._accumulate_filtered_source_stats(
+                self._accumulate_source_stats(
                     stats, self._owned_base.last_search_stats
                 )
                 self._last_search_query_preparations += (
@@ -512,9 +660,6 @@ struct SegmentedHnsw(Movable):
                     self._owned_base.last_search_upper_descents()
                 )
             for candidate in base_results:
-                if not self._is_current_base_id(candidate.id):
-                    stats.inactive_rejections += 1
-                    continue
                 stats.base_candidates += 1
                 if single_source:
                     merged.append(candidate.id)
@@ -524,12 +669,20 @@ struct SegmentedHnsw(Movable):
                     self._last_candidate_merge_insertions += 1
 
         if delta_live > 0:
+            var delta_admission = _FilteredSourceAdmission(
+                self._sources, True, allowed
+            )
             var delta_results = (
-                self._delta.search_allowed_candidates_with_widening(
-                    query, k, initial_ef, max_ef, allowed
+                self._delta._search_admitted_candidates_with_widening(
+                    query,
+                    k,
+                    initial_ef,
+                    max_ef,
+                    delta_live,
+                    delta_admission,
                 )
             )
-            self._accumulate_filtered_source_stats(
+            self._accumulate_source_stats(
                 stats, self._delta.last_search_stats
             )
             self._last_search_query_preparations += (
@@ -539,12 +692,6 @@ struct SegmentedHnsw(Movable):
                 self._delta.last_search_upper_descents()
             )
             for candidate in delta_results:
-                if (
-                    candidate.id not in self._sources
-                    or self._sources[candidate.id] != _DELTA_SOURCE
-                ):
-                    stats.inactive_rejections += 1
-                    continue
                 stats.delta_candidates += 1
                 if single_source:
                     merged.append(candidate.id)
@@ -571,11 +718,49 @@ struct SegmentedHnsw(Movable):
         lookup: HnswIdOrdinalLookup,
     ) raises -> List[SearchResult]:
         var target = k
-        if target > len(self._sources):
-            target = len(self._sources)
+        if target > self._sources.entry_count():
+            target = self._sources.entry_count()
+        if len(candidates) < target:
+            self.validate_structure()
+            self._last_stats.fallback_reason = "segmented_ann_exhausted"
+            return self._exact_search(query, target, memtable, lookup)
         return self._rerank_candidates(
             query, target, candidates^, memtable, lookup
         )
+
+    def _exact_search(
+        mut self,
+        query: List[Float32],
+        target: Int,
+        memtable: MemTable,
+        lookup: HnswIdOrdinalLookup,
+    ) raises -> List[SearchResult]:
+        """Complete only a globally exhausted segmented unfiltered query."""
+        self._reset_rerank_counters(memtable, lookup)
+        var topk = BoundedTopK(
+            target,
+            smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
+        )
+        var scored = 0
+        for ordinal in range(memtable.slot_count()):
+            if not memtable.is_live_at(ordinal):
+                continue
+            var id = memtable.id_at(ordinal)
+            if not self._sources.contains(id):
+                raise Error("live MemTable ID has no current HNSW source")
+            if lookup.ordinal_for(id) != ordinal:
+                raise Error("HNSW ID lookup does not match MemTable ordinal")
+            self._last_rerank_ordinal_lookups += 1
+            ref entry = memtable.entry_ref_at(ordinal)
+            topk.offer(
+                id,
+                authoritative_f32_score(
+                    Int(self.config.ann_metric.tag()), query, entry.values
+                ),
+            )
+            scored += 1
+        self._last_stats.reranked_candidates = scored
+        return self._finish_topk(topk^)
 
     def _rerank_allowed(
         mut self,
@@ -612,18 +797,29 @@ struct SegmentedHnsw(Movable):
             self._last_stats.reranked_candidates = 0
             self._last_stats.retained_candidates = 0
             return List[SearchResult]()
-        var topk = BoundedTopK(target, smaller_is_better=True)
+        var topk = BoundedTopK(
+            target,
+            smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
+        )
         var scored = 0
         for ordinal in range(memtable.slot_count()):
             if not memtable.is_live_at(ordinal):
                 continue
             var id = memtable.id_at(ordinal)
+            if not self._sources.contains(id):
+                raise Error("live MemTable ID has no current HNSW source")
             if not allowed.allows(id):
                 continue
             if lookup.ordinal_for(id) != ordinal:
                 raise Error("HNSW ID lookup does not match MemTable ordinal")
+            self._last_rerank_ordinal_lookups += 1
             ref entry = memtable.entry_ref_at(ordinal)
-            topk.offer(id, self._metric.canonical(query, entry.values))
+            topk.offer(
+                id,
+                authoritative_f32_score(
+                    Int(self.config.ann_metric.tag()), query, entry.values
+                ),
+            )
             scored += 1
         self._last_stats.reranked_candidates = scored
         return self._finish_topk(topk^)
@@ -641,14 +837,22 @@ struct SegmentedHnsw(Movable):
             self._last_stats.reranked_candidates = 0
             self._last_stats.retained_candidates = 0
             return List[SearchResult]()
-        var topk = BoundedTopK(target, smaller_is_better=True)
+        var topk = BoundedTopK(
+            target,
+            smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
+        )
         var scored = 0
         for id in candidates:
             var ordinal = lookup.ordinal_for(id)
             self._last_rerank_ordinal_lookups += 1
             self._validate_authoritative_ordinal(id, ordinal, memtable)
             ref entry = memtable.entry_ref_at(ordinal)
-            topk.offer(id, self._metric.canonical(query, entry.values))
+            topk.offer(
+                id,
+                authoritative_f32_score(
+                    Int(self.config.ann_metric.tag()), query, entry.values
+                ),
+            )
             scored += 1
         self._last_stats.reranked_candidates = scored
         if scored < target:
@@ -670,7 +874,10 @@ struct SegmentedHnsw(Movable):
             self._last_stats.reranked_candidates = 0
             self._last_stats.retained_candidates = 0
             return List[SearchResult]()
-        var topk = BoundedTopK(target, smaller_is_better=True)
+        var topk = BoundedTopK(
+            target,
+            smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
+        )
         var scored = 0
         for id in candidates:
             var ordinal = lookup.ordinal_for(id)
@@ -679,7 +886,12 @@ struct SegmentedHnsw(Movable):
             if not allowed.allows(id):
                 raise Error("segmented HNSW candidate is not filter eligible")
             ref entry = memtable.entry_ref_at(ordinal)
-            topk.offer(id, self._metric.canonical(query, entry.values))
+            topk.offer(
+                id,
+                authoritative_f32_score(
+                    Int(self.config.ann_metric.tag()), query, entry.values
+                ),
+            )
             scored += 1
         self._last_stats.reranked_candidates = scored
         if scored < target:
@@ -693,9 +905,7 @@ struct SegmentedHnsw(Movable):
         var retained = topk.sorted_entries()
         var result = List[SearchResult](capacity=len(retained))
         for entry in retained:
-            result.append(
-                SearchResult(entry.id, self._metric.public_score(entry.score))
-            )
+            result.append(SearchResult(entry.id, entry.score))
         self._last_stats.retained_candidates = len(result)
         return result^
 
@@ -715,11 +925,11 @@ struct SegmentedHnsw(Movable):
             or ordinal >= memtable.slot_count()
             or not memtable.is_live_at(ordinal)
             or memtable.id_at(ordinal) != id
-            or id not in self._sources
+            or not self._sources.contains(id)
         ):
             raise Error("segmented HNSW candidate is not authoritative")
 
-    def _accumulate_filtered_source_stats(
+    def _accumulate_source_stats(
         self, mut target: HnswSearchStats, source: HnswSearchStats
     ):
         _accumulate_search_stats(target, source)
@@ -738,11 +948,6 @@ struct SegmentedHnsw(Movable):
                 - self._owned_base.inactive_count()
             )
         return 0
-
-    def _is_current_base_id(self, id: Int) raises -> Bool:
-        if id not in self._sources:
-            return False
-        return self._base_source_matches(id, self._sources[id])
 
     def _base_source_matches(self, id: Int, source: Int) raises -> Bool:
         if source <= 0:
@@ -770,7 +975,7 @@ struct SegmentedHnsw(Movable):
                 continue
             var id = self._owned_base.graph.id_at(slot)
             var source = slot_index + 1
-            self._sources[id] = source
+            self._sources.set_base(id, source)
 
     def _index_mapped_base_sources(mut self) raises:
         for slot_index in range(self._mapped_base.slot_count()):
@@ -779,7 +984,7 @@ struct SegmentedHnsw(Movable):
                 continue
             var id = self._mapped_base.id_at(slot)
             var source = slot_index + 1
-            self._sources[id] = source
+            self._sources.set_base(id, source)
 
     def _record_mutation(mut self):
         if self._delta_mutations < self.config.delta_max_points:

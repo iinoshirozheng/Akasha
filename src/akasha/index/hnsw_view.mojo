@@ -4,6 +4,7 @@ from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
     _audit_bidirectional_links,
     HnswEligibility,
+    HnswResultAdmission,
     HnswSearchAdmission,
     greedy_descent,
     search_layer,
@@ -473,6 +474,52 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
+        return self._search_admitted_with_actual_widening(
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            allowed.eligible_count(),
+            allowed,
+            return_search_breadth,
+            exact_fallback,
+        )
+
+    def _search_admitted_candidates_with_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
+        return self._search_admitted_with_actual_widening(
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            admitted_count,
+            admission,
+            True,
+            False,
+        )
+
+    def _search_admitted_with_actual_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        eligible_count: Int,
+        allowed: AdmissionType,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
+    ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
@@ -485,7 +532,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             k,
             initial_ef,
             max_ef,
-            allowed.eligible_count(),
+            eligible_count,
             return_search_breadth,
             exact_fallback,
             self._entry_slot,

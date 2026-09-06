@@ -1,8 +1,3 @@
-from akasha.compute.simd import (
-    simd_cosine_similarity,
-    simd_dot_product,
-    simd_l2_squared_distance,
-)
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import DeviceBatchResult
 from akasha.compute.gpu.planner import GpuExecutionOptions
@@ -17,7 +12,7 @@ from akasha.document.record import (
     validate_fields,
 )
 from akasha.index.bitmap import Bitmap
-from akasha.index.flat import SearchResult
+from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
@@ -662,6 +657,13 @@ struct PersistentCollection:
             self._ensure_open()
             return self._hnsw_id_lookup_builds
 
+    def hnsw_id_lookup_incremental_append_count(self) raises -> Int:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            if not Bool(self._hnsw_id_lookup):
+                return 0
+            return self._hnsw_id_lookup.value().incremental_append_count()
+
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -697,8 +699,7 @@ struct PersistentCollection:
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
-        if self._metadata.slot_count() != metadata_slots:
-            self._hnsw_id_lookup_dirty = True
+        self._extend_hnsw_id_lookup(metadata_slots)
         self._update_hnsw_after_upsert(id)
         self._invalidate_cache_hits()
 
@@ -731,8 +732,7 @@ struct PersistentCollection:
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
-        if self._metadata.slot_count() != metadata_slots:
-            self._hnsw_id_lookup_dirty = True
+        self._extend_hnsw_id_lookup(metadata_slots)
         self._update_hnsw_after_upsert(id)
         self._invalidate_cache_hits()
 
@@ -809,8 +809,7 @@ struct PersistentCollection:
         var metadata_slots = self._metadata.slot_count()
         self._memtable = staged_memtable^
         self._metadata = staged_metadata^
-        if self._metadata.slot_count() != metadata_slots:
-            self._hnsw_id_lookup_dirty = True
+        self._extend_hnsw_id_lookup(metadata_slots)
         for index in range(len(mutations)):
             if mutations[index].is_delete:
                 self._sparse.delete(mutations[index].id)
@@ -888,8 +887,7 @@ struct PersistentCollection:
         self._metadata.delete(id)
         self._sparse.delete(id)
         self._last_sequence = sequence
-        if self._metadata.slot_count() != metadata_slots:
-            self._hnsw_id_lookup_dirty = True
+        self._extend_hnsw_id_lookup(metadata_slots)
         self._update_hnsw_after_delete(id, was_live)
         self._invalidate_cache_hits()
 
@@ -1842,13 +1840,9 @@ struct PersistentCollection:
         )
         var entries = candidate_entries(self._memtable, candidates)
         for index in range(len(entries)):
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entries[index].values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entries[index].values)
-            else:
-                score = simd_cosine_similarity(query, entries[index].values)
+            var score = authoritative_f32_score(
+                metric, query, entries[index].values
+            )
             topk.offer(entries[index].id, score)
 
         var retained = topk.sorted_entries()
@@ -1990,6 +1984,26 @@ struct PersistentCollection:
         except:
             self._mark_hnsw_unavailable("eligibility_failed")
             return False
+
+    def _extend_hnsw_id_lookup(mut self, previous_slots: Int):
+        """Extend an already-built shared lookup for newly allocated slots."""
+        var current_slots = self._metadata.slot_count()
+        if current_slots == previous_slots:
+            return
+        if (
+            current_slots < previous_slots
+            or not Bool(self._hnsw_id_lookup)
+            or self._hnsw_id_lookup_dirty
+        ):
+            self._hnsw_id_lookup_dirty = True
+            return
+        try:
+            var lookup = self._hnsw_id_lookup.value().copy()
+            for ordinal in range(previous_slots, current_slots):
+                lookup.append(self._metadata.id_at(ordinal), ordinal)
+        except:
+            self._hnsw_id_lookup_dirty = True
+            self._mark_hnsw_unavailable("eligibility_failed")
 
     def _update_hnsw_after_delete(mut self, id: Int, was_live: Bool):
         if not self._hnsw_available:

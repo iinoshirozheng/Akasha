@@ -10,7 +10,7 @@ from akasha import (
     PersistentCollection,
 )
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
-from std.testing import assert_equal, assert_true, TestSuite
+from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 
 def _reset(directory: String) raises:
@@ -337,6 +337,134 @@ def test_unfiltered_and_filtered_queries_share_one_lazy_id_lookup() raises:
     assert_equal(filtered.hnsw_id_lookup_build_count(), 1)
     _ = filtered.search_l2_approx_where([78.0], 3, 32, expression)
     assert_equal(filtered.hnsw_id_lookup_build_count(), 1)
+
+
+def test_built_id_lookup_extends_incrementally_for_all_new_slot_paths() raises:
+    var path = String("/tmp/akasha-task25-incremental-id-lookup")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    _ = collection.search_l2_approx([79.0], 3, 32)
+    assert_equal(collection.hnsw_id_lookup_build_count(), 1)
+    assert_equal(
+        collection._hnsw_id_lookup.value().construction_scanned_entries(), 80
+    )
+
+    collection.upsert(100, [100.0])
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("kind", PayloadValue.string("new")))
+    collection.upsert_document(101, [101.0], fields^)
+    collection.delete(102)
+    var mutations = List[BatchMutation]()
+    mutations.append(BatchMutation.upsert(103, [103.0]))
+    mutations.append(BatchMutation.upsert(104, [104.0]))
+    _ = collection.apply_batch(mutations)
+
+    _ = collection.search_l2_approx([104.0], 3, 32)
+    assert_equal(collection.hnsw_id_lookup_build_count(), 1)
+    assert_equal(collection._hnsw_id_lookup.value().entry_count(), 85)
+    assert_equal(collection.hnsw_id_lookup_incremental_append_count(), 5)
+    assert_equal(
+        collection._hnsw_id_lookup.value().construction_scanned_entries(), 80
+    )
+    assert_true(collection.hnsw_available())
+
+
+def test_exact_and_ann_rerank_share_authoritative_f32_scores() raises:
+    var path = String("/tmp/akasha-task25-authoritative-f32-score")
+    _reset(path)
+    var config = CollectionConfig.defaults(3)
+    config.ann_metric = MetricKind.cosine()
+    var collection = PersistentCollection.open_with_config(path, config)
+    for id in range(80):
+        if id == 0:
+            collection.upsert(id, [1.0, 0.0, 0.0])
+        elif id == 1:
+            collection.upsert(id, [-1.0, 0.0, 0.0])
+        elif id == 2:
+            collection.upsert(id, [1.0, 0.0000001, 0.0])
+        else:
+            collection.upsert(
+                id,
+                [
+                    10_000_000_000.0 + Float32(id * 1024),
+                    10_000_000_000.0 - Float32(id * 512),
+                    Float32(id % 7 + 1),
+                ],
+            )
+    var query: List[Float32] = [10_000_000_000.0, 10_000_000_000.0, 3.0]
+
+    var exact = collection.search_cosine(query, 80)
+    var approximate = collection.search_cosine_approx(query, 80, 80)
+
+    assert_equal(collection.last_dense_plan_reason(), "ann")
+    assert_equal(len(approximate), len(exact))
+    for index in range(len(exact)):
+        assert_equal(approximate[index].id, exact[index].id)
+        assert_equal(approximate[index].score, exact[index].score)
+    assert_false(approximate[0].score > 1.0)
+
+    var boundary_query: List[Float32] = [1.0, 0.0, 0.0]
+    var boundary_exact = collection.search_cosine(boundary_query, 80)
+    var boundary_ann = collection.search_cosine_approx(
+        boundary_query, 80, 80
+    )
+    var saw_positive_boundary = False
+    var saw_negative_boundary = False
+    for index in range(len(boundary_exact)):
+        assert_equal(boundary_ann[index].id, boundary_exact[index].id)
+        assert_equal(boundary_ann[index].score, boundary_exact[index].score)
+        if boundary_exact[index].id == 0:
+            assert_equal(boundary_exact[index].score, Float32(1.0))
+            saw_positive_boundary = True
+        elif boundary_exact[index].id == 1:
+            assert_equal(boundary_exact[index].score, Float32(-1.0))
+            saw_negative_boundary = True
+    assert_true(saw_positive_boundary)
+    assert_true(saw_negative_boundary)
+
+    var dot_path = String("/tmp/akasha-task25-authoritative-f32-dot")
+    _reset(dot_path)
+    var dot_config = CollectionConfig.defaults(2)
+    dot_config.ann_metric = MetricKind.dot()
+    var dot = PersistentCollection.open_with_config(dot_path, dot_config)
+    for id in range(80):
+        dot.upsert(id, [Float32(id - 40), Float32(40 - id)])
+    var dot_query: List[Float32] = [3.25, -7.5]
+    var dot_exact = dot.search_dot(dot_query, 10)
+    var dot_ann = dot.search_dot_approx(dot_query, 10, 80)
+    assert_equal(dot.last_dense_plan_reason(), "ann")
+    for index in range(len(dot_exact)):
+        assert_equal(dot_ann[index].id, dot_exact[index].id)
+        assert_equal(dot_ann[index].score, dot_exact[index].score)
+
+
+def test_owned_overlay_shortfall_is_valid_ann_and_never_quarantines() raises:
+    var path = String("/tmp/akasha-task25-owned-overlay-shortfall")
+    _reset(path)
+    var config = CollectionConfig.defaults(1)
+    config.m0 = config.m
+    config.delta_max_points = 256
+    config.rebuild_inactive_percent = 90
+    var collection = PersistentCollection.open_with_config(path, config)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    collection.flush()
+    for id in range(60):
+        collection.upsert(id, [Float32(1_000 + id)])
+    for id in range(60, 75):
+        collection.delete(id)
+
+    var exact = collection.search_l2([0.0], 5)
+    var approximate = collection.search_l2_approx([0.0], 5, 5)
+
+    for index in range(len(exact)):
+        assert_equal(approximate[index].id, exact[index].id)
+        assert_equal(approximate[index].score, exact[index].score)
+    assert_true(collection.hnsw_available())
+    assert_equal(collection.hnsw_unavailable_reason(), "")
+    assert_equal(collection.last_dense_plan_reason(), "ann")
 
 
 def main() raises:

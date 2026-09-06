@@ -43,6 +43,7 @@ struct _HnswIdOrdinalState:
     var ordinal_count: Int
     var construction_scanned_entries: Int
     var validation_scratch_bytes: Int
+    var incremental_appends: Int
 
     def __init__(
         out self,
@@ -50,15 +51,17 @@ struct _HnswIdOrdinalState:
         ordinal_count: Int,
         construction_scanned_entries: Int,
         validation_scratch_bytes: Int,
+        incremental_appends: Int,
     ):
         self.ordinals = ordinals^
         self.ordinal_count = ordinal_count
         self.construction_scanned_entries = construction_scanned_entries
         self.validation_scratch_bytes = validation_scratch_bytes
+        self.incremental_appends = incremental_appends
 
 
 struct HnswIdOrdinalLookup(Copyable, Movable):
-    """Cheaply shared immutable point-ID to metadata-ordinal lookup."""
+    """Cheaply shared point-ID lookup, extended only under the writer lock."""
 
     var _state: ArcPointer[_HnswIdOrdinalState]
 
@@ -83,7 +86,7 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
         var scratch_bytes = ((ordinal_count + 63) // 64) * 8
         self._state = ArcPointer(
             _HnswIdOrdinalState(
-                ordinals^, ordinal_count, scanned, scratch_bytes
+                ordinals^, ordinal_count, scanned, scratch_bytes, 0
             )
         )
 
@@ -97,22 +100,50 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
         """Packed UInt64 bitmap payload used by one-time validation."""
         return self._state[].validation_scratch_bytes
 
+    def incremental_append_count(self) -> Int:
+        return self._state[].incremental_appends
+
+    def append(mut self, id: Int, ordinal: Int) raises:
+        """Extend the shared lookup by one newly allocated metadata slot."""
+        if ordinal != self._state[].ordinal_count:
+            raise Error("HNSW ID lookup append must extend the ordinal domain")
+        if id in self._state[].ordinals:
+            raise Error("HNSW ID lookup append ID already exists")
+        self._state[].ordinals[id] = ordinal
+        self._state[].ordinal_count += 1
+        self._state[].incremental_appends += 1
+        self._state[].validation_scratch_bytes = (
+            (self._state[].ordinal_count + 63) // 64
+        ) * 8
+
     def ordinal_for(self, id: Int) raises -> Int:
         if id in self._state[].ordinals:
             return self._state[].ordinals[id]
         return -1
 
 
-struct HnswEligibility(HnswResultAdmission, Movable):
+struct _HnswEligibilityState:
+    var allowed_ordinals: Bitmap
+    var lookup: ArcPointer[_HnswIdOrdinalState]
+
+    def __init__(
+        out self,
+        var allowed_ordinals: Bitmap,
+        lookup: ArcPointer[_HnswIdOrdinalState],
+    ):
+        self.allowed_ordinals = allowed_ordinals^
+        self.lookup = lookup
+
+
+struct HnswEligibility(HnswResultAdmission, Copyable, Movable):
     """Metadata-bitmap result eligibility addressed strictly by public ID.
 
-    The bitmap is query-specific and owned. The immutable ID lookup is an
+    The bitmap is query-specific and owned. The shared ID lookup is an
     ``ArcPointer`` view, so constructing repeated query adapters is O(1) in
     metadata cardinality and never clones or scans the full dictionary.
     """
 
-    var _allowed_ordinals: Bitmap
-    var _lookup: ArcPointer[_HnswIdOrdinalState]
+    var _state: ArcPointer[_HnswEligibilityState]
     var _setup_scanned_entries: Int
 
     def __init__(
@@ -120,8 +151,9 @@ struct HnswEligibility(HnswResultAdmission, Movable):
         var allowed_ordinals: Bitmap,
         lookup: HnswIdOrdinalLookup,
     ):
-        self._allowed_ordinals = allowed_ordinals^
-        self._lookup = lookup._state
+        self._state = ArcPointer(
+            _HnswEligibilityState(allowed_ordinals^, lookup._state)
+        )
         # Adapter setup shares the already-validated lookup without iteration.
         self._setup_scanned_entries = 0
 
@@ -131,7 +163,10 @@ struct HnswEligibility(HnswResultAdmission, Movable):
     def validate(self, slot_count: Int) raises:
         if slot_count < 0:
             raise Error("HNSW admission slot count cannot be negative")
-        if self._allowed_ordinals.size() != self._lookup[].ordinal_count:
+        if (
+            self._state[].allowed_ordinals.size()
+            != self._state[].lookup[].ordinal_count
+        ):
             raise Error("HNSW allowed bitmap does not match metadata domain")
 
     def setup_scanned_entries(self) -> Int:
@@ -139,12 +174,14 @@ struct HnswEligibility(HnswResultAdmission, Movable):
 
     def eligible_count(self) -> Int:
         """Return the query bitmap's cached cardinality in O(1)."""
-        return self._allowed_ordinals.count()
+        return self._state[].allowed_ordinals.count()
 
     def allows(self, id: Int) raises -> Bool:
-        if id not in self._lookup[].ordinals:
+        if id not in self._state[].lookup[].ordinals:
             return False
-        return self._allowed_ordinals.contains(self._lookup[].ordinals[id])
+        return self._state[].allowed_ordinals.contains(
+            self._state[].lookup[].ordinals[id]
+        )
 
     def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
         return self.allows(id)

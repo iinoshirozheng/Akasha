@@ -14,7 +14,6 @@ from akasha.index.hnsw_core import (
     validate_bidirectional_links,
 )
 from akasha.index.hnsw_level import sample_level
-from akasha.index.hnsw_heap import HnswHeapItem, ResultMaxHeap
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -563,6 +562,52 @@ struct HnswIndex:
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
         """Use the shared owned-or-mapped widening core."""
+        return self._search_admitted_with_actual_widening(
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            allowed.eligible_count(),
+            allowed,
+            return_search_breadth,
+            exact_fallback,
+        )
+
+    def _search_admitted_candidates_with_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
+        return self._search_admitted_with_actual_widening(
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            admitted_count,
+            admission,
+            True,
+            False,
+        )
+
+    def _search_admitted_with_actual_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        eligible_count: Int,
+        allowed: AdmissionType,
+        return_search_breadth: Bool,
+        exact_fallback: Bool,
+    ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot search an invalid HNSW index")
@@ -575,7 +620,7 @@ struct HnswIndex:
             k,
             initial_ef,
             max_ef,
-            allowed.eligible_count(),
+            eligible_count,
             return_search_breadth,
             exact_fallback,
             self.entry_slot,
@@ -588,49 +633,6 @@ struct HnswIndex:
         self._last_search_upper_descents = outcome.upper_descents
         self.last_search_stats = outcome.take_stats()
         return outcome.take_results()
-
-    def _search_allowed_exact_prepared(
-        self,
-        prepared: List[Float32],
-        k: Int,
-        allowed: HnswEligibility,
-    ) raises -> List[SearchResult]:
-        """Return exact eligible graph results without changing ANN stats."""
-        if k == 0:
-            return List[SearchResult]()
-        allowed.validate(self.graph.slot_count())
-        var retained = ResultMaxHeap()
-        retained.reserve(k)
-        for slot_index in range(self.graph.slot_count()):
-            var slot = UInt32(slot_index)
-            var id = self.graph.id_at(slot)
-            var current = self.graph.current_slot(id)
-            if (
-                not Bool(current)
-                or current.value() != slot
-                or not allowed.allows(id)
-            ):
-                continue
-            retained.offer(
-                HnswHeapItem(
-                    slot,
-                    id,
-                    self.graph.distance_to_slot(
-                        self.metric, prepared, slot
-                    ),
-                ),
-                k,
-            )
-        var candidates = retained.take_sorted_best()
-        var results = List[SearchResult](capacity=len(candidates))
-        for candidate in candidates:
-            results.append(
-                SearchResult(
-                    candidate.id,
-                    self.metric.public_score(candidate.distance),
-                )
-            )
-        return results^
 
     def search_dot(
         mut self, query: List[Float32], k: Int, ef_search: Int
