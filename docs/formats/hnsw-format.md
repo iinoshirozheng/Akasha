@@ -245,7 +245,20 @@ dimension is at most 133,144, proving `dimension * 127 * 127 <= Int32.MAX`.
 I8 with squared L2 is invalid. Code `-128`, non-finite scales, negative scales,
 non-finite decoded half values, and zero-norm cosine input are rejected. An I8
 dot scale of zero is valid only when every code is zero. I8 cosine uses exactly
-the fixed `1/127` scale and requires at least one non-zero code.
+the fixed `1/127` scale and requires at least one non-zero code. If a non-zero
+cosine vector would otherwise round entirely to zero, the first coordinate
+with maximum absolute normalized magnitude is deterministically encoded as
+`+1` or `-1`. If I8-dot `max(abs(v))/127` underflows to zero, the positive
+`max(abs(v))` value is used as the scale; normal rounding then preserves a
+maximum-magnitude coordinate as `+1` or `-1`. Exact zero vectors keep scale
+zero and all-zero codes.
+
+Readers and checked prepared-vector boundaries compute
+`max(abs(code)) * scale` in Float64 and require it not to exceed the same
+dimension-dependent safe component limit applied to raw F32 dot inputs. Thus a
+finite but hostile scale cannot create an infinite public score. I8 dimensions
+above 133,144 are rejected by both collection configuration and direct metric
+dispatcher construction before Int32 accumulation.
 
 The in-memory prepared I8 value `[code_0, ..., code_(dimension-1), scale]` is an
 internal dispatcher/storage contract, not a durable scalar array or public

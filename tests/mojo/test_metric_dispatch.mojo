@@ -1,4 +1,8 @@
-from akasha.common.config import MetricKind, ScalarKind
+from akasha.common.config import (
+    I8_MAX_SAFE_DIMENSION,
+    MetricKind,
+    ScalarKind,
+)
 from akasha.compute import MetricDispatcher
 from std.math import inf, isfinite, nan
 from std.sys import simd_width_of
@@ -9,6 +13,7 @@ from std.testing import (
     assert_true,
     TestSuite,
 )
+from std.utils.numerics import nextafter
 
 
 def _unchecked_without_raises(
@@ -330,6 +335,61 @@ def test_i8_prepared_contract_rejects_invalid_scale_and_zero_cosine_code() raise
         cosine.validate_prepared_vector([127.0, 0.0, 0.5])
     with assert_raises():
         cosine.validate_prepared_vector([0.0, 0.0, Float32(1.0 / 127.0)])
+
+
+def test_i8_dispatcher_enforces_accumulator_dimension_at_public_boundary() raises:
+    with assert_raises():
+        _ = MetricDispatcher(
+            MetricKind.dot(),
+            ScalarKind.i8(),
+            I8_MAX_SAFE_DIMENSION + 1,
+        )
+
+    var boundary = MetricDispatcher(
+        MetricKind.dot(), ScalarKind.i8(), I8_MAX_SAFE_DIMENSION
+    )
+    var zeros = List[Float32](
+        length=I8_MAX_SAFE_DIMENSION, fill=Float32(0.0)
+    )
+    var prepared = boundary.prepare_query(zeros^)
+    assert_equal(len(prepared), I8_MAX_SAFE_DIMENSION + 1)
+    assert_equal(
+        boundary.canonical_prepared(prepared.copy(), prepared^), Float32(0.0)
+    )
+
+
+def test_i8_prepared_dot_rejects_unsafe_decoded_component_magnitude() raises:
+    var dispatcher = MetricDispatcher(MetricKind.dot(), ScalarKind.i8(), 2)
+    with assert_raises():
+        dispatcher.validate_prepared_vector(
+            [127.0, 0.0, Float32.MAX_FINITE]
+        )
+
+
+def test_i8_cosine_preserves_nonzero_high_dimension_ties_deterministically(
+) raises:
+    var dimension = 65_536
+    var smallest = nextafter(Float32(0.0), Float32(1.0))
+    var dispatcher = MetricDispatcher(
+        MetricKind.cosine(), ScalarKind.i8(), dimension
+    )
+    var positive = List[Float32](length=dimension, fill=smallest)
+    var positive_codes = dispatcher.prepare_query(positive^)
+    assert_equal(positive_codes[0], Float32(1.0))
+    for index in range(1, dimension):
+        assert_equal(positive_codes[index], Float32(0.0))
+
+    var first_negative = List[Float32](length=dimension, fill=smallest)
+    first_negative[0] = -smallest
+    var negative_codes = dispatcher.prepare_graph_vector(first_negative^)
+    assert_equal(negative_codes[0], Float32(-1.0))
+    for index in range(1, dimension):
+        assert_equal(negative_codes[index], Float32(0.0))
+    var distance = dispatcher.canonical_prepared(
+        positive_codes, negative_codes
+    )
+    assert_true(isfinite(distance))
+    assert_true(isfinite(dispatcher.public_score(distance)))
 
 
 def main() raises:

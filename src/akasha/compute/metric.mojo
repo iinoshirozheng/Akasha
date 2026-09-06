@@ -1,4 +1,4 @@
-from akasha.common.config import MetricKind, ScalarKind
+from akasha.common.config import I8_MAX_SAFE_DIMENSION, MetricKind, ScalarKind
 from akasha.compute.simd import (
     _simd_dot_product_unchecked,
     _simd_l2_squared_unchecked,
@@ -10,16 +10,16 @@ from akasha.compute.quantization import (
     encode_bf16,
     encode_f16,
     encode_symmetric_i8,
+    f32_accumulation_component_limit,
     normalize_for_cosine_i8,
     scaled_i8_accumulator,
     symmetric_i8_scale,
+    validate_i8_decoded_component_bound,
 )
 from std.math import isfinite, sqrt
 
 
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
-comptime _FLOAT32_MAX_AS_FLOAT64 = 3.4028234663852886e38
-comptime _ACCUMULATION_SAFETY_FACTOR = 8.0
 comptime _COSINE_UNIT_NORM_TOLERANCE = 1.0e-3
 
 
@@ -54,6 +54,8 @@ struct MetricDispatcher(Copyable, Movable):
             raise Error("scalar has an unknown tag")
         if scalar == ScalarKind.i8() and metric == MetricKind.l2():
             raise Error("scalar_kind i8 is not compatible with ann_metric l2")
+        if scalar == ScalarKind.i8() and dimension > I8_MAX_SAFE_DIMENSION:
+            raise Error("i8 dimension exceeds the Int32 accumulator bound")
 
         self._metric = metric.copy()
         self._scalar = scalar.copy()
@@ -237,6 +239,7 @@ struct MetricDispatcher(Copyable, Movable):
             if not isfinite(scale) or scale < 0.0:
                 raise Error("prepared I8 vector scale is invalid")
             var has_nonzero_code = False
+            var maximum_code = 0
             for index in range(self._dimension):
                 var code = values[index]
                 if (
@@ -248,6 +251,11 @@ struct MetricDispatcher(Copyable, Movable):
                     raise Error("prepared I8 vector code is invalid")
                 if code != 0.0:
                     has_nonzero_code = True
+                var magnitude = Int(code)
+                if magnitude < 0:
+                    magnitude = -magnitude
+                if magnitude > maximum_code:
+                    maximum_code = magnitude
             if self._metric == MetricKind.cosine():
                 if scale != Float32(1.0 / 127.0):
                     raise Error("prepared I8 cosine scale must be fixed")
@@ -255,6 +263,10 @@ struct MetricDispatcher(Copyable, Movable):
                     raise Error("prepared I8 cosine vector must be non-zero")
             elif scale == 0.0 and has_nonzero_code:
                 raise Error("a zero I8 scale requires an all-zero code vector")
+            else:
+                validate_i8_decoded_component_bound(
+                    maximum_code, scale, self._dimension
+                )
             return
         self._validate_values(values)
         if self._metric != MetricKind.cosine():
@@ -278,10 +290,7 @@ struct MetricDispatcher(Copyable, Movable):
         component differences of 2B, is at most F32_MAX / 2. The remaining
         margin covers Float32 lane accumulation and reduction rounding.
         """
-        return sqrt(
-            _FLOAT32_MAX_AS_FLOAT64
-            / (_ACCUMULATION_SAFETY_FACTOR * Float64(self._dimension))
-        )
+        return f32_accumulation_component_limit(self._dimension)
 
     def _require_finite_distance(self, distance: Float32) raises -> Float32:
         if not isfinite(distance):
@@ -318,8 +327,24 @@ struct MetricDispatcher(Copyable, Movable):
         if self._metric == MetricKind.dot():
             scale = symmetric_i8_scale(prepared)
         var codes = List[Float32](capacity=self._dimension + 1)
+        var has_nonzero_code = False
+        var maximum_index = 0
+        var maximum_magnitude = Float32(0.0)
         for index in range(self._dimension):
-            codes.append(Float32(encode_symmetric_i8(prepared[index], scale)))
+            var code = encode_symmetric_i8(prepared[index], scale)
+            codes.append(Float32(code))
+            if code != Int8(0):
+                has_nonzero_code = True
+            var magnitude = prepared[index]
+            if magnitude < 0.0:
+                magnitude = -magnitude
+            if magnitude > maximum_magnitude:
+                maximum_magnitude = magnitude
+                maximum_index = index
+        if self._metric == MetricKind.cosine() and not has_nonzero_code:
+            codes[maximum_index] = (
+                -1.0 if prepared[maximum_index] < 0.0 else 1.0
+            )
         codes.append(scale)
         self._validate_prepared_values(codes)
         return codes^

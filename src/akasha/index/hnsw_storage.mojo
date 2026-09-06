@@ -13,6 +13,7 @@ from akasha.compute.quantization import (
     encode_symmetric_i8,
     scaled_i8_accumulator,
     symmetric_i8_scale,
+    validate_i8_decoded_component_bound,
 )
 from std.collections import Dict
 from std.math import isfinite
@@ -243,6 +244,7 @@ struct HnswStorage(HnswGraphAccess):
             if not isfinite(vector_scale) or vector_scale < 0.0:
                 raise Error("HNSW I8 vector scale is invalid")
             var has_nonzero_code = False
+            var maximum_code = 0
             for index in range(self.dimension):
                 if (
                     not isfinite(values[index])
@@ -253,6 +255,11 @@ struct HnswStorage(HnswGraphAccess):
                     raise Error("HNSW I8 vector code is invalid")
                 if values[index] != 0.0:
                     has_nonzero_code = True
+                var magnitude = Int(values[index])
+                if magnitude < 0:
+                    magnitude = -magnitude
+                if magnitude > maximum_code:
+                    maximum_code = magnitude
                 encoded.append(
                     bitcast[DType.uint8](
                         Int8(Int(values[index]))
@@ -265,6 +272,10 @@ struct HnswStorage(HnswGraphAccess):
                     raise Error("HNSW I8 cosine vector must be non-zero")
             elif vector_scale == 0.0 and has_nonzero_code:
                 raise Error("a zero HNSW I8 scale requires all-zero codes")
+            else:
+                validate_i8_decoded_component_bound(
+                    maximum_code, vector_scale, self.dimension
+                )
 
         var slot = _validate_append_slot_count(UInt64(len(self.ids)))
         var neighbor_cell_count = self.m0 + level * self.m
@@ -389,10 +400,15 @@ struct HnswStorage(HnswGraphAccess):
                 UInt16(self.vector_bytes[offset + 1]) << UInt16(8)
             )
             return decode_f16(bits)
-        return decode_symmetric_i8(
-            bitcast[DType.int8](self.vector_bytes[scalar]),
-            self._i8_vector_scale(slot),
+        var code = bitcast[DType.int8](self.vector_bytes[scalar])
+        var magnitude = Int(code)
+        if magnitude < 0:
+            magnitude = -magnitude
+        var scale = self._i8_vector_scale(slot)
+        validate_i8_decoded_component_bound(
+            magnitude, scale, self.dimension
         )
+        return decode_symmetric_i8(code, scale)
 
     def distance_to_slot(
         self,
@@ -431,20 +447,38 @@ struct HnswStorage(HnswGraphAccess):
         var rhs_offset = self.vector_offset(rhs)
         if self.scalar_kind == ScalarKind.i8():
             var accumulator = Int32(0)
+            var lhs_maximum = 0
+            var rhs_maximum = 0
             for component in range(self.dimension):
-                accumulator += Int32(
-                    bitcast[DType.int8](
-                        self.vector_bytes[lhs_offset + component]
-                    )
-                ) * Int32(
-                    bitcast[DType.int8](
-                        self.vector_bytes[rhs_offset + component]
-                    )
+                var lhs_code = bitcast[DType.int8](
+                    self.vector_bytes[lhs_offset + component]
                 )
+                var rhs_code = bitcast[DType.int8](
+                    self.vector_bytes[rhs_offset + component]
+                )
+                var lhs_magnitude = Int(lhs_code)
+                if lhs_magnitude < 0:
+                    lhs_magnitude = -lhs_magnitude
+                if lhs_magnitude > lhs_maximum:
+                    lhs_maximum = lhs_magnitude
+                var rhs_magnitude = Int(rhs_code)
+                if rhs_magnitude < 0:
+                    rhs_magnitude = -rhs_magnitude
+                if rhs_magnitude > rhs_maximum:
+                    rhs_maximum = rhs_magnitude
+                accumulator += Int32(lhs_code) * Int32(rhs_code)
+            var lhs_scale = self._i8_vector_scale(lhs)
+            var rhs_scale = self._i8_vector_scale(rhs)
+            validate_i8_decoded_component_bound(
+                lhs_maximum, lhs_scale, self.dimension
+            )
+            validate_i8_decoded_component_bound(
+                rhs_maximum, rhs_scale, self.dimension
+            )
             var product = scaled_i8_accumulator(
                 accumulator,
-                self._i8_vector_scale(lhs),
-                self._i8_vector_scale(rhs),
+                lhs_scale,
+                rhs_scale,
             )
             return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)
@@ -609,6 +643,7 @@ struct HnswStorage(HnswGraphAccess):
                     raise Error("HNSW I8 scale tape has an invalid length")
                 for slot_index in range(slots):
                     var has_nonzero_code = False
+                    var maximum_code = 0
                     var base = slot_index * self.dimension
                     for component in range(self.dimension):
                         var code = bitcast[DType.int8](
@@ -618,6 +653,11 @@ struct HnswStorage(HnswGraphAccess):
                             raise Error("HNSW I8 vector code is invalid")
                         if code != Int8(0):
                             has_nonzero_code = True
+                        var magnitude = Int(code)
+                        if magnitude < 0:
+                            magnitude = -magnitude
+                        if magnitude > maximum_code:
+                            maximum_code = magnitude
                     var scale = Float32(1.0 / 127.0)
                     if self.metric_kind == MetricKind.dot():
                         scale = self.vector_scales[slot_index]
@@ -631,6 +671,10 @@ struct HnswStorage(HnswGraphAccess):
                     elif scale == 0.0 and has_nonzero_code:
                         raise Error(
                             "a zero HNSW I8 scale requires all-zero codes"
+                        )
+                    else:
+                        validate_i8_decoded_component_bound(
+                            maximum_code, scale, self.dimension
                         )
             elif len(self.vector_scales) != 0:
                 raise Error("HNSW half vector tape cannot contain scales")
@@ -750,18 +794,26 @@ struct HnswStorage(HnswGraphAccess):
     ) raises -> Float32:
         if self.scalar_kind == ScalarKind.i8():
             var accumulator = Int32(0)
+            var maximum_code = 0
             for component in range(self.dimension):
-                accumulator += Int32(query[component]) * Int32(
-                    bitcast[DType.int8](
-                        self.vector_bytes[offset + component]
-                    )
+                var code = bitcast[DType.int8](
+                    self.vector_bytes[offset + component]
                 )
+                var magnitude = Int(code)
+                if magnitude < 0:
+                    magnitude = -magnitude
+                if magnitude > maximum_code:
+                    maximum_code = magnitude
+                accumulator += Int32(query[component]) * Int32(code)
+            var slot = UInt32(offset // self.dimension)
+            var vector_scale = self._i8_vector_scale(slot)
+            validate_i8_decoded_component_bound(
+                maximum_code, vector_scale, self.dimension
+            )
             var product = scaled_i8_accumulator(
                 accumulator,
                 query[self.dimension],
-                self._i8_vector_scale(
-                    UInt32(offset // self.dimension)
-                ),
+                vector_scale,
             )
             return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)

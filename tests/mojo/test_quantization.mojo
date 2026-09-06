@@ -11,8 +11,9 @@ from akasha.compute.quantization import (
     symmetric_i8_scale,
 )
 from akasha.index.quantization import Sq8Codebook, Sq8Index
-from std.math import abs, inf
+from std.math import abs, inf, isfinite
 from std.testing import assert_equal, assert_raises, assert_true, TestSuite
+from std.utils.numerics import nextafter
 
 
 def test_native_bf16_conversion_is_deterministic_and_rounds_to_even() raises:
@@ -63,6 +64,32 @@ def test_i8_dot_accumulates_in_integer_then_restores_magnitudes() raises:
     var rhs: List[Int8] = [Int8(64), Int8(127), Int8(-2)]
     var expected_integer = Int32(127 * 64 - 64 * 127 - 2)
     assert_equal(i8_dot_f32(lhs, 2.0, rhs, 0.5), Float32(expected_integer))
+
+
+def test_i8_checked_dot_rejects_unsafe_decoded_component_magnitude() raises:
+    var codes: List[Int8] = [Int8(127)]
+    with assert_raises():
+        _ = i8_dot_f32(
+            codes.copy(), Float32.MAX_FINITE, codes^, Float32(1.0)
+        )
+
+
+def test_i8_dot_scale_preserves_positive_and_negative_subnormals() raises:
+    var smallest = nextafter(Float32(0.0), Float32(1.0))
+    assert_true(smallest > 0.0)
+    var positive_scale = symmetric_i8_scale([smallest])
+    assert_equal(positive_scale, smallest)
+    assert_equal(encode_symmetric_i8(smallest, positive_scale), Int8(1))
+    assert_equal(encode_symmetric_i8(-smallest, positive_scale), Int8(-1))
+
+    var three_smallest = smallest + smallest + smallest
+    var mixed_scale = symmetric_i8_scale([smallest, -three_smallest])
+    assert_equal(mixed_scale, three_smallest)
+    assert_equal(encode_symmetric_i8(smallest, mixed_scale), Int8(0))
+    assert_equal(
+        encode_symmetric_i8(-three_smallest, mixed_scale), Int8(-1)
+    )
+    assert_true(isfinite(decode_symmetric_i8(Int8(-1), mixed_scale)))
 
 
 def test_cosine_i8_normalizes_once_and_rejects_zero_norm() raises:

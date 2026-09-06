@@ -4,6 +4,34 @@ from std.memory import bitcast
 
 
 comptime I8_SYMMETRIC_MAX = Int32(127)
+comptime _ACCUMULATION_SAFETY_FACTOR = 8.0
+
+
+def f32_accumulation_component_limit(dimension: Int) -> Float64:
+    """Return the shared component bound for finite Float32 accumulation."""
+    return sqrt(
+        Float64(Float32.MAX_FINITE)
+        / (_ACCUMULATION_SAFETY_FACTOR * Float64(dimension))
+    )
+
+
+def validate_i8_decoded_component_bound(
+    maximum_code: Int, scale: Float32, dimension: Int
+) raises:
+    """Reject an I8 vector whose decoded component exceeds the F32 bound."""
+    if dimension <= 0:
+        raise Error("I8 vector dimension must be positive")
+    if maximum_code < 0 or maximum_code > Int(I8_SYMMETRIC_MAX):
+        raise Error("I8 maximum code is outside the symmetric domain")
+    if not isfinite(scale) or scale < 0.0:
+        raise Error("I8 graph scale must be finite and non-negative")
+    if (
+        Float64(maximum_code) * Float64(scale)
+        > f32_accumulation_component_limit(dimension)
+    ):
+        raise Error("I8 decoded component exceeds safe F32 accumulation")
+
+
 def round_clamp_u8(value: Float32) raises -> UInt8:
     """Round a finite non-negative quantizer coordinate into one byte."""
     if not isfinite(value):
@@ -60,7 +88,10 @@ def symmetric_i8_scale(values: List[Float32]) raises -> Float32:
             maximum = magnitude
     if maximum == 0.0:
         return Float32(0.0)
-    return maximum / Float32(I8_SYMMETRIC_MAX)
+    var scale = maximum / Float32(I8_SYMMETRIC_MAX)
+    if scale == 0.0:
+        return maximum
+    return scale
 
 
 def encode_symmetric_i8(value: Float32, scale: Float32) raises -> Int8:
@@ -115,10 +146,28 @@ def i8_dot_f32(
     ):
         raise Error("I8 dot scales must be finite and non-negative")
     var accumulator = Int32(0)
+    var lhs_maximum = 0
+    var rhs_maximum = 0
     for index in range(len(lhs)):
         if lhs[index] == Int8(-128) or rhs[index] == Int8(-128):
             raise Error("I8 graph scalar -128 is outside the symmetric domain")
+        var lhs_magnitude = Int(lhs[index])
+        if lhs_magnitude < 0:
+            lhs_magnitude = -lhs_magnitude
+        if lhs_magnitude > lhs_maximum:
+            lhs_maximum = lhs_magnitude
+        var rhs_magnitude = Int(rhs[index])
+        if rhs_magnitude < 0:
+            rhs_magnitude = -rhs_magnitude
+        if rhs_magnitude > rhs_maximum:
+            rhs_maximum = rhs_magnitude
         accumulator += Int32(lhs[index]) * Int32(rhs[index])
+    validate_i8_decoded_component_bound(
+        lhs_maximum, lhs_scale, len(lhs)
+    )
+    validate_i8_decoded_component_bound(
+        rhs_maximum, rhs_scale, len(rhs)
+    )
     return scaled_i8_accumulator(accumulator, lhs_scale, rhs_scale)
 
 

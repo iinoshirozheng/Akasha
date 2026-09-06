@@ -23,6 +23,9 @@ from std.testing import (
     TestSuite,
 )
 from std.collections import Dict
+from std.math import isfinite
+from std.memory import bitcast
+from std.utils.numerics import nextafter
 
 
 comptime _QUALITY_SEED = UInt64(0xA5A5D00D12345678)
@@ -560,6 +563,73 @@ def test_i8_cosine_uses_fixed_scale_without_owned_or_durable_scale_tape() raises
         config,
         UInt64(41),
     )
+
+
+def test_v2_i8_dot_rejects_scale_that_decodes_past_safe_component_limit() raises:
+    var directory = String("/tmp/akasha-hnsw-v2-i8-dot-unsafe-scale")
+    ensure_directory(directory)
+    var config = _config(MetricKind.dot(), ScalarKind.i8())
+    var bytes = encode_hnsw_snapshot(_graph(config, 4), UInt64(42))
+    _put_u32(
+        bytes,
+        Int(_u64_at(bytes, 160)),
+        bitcast[DType.uint32](Float32.MAX_FINITE),
+    )
+    _seal(bytes)
+    _assert_owned_and_mapped_reject(
+        directory + "/unsafe-scale.bin", bytes^, config, UInt64(42)
+    )
+
+
+def test_owned_i8_dot_rejects_unsafe_scale_without_mutating_search_stats() raises:
+    var config = _config(MetricKind.dot(), ScalarKind.i8())
+    var graph = _graph(config, 12)
+    var query = _vector(177)
+    var valid = graph.search(query.copy(), 10, ef_search=64)
+    for result in valid:
+        assert_true(isfinite(result.score))
+    var before = graph.last_search_stats.distance_evaluations
+    for index in range(len(graph.graph.vector_scales)):
+        graph.graph.vector_scales[index] = Float32.MAX_FINITE
+    with assert_raises():
+        _ = graph.search(query^, 10, ef_search=64)
+    assert_equal(graph.last_search_stats.distance_evaluations, before)
+
+
+def test_i8_dot_subnormal_vectors_round_trip_with_finite_search_scores() raises:
+    var directory = String("/tmp/akasha-hnsw-v2-i8-dot-subnormal")
+    ensure_directory(directory)
+    var path = directory + "/valid.bin"
+    remove_file_if_exists(path)
+    var config = _config(MetricKind.dot(), ScalarKind.i8())
+    var smallest = nextafter(Float32(0.0), Float32(1.0))
+    var positive = List[Float32](length=16, fill=Float32(0.0))
+    positive[0] = smallest
+    var negative = List[Float32](length=16, fill=Float32(0.0))
+    negative[0] = -smallest
+    var graph = HnswIndex(config)
+    graph.add(1, positive.copy())
+    graph.add(2, negative^)
+    assert_equal(graph.graph.vector_scales[0], smallest)
+    assert_equal(graph.graph.vector_scales[1], smallest)
+
+    var expected = graph.search(positive.copy(), 2, ef_search=16)
+    for result in expected:
+        assert_true(isfinite(result.score))
+    var bytes = encode_hnsw_snapshot(graph, UInt64(43))
+    var owned = decode_hnsw_snapshot_owned(
+        bytes.copy(), config, UInt64(43)
+    )
+    _assert_same_results(
+        expected, owned.search(positive.copy(), 2, ef_search=16), 0.0
+    )
+    write_file_sync(path, bytes^)
+    var mapped = open_hnsw_snapshot_view(path, config, UInt64(43))
+    var mapped_results = mapped.search(positive^, 2, ef_search=16)
+    _assert_same_results(expected, mapped_results, 0.0)
+    for result in mapped_results:
+        assert_true(isfinite(result.score))
+    mapped.close()
 
 
 def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
