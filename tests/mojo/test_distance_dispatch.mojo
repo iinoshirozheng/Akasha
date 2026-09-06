@@ -349,10 +349,20 @@ def test_nonempty_owned_and_mapped_base_share_one_segmented_dispatch() raises:
     var config = _index_config(ScalarKind.f32())
     config.ann_metric = MetricKind.l2()
     var table = MemTable(config.dimension)
+    var filtered_table = MemTable(config.dimension)
+    var allowed_bitmap = Bitmap(24)
     for id in range(1, 25):
         table.apply_upsert(id, UInt64(id), _vector(id))
+        if id % 2 == 1:
+            allowed_bitmap.set(id - 1)
+            filtered_table.apply_upsert(id, UInt64(id), _vector(id))
     var query = _vector(29)
+    var lookup = _lookup(table)
+    var allowed = HnswEligibility(allowed_bitmap^, lookup)
     var exact = execute_scalar_exact_reported(table, query, 24, BATCH_L2_METRIC)
+    var filtered_exact = execute_scalar_exact_reported(
+        filtered_table, query, 12, BATCH_L2_METRIC
+    )
 
     var owned_base = HnswIndex(config)
     for id in range(1, 17):
@@ -372,6 +382,22 @@ def test_nonempty_owned_and_mapped_base_share_one_segmented_dispatch() raises:
     assert_equal(owned_segmented.distance_backend_hot_loop_selection_count(), 0)
     assert_true(owned_segmented.last_search_stats().distance_evaluations > 1)
     _assert_results_equal(owned_results, exact.results[0])
+    var owned_filtered_before = (
+        owned_segmented.distance_backend_public_switch_count()
+    )
+    var owned_filtered = owned_segmented.search_allowed(
+        query, 12, 4, 24, allowed, table, lookup
+    )
+    assert_equal(owned_segmented.distance_backend_selection_count(), 1)
+    assert_equal(
+        owned_segmented.distance_backend_public_switch_count(),
+        owned_filtered_before + 1,
+    )
+    assert_equal(owned_segmented.distance_backend_hot_loop_selection_count(), 0)
+    assert_true(owned_segmented.last_search_stats().distance_evaluations > 1)
+    _assert_results_equal(owned_filtered, filtered_exact.results[0])
+    for result in owned_filtered:
+        assert_equal(result.id % 2, 1)
 
     var path = String("/tmp/akasha-task27-segmented-mapped.bin")
     remove_file_if_exists(path)
@@ -394,6 +420,24 @@ def test_nonempty_owned_and_mapped_base_share_one_segmented_dispatch() raises:
     )
     assert_true(mapped_segmented.last_search_stats().distance_evaluations > 1)
     _assert_results_equal(mapped_results, exact.results[0])
+    var mapped_filtered_before = (
+        mapped_segmented.distance_backend_public_switch_count()
+    )
+    var mapped_filtered = mapped_segmented.search_allowed(
+        query, 12, 4, 24, allowed, table, lookup
+    )
+    assert_equal(mapped_segmented.distance_backend_selection_count(), 1)
+    assert_equal(
+        mapped_segmented.distance_backend_public_switch_count(),
+        mapped_filtered_before + 1,
+    )
+    assert_equal(
+        mapped_segmented.distance_backend_hot_loop_selection_count(), 0
+    )
+    assert_true(mapped_segmented.last_search_stats().distance_evaluations > 1)
+    _assert_results_equal(mapped_filtered, filtered_exact.results[0])
+    for result in mapped_filtered:
+        assert_equal(result.id % 2, 1)
     mapped_segmented.close()
     remove_file_if_exists(path)
 
