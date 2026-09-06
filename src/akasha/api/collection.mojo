@@ -1718,6 +1718,11 @@ struct PersistentCollection:
                 self._memtable,
                 self._hnsw_id_lookup.value(),
             )
+            var segmented_stats = self._hnsw.last_search_stats()
+            if segmented_stats.fallback_reason != "":
+                self._last_dense_plan_reason = (
+                    segmented_stats.fallback_reason.copy()
+                )
             var allowed = Optional[Bitmap]()
             var expected_count = k
             if expected_count > count:

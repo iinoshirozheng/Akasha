@@ -398,7 +398,9 @@ def test_exact_and_ann_rerank_share_authoritative_f32_scores() raises:
     var exact = collection.search_cosine(query, 80)
     var approximate = collection.search_cosine_approx(query, 80, 80)
 
-    assert_equal(collection.last_dense_plan_reason(), "ann")
+    assert_equal(
+        collection.last_dense_plan_reason(), "segmented_ann_exhausted"
+    )
     assert_equal(len(approximate), len(exact))
     for index in range(len(exact)):
         assert_equal(approximate[index].id, exact[index].id)
@@ -465,6 +467,38 @@ def test_owned_overlay_shortfall_is_valid_ann_and_never_quarantines() raises:
     assert_true(collection.hnsw_available())
     assert_equal(collection.hnsw_unavailable_reason(), "")
     assert_equal(collection.last_dense_plan_reason(), "ann")
+
+
+def test_unfiltered_global_completion_reports_segmented_exhaustion() raises:
+    var path = String("/tmp/akasha-task25-unfiltered-global-exhaustion")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(80):
+        collection.upsert(id, [Float32(id)])
+    var exact = collection.search_l2([79.0], 3)
+
+    # A disconnected graph remains structurally valid but cannot reach the
+    # full ANN target from its entry point, forcing segmented exact completion.
+    for slot_index in range(collection._hnsw._delta.graph.slot_count()):
+        var slot = UInt32(slot_index)
+        for level in range(
+            collection._hnsw._delta.graph.level(slot) + 1
+        ):
+            collection._hnsw._delta.graph.set_neighbors(
+                slot, level, List[UInt32]()
+            )
+
+    var result = collection.search_l2_approx([79.0], 3, 8)
+
+    assert_equal(len(result), len(exact))
+    for index in range(len(exact)):
+        assert_equal(result[index].id, exact[index].id)
+        assert_equal(result[index].score, exact[index].score)
+    assert_true(collection.hnsw_available())
+    assert_equal(collection.hnsw_unavailable_reason(), "")
+    assert_equal(
+        collection.last_dense_plan_reason(), "segmented_ann_exhausted"
+    )
 
 
 def main() raises:
