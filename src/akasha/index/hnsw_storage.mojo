@@ -197,8 +197,8 @@ struct HnswStorage(HnswGraphAccess):
         ``values`` must already have been produced by
         ``MetricDispatcher.prepare_graph_vector`` for the dispatcher used by
         graph construction and search. In particular, cosine vectors must be
-        unit-normalized. This storage intentionally does not retain a metric
-        or re-prepare vectors on the graph hot path.
+        unit-normalized. Storage retains metric/scalar identity but never
+        re-prepares vectors on the graph hot path.
         """
         var slot = self._append_unpublished(id, values, level)
         self._publish_current(id, slot)
@@ -282,7 +282,10 @@ struct HnswStorage(HnswGraphAccess):
         else:
             for byte in encoded:
                 self.vector_bytes.append(byte)
-            if self.scalar_kind == ScalarKind.i8():
+            if (
+                self.scalar_kind == ScalarKind.i8()
+                and self.metric_kind == MetricKind.dot()
+            ):
                 self.vector_scales.append(vector_scale)
         self.neighbor_bases.append(neighbor_base)
         self.neighbor_count_bases.append(count_base)
@@ -388,7 +391,7 @@ struct HnswStorage(HnswGraphAccess):
             return decode_f16(bits)
         return decode_symmetric_i8(
             bitcast[DType.int8](self.vector_bytes[scalar]),
-            self.vector_scales[Int(slot)],
+            self._i8_vector_scale(slot),
         )
 
     def distance_to_slot(
@@ -440,8 +443,8 @@ struct HnswStorage(HnswGraphAccess):
                 )
             var product = scaled_i8_accumulator(
                 accumulator,
-                self.vector_scales[Int(lhs)],
-                self.vector_scales[Int(rhs)],
+                self._i8_vector_scale(lhs),
+                self._i8_vector_scale(rhs),
             )
             return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)
@@ -599,7 +602,10 @@ struct HnswStorage(HnswGraphAccess):
             ):
                 raise Error("HNSW compact vector tape has an invalid length")
             if self.scalar_kind == ScalarKind.i8():
-                if len(self.vector_scales) != slots:
+                var expected_scales = (
+                    slots if self.metric_kind == MetricKind.dot() else 0
+                )
+                if len(self.vector_scales) != expected_scales:
                     raise Error("HNSW I8 scale tape has an invalid length")
                 for slot_index in range(slots):
                     var has_nonzero_code = False
@@ -612,7 +618,9 @@ struct HnswStorage(HnswGraphAccess):
                             raise Error("HNSW I8 vector code is invalid")
                         if code != Int8(0):
                             has_nonzero_code = True
-                    var scale = self.vector_scales[slot_index]
+                    var scale = Float32(1.0 / 127.0)
+                    if self.metric_kind == MetricKind.dot():
+                        scale = self.vector_scales[slot_index]
                     if not isfinite(scale) or scale < 0.0:
                         raise Error("HNSW I8 vector scale is invalid")
                     if self.metric_kind == MetricKind.cosine():
@@ -751,7 +759,9 @@ struct HnswStorage(HnswGraphAccess):
             var product = scaled_i8_accumulator(
                 accumulator,
                 query[self.dimension],
-                self.vector_scales[offset // self.dimension],
+                self._i8_vector_scale(
+                    UInt32(offset // self.dimension)
+                ),
             )
             return dispatcher._finish_prepared_f32_accumulations(product, 0.0)
         var product = Float32(0.0)
@@ -775,3 +785,10 @@ struct HnswStorage(HnswGraphAccess):
         return dispatcher._finish_prepared_f32_accumulations(
             product, squared_l2
         )
+
+    def _i8_vector_scale(self, slot: UInt32) raises -> Float32:
+        if self.scalar_kind != ScalarKind.i8():
+            raise Error("HNSW graph does not use I8 vector scales")
+        if self.metric_kind == MetricKind.cosine():
+            return Float32(1.0 / 127.0)
+        return self.vector_scales[Int(slot)]

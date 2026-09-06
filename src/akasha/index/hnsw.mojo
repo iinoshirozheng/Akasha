@@ -10,6 +10,7 @@ from akasha.index.hnsw_core import (
     _next_widened_ef,
     search_layer,
     search_allowed_with_widening_core,
+    search_prepared_allowed_with_widening_core,
     select_neighbors_heuristic,
     validate_bidirectional_links,
 )
@@ -602,6 +603,43 @@ struct HnswIndex:
             True,
             False,
         )
+
+    def _search_admitted_prepared_candidates_with_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        prepared: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
+        self._validate_bound_identity()
+        if not self.valid or not self.graph.is_valid():
+            raise Error("cannot search an invalid HNSW index")
+        if max_ef > self._identity_config.max_ef_search:
+            raise Error("HNSW widening maximum exceeds collection maximum")
+        var outcome = search_prepared_allowed_with_widening_core(
+            self.graph,
+            self.metric,
+            prepared,
+            k,
+            initial_ef,
+            max_ef,
+            admitted_count,
+            True,
+            False,
+            self.entry_slot,
+            self.entry_level,
+            String("packed-", self._identity_config.scalar_name()),
+            admission,
+            self.scratch,
+        )
+        self._last_search_query_preparations = outcome.query_preparations
+        self._last_search_upper_descents = outcome.upper_descents
+        self.last_search_stats = outcome.take_stats()
+        return outcome.take_results()
 
     def _search_admitted_with_actual_widening[
         AdmissionType: HnswResultAdmission

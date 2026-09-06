@@ -652,16 +652,15 @@ def decode_hnsw_snapshot_owned(
     _read_zero_padding(
         reader, Int(scale_offset - (vector_offset + vector_length))
     )
-    var vector_scales = List[Float32](capacity=slots)
+    var vector_scales = List[Float32](
+        capacity=(slots if scale_width == 4 else 0)
+    )
     if scale_width == 4:
         for _ in range(slots):
             var scale = reader.read_f32()
             if not isfinite(scale) or scale < 0.0:
                 raise Error("HNSW snapshot I8 scale is invalid")
             vector_scales.append(scale)
-    elif config.scalar_kind == ScalarKind.i8():
-        for _ in range(slots):
-            vector_scales.append(Float32(1.0 / 127.0))
     if config.scalar_kind == ScalarKind.i8():
         var code_index = 0
         for slot_index in range(slots):
@@ -670,7 +669,10 @@ def decode_hnsw_snapshot_owned(
                 var code = vector_codes[code_index]
                 code_index += 1
                 prepared.append(Float32(code))
-            prepared.append(vector_scales[slot_index])
+            var scale = Float32(1.0 / 127.0)
+            if scale_width == 4:
+                scale = vector_scales[slot_index]
+            prepared.append(scale)
             index.metric.validate_prepared_vector(prepared)
 
     _read_zero_padding(reader, Int(count_offset - (scale_offset + scale_length)))
@@ -751,7 +753,10 @@ def decode_hnsw_snapshot_owned(
             var code_base = slot_index * config.dimension
             for component in range(config.dimension):
                 vector.append(Float32(vector_codes[code_base + component]))
-            vector.append(vector_scales[slot_index])
+            var scale = Float32(1.0 / 127.0)
+            if scale_width == 4:
+                scale = vector_scales[slot_index]
+            vector.append(scale)
         else:
             for _ in range(config.dimension):
                 vector.append(vector_scalars[vector_index])
@@ -1205,6 +1210,8 @@ def _snapshot_scale_width(metric: MetricKind, scalar: ScalarKind) -> Int:
 def _graph_i8_scale(index: HnswIndex, slot: UInt32) raises -> Float32:
     if index.config.scalar_kind != ScalarKind.i8():
         return Float32(0.0)
+    if index.config.ann_metric == MetricKind.cosine():
+        return Float32(1.0 / 127.0)
     return index.graph.vector_scales[Int(slot)]
 
 
@@ -1228,7 +1235,7 @@ def _validate_snapshot_graph_vectors(index: HnswIndex) raises:
                         bitcast[DType.int8](index.graph.vector_bytes[base + component])
                     )
                 )
-            prepared.append(index.graph.vector_scales[slot_index])
+            prepared.append(_graph_i8_scale(index, UInt32(slot_index)))
         else:
             prepared = _copy_graph_vector(index, UInt32(slot_index))
         index.metric.validate_prepared_vector(prepared)

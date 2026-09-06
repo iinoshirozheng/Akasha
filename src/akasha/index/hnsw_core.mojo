@@ -975,11 +975,63 @@ def search_allowed_with_widening_core[
     allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
 ) raises -> HnswWideningOutcome:
-    """Prepare and descend once, widening only reusable base-layer rounds.
+    """Validate one raw query, prepare it once, then run the shared core."""
+    graph.validate_search_ready()
+    dispatcher.require_supported_backend()
+    if dispatcher.dimension() != graph.graph_dimension():
+        raise Error("metric dispatcher dimension does not match HNSW graph")
+    if k <= 0:
+        raise Error("HNSW search k must be positive")
+    if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
+        raise Error("HNSW widening ef range is invalid")
+    if eligible_count < 0:
+        raise Error("HNSW eligible count cannot be negative")
+    allowed.validate(graph.slot_count())
+    var prepared = dispatcher.prepare_query(query)
+    var outcome = search_prepared_allowed_with_widening_core(
+        graph,
+        dispatcher,
+        prepared,
+        k,
+        initial_ef,
+        max_ef,
+        eligible_count,
+        return_search_breadth,
+        exact_fallback,
+        entry_slot,
+        entry_level,
+        storage_name,
+        allowed,
+        scratch,
+    )
+    outcome.query_preparations = 1
+    return outcome^
+
+
+def search_prepared_allowed_with_widening_core[
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+](
+    graph: GraphType,
+    dispatcher: MetricDispatcher,
+    prepared: List[Float32],
+    k: Int,
+    initial_ef: Int,
+    max_ef: Int,
+    eligible_count: Int,
+    return_search_breadth: Bool,
+    exact_fallback: Bool,
+    entry_slot: Optional[UInt32],
+    entry_level: Int,
+    storage_name: String,
+    allowed: AdmissionType,
+    mut scratch: HnswSearchScratch,
+) raises -> HnswWideningOutcome:
+    """Consume one prepared query and reuse it through every widening round.
 
     Normal index queries return ``k`` results and may exact-complete one graph.
     Segmented callers instead request the final ``ef`` candidate breadth and
-    defer exact fallback until all graph sources have been merged.
+    defer exact fallback until all graph sources have been merged. Those
+    callers may share this same prepared query across multiple graph sources.
     """
     graph.validate_search_ready()
     dispatcher.require_supported_backend()
@@ -992,8 +1044,8 @@ def search_allowed_with_widening_core[
     if eligible_count < 0:
         raise Error("HNSW eligible count cannot be negative")
     allowed.validate(graph.slot_count())
+    dispatcher.validate_prepared_vector(prepared)
 
-    var prepared = dispatcher.prepare_query(query)
     var stats = HnswSearchStats()
     stats.requested_ef = initial_ef
     stats.effective_ef = initial_ef
@@ -1014,7 +1066,7 @@ def search_allowed_with_widening_core[
         stats.requested_ef = 0
         stats.effective_ef = 0
         return HnswWideningOutcome(
-            List[SearchResult](), stats^, 1, 0
+            List[SearchResult](), stats^, 0, 0
         )
 
     var current_ef = initial_ef
@@ -1104,5 +1156,5 @@ def search_allowed_with_widening_core[
             )
         stats.fallback_reason = "filtered_ann_exhausted"
     return HnswWideningOutcome(
-        results^, stats^, 1, upper_descents
+        results^, stats^, 0, upper_descents
     )

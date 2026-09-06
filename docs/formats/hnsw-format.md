@@ -251,8 +251,12 @@ The in-memory prepared I8 value `[code_0, ..., code_(dimension-1), scale]` is an
 internal dispatcher/storage contract, not a durable scalar array or public
 vector shape. Raw MemTable, WAL, segment, exact-search, and rerank vectors remain
 dimension-wide F32. Query preparation happens once per graph search;
-member-to-member construction reads stored codes and stored scales directly and
-does not requantize either vector.
+segmented search prepares once at its aggregate boundary and shares that same
+prepared query with every non-empty owned or mapped base and delta source.
+Member-to-member construction reads stored codes directly and reads stored
+scales only for I8 dot; it does not requantize either vector. I8 cosine derives
+its fixed `1/127` scale from the metric/storage identity, so neither its durable
+sidecar nor its owned in-memory graph allocates a per-slot scale tape.
 
 The size gate applies to the vector section itself. At dimension 16, an F32
 vector occupies 64 bytes, BF16/F16 each occupy 32 bytes, and the I8 vector tape

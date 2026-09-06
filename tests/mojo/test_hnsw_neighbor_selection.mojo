@@ -407,7 +407,7 @@ def test_invalid_dispatcher_backend_and_dimension_preserve_stats() raises:
 
 def test_dot_allows_negative_canonical_candidate_distance() raises:
     var metric = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 2)
-    var graph = HnswStorage(2, 4, 8)
+    var graph = HnswStorage(2, 4, 8, metric_kind=MetricKind.dot())
     var slot = _append(graph, metric, 10, 1.0, 0.0)
     var candidates: List[HnswHeapItem] = [HnswHeapItem(slot, 10, -2.0)]
     var stats = HnswBuildStats()
@@ -421,7 +421,7 @@ def test_dot_allows_negative_canonical_candidate_distance() raises:
 
 def test_prepared_cosine_uses_same_canonical_heuristic() raises:
     var metric = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
-    var graph = HnswStorage(2, 4, 8)
+    var graph = HnswStorage(2, 4, 8, metric_kind=MetricKind.cosine())
     var same_direction = _append(graph, metric, 10, 1.0, 0.0)
     var orthogonal = _append(graph, metric, 20, 0.0, 1.0)
     var raw_query = _vector(1.0, 0.0)
@@ -442,7 +442,7 @@ def test_prepared_cosine_uses_same_canonical_heuristic() raises:
 def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two(
 ) raises:
     var metric = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
-    var graph = HnswStorage(2, 4, 8)
+    var graph = HnswStorage(2, 4, 8, metric_kind=MetricKind.cosine())
     var same = _append(graph, metric, 10, 1.0, 0.0)
     var opposite = _append(graph, metric, 20, -1.0, 0.0)
     var boundaries: List[HnswHeapItem] = [

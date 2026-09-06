@@ -142,22 +142,33 @@ def test_replacement_and_delete_hide_stale_slots_but_keep_history() raises:
 
 
 def test_flat_storage_distance_access_does_not_materialize_vectors() raises:
-    var graph = HnswStorage(3, 2, 4)
+    var dot_graph = HnswStorage(
+        3, 2, 4, metric_kind=MetricKind.dot()
+    )
+    var l2_graph = HnswStorage(
+        3, 2, 4, metric_kind=MetricKind.l2()
+    )
     var x = _vector(1.0, 2.0, 3.0)
     var y = _vector(4.0, 5.0, 6.0)
-    _ = graph.append(1, x^, 0)
-    _ = graph.append(2, y^, 0)
+    _ = dot_graph.append(1, x.copy(), 0)
+    _ = dot_graph.append(2, y.copy(), 0)
+    _ = l2_graph.append(1, x^, 0)
+    _ = l2_graph.append(2, y^, 0)
 
     var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 3)
     var l2 = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 3)
     var query = _vector(1.0, 1.0, 1.0)
-    assert_equal(graph.distance_to_slot(dot, query, UInt32(1)), Float32(-15.0))
-    assert_equal(graph.distance_to_slot(l2, query, UInt32(1)), Float32(50.0))
     assert_equal(
-        graph.distance_between(dot, UInt32(0), UInt32(1)), Float32(-32.0)
+        dot_graph.distance_to_slot(dot, query, UInt32(1)), Float32(-15.0)
     )
     assert_equal(
-        graph.distance_between(l2, UInt32(0), UInt32(1)), Float32(27.0)
+        l2_graph.distance_to_slot(l2, query, UInt32(1)), Float32(50.0)
+    )
+    assert_equal(
+        dot_graph.distance_between(dot, UInt32(0), UInt32(1)), Float32(-32.0)
+    )
+    assert_equal(
+        l2_graph.distance_between(l2, UInt32(0), UInt32(1)), Float32(27.0)
     )
 
 
@@ -183,7 +194,7 @@ def test_flat_distances_match_dispatcher_for_prepared_vectors() raises:
             prepared_first.copy(), prepared_second.copy()
         )
 
-        var graph = HnswStorage(3, 2, 4)
+        var graph = HnswStorage(3, 2, 4, metric_kind=metric)
         _ = graph.append(1, prepared_first^, 0)
         _ = graph.append(2, prepared_second^, 0)
         assert_equal(
@@ -249,6 +260,29 @@ def test_compact_storage_requires_matching_dispatcher_identity() raises:
     )
     with assert_raises():
         _ = i8_dot.append(1, [1.0, 0.0, 0.0, 0.0], 0)
+
+
+def test_f32_storage_requires_matching_metric_identity() raises:
+    var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.f32(), 3)
+    var graph = HnswStorage(
+        3,
+        2,
+        4,
+        scalar_kind=ScalarKind.f32(),
+        metric_kind=MetricKind.dot(),
+    )
+    var member = dot.prepare_graph_vector(_vector(1.0, 2.0, 3.0))
+    var query = dot.prepare_query(_vector(4.0, 5.0, 6.0))
+    _ = graph.append(1, member^, 0)
+    assert_equal(
+        graph.distance_to_slot(dot, query.copy(), UInt32(0)), Float32(-32.0)
+    )
+
+    var wrong = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 3)
+    with assert_raises():
+        _ = graph.distance_to_slot(wrong, query.copy(), UInt32(0))
+    with assert_raises():
+        _ = graph.distance_between(wrong, UInt32(0), UInt32(0))
 
 
 def test_constructor_append_and_access_bounds_are_checked() raises:

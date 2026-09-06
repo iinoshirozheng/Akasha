@@ -1,4 +1,5 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
+from akasha.compute.metric import MetricDispatcher
 from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_view import HnswGraphView
@@ -155,6 +156,37 @@ def _assert_search_stats_equal(
     assert_equal(lhs.metric_name, rhs.metric_name)
     assert_equal(lhs.scalar_name, rhs.scalar_name)
     assert_equal(lhs.fallback_reason, rhs.fallback_reason)
+
+
+def test_mapped_f32_rejects_metric_mismatch_before_stats_or_distance() raises:
+    var config = _config(MetricKind.dot())
+    var graph = _graph(config)
+    var path = _path("f32-metric-identity")
+    remove_file_if_exists(path)
+    write_file_sync(path, encode_hnsw_snapshot(graph, UInt64(93)))
+    var view = open_hnsw_snapshot_view(path, config, UInt64(93))
+
+    var correct = MetricDispatcher(
+        MetricKind.dot(), ScalarKind.f32(), config.dimension
+    )
+    var correct_query = correct.prepare_query(_vector(31))
+    var expected = graph.graph.distance_to_slot(
+        correct, correct_query.copy(), UInt32(0)
+    )
+    assert_equal(
+        view.distance_to_slot(correct, correct_query, UInt32(0)), expected
+    )
+
+    var before = view.last_search_stats()
+    var wrong = MetricDispatcher(
+        MetricKind.l2(), ScalarKind.f32(), config.dimension
+    )
+    var wrong_query = wrong.prepare_query(_vector(31))
+    with assert_raises():
+        _ = view.distance_to_slot(wrong, wrong_query, UInt32(0))
+    _assert_search_stats_equal(before, view.last_search_stats())
+    view.close()
+    remove_file_if_exists(path)
 
 
 def test_owned_and_mapped_views_are_search_equivalent_for_all_metrics() raises:

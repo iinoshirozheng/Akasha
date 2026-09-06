@@ -71,11 +71,11 @@ struct MetricDispatcher(Copyable, Movable):
     def matches_storage_identity(
         self, metric: MetricKind, scalar: ScalarKind, dimension: Int
     ) -> Bool:
-        """Check storage width and compact prepared-vector semantics."""
+        """Check the complete metric, scalar, and dimension identity."""
         return (
-            self._scalar == scalar
+            self._metric == metric
+            and self._scalar == scalar
             and self._dimension == dimension
-            and (scalar == ScalarKind.f32() or self._metric == metric)
         )
 
     def backend_name(self) -> String:

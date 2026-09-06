@@ -484,6 +484,7 @@ struct SegmentedHnsw(Movable):
             per_source = ef_search
         if per_source > self.config.max_ef_search:
             per_source = self.config.max_ef_search
+        var prepared = self._delta.metric.prepare_query(query)
 
         var stats = HnswSearchStats()
         stats.requested_ef = 0
@@ -495,7 +496,7 @@ struct SegmentedHnsw(Movable):
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
         self._last_candidate_merge_insertions = 0
-        self._last_search_query_preparations = 0
+        self._last_search_query_preparations = 1
         self._last_search_upper_descents = 0
 
         var base_live = self._sources.base_count()
@@ -505,8 +506,8 @@ struct SegmentedHnsw(Movable):
             var base_admission = _SourceAdmission(self._sources, False)
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
-                base_results = self._mapped_base._search_admitted_candidates_with_widening(
-                    query,
+                base_results = self._mapped_base._search_admitted_prepared_candidates_with_widening(
+                    prepared,
                     per_source,
                     ef_search,
                     self.config.max_ef_search,
@@ -515,15 +516,12 @@ struct SegmentedHnsw(Movable):
                 )
                 var source_stats = self._mapped_base.last_search_stats()
                 self._accumulate_source_stats(stats, source_stats)
-                self._last_search_query_preparations += (
-                    self._mapped_base.last_search_query_preparations()
-                )
                 self._last_search_upper_descents += (
                     self._mapped_base.last_search_upper_descents()
                 )
             else:
-                base_results = self._owned_base._search_admitted_candidates_with_widening(
-                    query,
+                base_results = self._owned_base._search_admitted_prepared_candidates_with_widening(
+                    prepared,
                     per_source,
                     ef_search,
                     self.config.max_ef_search,
@@ -532,9 +530,6 @@ struct SegmentedHnsw(Movable):
                 )
                 self._accumulate_source_stats(
                     stats, self._owned_base.last_search_stats
-                )
-                self._last_search_query_preparations += (
-                    self._owned_base.last_search_query_preparations()
                 )
                 self._last_search_upper_descents += (
                     self._owned_base.last_search_upper_descents()
@@ -550,8 +545,8 @@ struct SegmentedHnsw(Movable):
 
         if delta_live > 0:
             var delta_admission = _SourceAdmission(self._sources, True)
-            var delta_results = self._delta._search_admitted_candidates_with_widening(
-                query,
+            var delta_results = self._delta._search_admitted_prepared_candidates_with_widening(
+                prepared,
                 per_source,
                 ef_search,
                 self.config.max_ef_search,
@@ -560,9 +555,6 @@ struct SegmentedHnsw(Movable):
             )
             self._accumulate_source_stats(
                 stats, self._delta.last_search_stats
-            )
-            self._last_search_query_preparations += (
-                self._delta.last_search_query_preparations()
             )
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
@@ -597,6 +589,7 @@ struct SegmentedHnsw(Movable):
             or max_ef > self.config.max_ef_search
         ):
             raise Error("segmented HNSW widening range is invalid")
+        var prepared = self._delta.metric.prepare_query(query)
         var stats = HnswSearchStats()
         # Aggregate the effective breadth actually searched by each non-empty
         # source; a tiny source may cap an arbitrarily large requested ef.
@@ -609,7 +602,7 @@ struct SegmentedHnsw(Movable):
         var merged = List[Int]()
         var seen = Dict[Int, Bool]()
         self._last_candidate_merge_insertions = 0
-        self._last_search_query_preparations = 0
+        self._last_search_query_preparations = 1
         self._last_search_upper_descents = 0
 
         var base_live = self._sources.base_count()
@@ -622,8 +615,8 @@ struct SegmentedHnsw(Movable):
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
                 base_results = (
-                    self._mapped_base._search_admitted_candidates_with_widening(
-                        query,
+                    self._mapped_base._search_admitted_prepared_candidates_with_widening(
+                        prepared,
                         k,
                         initial_ef,
                         max_ef,
@@ -633,16 +626,13 @@ struct SegmentedHnsw(Movable):
                 )
                 var source_stats = self._mapped_base.last_search_stats()
                 self._accumulate_source_stats(stats, source_stats)
-                self._last_search_query_preparations += (
-                    self._mapped_base.last_search_query_preparations()
-                )
                 self._last_search_upper_descents += (
                     self._mapped_base.last_search_upper_descents()
                 )
             else:
                 base_results = (
-                    self._owned_base._search_admitted_candidates_with_widening(
-                        query,
+                    self._owned_base._search_admitted_prepared_candidates_with_widening(
+                        prepared,
                         k,
                         initial_ef,
                         max_ef,
@@ -652,9 +642,6 @@ struct SegmentedHnsw(Movable):
                 )
                 self._accumulate_source_stats(
                     stats, self._owned_base.last_search_stats
-                )
-                self._last_search_query_preparations += (
-                    self._owned_base.last_search_query_preparations()
                 )
                 self._last_search_upper_descents += (
                     self._owned_base.last_search_upper_descents()
@@ -673,8 +660,8 @@ struct SegmentedHnsw(Movable):
                 self._sources, True, allowed
             )
             var delta_results = (
-                self._delta._search_admitted_candidates_with_widening(
-                    query,
+                self._delta._search_admitted_prepared_candidates_with_widening(
+                    prepared,
                     k,
                     initial_ef,
                     max_ef,
@@ -684,9 +671,6 @@ struct SegmentedHnsw(Movable):
             )
             self._accumulate_source_stats(
                 stats, self._delta.last_search_stats
-            )
-            self._last_search_query_preparations += (
-                self._delta.last_search_query_preparations()
             )
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()

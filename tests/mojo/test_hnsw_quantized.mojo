@@ -1,8 +1,9 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
+from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
 from akasha.index.flat import FlatIndex, SearchResult
-from akasha.index.hnsw_core import HnswIdOrdinalLookup
+from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.storage.memtable import MemTable
 from akasha.storage.checksum import crc32_range
@@ -380,6 +381,72 @@ def test_compact_owned_and_mapped_queries_are_equivalent() raises:
         mapped.close()
 
 
+def test_segmented_base_and_delta_prepare_once_for_all_scalar_backends() raises:
+    var kinds: List[ScalarKind] = [
+        ScalarKind.f32(),
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
+    ]
+    for scalar in kinds:
+        for mapped_base in [False, True]:
+            var config = _config(MetricKind.dot(), scalar)
+            var table = MemTable(config.dimension)
+            var exact = FlatIndex(config.dimension)
+            var base = HnswIndex(config)
+            for id in range(1, 17):
+                var values = _vector(id)
+                table.apply_upsert(id, UInt64(id), values.copy())
+                exact.add(id, values.copy())
+                base.add(id, values^)
+
+            var segmented: SegmentedHnsw
+            if mapped_base:
+                var path = (
+                    String("/tmp/akasha-hnsw-segmented-")
+                    + scalar.name()
+                    + "-mapped.bin"
+                )
+                remove_file_if_exists(path)
+                _ = write_hnsw_snapshot(path, base, UInt64(31))
+                var view = open_hnsw_snapshot_view(path, config, UInt64(31))
+                segmented = SegmentedHnsw.from_mapped(view^)
+            else:
+                segmented = SegmentedHnsw.from_owned(base^)
+
+            for id in range(17, 25):
+                var values = _vector(id)
+                table.apply_upsert(id, UInt64(id), values.copy())
+                exact.add(id, values.copy())
+                segmented.upsert(id, values^)
+
+            var lookup = _quality_lookup(table)
+            var query = _vector(177)
+            var expected = exact.search_dot(query.copy(), 10)
+            var actual = segmented.search(
+                query.copy(), 10, 64, table, lookup
+            )
+            _assert_same_results(expected, actual, 1.0e-6)
+            assert_equal(segmented.last_search_query_preparations(), 1)
+            assert_true(
+                segmented.last_search_stats().distance_evaluations > 1
+            )
+
+            var bitmap = Bitmap(table.slot_count())
+            for ordinal in range(table.slot_count()):
+                bitmap.set(ordinal)
+            var allowed = HnswEligibility(bitmap^, lookup)
+            var filtered = segmented.search_allowed(
+                query^, 10, 64, 64, allowed, table, lookup
+            )
+            _assert_same_results(expected, filtered, 1.0e-6)
+            assert_equal(segmented.last_search_query_preparations(), 1)
+            assert_true(
+                segmented.last_search_stats().distance_evaluations > 1
+            )
+            segmented.close()
+
+
 def test_compact_mapped_distance_requires_bound_dispatcher_identity() raises:
     var directory = String("/tmp/akasha-hnsw-v2-dispatcher-identity")
     ensure_directory(directory)
@@ -429,6 +496,70 @@ def test_compact_owned_graphs_keep_only_compact_vector_tapes() raises:
         )
         assert_equal(len(decoded.graph.vector_scalars), 0)
         assert_equal(len(decoded.graph.vector_bytes), 12 * 16 * width)
+
+
+def test_i8_cosine_uses_fixed_scale_without_owned_or_durable_scale_tape() raises:
+    var directory = String("/tmp/akasha-hnsw-v2-i8-cosine-fixed-scale")
+    ensure_directory(directory)
+    var path = directory + "/valid.bin"
+    remove_file_if_exists(path)
+    var config = _config(MetricKind.cosine(), ScalarKind.i8())
+    var graph = _graph(config, 12)
+    assert_equal(len(graph.graph.vector_bytes), 12 * 16)
+    assert_equal(len(graph.graph.vector_scales), 0)
+
+    var bytes = encode_hnsw_snapshot(graph, UInt64(41))
+    assert_equal(bytes[152], UInt8(1))
+    assert_equal(bytes[153], UInt8(0))
+    assert_equal(_u64_at(bytes, 112), UInt64(12 * 16))
+    assert_equal(_u64_at(bytes, 168), UInt64(0))
+    var query = _vector(177)
+    var expected = graph.search(query.copy(), 10, ef_search=64)
+    var owned = decode_hnsw_snapshot_owned(
+        bytes.copy(), config, UInt64(41)
+    )
+    assert_equal(len(owned.graph.vector_scales), 0)
+    _assert_same_results(
+        expected, owned.search(query.copy(), 10, ef_search=64), 1.0e-6
+    )
+    write_file_sync(path, bytes.copy())
+    var mapped = open_hnsw_snapshot_view(path, config, UInt64(41))
+    _assert_same_results(
+        expected, mapped.search(query^, 10, ef_search=64), 1.0e-6
+    )
+    mapped.close()
+
+    var bad_scale_width = bytes.copy()
+    bad_scale_width[153] = UInt8(4)
+    _seal(bad_scale_width)
+    _assert_owned_and_mapped_reject(
+        directory + "/bad-scale-width.bin",
+        bad_scale_width^,
+        config,
+        UInt64(41),
+    )
+
+    var bad_scale_length = bytes.copy()
+    _put_u64(bad_scale_length, 168, UInt64(4))
+    _seal(bad_scale_length)
+    _assert_owned_and_mapped_reject(
+        directory + "/bad-scale-length.bin",
+        bad_scale_length^,
+        config,
+        UInt64(41),
+    )
+
+    var zero_code_vector = bytes.copy()
+    var first_vector = Int(_u64_at(zero_code_vector, 104))
+    for component in range(config.dimension):
+        zero_code_vector[first_vector + component] = UInt8(0)
+    _seal(zero_code_vector)
+    _assert_owned_and_mapped_reject(
+        directory + "/zero-code-vector.bin",
+        zero_code_vector^,
+        config,
+        UInt64(41),
+    )
 
 
 def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:

@@ -15,6 +15,7 @@ from akasha.index.hnsw_core import (
     greedy_descent,
     search_layer,
     search_allowed_with_widening_core,
+    search_prepared_allowed_with_widening_core,
 )
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswSearchStats
@@ -599,6 +600,44 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             True,
             False,
         )
+
+    def _search_admitted_prepared_candidates_with_widening[
+        AdmissionType: HnswResultAdmission
+    ](
+        mut self,
+        prepared: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        admitted_count: Int,
+        admission: AdmissionType,
+    ) raises -> List[SearchResult]:
+        self.validate_search_ready()
+        if max_ef > self._config.max_ef_search:
+            raise Error("HNSW widening maximum exceeds collection maximum")
+        var scratch = self._scratch^
+        self._scratch = HnswSearchScratch()
+        var outcome = search_prepared_allowed_with_widening_core(
+            self,
+            self._metric,
+            prepared,
+            k,
+            initial_ef,
+            max_ef,
+            admitted_count,
+            True,
+            False,
+            self._entry_slot,
+            self._entry_level,
+            String("mapped-", self._config.scalar_name()),
+            admission,
+            scratch,
+        )
+        self._scratch = scratch^
+        self._last_search_query_preparations = outcome.query_preparations
+        self._last_search_upper_descents = outcome.upper_descents
+        self._last_stats = outcome.take_stats()
+        return outcome.take_results()
 
     def _search_admitted_with_actual_widening[
         AdmissionType: HnswResultAdmission
