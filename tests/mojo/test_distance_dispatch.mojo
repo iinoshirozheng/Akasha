@@ -27,6 +27,7 @@ from akasha.index.hnsw_core import (
 )
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.hnsw_view import HnswGraphView
+from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
 from akasha.storage.hnsw_store import (
     encode_hnsw_snapshot,
@@ -148,6 +149,134 @@ def test_specialized_graph_entrypoints_do_not_record_runtime_dispatch() raises:
     assert_equal(mapped.distance_backend_public_switch_count(), mapped_public)
     assert_equal(mapped.distance_backend_hot_loop_selection_count(), 0)
     mapped.close()
+    remove_file_if_exists(path)
+
+
+def _assert_view_dispatch_state_unchanged(
+    view: HnswGraphView,
+    selection_count: Int,
+    public_switch_count: Int,
+    hot_loop_count: Int,
+    expected_stats: HnswSearchStats,
+    query_preparations: Int,
+    upper_descents: Int,
+) raises:
+    assert_equal(view.distance_backend_selection_count(), selection_count)
+    assert_equal(
+        view.distance_backend_public_switch_count(), public_switch_count
+    )
+    assert_equal(
+        view.distance_backend_hot_loop_selection_count(), hot_loop_count
+    )
+    var actual = view.last_search_stats()
+    assert_equal(actual.requested_ef, expected_stats.requested_ef)
+    assert_equal(actual.effective_ef, expected_stats.effective_ef)
+    assert_equal(actual.widening_rounds, expected_stats.widening_rounds)
+    assert_equal(actual.upper_visited, expected_stats.upper_visited)
+    assert_equal(actual.base_visited, expected_stats.base_visited)
+    assert_equal(
+        actual.distance_evaluations, expected_stats.distance_evaluations
+    )
+    assert_equal(actual.retained_candidates, expected_stats.retained_candidates)
+    assert_equal(actual.reranked_candidates, expected_stats.reranked_candidates)
+    assert_equal(actual.filtered_rejections, expected_stats.filtered_rejections)
+    assert_equal(actual.inactive_rejections, expected_stats.inactive_rejections)
+    assert_equal(actual.base_candidates, expected_stats.base_candidates)
+    assert_equal(actual.delta_candidates, expected_stats.delta_candidates)
+    assert_equal(actual.backend_name, expected_stats.backend_name)
+    assert_equal(actual.metric_name, expected_stats.metric_name)
+    assert_equal(actual.scalar_name, expected_stats.scalar_name)
+    assert_equal(actual.storage_name, expected_stats.storage_name)
+    assert_equal(actual.fallback_reason, expected_stats.fallback_reason)
+    assert_equal(view.last_search_query_preparations(), query_preparations)
+    assert_equal(view.last_search_upper_descents(), upper_descents)
+
+
+def test_mapped_view_rejects_forged_backend_before_every_dispatch() raises:
+    var config = _index_config(ScalarKind.f32())
+    config.ann_metric = MetricKind.l2()
+    var owned = _index(config)
+    var path = String("/tmp/akasha-task27-forged-view.bin")
+    remove_file_if_exists(path)
+    write_file_sync(path, encode_hnsw_snapshot(owned, UInt64(27)))
+    var view = open_hnsw_snapshot_view(path, config, UInt64(27))
+    var query = _vector(19)
+    var dispatcher = view.metric()
+    var prepared = dispatcher.prepare_query(query)
+
+    # All three dispatch boundaries accept the correctly bound backend.
+    var correct_switches = view.distance_backend_public_switch_count()
+    _ = view.search(query, 4, ef_search=8)
+    _ = view._search_admitted_prepared_candidates_with_widening(
+        prepared, 4, 4, 8, view.live_point_count(), HnswSearchAdmission()
+    )
+    _ = view._search_admitted_with_actual_widening(
+        query,
+        4,
+        4,
+        8,
+        view.live_point_count(),
+        HnswSearchAdmission(),
+        True,
+        False,
+    )
+    assert_equal(
+        view.distance_backend_public_switch_count(), correct_switches + 3
+    )
+
+    var selections = view.distance_backend_selection_count()
+    var switches = view.distance_backend_public_switch_count()
+    var hot_loop = view.distance_backend_hot_loop_selection_count()
+    var stats = view.last_search_stats()
+    var query_preparations = view.last_search_query_preparations()
+    var upper_descents = view.last_search_upper_descents()
+    view._distance_backend._tag = DISTANCE_DOT_F32
+
+    with assert_raises():
+        _ = view.search(query, 4, ef_search=8)
+    _assert_view_dispatch_state_unchanged(
+        view,
+        selections,
+        switches,
+        hot_loop,
+        stats,
+        query_preparations,
+        upper_descents,
+    )
+    with assert_raises():
+        _ = view._search_admitted_prepared_candidates_with_widening(
+            prepared, 4, 4, 8, view.live_point_count(), HnswSearchAdmission()
+        )
+    _assert_view_dispatch_state_unchanged(
+        view,
+        selections,
+        switches,
+        hot_loop,
+        stats,
+        query_preparations,
+        upper_descents,
+    )
+    with assert_raises():
+        _ = view._search_admitted_with_actual_widening(
+            query,
+            4,
+            4,
+            8,
+            view.live_point_count(),
+            HnswSearchAdmission(),
+            True,
+            False,
+        )
+    _assert_view_dispatch_state_unchanged(
+        view,
+        selections,
+        switches,
+        hot_loop,
+        stats,
+        query_preparations,
+        upper_descents,
+    )
+    view.close()
     remove_file_if_exists(path)
 
 

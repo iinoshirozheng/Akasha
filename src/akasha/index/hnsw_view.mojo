@@ -292,6 +292,17 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._distance_backend = backend.copy()
         self._distance_dispatch_counters = DistanceDispatchCounters()
 
+    def _validate_bound_identity(self) raises:
+        self.validate_search_ready()
+        self._config.validate()
+        if not self._metric.matches_storage_identity(
+            self._config.ann_metric,
+            self._config.scalar_kind,
+            self._config.dimension,
+        ):
+            raise Error("mapped HNSW metric dispatcher diverged from identity")
+        self._distance_backend.validate_identity(self._config)
+
     def id_at(self, slot: UInt32) raises -> Int:
         var node = self._node_record(slot)
         return Int(bitcast[DType.int64](self._read_u64(node)))
@@ -683,6 +694,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         *,
         ef_search: Int = -1,
     ) raises -> List[SearchResult]:
+        self._validate_bound_identity()
         record_distance_dispatch(
             self._distance_dispatch_counters,
             DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
@@ -874,6 +886,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         admitted_count: Int,
         admission: AdmissionType,
     ) raises -> List[SearchResult]:
+        self._validate_bound_identity()
         record_distance_dispatch(
             self._distance_dispatch_counters,
             DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
@@ -976,6 +989,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
+        self._validate_bound_identity()
         record_distance_dispatch(
             self._distance_dispatch_counters,
             DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
