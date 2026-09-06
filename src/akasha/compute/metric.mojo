@@ -71,6 +71,12 @@ struct MetricDispatcher(Copyable, Movable):
     def scalar_name(self) -> String:
         return self._scalar.name()
 
+    def metric_kind(self) -> MetricKind:
+        return self._metric.copy()
+
+    def scalar_kind(self) -> ScalarKind:
+        return self._scalar.copy()
+
     def matches_storage_identity(
         self, metric: MetricKind, scalar: ScalarKind, dimension: Int
     ) -> Bool:

@@ -11,8 +11,10 @@ from akasha.compute.dispatch import (
     DISTANCE_COSINE_F16,
     DISTANCE_DOT_I8,
     DISTANCE_COSINE_I8,
+    DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
     DistanceBackend,
     DistanceDispatchCounters,
+    record_distance_dispatch,
     select_distance_backend,
 )
 from akasha.compute.topk import BoundedTopK
@@ -221,6 +223,7 @@ struct SegmentedHnsw(Movable):
     ) raises:
         """Initialize from one selection already made by an adoption path."""
         config.validate()
+        backend.validate_identity(config)
         self.config = config.copy()
         self.distance_backend = backend.copy()
         self._distance_dispatch_counters = counters.copy()
@@ -476,7 +479,10 @@ struct SegmentedHnsw(Movable):
 
     def upsert(mut self, id: Int, values: List[Float32]) raises:
         self._validate_identity()
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var replaced_base = self._sources.source_for(id) > 0
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
@@ -529,7 +535,10 @@ struct SegmentedHnsw(Movable):
         lookup: HnswIdOrdinalLookup,
     ) raises -> List[SearchResult]:
         self._validate_identity()
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         var candidates: List[Int]
         if tag == DISTANCE_DOT_F32:
@@ -592,7 +601,10 @@ struct SegmentedHnsw(Movable):
         if max_ef <= 0 or ef_search > max_ef:
             raise Error("segmented HNSW widening range is invalid")
         allowed.validate(memtable.slot_count())
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         var candidates: List[Int]
         if tag == DISTANCE_DOT_F32:
@@ -1155,12 +1167,7 @@ struct SegmentedHnsw(Movable):
 
     def _validate_identity(self) raises:
         self.config.validate()
-        if (
-            self.distance_backend.dimension() != self.config.dimension
-            or self.distance_backend.metric_name() != self.config.metric_name()
-            or self.distance_backend.scalar_name() != self.config.scalar_name()
-        ):
-            raise Error("segmented HNSW distance backend mismatch")
+        self.distance_backend.validate_identity(self.config)
         if self._delta.config != self.config:
             raise Error("segmented HNSW delta config diverged from identity")
         if self._base_kind == _OWNED_BASE:

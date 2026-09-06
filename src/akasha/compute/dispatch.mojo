@@ -15,6 +15,9 @@ comptime DISTANCE_L2_F16 = 7
 comptime DISTANCE_COSINE_F16 = 8
 comptime DISTANCE_DOT_I8 = 9
 comptime DISTANCE_COSINE_I8 = 10
+comptime DISTANCE_DISPATCH_SELECTION = 0
+comptime DISTANCE_DISPATCH_PUBLIC_BOUNDARY = 1
+comptime DISTANCE_DISPATCH_HOT_LOOP = 2
 
 
 def finish_distance[
@@ -92,12 +95,6 @@ struct DistanceDispatchCounters(Copyable, Movable):
         self._public_boundary_switch_count = 0
         self._hot_loop_selection_count = 0
 
-    def record_selection(mut self):
-        self._selection_count += 1
-
-    def record_public_boundary_switch(mut self):
-        self._public_boundary_switch_count += 1
-
     def selection_count(self) -> Int:
         return self._selection_count
 
@@ -106,6 +103,49 @@ struct DistanceDispatchCounters(Copyable, Movable):
 
     def hot_loop_selection_count(self) -> Int:
         return self._hot_loop_selection_count
+
+
+def record_distance_dispatch(
+    mut counters: DistanceDispatchCounters, location: Int
+) raises:
+    """The single runtime dispatch instrumentation seam."""
+    if location == DISTANCE_DISPATCH_SELECTION:
+        counters._selection_count += 1
+    elif location == DISTANCE_DISPATCH_PUBLIC_BOUNDARY:
+        counters._public_boundary_switch_count += 1
+    elif location == DISTANCE_DISPATCH_HOT_LOOP:
+        counters._hot_loop_selection_count += 1
+    else:
+        raise Error("unknown distance dispatch location")
+
+
+def distance_backend_tag(metric: MetricKind, scalar: ScalarKind) raises -> Int:
+    """Return the only valid tag for one enabled metric/scalar identity."""
+    if not metric.is_valid() or not scalar.is_valid():
+        raise Error("distance backend identity has an unknown tag")
+    if scalar == ScalarKind.i8() and metric == MetricKind.l2():
+        raise Error("scalar_kind i8 is not compatible with ann_metric l2")
+    if scalar == ScalarKind.f32():
+        if metric == MetricKind.dot():
+            return DISTANCE_DOT_F32
+        if metric == MetricKind.l2():
+            return DISTANCE_L2_F32
+        return DISTANCE_COSINE_F32
+    if scalar == ScalarKind.bf16():
+        if metric == MetricKind.dot():
+            return DISTANCE_DOT_BF16
+        if metric == MetricKind.l2():
+            return DISTANCE_L2_BF16
+        return DISTANCE_COSINE_BF16
+    if scalar == ScalarKind.f16():
+        if metric == MetricKind.dot():
+            return DISTANCE_DOT_F16
+        if metric == MetricKind.l2():
+            return DISTANCE_L2_F16
+        return DISTANCE_COSINE_F16
+    if metric == MetricKind.dot():
+        return DISTANCE_DOT_I8
+    return DISTANCE_COSINE_I8
 
 
 struct DistanceBackend(Copyable, Movable):
@@ -119,7 +159,11 @@ struct DistanceBackend(Copyable, Movable):
     var _dispatcher: MetricDispatcher
     var _tag: Int
 
-    def __init__(out self, dispatcher: MetricDispatcher, tag: Int):
+    def __init__(out self, dispatcher: MetricDispatcher, tag: Int) raises:
+        if tag != distance_backend_tag(
+            dispatcher.metric_kind(), dispatcher.scalar_kind()
+        ):
+            raise Error("distance backend tag does not match dispatcher")
         self._dispatcher = dispatcher.copy()
         self._tag = tag
 
@@ -140,6 +184,20 @@ struct DistanceBackend(Copyable, Movable):
 
     def dispatcher(self) -> MetricDispatcher:
         return self._dispatcher.copy()
+
+    def validate_identity(self, config: CollectionConfig) raises:
+        if not self._dispatcher.matches_storage_identity(
+            config.ann_metric, config.scalar_kind, config.dimension
+        ):
+            raise Error("distance backend dispatcher does not match config")
+        if self._tag != distance_backend_tag(
+            config.ann_metric, config.scalar_kind
+        ):
+            raise Error("distance backend tag does not match config")
+        if self.backend_name() != String(
+            "portable-simd-", portable_simd_width()
+        ):
+            raise Error("distance backend name does not match compiled backend")
 
     def prepare_query(self, values: List[Float32]) raises -> List[Float32]:
         return self._dispatcher.prepare_query(values)
@@ -193,31 +251,7 @@ def select_distance_backend(
     var dispatcher = MetricDispatcher(
         config.ann_metric, config.scalar_kind, config.dimension
     )
-    var tag: Int
-    if config.scalar_kind == ScalarKind.f32():
-        if config.ann_metric == MetricKind.dot():
-            tag = DISTANCE_DOT_F32
-        elif config.ann_metric == MetricKind.l2():
-            tag = DISTANCE_L2_F32
-        else:
-            tag = DISTANCE_COSINE_F32
-    elif config.scalar_kind == ScalarKind.bf16():
-        if config.ann_metric == MetricKind.dot():
-            tag = DISTANCE_DOT_BF16
-        elif config.ann_metric == MetricKind.l2():
-            tag = DISTANCE_L2_BF16
-        else:
-            tag = DISTANCE_COSINE_BF16
-    elif config.scalar_kind == ScalarKind.f16():
-        if config.ann_metric == MetricKind.dot():
-            tag = DISTANCE_DOT_F16
-        elif config.ann_metric == MetricKind.l2():
-            tag = DISTANCE_L2_F16
-        else:
-            tag = DISTANCE_COSINE_F16
-    elif config.ann_metric == MetricKind.dot():
-        tag = DISTANCE_DOT_I8
-    else:
-        tag = DISTANCE_COSINE_I8
-    counters.record_selection()
-    return DistanceBackend(dispatcher^, tag)
+    var tag = distance_backend_tag(config.ann_metric, config.scalar_kind)
+    var backend = DistanceBackend(dispatcher^, tag)
+    record_distance_dispatch(counters, DISTANCE_DISPATCH_SELECTION)
+    return backend^

@@ -1,9 +1,16 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.dispatch import (
+    DISTANCE_DISPATCH_HOT_LOOP,
+    DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+    DISTANCE_DOT_F32,
+    DISTANCE_L2_F32,
+    DistanceBackend,
     DistanceDispatchCounters,
     portable_simd_width,
+    record_distance_dispatch,
     select_distance_backend,
 )
+from akasha.compute.metric import MetricDispatcher
 from akasha.compute.gpu.flat_scan import (
     _candidate_execution_stats,
     _execution_stats,
@@ -13,8 +20,13 @@ from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.index.hnsw import HnswIndex
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
-from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.hnsw_core import (
+    HnswEligibility,
+    HnswIdOrdinalLookup,
+    HnswSearchAdmission,
+)
 from akasha.index.segmented_hnsw import SegmentedHnsw
+from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
 from akasha.storage.hnsw_store import (
     encode_hnsw_snapshot,
@@ -30,7 +42,7 @@ from akasha.query.batch_executor import (
 )
 from akasha.query.parallel_scan import execute_parallel_scan_reported
 from std.collections import Dict
-from std.testing import assert_equal, assert_true, TestSuite
+from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
 
 def _config(metric: MetricKind, scalar: ScalarKind) -> CollectionConfig:
@@ -61,11 +73,82 @@ def test_dispatch_counters_measure_real_calls_instead_of_constants() raises:
     _ = select_distance_backend(
         _config(MetricKind.cosine(), ScalarKind.f16()), counters
     )
-    counters.record_public_boundary_switch()
-    counters.record_public_boundary_switch()
+    record_distance_dispatch(counters, DISTANCE_DISPATCH_PUBLIC_BOUNDARY)
+    record_distance_dispatch(counters, DISTANCE_DISPATCH_PUBLIC_BOUNDARY)
     assert_equal(counters.selection_count(), 2)
     assert_equal(counters.public_boundary_switch_count(), 2)
     assert_equal(counters.hot_loop_selection_count(), 0)
+    record_distance_dispatch(counters, DISTANCE_DISPATCH_HOT_LOOP)
+    assert_equal(counters.hot_loop_selection_count(), 1)
+
+
+def test_forged_backend_tag_and_mismatched_injection_are_rejected() raises:
+    var l2_config = _config(MetricKind.l2(), ScalarKind.f32())
+    var l2_dispatcher = MetricDispatcher(
+        MetricKind.l2(), ScalarKind.f32(), l2_config.dimension
+    )
+    with assert_raises():
+        _ = DistanceBackend(l2_dispatcher, DISTANCE_DOT_F32)
+    with assert_raises():
+        _ = DistanceBackend(l2_dispatcher, 999)
+
+    var dot_config = _config(MetricKind.dot(), ScalarKind.f32())
+    var counters = DistanceDispatchCounters()
+    var dot_backend = select_distance_backend(dot_config, counters)
+    with assert_raises():
+        _ = HnswIndex(l2_config, dot_backend)
+    with assert_raises():
+        _ = HnswGraphView(l2_config, dot_backend)
+    with assert_raises():
+        _ = SegmentedHnsw(l2_config, dot_backend, DistanceDispatchCounters())
+    var owned = HnswIndex(l2_config)
+    var owned_slots = owned.point_count()
+    var owned_switches = owned.distance_backend_public_switch_count()
+    var owned_distances = owned.last_search_distance_evaluations()
+    with assert_raises():
+        owned._bind_distance_backend(dot_backend)
+    assert_equal(owned.point_count(), owned_slots)
+    assert_equal(owned.distance_backend_public_switch_count(), owned_switches)
+    assert_equal(owned.last_search_distance_evaluations(), owned_distances)
+    var view = HnswGraphView(l2_config)
+    var view_switches = view.distance_backend_public_switch_count()
+    with assert_raises():
+        view._bind_distance_backend(dot_backend)
+    assert_equal(view.distance_backend_public_switch_count(), view_switches)
+
+
+def test_specialized_graph_entrypoints_do_not_record_runtime_dispatch() raises:
+    """Comptime-tagged storage, core, and view entries bypass the recorder."""
+    var config = _index_config(ScalarKind.f32())
+    config.ann_metric = MetricKind.l2()
+    var owned = _index(config)
+    var query = _vector(19)
+    var prepared = owned.distance_backend.prepare_query(query)
+    var owned_public = owned.distance_backend_public_switch_count()
+    _ = owned.graph._distance_to_slot_backend[DISTANCE_L2_F32](
+        owned.metric, prepared, UInt32(0)
+    )
+    _ = owned._search_bound_backend[backend_tag=DISTANCE_L2_F32](
+        query, 4, 8, HnswSearchAdmission()
+    )
+    assert_equal(owned.distance_backend_public_switch_count(), owned_public)
+    assert_equal(owned.distance_backend_hot_loop_selection_count(), 0)
+
+    var path = String("/tmp/akasha-task27-specialized-entry.bin")
+    remove_file_if_exists(path)
+    write_file_sync(path, encode_hnsw_snapshot(owned, UInt64(27)))
+    var mapped = open_hnsw_snapshot_view(path, config, UInt64(27))
+    var mapped_dispatcher = mapped.metric()
+    var mapped_prepared = mapped_dispatcher.prepare_query(query)
+    var mapped_public = mapped.distance_backend_public_switch_count()
+    _ = mapped._distance_to_slot_backend[DISTANCE_L2_F32](
+        mapped_dispatcher, mapped_prepared, UInt32(0)
+    )
+    _ = mapped._search_backend[DISTANCE_L2_F32](query, 4, 8)
+    assert_equal(mapped.distance_backend_public_switch_count(), mapped_public)
+    assert_equal(mapped.distance_backend_hot_loop_selection_count(), 0)
+    mapped.close()
+    remove_file_if_exists(path)
 
 
 def test_selects_every_enabled_metric_scalar_pair_once() raises:

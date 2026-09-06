@@ -20,14 +20,23 @@ required ownership boundary on this compiler.
 
 ## Decision
 
-`select_distance_backend(config, counters)` validates and selects one small
-integer tag and increments a value-owned counter when an owned or mapped index
-is constructed. Public insert and search boundaries increment a second counter,
-switch on that tag once, and invoke a core parameterized by the
-metric/scalar combination. Dimension loops and HNSW neighbor traversal contain
-only compile-time branches and never mutate either counter. Counters live on
-each index/view rather than in global mutable state, so instrumentation does
-not couple concurrent indexes.
+`distance_backend_tag(metric, scalar)` is the single authoritative mapping from
+an enabled identity to its small integer tag. `DistanceBackend` construction
+rejects a mismatched or unknown tag, and every injection or rebind validates
+the tag, dispatcher metric/scalar/dimension, and reported backend name before
+mutating an index or view. `select_distance_backend(config, counters)` uses
+that mapping and records one selection when an owned or mapped index is
+constructed.
+
+One recorder seam distinguishes selection, public-boundary, and hot-loop
+locations. Public insert and search boundaries record the boundary, switch on
+the tag once, and invoke a core parameterized by the metric/scalar combination.
+Specialized storage, core, and view entry points receive the tag as a compile-
+time parameter. Dimension loops and HNSW neighbor traversal contain only
+compile-time branches and never call the recorder. A negative instrumentation
+test deliberately records a hot-loop event to prove that its zero is measured,
+not hard-coded. Counters live on each index/view rather than in global mutable
+state, so instrumentation does not couple concurrent indexes.
 
 A segmented index owns one backend and one counter set. Its constructor selects
 once and injects that backend into the closed mapped placeholder, owned
@@ -63,6 +72,10 @@ run; compile-time-disabled GPU fallback remains covered end to end.
 
 - Backend, metric, and scalar labels in HNSW stats and distance/HNSW benchmarks
   identify the real compiled portable backend.
+- The distance benchmark times the selected packed-storage kernel after one
+  outer runtime switch for both F32 and I8, reports real per-owner dispatch
+  counters and a checksum, and verifies the selected result against the scalar
+  prepared-value reference.
 - Exact, parallel, GPU, and HNSW execution reports can be compared without
   transferring ownership of CPU/GPU policy to the distance dispatcher.
 - One index/view/segmented construction performs one measured backend

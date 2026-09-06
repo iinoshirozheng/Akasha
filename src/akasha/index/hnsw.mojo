@@ -12,8 +12,10 @@ from akasha.compute.dispatch import (
     DISTANCE_COSINE_F16,
     DISTANCE_DOT_I8,
     DISTANCE_COSINE_I8,
+    DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
     DistanceBackend,
     DistanceDispatchCounters,
+    record_distance_dispatch,
     select_distance_backend,
 )
 from akasha.index.flat import SearchResult
@@ -172,12 +174,7 @@ struct HnswIndex:
         """Create an index using a backend selected by its aggregate owner."""
         config.validate()
         var owned = config.copy()
-        if (
-            backend.dimension() != owned.dimension
-            or backend.metric_name() != owned.metric_name()
-            or backend.scalar_name() != owned.scalar_name()
-        ):
-            raise Error("injected HNSW distance backend does not match config")
+        backend.validate_identity(owned)
         self.config = owned.copy()
         self.metric = backend.dispatcher()
         self.distance_backend = backend.copy()
@@ -324,12 +321,7 @@ struct HnswIndex:
         return self._distance_dispatch_counters.hot_loop_selection_count()
 
     def _bind_distance_backend(mut self, backend: DistanceBackend) raises:
-        if (
-            backend.dimension() != self._identity_config.dimension
-            or backend.metric_name() != self._identity_config.metric_name()
-            or backend.scalar_name() != self._identity_config.scalar_name()
-        ):
-            raise Error("injected HNSW distance backend does not match index")
+        backend.validate_identity(self._identity_config)
         self.metric = backend.dispatcher()
         self.distance_backend = backend.copy()
         self._distance_dispatch_counters = DistanceDispatchCounters()
@@ -349,14 +341,7 @@ struct HnswIndex:
             or self.metric.scalar_name() != self._identity_config.scalar_name()
         ):
             raise Error("HNSW metric dispatcher diverged from identity")
-        if (
-            self.distance_backend.dimension() != self._identity_config.dimension
-            or self.distance_backend.metric_name()
-            != self._identity_config.metric_name()
-            or self.distance_backend.scalar_name()
-            != self._identity_config.scalar_name()
-        ):
-            raise Error("HNSW distance backend diverged from identity")
+        self.distance_backend.validate_identity(self._identity_config)
         if (
             self.graph.dimension != self._identity_config.dimension
             or self.graph.m != self._identity_config.m
@@ -401,7 +386,10 @@ struct HnswIndex:
             raise Error("HNSW build statistics maximum level is inconsistent")
 
     def add(mut self, id: Int, values: List[Float32]) raises:
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._add_backend[DISTANCE_DOT_F32](id, values)
@@ -448,7 +436,10 @@ struct HnswIndex:
 
     def upsert(mut self, id: Int, values: List[Float32]) raises:
         """Insert or replace one public ID without rebuilding the graph."""
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._upsert_backend[DISTANCE_DOT_F32](id, values)
@@ -753,7 +744,10 @@ struct HnswIndex:
         admitted_count: Int,
         admission: AdmissionType,
     ) raises -> List[SearchResult]:
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_admitted_prepared_backend[
@@ -851,7 +845,10 @@ struct HnswIndex:
         return_search_breadth: Bool,
         exact_fallback: Bool,
     ) raises -> List[SearchResult]:
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_admitted_backend[backend_tag=DISTANCE_DOT_F32](
@@ -1116,7 +1113,10 @@ struct HnswIndex:
         ef_search: Int,
         allowed: AdmissionType,
     ) raises -> List[SearchResult]:
-        self._distance_dispatch_counters.record_public_boundary_switch()
+        record_distance_dispatch(
+            self._distance_dispatch_counters,
+            DISTANCE_DISPATCH_PUBLIC_BOUNDARY,
+        )
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_bound_backend[backend_tag=DISTANCE_DOT_F32](
