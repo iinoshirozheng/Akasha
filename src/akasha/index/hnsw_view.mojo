@@ -3,9 +3,11 @@ from akasha.compute.metric import MetricDispatcher
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
     _audit_bidirectional_links,
+    HnswEligibility,
     HnswSearchAdmission,
     greedy_descent,
     search_layer,
+    search_allowed_with_widening_core,
 )
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswSearchStats
@@ -56,6 +58,8 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     var _metric: MetricDispatcher
     var _scratch: HnswSearchScratch
     var _last_stats: HnswSearchStats
+    var _last_search_query_preparations: Int
+    var _last_search_upper_descents: Int
     var _slots: Int
     var _live_points: Int
     var _level_cells: Int
@@ -77,6 +81,8 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         )
         self._scratch = HnswSearchScratch()
         self._last_stats = HnswSearchStats()
+        self._last_search_query_preparations = 0
+        self._last_search_upper_descents = 0
         self._slots = 0
         self._live_points = 0
         self._level_cells = 0
@@ -166,6 +172,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
 
     def last_search_stats(self) -> HnswSearchStats:
         return _copy_stats(self._last_stats)
+
+    def last_search_query_preparations(self) -> Int:
+        return self._last_search_query_preparations
+
+    def last_search_upper_descents(self) -> Int:
+        return self._last_search_upper_descents
 
     def id_at(self, slot: UInt32) raises -> Int:
         var node = self._node_record(slot)
@@ -424,6 +436,40 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             )
         self._last_stats = stats^
         return results^
+
+    def search_allowed_with_widening(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        allowed: HnswEligibility,
+    ) raises -> List[SearchResult]:
+        """Run the same prepare-once widening core as an owned graph."""
+        self.validate_search_ready()
+        if max_ef > self._config.max_ef_search:
+            raise Error("HNSW widening maximum exceeds collection maximum")
+        var scratch = self._scratch^
+        self._scratch = HnswSearchScratch()
+        var outcome = search_allowed_with_widening_core(
+            self,
+            self._metric,
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            allowed.eligible_count(),
+            self._entry_slot,
+            self._entry_level,
+            "mapped-f32",
+            allowed,
+            scratch,
+        )
+        self._scratch = scratch^
+        self._last_search_query_preparations = outcome.query_preparations
+        self._last_search_upper_descents = outcome.upper_descents
+        self._last_stats = outcome.take_stats()
+        return outcome.take_results()
 
     def _slot_index(self, slot: UInt32) raises -> Int:
         self.validate_search_ready()

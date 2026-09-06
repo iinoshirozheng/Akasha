@@ -1,7 +1,10 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
+from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.index.hnsw_core import (
+    HnswEligibility,
+    HnswIdOrdinalLookup,
     HnswSearchAdmission,
     greedy_descent,
     search_layer,
@@ -16,6 +19,7 @@ from akasha.storage.hnsw_store import (
     open_hnsw_snapshot_view,
 )
 from std.ffi import c_int, external_call
+from std.collections import Dict
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -276,6 +280,46 @@ def test_core_candidate_order_is_identical_for_owned_and_view() raises:
         assert_equal(mapped[index].id, owned[index].id)
         assert_equal(mapped[index].distance, owned[index].distance)
     _assert_search_stats_equal(view_stats, owned_stats)
+
+
+def test_owned_and_mapped_filtered_widening_share_prepare_once_core() raises:
+    var config = _config(MetricKind.l2())
+    var original = _graph(config.copy())
+    var path = _path("filtered-widening")
+    remove_file_if_exists(path)
+    write_file_sync(path, encode_hnsw_snapshot(original, UInt64(94)))
+    var view = open_hnsw_snapshot_view(path, config, UInt64(94))
+    var ordinals = Dict[Int, Int]()
+    var allowed_bitmap = Bitmap(24)
+    for id in range(1, 25):
+        ordinals[id] = id - 1
+        if id % 2 == 0:
+            allowed_bitmap.set(id - 1)
+    var lookup = HnswIdOrdinalLookup(ordinals^, 24)
+    var owned_allowed = HnswEligibility(allowed_bitmap.clone(), lookup)
+    var mapped_allowed = HnswEligibility(allowed_bitmap^, lookup)
+    var query = _vector(13)
+
+    var owned = original.search_allowed_with_widening(
+        query, 5, 2, 16, owned_allowed
+    )
+    var mapped = view.search_allowed_with_widening(
+        query, 5, 2, 16, mapped_allowed
+    )
+
+    assert_equal(len(mapped), len(owned))
+    for index in range(len(owned)):
+        assert_equal(mapped[index].id, owned[index].id)
+        assert_almost_equal(mapped[index].score, owned[index].score, atol=1.0e-6)
+    _assert_search_stats_equal(
+        view.last_search_stats(), original.last_search_stats
+    )
+    assert_equal(original.last_search_query_preparations(), 1)
+    assert_equal(view.last_search_query_preparations(), 1)
+    assert_equal(
+        view.last_search_upper_descents(),
+        original.last_search_upper_descents(),
+    )
 
 
 def test_view_rejects_misalignment_aliasing_order_and_truncation() raises:

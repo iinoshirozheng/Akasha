@@ -101,6 +101,7 @@ def _prepare(path: String) raises -> _CheckpointFixture:
     collection.upsert_sparse(81, [SparseElement(81, 81.0)])
     var retained_wal = read_file_bytes(path + "/wal.bin")
     var retained_sparse_wal = read_file_bytes(path + "/sparse.wal")
+    collection.rebuild_hnsw()
     collection.flush()
     var committed = load_manifest(path, 1)
     var newest = len(committed.segments) - 1

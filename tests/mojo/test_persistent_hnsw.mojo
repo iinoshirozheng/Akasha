@@ -25,6 +25,7 @@ from akasha.storage.manifest import (
 from akasha.index.hnsw import HnswIndex
 from akasha.storage.checksum import crc32_range
 from akasha.storage.hnsw_store import write_hnsw_snapshot
+from std.ffi import c_int, external_call
 from std.testing import (
     assert_equal,
     assert_false,
@@ -96,6 +97,14 @@ def _stored_hnsw_checksum(bytes: List[UInt8]) -> UInt32:
         | (UInt32(bytes[offset + 1]) << UInt32(8))
         | (UInt32(bytes[offset + 2]) << UInt32(16))
         | (UInt32(bytes[offset + 3]) << UInt32(24))
+    )
+
+
+def _fcntl_getfd(descriptor: Int32) -> Int32:
+    return Int32(
+        external_call["fcntl", c_int, num_fixed_args=2](
+            c_int(descriptor), c_int(1)
+        )
     )
 
 
@@ -275,6 +284,33 @@ def test_flush_commits_v3_hnsw_and_reopen_uses_mapped_sidecar() raises:
     reopened.close()
 
 
+def test_repeated_collection_close_releases_retained_mapped_base_once() raises:
+    var path = String("/tmp/akasha-task25-mapped-close")
+    var config = _build_checkpoint(path)
+    var first = PersistentCollection.open_with_config(path, config.copy())
+    var first_descriptor = (
+        first._hnsw._mapped_base._mapping._descriptor_for_testing()
+    )
+    assert_true(_fcntl_getfd(first_descriptor) >= 0)
+
+    first.close()
+    assert_equal(_fcntl_getfd(first_descriptor), Int32(-1))
+    with assert_raises():
+        first._hnsw._mapped_base.validate_search_ready()
+
+    # Keep `first` alive while the OS may reuse its descriptor for `second`.
+    # A repeated close on the retained object must not close the new owner.
+    var second = PersistentCollection.open_with_config(path, config.copy())
+    var second_descriptor = (
+        second._hnsw._mapped_base._mapping._descriptor_for_testing()
+    )
+    assert_true(_fcntl_getfd(second_descriptor) >= 0)
+    first.close()
+    assert_true(_fcntl_getfd(second_descriptor) >= 0)
+    second.close()
+    assert_equal(_fcntl_getfd(second_descriptor), Int32(-1))
+
+
 def test_queries_match_ids_and_scores_before_and_after_sidecar_reopen() raises:
     var path = String("/tmp/akasha-task22-query-equivalence")
     _reset(path)
@@ -324,10 +360,30 @@ def test_reopen_replays_newer_wal_mutations_into_mapped_base_delta() raises:
     )
     assert_true(reopened._hnsw._mapped_base.is_current(UInt32(78)))
     assert_equal(reopened.hnsw_slot_count(), 81)
-    assert_equal(reopened.hnsw_inactive_count(), 0)
+    assert_equal(reopened.hnsw_inactive_count(), 2)
     assert_equal(reopened.search_l2_approx([80.0], 1, 80)[0].id, 78)
     reopened.flush()
+    # Below the delta threshold, the authoritative segment commits as v2 and
+    # the in-memory mapped-base overlay remains intact without rebuilding.
+    assert_false(reopened._hnsw.checkpoint_ready())
+    assert_true(reopened._hnsw.base_is_mapped())
+    assert_equal(reopened._hnsw.base_slot_count(), 80)
+    assert_equal(reopened._hnsw.delta_slot_count(), 1)
+    var below_threshold = load_manifest(path, 1)
+    assert_equal(below_threshold.format_version, 2)
+    assert_false(Bool(below_threshold.hnsw_name))
+    assert_false(path_exists(path + "/hnsw-80.bin"))
+    var mutation_count = reopened._hnsw_mutations_since_rebuild
+    reopened.flush()
+    assert_equal(reopened._hnsw_mutations_since_rebuild, mutation_count)
+    assert_false(reopened._hnsw.checkpoint_ready())
+
+    # Explicit maintenance materializes a complete replacement sidecar even
+    # though the threshold has not fired.
+    reopened.rebuild_hnsw()
+    reopened.flush()
     assert_true(reopened._hnsw.checkpoint_ready())
+    assert_true(Bool(load_manifest(path, 1).hnsw_name))
     reopened.close()
 
     var committed = PersistentCollection.open_with_config(path, config.copy())
@@ -553,6 +609,7 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     # Replace an existing point so the committed live count remains 80; the
     # stale sidecar can then differ only in its encoded sequence.
     collection.upsert(80, [81.0])
+    collection.rebuild_hnsw()
     collection.flush()
     collection.close()
     # The filename and manifest describe sequence 81, but these internally

@@ -77,6 +77,7 @@ def test_flush_removes_only_prior_manifest_named_hnsw_sidecar() raises:
     write_file_sync(path + "/hnsw-999.bin", [UInt8(2)])
     write_file_sync(path + "/hnsw-80.bin.user", [UInt8(3)])
     collection.upsert(81, [81.0])
+    collection.rebuild_hnsw()
     collection.flush()
 
     var current = load_manifest(path, 1)
@@ -103,6 +104,7 @@ def test_compaction_preserves_v3_sidecar_and_advances_generation() raises:
         collection.upsert(id, [Float32(id)])
     collection.flush()
     collection.upsert(81, [81.0])
+    collection.rebuild_hnsw()
     collection.flush()
     var before = load_manifest(path, 1)
     var sidecar_name = before.hnsw_name.value().copy()

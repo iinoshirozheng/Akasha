@@ -7,7 +7,9 @@ from akasha.index.hnsw_core import (
     HnswSearchAdmission,
     connect_bidirectional,
     greedy_descent,
+    _next_widened_ef,
     search_layer,
+    search_allowed_with_widening_core,
     select_neighbors_heuristic,
     validate_bidirectional_links,
 )
@@ -503,11 +505,7 @@ struct HnswIndex:
     @staticmethod
     def next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
         """Double ``current_ef`` and saturate at ``max_ef`` safely."""
-        if current_ef <= 0 or max_ef <= 0 or current_ef > max_ef:
-            raise Error("HNSW widening ef range is invalid")
-        if current_ef == max_ef or current_ef > max_ef // 2:
-            return max_ef
-        return current_ef * 2
+        return _next_widened_ef(current_ef, max_ef)
 
     def search_allowed_with_widening(
         mut self,
@@ -549,127 +547,30 @@ struct HnswIndex:
         max_ef: Int,
         allowed: HnswEligibility,
     ) raises -> List[SearchResult]:
-        """Run filtered ANN rounds, then exact-scan on exhausted breadth.
-
-        The query and upper descent are prepared once. Each wider round reruns
-        only the base layer over the same reusable scratch allocation. Prior
-        result lists are replaced, never appended. The index-local exact scan
-        is the correctness fallback; collection integration may subsequently
-        rerank these IDs against authoritative vectors.
-        """
+        """Use the shared owned-or-mapped widening core."""
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("cannot search an invalid HNSW index")
-        if k <= 0:
-            raise Error("HNSW search k must be positive")
-        if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
-            raise Error("HNSW widening ef range is invalid")
         if max_ef > self._identity_config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
-        allowed.validate(self.graph.slot_count())
-
-        var matched_count = allowed.eligible_count()
-        var slot_count = self.graph.slot_count()
-        if matched_count > slot_count:
-            raise Error("HNSW eligibility count exceeds graph slots")
-        var target_count = k
-        if target_count > matched_count:
-            target_count = matched_count
-        # Every graph slot is a possible navigation bridge, including future
-        # historical slots. No base round can usefully retain more state than
-        # this traversable population.
-        var effective_ceiling = max_ef
-        if effective_ceiling > slot_count:
-            effective_ceiling = slot_count
-
-        var prepared = self.metric.prepare_query(query)
-        if target_count == 0:
-            var empty_stats = self._new_search_stats(0, 0)
-            self.last_search_stats = empty_stats^
-            self._last_search_query_preparations = 1
-            self._last_search_upper_descents = 0
-            return List[SearchResult]()
-
-        var current_ef = initial_ef
-        if current_ef < target_count:
-            current_ef = target_count
-        if current_ef > effective_ceiling:
-            current_ef = effective_ceiling
-        if current_ef < target_count:
-            raise Error("HNSW result demand exceeds traversable graph slots")
-
-        var upper_stats = self._new_search_stats(current_ef, current_ef)
-        var upper_descents = 0
-        var has_entry = Bool(self.entry_slot)
-        var current = UInt32(0)
-        if has_entry:
-            current = self.entry_slot.value()
-            var level = self.entry_level
-            while level > 0:
-                var descended = greedy_descent(
-                    self.graph,
-                    self.metric,
-                    prepared,
-                    current,
-                    level,
-                    upper_stats,
-                )
-                upper_descents += 1
-                current = descended.slot
-                level -= 1
-
-        var widening_rounds = 0
-        var results: List[SearchResult]
-        if has_entry:
-            results = self._search_base_prepared(
-                prepared,
-                current,
-                target_count,
-                current_ef,
-                current_ef,
-                allowed,
-                upper_stats,
-            )
-        else:
-            results = List[SearchResult]()
-            self.last_search_stats = _copy_search_stats(upper_stats)
-
-        while len(results) < target_count and current_ef < effective_ceiling:
-            var widened = HnswIndex.next_widened_ef(
-                current_ef, effective_ceiling
-            )
-            if widened == current_ef:
-                break
-            current_ef = widened
-            widening_rounds += 1
-            # Replace the prior base round wholesale. `search_layer` begins a
-            # new scratch epoch while retaining its bounded allocations.
-            results = self._search_base_prepared(
-                prepared,
-                current,
-                target_count,
-                current_ef,
-                current_ef,
-                allowed,
-                upper_stats,
-            )
-
-        var final_stats = _copy_search_stats(self.last_search_stats)
-        final_stats.widening_rounds = widening_rounds
-        if len(results) >= target_count:
-            self.last_search_stats = final_stats^
-            self._last_search_query_preparations = 1
-            self._last_search_upper_descents = upper_descents
-            return results^
-
-        var exact = self._search_allowed_exact_prepared(
-            prepared, target_count, allowed
+        var outcome = search_allowed_with_widening_core(
+            self.graph,
+            self.metric,
+            query,
+            k,
+            initial_ef,
+            max_ef,
+            allowed.eligible_count(),
+            self.entry_slot,
+            self.entry_level,
+            "packed-f32",
+            allowed,
+            self.scratch,
         )
-        final_stats.fallback_reason = String("filtered_ann_exhausted")
-        self.last_search_stats = final_stats^
-        self._last_search_query_preparations = 1
-        self._last_search_upper_descents = upper_descents
-        return exact^
+        self._last_search_query_preparations = outcome.query_preparations
+        self._last_search_upper_descents = outcome.upper_descents
+        self.last_search_stats = outcome.take_stats()
+        return outcome.take_results()
 
     def _search_allowed_exact_prepared(
         self,

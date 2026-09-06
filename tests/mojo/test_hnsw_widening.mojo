@@ -98,6 +98,7 @@ def test_filtered_search_exact_fallback_preserves_final_ann_stats() raises:
     assert_equal(index.last_search_stats.widening_rounds, 0)
     assert_equal(index.last_search_stats.base_visited, 3)
     assert_equal(index.last_search_stats.distance_evaluations, 4)
+    assert_equal(index.last_search_stats.retained_candidates, 1)
     assert_equal(
         index.last_search_stats.fallback_reason,
         "filtered_ann_exhausted",
@@ -198,6 +199,7 @@ def test_empty_eligibility_with_huge_max_ef_skips_graph_allocation() raises:
     assert_equal(len(results), 0)
     assert_equal(index.scratch.epoch, starting_epoch)
     assert_equal(index.scratch.filtered_result_reserved_capacity(), 0)
+    assert_equal(index.last_search_stats.requested_ef, 0)
     assert_equal(index.last_search_stats.effective_ef, 0)
     assert_equal(index.last_search_stats.fallback_reason, "")
     assert_equal(index.last_search_query_preparations(), 1)

@@ -1,5 +1,6 @@
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.bitmap import Bitmap
+from akasha.index.flat import SearchResult
 from akasha.index.hnsw_heap import (
     CandidateMinHeap,
     HnswHeapItem,
@@ -96,7 +97,7 @@ struct HnswIdOrdinalLookup(Copyable, Movable):
         """Packed UInt64 bitmap payload used by one-time validation."""
         return self._state[].validation_scratch_bytes
 
-    def ordinal_for(self, id: Int) -> Int:
+    def ordinal_for(self, id: Int) raises -> Int:
         if id in self._state[].ordinals:
             return self._state[].ordinals[id]
         return -1
@@ -190,6 +191,37 @@ struct HnswValidationStats(Copyable, Movable):
     def __init__(out self):
         self.owned_level_cells = 0
         self.directed_edges = 0
+
+
+struct HnswWideningOutcome(Movable):
+    """One shared owned-or-mapped filtered widening execution."""
+
+    var results: List[SearchResult]
+    var stats: HnswSearchStats
+    var query_preparations: Int
+    var upper_descents: Int
+
+    def __init__(
+        out self,
+        var results: List[SearchResult],
+        var stats: HnswSearchStats,
+        query_preparations: Int,
+        upper_descents: Int,
+    ):
+        self.results = results^
+        self.stats = stats^
+        self.query_preparations = query_preparations
+        self.upper_descents = upper_descents
+
+    def take_results(mut self) -> List[SearchResult]:
+        var result = self.results^
+        self.results = List[SearchResult]()
+        return result^
+
+    def take_stats(mut self) -> HnswSearchStats:
+        var result = self.stats^
+        self.stats = HnswSearchStats()
+        return result^
 
 
 def _search_item_better(lhs: HnswHeapItem, rhs: HnswHeapItem) -> Bool:
@@ -875,3 +907,153 @@ def search_layer[
         _ = best.pop()
     stats.retained_candidates = len(best)
     return best^
+
+
+def _next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
+    """Double a positive ef and saturate without integer overflow."""
+    if current_ef <= 0 or max_ef <= 0 or current_ef > max_ef:
+        raise Error("HNSW widening ef range is invalid")
+    if current_ef == max_ef or current_ef > max_ef // 2:
+        return max_ef
+    return current_ef * 2
+
+
+def search_allowed_with_widening_core[
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
+](
+    graph: GraphType,
+    dispatcher: MetricDispatcher,
+    query: List[Float32],
+    k: Int,
+    initial_ef: Int,
+    max_ef: Int,
+    eligible_count: Int,
+    entry_slot: Optional[UInt32],
+    entry_level: Int,
+    storage_name: String,
+    allowed: AdmissionType,
+    mut scratch: HnswSearchScratch,
+) raises -> HnswWideningOutcome:
+    """Prepare and descend once, widening only reusable base-layer rounds."""
+    graph.validate_search_ready()
+    dispatcher.require_supported_backend()
+    if dispatcher.dimension() != graph.graph_dimension():
+        raise Error("metric dispatcher dimension does not match HNSW graph")
+    if k <= 0:
+        raise Error("HNSW search k must be positive")
+    if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
+        raise Error("HNSW widening ef range is invalid")
+    if eligible_count < 0:
+        raise Error("HNSW eligible count cannot be negative")
+    allowed.validate(graph.slot_count())
+
+    var prepared = dispatcher.prepare_query(query)
+    var stats = HnswSearchStats()
+    stats.requested_ef = initial_ef
+    stats.effective_ef = initial_ef
+    stats.backend_name = dispatcher.backend_name()
+    stats.metric_name = dispatcher.metric_name()
+    stats.scalar_name = dispatcher.scalar_name()
+    stats.storage_name = storage_name
+
+    var target_count = k
+    if target_count > eligible_count:
+        target_count = eligible_count
+    if target_count > graph.slot_count():
+        target_count = graph.slot_count()
+    var effective_ceiling = max_ef
+    if effective_ceiling > graph.slot_count():
+        effective_ceiling = graph.slot_count()
+    if target_count == 0 or not Bool(entry_slot):
+        stats.requested_ef = 0
+        stats.effective_ef = 0
+        return HnswWideningOutcome(
+            List[SearchResult](), stats^, 1, 0
+        )
+
+    var current_ef = initial_ef
+    if current_ef < target_count:
+        current_ef = target_count
+    if current_ef > effective_ceiling:
+        current_ef = effective_ceiling
+    if current_ef < target_count:
+        raise Error("HNSW result demand exceeds traversable graph slots")
+
+    var current = entry_slot.value()
+    var upper_descents = 0
+    for level in range(entry_level, 0, -1):
+        current = greedy_descent(
+            graph, dispatcher, prepared, current, level, stats
+        ).slot
+        upper_descents += 1
+    var upper_stats = stats^
+    var widening_rounds = 0
+    var results: List[SearchResult]
+    while True:
+        stats = HnswSearchStats()
+        stats.requested_ef = current_ef
+        stats.effective_ef = current_ef
+        stats.upper_visited = upper_stats.upper_visited
+        stats.distance_evaluations = upper_stats.distance_evaluations
+        stats.backend_name = upper_stats.backend_name.copy()
+        stats.metric_name = upper_stats.metric_name.copy()
+        stats.scalar_name = upper_stats.scalar_name.copy()
+        stats.storage_name = upper_stats.storage_name.copy()
+        var candidates = search_layer(
+            graph,
+            dispatcher,
+            prepared,
+            current,
+            0,
+            target_count,
+            current_ef,
+            allowed,
+            scratch,
+            stats,
+        )
+        results = List[SearchResult](capacity=len(candidates))
+        for candidate in candidates:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    dispatcher.public_score(candidate.distance),
+                )
+            )
+        if len(results) >= target_count or current_ef >= effective_ceiling:
+            break
+        var widened = _next_widened_ef(current_ef, effective_ceiling)
+        if widened == current_ef:
+            break
+        current_ef = widened
+        widening_rounds += 1
+
+    stats.widening_rounds = widening_rounds
+    if len(results) < target_count:
+        var retained = ResultMaxHeap()
+        retained.reserve(target_count)
+        for slot_index in range(graph.slot_count()):
+            var slot = UInt32(slot_index)
+            var id = graph.id_at(slot)
+            if not graph.is_current(slot) or not allowed._allows_item(slot, id):
+                continue
+            retained.offer(
+                HnswHeapItem(
+                    slot,
+                    id,
+                    graph.distance_to_slot(dispatcher, prepared, slot),
+                ),
+                target_count,
+            )
+        var exact = retained.take_sorted_best()
+        results = List[SearchResult](capacity=len(exact))
+        for candidate in exact:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    dispatcher.public_score(candidate.distance),
+                )
+            )
+        stats.fallback_reason = "filtered_ann_exhausted"
+    return HnswWideningOutcome(
+        results^, stats^, 1, upper_descents
+    )

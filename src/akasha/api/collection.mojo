@@ -542,6 +542,7 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
+            self._hnsw.close()
             self._closed = True
         var maintenance_error = String()
         try:
@@ -1346,7 +1347,10 @@ struct PersistentCollection:
                 var wrote_hnsw = False
                 if self._hnsw_available:
                     self._ensure_owned_hnsw_checkpoint()
-                    if self._hnsw_available:
+                    if (
+                        self._hnsw_available
+                        and self._hnsw.checkpoint_ready()
+                    ):
                         var eligibility = hnsw_snapshot_eligibility(
                             self._hnsw.checkpoint_base(),
                             self._hnsw_sidecar_max_bytes_for_test,
@@ -1402,9 +1406,9 @@ struct PersistentCollection:
             self._publish_index_caches_best_effort()
             return
 
-        # A sidecar is a complete checkpoint base. Delta-only startup can be
-        # promoted without rebuilding; merging an older base with mutations
-        # is explicit flush-time maintenance and never occurs in a query.
+        # A first delta-only graph can become the base by ownership transfer.
+        # A base plus a below-threshold overlay remains segmented: the
+        # authoritative data checkpoint commits without an HNSW sidecar.
         self._ensure_owned_hnsw_checkpoint()
 
         var sparse_kind = SPARSE_SEGMENT_KIND_BASE
@@ -1457,7 +1461,7 @@ struct PersistentCollection:
         var hnsw_name = "hnsw-" + String(self._last_sequence) + ".bin"
         var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
         var hnsw_info = Optional[HnswSnapshotInfo]()
-        if self._hnsw_available:
+        if self._hnsw_available and self._hnsw.checkpoint_ready():
             var eligibility = hnsw_snapshot_eligibility(
                 self._hnsw.checkpoint_base(),
                 self._hnsw_sidecar_max_bytes_for_test,
@@ -1706,9 +1710,17 @@ struct PersistentCollection:
         if not plan.use_hnsw:
             var conditions = List[FilterCondition]()
             return self._search_filtered(query, k, metric, conditions)
+        if not self._ensure_hnsw_id_lookup():
+            self._last_dense_plan_reason = "graph_unavailable"
+            var conditions = List[FilterCondition]()
+            return self._search_filtered(query, k, metric, conditions)
         try:
             var candidates = self._hnsw.search(
-                query, k, plan.initial_ef, self._memtable
+                query,
+                k,
+                plan.initial_ef,
+                self._memtable,
+                self._hnsw_id_lookup.value(),
             )
             var allowed = Optional[Bitmap]()
             var expected_count = k
@@ -1718,7 +1730,7 @@ struct PersistentCollection:
                 query,
                 k,
                 metric,
-                candidates,
+                candidates^,
                 expected_count,
                 allowed,
             )
@@ -1775,6 +1787,7 @@ struct PersistentCollection:
                 plan.max_ef,
                 eligibility,
                 self._memtable,
+                self._hnsw_id_lookup.value(),
             )
             var segmented_stats = self._hnsw.last_search_stats()
             if segmented_stats.fallback_reason != "":
@@ -1789,7 +1802,7 @@ struct PersistentCollection:
                 query,
                 k,
                 metric,
-                candidates,
+                candidates^,
                 expected_count,
                 allowed,
             )
@@ -2026,11 +2039,9 @@ struct PersistentCollection:
         if not self._hnsw_available or self._hnsw.checkpoint_ready():
             return
         try:
-            if not self._hnsw.has_base():
+            if not self._hnsw.has_base() or self._hnsw.base_slot_count() == 0:
                 self._hnsw.promote_delta_base()
                 self._hnsw_mutations_since_rebuild = 0
-                return
-            self._rebuild_hnsw_unlocked()
         except:
             self._mark_hnsw_unavailable("rebuild_failed")
 
@@ -2060,19 +2071,25 @@ struct PersistentCollection:
         query: List[Float32],
         k: Int,
         metric: Int,
-        candidates: List[SearchResult],
+        var candidates: List[SearchResult],
         expected_count: Int,
         allowed: Optional[Bitmap],
     ) raises -> List[SearchResult]:
+        var segmented_stats = self._hnsw.last_search_stats()
+        self._last_hnsw_rerank_candidates = (
+            segmented_stats.reranked_candidates
+        )
+        self._last_hnsw_rerank_ordinal_lookups = (
+            self._hnsw.last_rerank_ordinal_lookups()
+        )
+        self._last_hnsw_rerank_linear_id_scans = (
+            self._hnsw.last_rerank_linear_id_scans()
+        )
+        self._last_hnsw_rerank_payload_clones = 0
         try:
-            return self._rerank_hnsw_candidates(
-                query,
-                k,
-                metric,
-                candidates,
-                expected_count,
-                allowed,
-            )
+            if expected_count < 0 or len(candidates) != expected_count:
+                raise Error("HNSW candidate count does not satisfy query contract")
+            return candidates^
         except:
             var exact_candidates: Bitmap
             if Bool(allowed):
@@ -2085,63 +2102,6 @@ struct PersistentCollection:
             self._mark_hnsw_unavailable("candidate_invalid")
             self._last_dense_plan_reason = "graph_unavailable"
             return exact^
-
-    def _rerank_hnsw_candidates(
-        mut self,
-        query: List[Float32],
-        k: Int,
-        metric: Int,
-        candidates: List[SearchResult],
-        expected_count: Int,
-        allowed: Optional[Bitmap],
-    ) raises -> List[SearchResult]:
-        self._last_hnsw_rerank_candidates = len(candidates)
-        self._last_hnsw_rerank_ordinal_lookups = 0
-        self._last_hnsw_rerank_linear_id_scans = 0
-        self._last_hnsw_rerank_payload_clones = 0
-        if expected_count < 0 or len(candidates) != expected_count:
-            raise Error("HNSW candidate count does not satisfy query contract")
-        if expected_count == 0:
-            return List[SearchResult]()
-        if k <= 0 or expected_count > k:
-            raise Error("HNSW candidate target is invalid")
-        var topk = BoundedTopK(
-            expected_count, smaller_is_better=metric == _L2_METRIC
-        )
-        var seen = Dict[Int, Bool]()
-        for index in range(len(candidates)):
-            var id = candidates[index].id
-            if id in seen:
-                raise Error("HNSW candidate IDs must be unique")
-            seen[id] = True
-            var ordinal = self._metadata.ordinal_for(id)
-            self._last_hnsw_rerank_ordinal_lookups += 1
-            if (
-                ordinal < 0
-                or not self._metadata.is_live_at(ordinal)
-                or self._metadata.id_at(ordinal) != id
-                or ordinal >= self._memtable.slot_count()
-                or not self._memtable.is_live_at(ordinal)
-                or self._memtable.id_at(ordinal) != id
-            ):
-                raise Error("HNSW candidate is not authoritative and current")
-            if Bool(allowed) and not allowed.value().contains(ordinal):
-                raise Error("HNSW candidate is outside filter eligibility")
-            ref authoritative = self._memtable.entry_ref_at(ordinal)
-            ref vector = authoritative.values
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, vector)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, vector)
-            else:
-                score = simd_cosine_similarity(query, vector)
-            topk.offer(id, score)
-        var retained = topk.sorted_entries()
-        var results = List[SearchResult](capacity=len(retained))
-        for entry in retained:
-            results.append(SearchResult(entry.id, entry.score))
-        return results^
 
     def _invalidate_cache_hits(mut self):
         self._hnsw_cache_was_hit = False

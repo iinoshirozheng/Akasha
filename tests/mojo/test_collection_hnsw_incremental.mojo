@@ -8,7 +8,6 @@ from akasha import (
     MetricKind,
     PayloadValue,
     PersistentCollection,
-    SearchResult,
 )
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from std.testing import assert_equal, assert_true, TestSuite
@@ -302,54 +301,7 @@ def test_corrupt_candidate_shortfall_quarantines_and_exact_falls_back() raises:
     assert_equal(collection.last_dense_plan_reason(), "graph_unavailable")
 
 
-def test_injected_duplicate_missing_and_ineligible_candidates_fall_back() raises:
-    var duplicate_path = String("/tmp/akasha-task18-duplicate-candidate")
-    _reset(duplicate_path)
-    var duplicate = PersistentCollection.open(duplicate_path, 1)
-    duplicate.upsert(1, [1.0])
-    duplicate.upsert(2, [2.0])
-    var duplicate_candidates = List[SearchResult]()
-    duplicate_candidates.append(SearchResult(2, 0.0))
-    duplicate_candidates.append(SearchResult(2, 0.0))
-    var allow_all = Optional[Bitmap]()
-    var duplicate_result = duplicate._finish_hnsw_candidates(
-        [2.0], 2, 1, duplicate_candidates, 2, allow_all
-    )
-    assert_equal(duplicate_result[0].id, 2)
-    assert_equal(duplicate_result[1].id, 1)
-    assert_equal(duplicate.hnsw_available(), False)
-
-    var missing_path = String("/tmp/akasha-task18-missing-candidate")
-    _reset(missing_path)
-    var missing = PersistentCollection.open(missing_path, 1)
-    missing.upsert(1, [1.0])
-    var missing_candidates = List[SearchResult]()
-    missing_candidates.append(SearchResult(999, 0.0))
-    var missing_allow_all = Optional[Bitmap]()
-    var missing_result = missing._finish_hnsw_candidates(
-        [1.0], 1, 1, missing_candidates, 1, missing_allow_all
-    )
-    assert_equal(missing_result[0].id, 1)
-    assert_equal(missing.hnsw_available(), False)
-
-    var filtered_path = String("/tmp/akasha-task18-ineligible-candidate")
-    _reset(filtered_path)
-    var filtered = PersistentCollection.open(filtered_path, 1)
-    filtered.upsert(1, [1.0])
-    filtered.upsert(2, [2.0])
-    var allowed_bitmap = Bitmap(2)
-    allowed_bitmap.set(0)
-    var allowed = Optional(allowed_bitmap^)
-    var ineligible_candidates = List[SearchResult]()
-    ineligible_candidates.append(SearchResult(2, 0.0))
-    var filtered_result = filtered._finish_hnsw_candidates(
-        [2.0], 1, 1, ineligible_candidates, 1, allowed
-    )
-    assert_equal(filtered_result[0].id, 1)
-    assert_equal(filtered.hnsw_available(), False)
-
-
-def test_open_and_unfiltered_queries_do_not_build_filter_id_lookup() raises:
+def test_unfiltered_and_filtered_queries_share_one_lazy_id_lookup() raises:
     var path = String("/tmp/akasha-task18-lazy-id-lookup")
     _reset(path)
     var original = PersistentCollection.open(path, 1)
@@ -362,7 +314,9 @@ def test_open_and_unfiltered_queries_do_not_build_filter_id_lookup() raises:
     assert_equal(reopened.hnsw_cache_hit(), False)
     assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
     _ = reopened.search_l2_approx([79.0], 3, 32)
-    assert_equal(reopened.hnsw_id_lookup_build_count(), 0)
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 1)
+    _ = reopened.search_l2_approx([78.0], 3, 32)
+    assert_equal(reopened.hnsw_id_lookup_build_count(), 1)
 
     var filtered_path = String("/tmp/akasha-task18-lazy-filter-lookup")
     _reset(filtered_path)

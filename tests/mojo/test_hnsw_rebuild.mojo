@@ -192,30 +192,40 @@ def test_rebuild_failure_preserves_authoritative_data_and_quarantines_graph() ra
     assert_equal(collection.get(1).value().vector[0], Float32(42.0))
 
 
-def test_flush_materializes_a_complete_base_below_delta_threshold() raises:
+def test_flush_rebuilds_only_at_dense_delta_threshold() raises:
     var path = String("/tmp/akasha-task19-delta-threshold")
     _reset(path)
     var collection = PersistentCollection.open_with_config(
         path, _config(inactive_percent=90, delta_max_points=3)
     )
+    # The first delta-only checkpoint may be promoted without rebuilding.
     collection.upsert(1, [1.0])
     collection.upsert(2, [2.0])
-    assert_equal(collection._hnsw_mutations_since_rebuild, 2)
     collection.flush()
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)
     assert_true(collection._hnsw.checkpoint_ready())
+    assert_equal(collection._hnsw.base_slot_count(), 2)
 
     collection.upsert(3, [3.0])
     assert_equal(collection._hnsw_mutations_since_rebuild, 1)
     collection.upsert(4, [4.0])
     assert_equal(collection._hnsw_mutations_since_rebuild, 2)
     collection.flush()
+    assert_equal(collection._hnsw_mutations_since_rebuild, 2)
+    assert_false(collection._hnsw.checkpoint_ready())
+    assert_equal(collection._hnsw.base_slot_count(), 2)
+    assert_equal(collection._hnsw.delta_slot_count(), 2)
+
+    collection.upsert(5, [5.0])
+    assert_equal(collection._hnsw_mutations_since_rebuild, 3)
+    collection.flush()
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)
+    assert_true(collection._hnsw.checkpoint_ready())
     assert_equal(collection.hnsw_inactive_count(), 0)
-    assert_equal(collection.hnsw_slot_count(), 4)
+    assert_equal(collection.hnsw_slot_count(), 5)
 
 
-def test_frozen_base_replacements_stay_in_delta_until_flush() raises:
+def test_flush_rebuilds_only_at_frozen_base_stale_threshold() raises:
     var path = String("/tmp/akasha-task19-inactive-flush-threshold")
     _reset(path)
     var collection = PersistentCollection.open_with_config(
@@ -228,13 +238,15 @@ def test_frozen_base_replacements_stay_in_delta_until_flush() raises:
     assert_false(collection._hnsw.needs_rebuild())
     assert_equal(collection._hnsw.base_slot_count(), 4)
     assert_equal(collection._hnsw.delta_slot_count(), 1)
-    assert_equal(collection.hnsw_inactive_count(), 0)
+    assert_equal(collection.hnsw_inactive_count(), 1)
     collection.flush()
-    assert_equal(collection.hnsw_inactive_count(), 0)
-    assert_true(collection._hnsw.checkpoint_ready())
+    assert_equal(collection.hnsw_inactive_count(), 1)
+    assert_false(collection._hnsw.checkpoint_ready())
+    assert_equal(collection._hnsw.base_slot_count(), 4)
+    assert_equal(collection._hnsw.delta_slot_count(), 1)
 
     collection.upsert(1, [11.0])
-    assert_false(collection._hnsw.needs_rebuild())
+    assert_true(collection._hnsw.needs_rebuild())
     collection.flush()
     assert_equal(collection.hnsw_inactive_count(), 0)
     assert_equal(collection._hnsw_mutations_since_rebuild, 0)
