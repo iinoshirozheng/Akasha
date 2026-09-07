@@ -139,6 +139,15 @@ struct _HnswRebuildOrdinal(Comparable, Copyable, Movable):
         return self.ordinal < other.ordinal
 
 
+struct _GpuReadSnapshot(Movable):
+    """Writer-lock protected owner; active GPU queries retain their own lease."""
+
+    var snapshot: Optional[ArcPointer[ReadSnapshot]]
+
+    def __init__(out self):
+        self.snapshot = Optional[ArcPointer[ReadSnapshot]]()
+
+
 struct PersistentCollection:
     """A durable, single-writer exact vector collection."""
 
@@ -174,6 +183,7 @@ struct PersistentCollection:
     var _pins: ArcPointer[GenerationPinRegistry]
     var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
+    var _gpu_read_snapshot: ArcPointer[_GpuReadSnapshot]
     var _maintenance: MaintenanceController
     var _cache_generation: UInt64
     var _source_checksum: UInt32
@@ -236,6 +246,7 @@ struct PersistentCollection:
         self._pins = ArcPointer(GenerationPinRegistry())
         self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
+        self._gpu_read_snapshot = ArcPointer(_GpuReadSnapshot())
         self._maintenance = MaintenanceController.start(
             path,
             config.dimension,
@@ -541,6 +552,7 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
+            self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
             self._hnsw.close()
             self._closed = True
         var maintenance_error = String()
@@ -678,6 +690,22 @@ struct PersistentCollection:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
             return self._snapshot_unlocked()
+
+    def _snapshot_for_gpu(self) raises -> ArcPointer[ReadSnapshot]:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            var generation = UInt64(0)
+            if path_exists(self._path + "/manifest.bin"):
+                generation = load_manifest(self._path, self._config.dimension).generation
+            if self._gpu_read_snapshot[].snapshot:
+                ref cached = self._gpu_read_snapshot[].snapshot.value()[]
+                if cached.generation() != generation or cached.last_sequence() != self._last_sequence:
+                    self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
+            if not self._gpu_read_snapshot[].snapshot:
+                self._gpu_read_snapshot[].snapshot = Optional(
+                    ArcPointer(self._snapshot_unlocked())
+                )
+            return self._gpu_read_snapshot[].snapshot.value()
 
     def _snapshot_unlocked(self) raises -> ReadSnapshot:
         self._ensure_open()
@@ -955,8 +983,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_dot_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_dot_batch[use_accelerator](
             queries, k, options
         )
 
@@ -966,8 +994,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_l2_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_l2_batch[use_accelerator](
             queries, k, options
         )
 
@@ -977,8 +1005,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_cosine_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_cosine_batch[use_accelerator](
             queries, k, options
         )
 
@@ -1028,8 +1056,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_dot_where_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_dot_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1040,8 +1068,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_l2_where_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_l2_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1052,8 +1080,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self.snapshot()
-        return snapshot.search_device_cosine_where_batch[use_accelerator](
+        var snapshot = self._snapshot_for_gpu()
+        return snapshot[].search_device_cosine_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1314,6 +1342,7 @@ struct PersistentCollection:
 
     def _flush_unlocked(mut self) raises:
         self._ensure_open()
+        self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
         self._reclaim_retired()
         var previous_sequence = UInt64(0)
         var generation = UInt64(1)
@@ -2209,6 +2238,9 @@ struct PersistentCollection:
             return exact^
 
     def _invalidate_cache_hits(mut self):
+        # Drop only the collection's lease. In-flight queries still own their
+        # immutable snapshot and device buffers until readback completes.
+        self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
         self._hnsw_cache_was_hit = False
         self._metadata_cache_was_hit = False
 

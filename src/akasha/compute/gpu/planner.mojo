@@ -6,6 +6,7 @@ struct GpuExecutionOptions:
     var min_work_items: Int
     var block_size: Int
     var fail_before_launch: Bool
+    var profile: Bool
 
     def __init__(
         out self,
@@ -15,6 +16,7 @@ struct GpuExecutionOptions:
         min_work_items: Int = 65_536,
         block_size: Int = 256,
         fail_before_launch: Bool = False,
+        profile: Bool = False,
     ) raises:
         if memory_budget_bytes <= 0:
             raise Error("GPU memory budget must be positive")
@@ -27,6 +29,7 @@ struct GpuExecutionOptions:
         self.min_work_items = min_work_items
         self.block_size = block_size
         self.fail_before_launch = fail_before_launch
+        self.profile = profile
 
 
 struct GpuPlan(Movable):
@@ -58,8 +61,16 @@ def plan_gpu_execution(
     dimension: Int,
     k: Int,
     options: GpuExecutionOptions,
+    *,
+    candidate_count: Int = -1,
 ) raises -> GpuPlan:
-    if batch_size < 0 or point_count < 0 or dimension <= 0 or k <= 0:
+    if (
+        batch_size < 0
+        or point_count < 0
+        or dimension <= 0
+        or k <= 0
+        or candidate_count < -1
+    ):
         raise Error("invalid GPU query shape")
     var batch = UInt64(batch_size)
     var points = UInt64(point_count)
@@ -68,16 +79,24 @@ def plan_gpu_execution(
     var vector_bytes = _checked_mul(_checked_mul(points, dims), 4)
     var query_bytes = _checked_mul(_checked_mul(batch, dims), 4)
     var id_bytes = _checked_mul(points, 8)
-    var score_bytes = _checked_mul(_checked_mul(batch, points), 4)
-    var output_bytes = _checked_mul(
-        _checked_mul(batch, result_count), 12
-    )
+    var jobs = _checked_mul(batch, points)
+    if candidate_count >= 0:
+        if UInt64(candidate_count) > jobs:
+            raise Error("GPU candidate count exceeds dense query shape")
+        jobs = UInt64(candidate_count)
+    var score_bytes = _checked_mul(jobs, 4)
+    var candidate_bytes = _checked_mul(UInt64(max(1, candidate_count)), 8)
+    var offset_bytes = _checked_mul(_checked_add(batch, 1), 8)
+    var output_bytes = _checked_mul(_checked_mul(batch, result_count), 12)
     var transfer_bytes = _checked_add(
         _checked_add(vector_bytes, query_bytes),
         _checked_add(id_bytes, output_bytes),
     )
+    transfer_bytes = _checked_add(
+        transfer_bytes, _checked_add(candidate_bytes, offset_bytes)
+    )
     var required_bytes = _checked_add(transfer_bytes, score_bytes)
-    var work_items = _checked_mul(_checked_mul(batch, points), dims)
+    var work_items = _checked_mul(jobs, dims)
 
     if not options.enabled:
         return GpuPlan(
@@ -95,7 +114,7 @@ def plan_gpu_execution(
             transfer_bytes,
             work_items,
         )
-    if batch_size == 0 or point_count == 0:
+    if batch_size == 0 or point_count == 0 or jobs == 0:
         return GpuPlan(
             False,
             "empty workload",

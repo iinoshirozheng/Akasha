@@ -7,6 +7,11 @@ from akasha.compute.gpu.planner import (
     GpuPlan,
     plan_gpu_execution,
 )
+from akasha.compute.gpu.context import (
+    GpuExecutionTimings,
+    GpuSnapshotCache,
+    GpuSnapshotState,
+)
 from akasha.index.flat import SearchResult
 from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
@@ -14,14 +19,15 @@ from akasha.query.batch_executor import (
     BATCH_L2_METRIC,
     batch_metric_name,
     execute_exact_batch,
+    execute_exact_candidate_batch,
 )
 from akasha.storage.memtable import MemTable
-from akasha.storage.memtable import MemTableEntry
 from layout import TileTensor, TensorLayout, row_major
-from max.gpu.host import DeviceContext
 from std.gpu import global_idx
 from std.math import ceildiv, isfinite, sqrt
 from std.sys import has_accelerator
+from std.time import perf_counter_ns
+from std.utils import BlockingScopedLock
 
 
 struct DeviceBatchResult(Movable):
@@ -32,6 +38,7 @@ struct DeviceBatchResult(Movable):
     var reason: String
     var required_bytes: UInt64
     var stats: DistanceExecutionStats
+    var timings: GpuExecutionTimings
 
     def __init__(
         out self,
@@ -46,6 +53,7 @@ struct DeviceBatchResult(Movable):
         self.reason = String(copy=reason)
         self.required_bytes = required_bytes
         self.stats = stats^
+        self.timings = GpuExecutionTimings()
 
     def take_results(mut self) -> List[List[SearchResult]]:
         var replacement = List[List[SearchResult]]()
@@ -95,38 +103,51 @@ def _candidate_execution_stats(
 
 
 def _score_kernel[
-    VectorsLayout: TensorLayout,
-    QueriesLayout: TensorLayout,
-    ScoresLayout: TensorLayout,
+    L: TensorLayout
 ](
-    vectors: TileTensor[DType.float32, VectorsLayout, MutAnyOrigin],
-    queries: TileTensor[DType.float32, QueriesLayout, MutAnyOrigin],
-    scores: TileTensor[DType.float32, ScoresLayout, MutAnyOrigin],
-    point_count_device: Int32,
-    query_count_device: Int32,
-    dimension_device: Int32,
+    vectors: TileTensor[DType.float32, L, MutAnyOrigin],
+    queries: TileTensor[DType.float32, L, MutAnyOrigin],
+    scores: TileTensor[DType.float32, L, MutAnyOrigin],
+    candidates: TileTensor[DType.int64, L, MutAnyOrigin],
+    offsets: TileTensor[DType.int64, L, MutAnyOrigin],
+    point_count: Int32,
+    query_count: Int32,
+    dimension: Int32,
+    jobs: Int32,
     metric: Int32,
+    filtered: Int32,
 ):
-    comptime assert vectors.flat_rank == 1
-    comptime assert queries.flat_rank == 1
-    comptime assert scores.flat_rank == 1
-    var point_count = Int(point_count_device)
-    var query_count = Int(query_count_device)
-    var dimension = Int(dimension_device)
+    comptime assert (
+        vectors.flat_rank == 1
+        and queries.flat_rank == 1
+        and scores.flat_rank == 1
+    )
+    comptime assert candidates.flat_rank == 1 and offsets.flat_rank == 1
     var job = global_idx.x
-    if job >= point_count * query_count:
+    if job >= Int(jobs):
         return
-    var query_index = job // point_count
-    var point_index = job % point_count
-    var score: Scalar[DType.float32] = 0.0
-    var query_norm: Scalar[DType.float32] = 0.0
-    var point_norm: Scalar[DType.float32] = 0.0
-    for column in range(dimension):
-        var query_value = rebind[Scalar[DType.float32]](
-            queries[query_index * dimension + column]
+    var query_index = job // Int(point_count)
+    var point_index = job % Int(point_count)
+    if filtered != 0:
+        var left = 0
+        var right = Int(query_count)
+        while left < right:
+            var mid = (left + right) // 2
+            if Int(rebind[Int64](offsets[mid + 1])) <= job:
+                left = mid + 1
+            else:
+                right = mid
+        query_index = left
+        point_index = Int(rebind[Int64](candidates[job]))
+    var score: Float32 = 0.0
+    var query_norm: Float32 = 0.0
+    var point_norm: Float32 = 0.0
+    for column in range(Int(dimension)):
+        var query_value = rebind[Float32](
+            queries[query_index * Int(dimension) + column]
         )
-        var point_value = rebind[Scalar[DType.float32]](
-            vectors[point_index * dimension + column]
+        var point_value = rebind[Float32](
+            vectors[point_index * Int(dimension) + column]
         )
         if metric == Int32(BATCH_L2_METRIC):
             var delta = query_value - point_value
@@ -142,51 +163,49 @@ def _score_kernel[
 
 
 def _topk_kernel[
-    ScoresLayout: TensorLayout,
-    IdsLayout: TensorLayout,
-    OutputIdsLayout: TensorLayout,
-    OutputScoresLayout: TensorLayout,
+    L: TensorLayout
 ](
-    scores: TileTensor[DType.float32, ScoresLayout, MutAnyOrigin],
-    ids: TileTensor[DType.int64, IdsLayout, MutAnyOrigin],
-    output_ids: TileTensor[DType.int64, OutputIdsLayout, MutAnyOrigin],
-    output_scores: TileTensor[DType.float32, OutputScoresLayout, MutAnyOrigin],
-    point_count_device: Int32,
-    query_count_device: Int32,
-    result_count_device: Int32,
+    scores: TileTensor[DType.float32, L, MutAnyOrigin],
+    ids: TileTensor[DType.int64, L, MutAnyOrigin],
+    candidates: TileTensor[DType.int64, L, MutAnyOrigin],
+    offsets: TileTensor[DType.int64, L, MutAnyOrigin],
+    output_ids: TileTensor[DType.int64, L, MutAnyOrigin],
+    output_scores: TileTensor[DType.float32, L, MutAnyOrigin],
+    query_count: Int32,
+    result_stride: Int32,
     metric: Int32,
+    filtered: Int32,
 ):
-    comptime assert scores.flat_rank == 1
-    comptime assert ids.flat_rank == 1
-    comptime assert output_ids.flat_rank == 1
-    comptime assert output_scores.flat_rank == 1
-    var point_count = Int(point_count_device)
-    var query_count = Int(query_count_device)
-    var result_count = Int(result_count_device)
+    comptime assert scores.flat_rank == 1 and ids.flat_rank == 1
+    comptime assert candidates.flat_rank == 1 and offsets.flat_rank == 1
+    comptime assert output_ids.flat_rank == 1 and output_scores.flat_rank == 1
     var query_index = global_idx.x
-    if query_index >= query_count:
+    if query_index >= Int(query_count):
         return
-    for rank in range(result_count):
+    var start = Int(rebind[Int64](offsets[query_index]))
+    var end = Int(rebind[Int64](offsets[query_index + 1]))
+    var output_start = query_index * Int(result_stride)
+    for rank in range(min(Int(result_stride), end - start)):
         var best_point = -1
-        var best_id: Scalar[DType.int64] = 0
-        var best_score: Scalar[DType.float32] = 0.0
-        for point_index in range(point_count):
-            var candidate_id = rebind[Scalar[DType.int64]](ids[point_index])
+        var best_id: Int64 = 0
+        var best_score: Float32 = 0.0
+        for job in range(start, end):
+            var position = (
+                Int(rebind[Int64](candidates[job])) if filtered
+                != 0 else job - start
+            )
+            var candidate_id = rebind[Int64](ids[position])
             var already_selected = False
             for previous in range(rank):
                 if (
-                    rebind[Scalar[DType.int64]](
-                        output_ids[query_index * result_count + previous]
-                    )
+                    rebind[Int64](output_ids[output_start + previous])
                     == candidate_id
                 ):
                     already_selected = True
                     break
             if already_selected:
                 continue
-            var candidate_score = rebind[Scalar[DType.float32]](
-                scores[query_index * point_count + point_index]
-            )
+            var candidate_score = rebind[Float32](scores[job])
             var better = best_point < 0
             if best_point >= 0:
                 if candidate_score == best_score:
@@ -196,15 +215,15 @@ def _topk_kernel[
                 else:
                     better = candidate_score > best_score
             if better:
-                best_point = point_index
+                best_point = job
                 best_id = candidate_id
                 best_score = candidate_score
-        output_ids[query_index * result_count + rank] = rebind[
-            output_ids.ElementType
-        ](best_id)
-        output_scores[query_index * result_count + rank] = rebind[
-            output_scores.ElementType
-        ](best_score)
+        output_ids[output_start + rank] = rebind[output_ids.ElementType](
+            best_id
+        )
+        output_scores[output_start + rank] = rebind[output_scores.ElementType](
+            best_score
+        )
 
 
 def execute_device_batch[
@@ -216,78 +235,12 @@ def execute_device_batch[
     metric: Int,
     options: GpuExecutionOptions,
 ) raises -> DeviceBatchResult:
-    """Run GPU batch search or return the exact CPU fallback with a reason."""
-    comptime if not use_accelerator:
-        var plan = plan_gpu_execution(
-            False,
-            len(queries),
-            memtable.live_count(),
-            memtable.dimension,
-            k,
-            options,
-        )
-        return _cpu_fallback(memtable, queries, k, metric, plan)
-    else:
-        comptime if not has_accelerator():
-            var plan = plan_gpu_execution(
-                False,
-                len(queries),
-                memtable.live_count(),
-                memtable.dimension,
-                k,
-                options,
-            )
-            return _cpu_fallback(memtable, queries, k, metric, plan)
-        else:
-            var plan = plan_gpu_execution(
-                True,
-                len(queries),
-                memtable.live_count(),
-                memtable.dimension,
-                k,
-                options,
-            )
-            if not plan.use_gpu:
-                return _cpu_fallback(memtable, queries, k, metric, plan)
-            try:
-                if options.fail_before_launch:
-                    raise Error("injected GPU launch failure")
-                var results = _execute_gpu_batch(
-                    memtable,
-                    queries,
-                    k,
-                    metric,
-                    options.block_size,
-                    plan.required_bytes,
-                )
-                return DeviceBatchResult(
-                    results^,
-                    True,
-                    "gpu executed",
-                    plan.required_bytes,
-                    _execution_stats(
-                        metric,
-                        "gpu executed",
-                        True,
-                        len(queries) * memtable.live_count(),
-                    ),
-                )
-            except error:
-                var fallback_results = execute_exact_batch(
-                    memtable, queries, k, metric, 0
-                )
-                return DeviceBatchResult(
-                    fallback_results^,
-                    False,
-                    "gpu failure: " + String(error),
-                    plan.required_bytes,
-                    _execution_stats(
-                        metric,
-                        "gpu failure: " + String(error),
-                        False,
-                        len(queries) * memtable.live_count(),
-                    ),
-                )
+    """Execute a mutable table once; persistent reuse belongs to a snapshot."""
+    var state = GpuSnapshotState(sequence=memtable.last_sequence)
+    var candidates = List[List[Int]]()
+    return execute_snapshot_device_batch[use_accelerator](
+        memtable, queries, candidates, False, k, metric, options, state
+    )
 
 
 def execute_device_candidate_batch[
@@ -300,64 +253,122 @@ def execute_device_candidate_batch[
     metric: Int,
     options: GpuExecutionOptions,
 ) raises -> DeviceBatchResult:
-    """Execute one filtered candidate set per input query ordinal."""
-    if len(queries) != len(candidates):
-        raise Error("device query and candidate counts must match")
-    var output = List[List[SearchResult]](capacity=len(queries))
-    var every_query_used_gpu = len(queries) > 0
-    var reason = String("gpu executed")
-    var required_bytes = UInt64(0)
-    var evaluations = 0
-    var any_gpu = False
-    var any_cpu = False
-    for query_index in range(len(queries)):
-        var table = MemTable(memtable.dimension)
-        for candidate_index in range(len(candidates[query_index])):
-            var ordinal = candidates[query_index][candidate_index]
-            if not memtable.is_live_at(ordinal):
-                raise Error("device candidate slot is not live")
-            ref entry = memtable.entry_ref_at(ordinal)
-            var values = entry.values.copy()
-            table.apply_upsert(
-                entry.id,
-                UInt64(candidate_index + 1),
-                values^,
-            )
-        var singleton = List[List[Float32]]()
-        singleton.append(queries[query_index].copy())
-        var result = execute_device_batch[use_accelerator](
-            table, singleton, k, metric, options
+    var state = GpuSnapshotState(sequence=memtable.last_sequence)
+    return execute_snapshot_device_batch[use_accelerator](
+        memtable, queries, candidates, True, k, metric, options, state
+    )
+
+
+def execute_snapshot_device_batch[
+    use_accelerator: Bool
+](
+    memtable: MemTable,
+    queries: List[List[Float32]],
+    candidates: List[List[Int]],
+    filtered: Bool,
+    k: Int,
+    metric: Int,
+    options: GpuExecutionOptions,
+    mut state: GpuSnapshotState,
+) raises -> DeviceBatchResult:
+    """Use only with the immutable table owned alongside this snapshot state."""
+    var total_start = perf_counter_ns()
+    var candidate_count = -1
+    if filtered:
+        if len(candidates) != len(queries):
+            raise Error("device query and candidate counts must match")
+        candidate_count = 0
+        for query_index in range(len(candidates)):
+            if len(candidates[query_index]) > Int.MAX - candidate_count:
+                raise Error("GPU candidate count overflows Int")
+            candidate_count += len(candidates[query_index])
+    var plan = plan_gpu_execution(
+        use_accelerator and has_accelerator(),
+        len(queries),
+        memtable.live_count(),
+        memtable.dimension,
+        k,
+        options,
+        candidate_count=candidate_count,
+    )
+    if not plan.use_gpu:
+        state.trim_to_budget(UInt64(options.memory_budget_bytes))
+        return _cpu_fallback(
+            memtable, queries, candidates, filtered, k, metric, plan
         )
-        if result.required_bytes > required_bytes:
-            required_bytes = result.required_bytes
-        evaluations += result.stats.distance_evaluations
-        any_gpu = any_gpu or result.used_gpu
-        any_cpu = any_cpu or not result.used_gpu
-        if not result.used_gpu:
-            every_query_used_gpu = False
-            if reason == "gpu executed":
-                reason = String(copy=result.reason)
-        var query_results = result.take_results()
-        output.append(query_results.pop())
-    if len(queries) == 0:
-        reason = "empty workload"
-    var stats = _candidate_execution_stats(
-        metric, reason, any_gpu, any_cpu, evaluations
-    )
-    return DeviceBatchResult(
-        output^, every_query_used_gpu, reason, required_bytes, stats^
-    )
+    comptime if use_accelerator and has_accelerator():
+        with BlockingScopedLock(state.lock):
+            var timings = GpuExecutionTimings()
+            timings.generation = state.generation
+            timings.sequence = state.sequence
+            var start = perf_counter_ns()
+            _validate_gpu_inputs(
+                memtable, queries, candidates, filtered, k, metric
+            )
+            timings.preparation_ns += perf_counter_ns() - start
+            try:
+                if options.fail_before_launch:
+                    raise Error("injected GPU launch failure")
+                timings.cache_hit = Bool(state.cache)
+                if not state.cache:
+                    state.cache = Optional(GpuSnapshotCache(memtable, timings))
+                var results = _execute_gpu_batch(
+                    state.cache.value(),
+                    queries,
+                    candidates,
+                    filtered,
+                    k,
+                    metric,
+                    options,
+                    timings,
+                )
+                var evaluations = (
+                    candidate_count if filtered else len(queries)
+                    * memtable.live_count()
+                )
+                var result = DeviceBatchResult(
+                    results^,
+                    True,
+                    "gpu executed",
+                    plan.required_bytes,
+                    _execution_stats(metric, "", True, evaluations),
+                )
+                timings.total_ns = perf_counter_ns() - total_start
+                result.timings = timings^
+                return result^
+            except error:
+                # A failed stream is never reused by a later query.
+                state.cache = Optional[GpuSnapshotCache]()
+                plan.reason = "gpu failure: " + String(error)
+                return _cpu_fallback(
+                    memtable, queries, candidates, filtered, k, metric, plan
+                )
+    else:
+        return _cpu_fallback(
+            memtable, queries, candidates, filtered, k, metric, plan
+        )
 
 
 def _cpu_fallback(
     memtable: MemTable,
     queries: List[List[Float32]],
+    candidates: List[List[Int]],
+    filtered: Bool,
     k: Int,
     metric: Int,
     plan: GpuPlan,
 ) raises -> DeviceBatchResult:
-    var results = execute_exact_batch(memtable, queries, k, metric, 0)
-    var evaluations = len(queries) * memtable.live_count()
+    var results: List[List[SearchResult]]
+    var evaluations = 0
+    if filtered:
+        results = execute_exact_candidate_batch(
+            memtable, queries, candidates, k, metric, 0
+        )
+        for query_index in range(len(candidates)):
+            evaluations += len(candidates[query_index])
+    else:
+        results = execute_exact_batch(memtable, queries, k, metric, 0)
+        evaluations = len(queries) * memtable.live_count()
     return DeviceBatchResult(
         results^,
         False,
@@ -368,144 +379,157 @@ def _cpu_fallback(
 
 
 def _execute_gpu_batch(
-    memtable: MemTable,
+    mut cache: GpuSnapshotCache,
     queries: List[List[Float32]],
+    candidates: List[List[Int]],
+    filtered: Bool,
     k: Int,
     metric: Int,
-    block_size: Int,
-    required_bytes: UInt64,
+    options: GpuExecutionOptions,
+    mut timings: GpuExecutionTimings,
 ) raises -> List[List[SearchResult]]:
-    _validate_gpu_inputs(memtable, queries, k, metric)
-    var entries = memtable.entry_view()
-    var ordinals = memtable.live_ordinals()
-    var point_count = memtable.live_count()
+    var point_count = cache.point_count
     var query_count = len(queries)
-    var result_count = min(k, point_count)
-    if point_count > Int(Int32.MAX) or query_count > Int(Int32.MAX):
+    var result_stride = min(k, point_count)
+    var start = perf_counter_ns()
+    var offsets = List[Int](capacity=query_count + 1)
+    var positions = List[Int]()
+    offsets.append(0)
+    for query_index in range(query_count):
+        if filtered:
+            for ordinal in candidates[query_index]:
+                var position = cache.positions[ordinal]
+                if (
+                    metric == BATCH_COSINE_METRIC
+                    and cache.point_norms[position] == 0.0
+                ):
+                    raise Error("cosine similarity requires non-zero vectors")
+                positions.append(position)
+            offsets.append(len(positions))
+        else:
+            offsets.append((query_index + 1) * point_count)
+    if not filtered and metric == BATCH_COSINE_METRIC:
+        for norm in cache.point_norms:
+            if norm == 0.0:
+                raise Error("cosine similarity requires non-zero vectors")
+    var jobs = offsets[len(offsets) - 1]
+    if max(point_count, query_count, cache.dimension, jobs) > Int(Int32.MAX):
         raise Error("GPU query shape exceeds Int32 launch format")
-    if memtable.dimension > Int(Int32.MAX):
-        raise Error("GPU dimension exceeds Int32 launch format")
-    var vector_count = point_count * memtable.dimension
-    var query_value_count = query_count * memtable.dimension
-    var score_count = query_count * point_count
-    var output_count = query_count * result_count
-    var context = DeviceContext()
-    var memory = context.get_memory_info()
-    if required_bytes > UInt64(memory[0]):
-        raise Error("GPU free memory is below planned allocation")
-    var vectors_buffer = context.enqueue_create_buffer[DType.float32](
-        vector_count
+    timings.preparation_ns += perf_counter_ns() - start
+    cache.ensure_scratch(
+        query_count,
+        jobs,
+        len(positions),
+        query_count * result_stride,
+        UInt64(options.memory_budget_bytes),
+        timings,
     )
-    var queries_buffer = context.enqueue_create_buffer[DType.float32](
-        query_value_count
-    )
-    var scores_buffer = context.enqueue_create_buffer[DType.float32](
-        score_count
-    )
-    var ids_buffer = context.enqueue_create_buffer[DType.int64](point_count)
-    var output_ids_buffer = context.enqueue_create_buffer[DType.int64](
-        output_count
-    )
-    var output_scores_buffer = context.enqueue_create_buffer[DType.float32](
-        output_count
-    )
-    with vectors_buffer.map_to_host() as host:
-        for point_index in range(point_count):
-            for column in range(memtable.dimension):
-                host[point_index * memtable.dimension + column] = entries[
-                    ordinals[point_index]
-                ].values[column]
-    with queries_buffer.map_to_host() as host:
+    ref scratch = cache.scratch.value()
+    start = perf_counter_ns()
+    with scratch.queries.map_to_host() as host:
         for query_index in range(query_count):
-            for column in range(memtable.dimension):
-                host[query_index * memtable.dimension + column] = queries[
+            for column in range(cache.dimension):
+                host[query_index * cache.dimension + column] = queries[
                     query_index
                 ][column]
-    with ids_buffer.map_to_host() as host:
-        for point_index in range(point_count):
-            host[point_index] = Int64(entries[ordinals[point_index]].id)
-
-    var vectors_layout = row_major(vector_count)
-    var queries_layout = row_major(query_value_count)
-    var scores_layout = row_major(score_count)
-    var ids_layout = row_major(point_count)
-    var output_ids_layout = row_major(output_count)
-    var output_scores_layout = row_major(output_count)
-    var vectors_tensor = TileTensor(vectors_buffer, vectors_layout)
-    var queries_tensor = TileTensor(queries_buffer, queries_layout)
-    var scores_tensor = TileTensor(scores_buffer, scores_layout)
-    var ids_tensor = TileTensor(ids_buffer, ids_layout)
-    var output_ids_tensor = TileTensor(output_ids_buffer, output_ids_layout)
-    var output_scores_tensor = TileTensor(
-        output_scores_buffer, output_scores_layout
+    with scratch.offsets.map_to_host() as host:
+        for index in range(len(offsets)):
+            host[index] = Int64(offsets[index])
+    if filtered:
+        with scratch.candidates.map_to_host() as host:
+            for index in range(len(positions)):
+                host[index] = Int64(positions[index])
+    timings.upload_ns += perf_counter_ns() - start
+    timings.request_upload_bytes = (
+        UInt64(query_count * cache.dimension) * 4
+        + UInt64(len(offsets) + len(positions)) * 8
     )
-    comptime score_kernel = _score_kernel[
-        type_of(vectors_layout),
-        type_of(queries_layout),
-        type_of(scores_layout),
-    ]
-    context.enqueue_function[score_kernel](
+    var vectors_tensor = TileTensor(
+        cache.vectors, row_major(point_count * cache.dimension)
+    )
+    var queries_tensor = TileTensor(
+        scratch.queries, row_major(query_count * cache.dimension)
+    )
+    var scores_tensor = TileTensor(scratch.scores, row_major(jobs))
+    var candidates_tensor = TileTensor(
+        scratch.candidates, row_major(max(1, len(positions)))
+    )
+    var offsets_tensor = TileTensor(scratch.offsets, row_major(query_count + 1))
+    var ids_tensor = TileTensor(cache.ids, row_major(point_count))
+    var output_ids_tensor = TileTensor(
+        scratch.output_ids, row_major(query_count * result_stride)
+    )
+    var output_scores_tensor = TileTensor(
+        scratch.output_scores, row_major(query_count * result_stride)
+    )
+    comptime score_kernel = _score_kernel[type_of(vectors_tensor.layout)]
+    comptime topk_kernel = _topk_kernel[type_of(vectors_tensor.layout)]
+    start = perf_counter_ns()
+    cache.context.enqueue_function[score_kernel](
         vectors_tensor,
         queries_tensor,
         scores_tensor,
+        candidates_tensor,
+        offsets_tensor,
         Int32(point_count),
         Int32(query_count),
-        Int32(memtable.dimension),
+        Int32(cache.dimension),
+        Int32(jobs),
         Int32(metric),
-        grid_dim=ceildiv(score_count, block_size),
-        block_dim=block_size,
+        Int32(filtered),
+        grid_dim=ceildiv(jobs, options.block_size),
+        block_dim=options.block_size,
     )
-    comptime topk_kernel = _topk_kernel[
-        type_of(scores_layout),
-        type_of(ids_layout),
-        type_of(output_ids_layout),
-        type_of(output_scores_layout),
-    ]
-    context.enqueue_function[topk_kernel](
+    if options.profile:
+        cache.context.synchronize()
+        timings.distance_ns = perf_counter_ns() - start
+    start = perf_counter_ns()
+    cache.context.enqueue_function[topk_kernel](
         scores_tensor,
         ids_tensor,
+        candidates_tensor,
+        offsets_tensor,
         output_ids_tensor,
         output_scores_tensor,
-        Int32(point_count),
         Int32(query_count),
-        Int32(result_count),
+        Int32(result_stride),
         Int32(metric),
-        grid_dim=ceildiv(query_count, block_size),
-        block_dim=block_size,
+        Int32(filtered),
+        grid_dim=ceildiv(query_count, options.block_size),
+        block_dim=options.block_size,
     )
-    context.synchronize()
-
+    cache.context.synchronize()
+    if options.profile:
+        timings.topk_ns = perf_counter_ns() - start
+    start = perf_counter_ns()
     var output = List[List[SearchResult]](capacity=query_count)
-    with output_ids_buffer.map_to_host() as host_ids:
-        with output_scores_buffer.map_to_host() as host_scores:
+    with scratch.output_ids.map_to_host() as ids:
+        with scratch.output_scores.map_to_host() as scores:
             for query_index in range(query_count):
-                var query_results = List[SearchResult](capacity=result_count)
-                for rank in range(result_count):
-                    var offset = query_index * result_count + rank
-                    query_results.append(
-                        SearchResult(
-                            Int(host_ids[offset]), Float32(host_scores[offset])
-                        )
-                    )
-                output.append(query_results^)
+                var count = min(
+                    result_stride,
+                    offsets[query_index + 1] - offsets[query_index],
+                )
+                var results = List[SearchResult](capacity=count)
+                for rank in range(count):
+                    var index = query_index * result_stride + rank
+                    results.append(SearchResult(Int(ids[index]), scores[index]))
+                output.append(results^)
+    timings.download_ns += perf_counter_ns() - start
     return output^
 
 
 def _validate_gpu_inputs(
     memtable: MemTable,
     queries: List[List[Float32]],
+    candidates: List[List[Int]],
+    filtered: Bool,
     k: Int,
     metric: Int,
 ) raises:
     if k <= 0:
         raise Error("k must be positive")
-    if (
-        metric != BATCH_DOT_METRIC
-        and metric != BATCH_L2_METRIC
-        and metric != BATCH_COSINE_METRIC
-    ):
-        raise Error("unknown GPU query metric")
-    var entries = memtable.entry_view()
+    _ = batch_metric_name(metric)
     for query_index in range(len(queries)):
         if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
@@ -516,12 +540,11 @@ def _validate_gpu_inputs(
             norm += value * value
         if metric == BATCH_COSINE_METRIC and norm == 0.0:
             raise Error("cosine similarity requires non-zero vectors")
-    if metric == BATCH_COSINE_METRIC:
-        for entry_index in range(len(entries)):
-            if entries[entry_index].tombstone:
-                continue
-            var norm: Float32 = 0.0
-            for value in entries[entry_index].values:
-                norm += value * value
-            if norm == 0.0:
-                raise Error("cosine similarity requires non-zero vectors")
+        if filtered:
+            var previous = -1
+            for ordinal in candidates[query_index]:
+                if ordinal <= previous or not memtable.is_live_at(ordinal):
+                    raise Error(
+                        "device candidates must be increasing live ordinals"
+                    )
+                previous = ordinal

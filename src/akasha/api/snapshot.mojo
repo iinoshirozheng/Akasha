@@ -7,10 +7,10 @@ from akasha.common.config import CollectionConfig
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import (
     DeviceBatchResult,
-    execute_device_batch,
-    execute_device_candidate_batch,
+    execute_snapshot_device_batch,
 )
 from akasha.compute.gpu.planner import GpuExecutionOptions
+from akasha.compute.gpu.context import GpuSnapshotState
 from akasha.document.record import (
     clone_fields,
     DocumentRecord,
@@ -63,6 +63,7 @@ struct ReadSnapshot(Movable):
     var _sparse: SparseIndex
     var _pins: ArcPointer[GenerationPinRegistry]
     var _closed: Bool
+    var _gpu_state: ArcPointer[GpuSnapshotState]
 
     def __init__(
         out self,
@@ -83,6 +84,7 @@ struct ReadSnapshot(Movable):
         self._sparse = sparse^
         self._pins = pins^
         self._closed = False
+        self._gpu_state = ArcPointer(GpuSnapshotState(generation, sequence))
 
     @staticmethod
     def capture(
@@ -122,6 +124,7 @@ struct ReadSnapshot(Movable):
         """Release the manifest generation pin; safe to call repeatedly."""
         if self._closed:
             return
+        self._gpu_state[].release()
         self._pins[].unpin(self._generation)
         self._closed = True
 
@@ -894,8 +897,10 @@ struct ReadSnapshot(Movable):
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
         self._ensure_open()
-        return execute_device_batch[use_accelerator](
-            self._memtable, queries, k, metric, options
+        var candidates = List[List[Int]]()
+        return execute_snapshot_device_batch[use_accelerator](
+            self._memtable, queries, candidates, False, k, metric, options,
+            self._gpu_state[],
         )
 
     def _search_device_where_batch[use_accelerator: Bool](
@@ -914,8 +919,9 @@ struct ReadSnapshot(Movable):
             expressions[index].validate()
             var bitmap = evaluate_expression(self._metadata, expressions[index])
             candidates.append(candidate_ordinals(self._memtable, bitmap))
-        return execute_device_candidate_batch[use_accelerator](
-            self._memtable, queries, candidates, k, metric, options
+        return execute_snapshot_device_batch[use_accelerator](
+            self._memtable, queries, candidates, True, k, metric, options,
+            self._gpu_state[],
         )
 
     def _search_candidates(

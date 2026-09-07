@@ -98,3 +98,35 @@ These observations demonstrate why the small deterministic gate cannot establish
 quality across workloads. The first run used exact-first paired timing; use its
 recall/counter data, not a strict CPU/ANN latency ratio. Expanded results will be
 recorded as the matrix finishes.
+
+## 34: Snapshot GPU resource reuse and ragged batches
+
+`GpuSnapshotState` owns one serialized MAX stream and F32 device image. Collection
+GPU calls retain a cached `ReadSnapshot`; writes drop the collection's reference,
+while active queries keep their own lease. Sequence/generation changes select a
+new snapshot. Scratch storage is reused within budget, trimmed when a later
+budget is smaller, and discarded after a stream failure. Filtered batches use
+one positions buffer and per-query offsets, including empty candidate sets.
+
+Seven actual-device tests passed, including four new cache/ragged/concurrent
+cases. CPU planner/fallback, batch and snapshot regressions also passed. The new
+`gpu_pipeline_bench.mojo` uses three warmups, 31 paired CPU/GPU samples, alternating
+measurement order and differential verification outside timing. Cold GPU uses
+the stateless entry point; resident GPU reuses one snapshot. Snapshot capture is
+outside these measurements. Profiling syncs are a separate diagnostic call.
+
+| L2 workload | Before 34 snapshot GPU p50 (ms) | 34 resident GPU p50 (ms) | 34 cold GPU p50 (ms) |
+| --- | ---: | ---: | ---: |
+| 2,000 × 32, batch 1 | 12.664 | 12.079 | 13.210 |
+| 2,000 × 32, batch 32 | 14.772 | 14.523 | 15.628 |
+| 8,192 × 384, batch 1 | 54.518 | 45.949 | 54.971 |
+| 8,192 × 384, batch 32 | 65.283 | 57.079 | 65.940 |
+
+Baseline source was extracted from `94ff55f`; all 31 samples in each of six
+workloads passed ID/score differential checks before and after. One HNSW quality
+build occupied another CPU core during this diagnostic comparison; these are
+not the final planner calibration measurements. At 2,000 × 32, batch 1, a
+resident profiling call reported zero buffer allocations, zero vector upload,
+0.528 ms query mapping, 0.130 ms distance+sync, 10.904 ms serial Top-K+sync and
+0.617 ms readback. Resource reuse removes the data preparation cost, but serial
+Top-K still dominates. Host mapping times are not device-only DMA timings.
