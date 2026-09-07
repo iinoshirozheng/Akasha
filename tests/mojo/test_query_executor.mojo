@@ -1,5 +1,5 @@
 from akasha.index.bitmap import Bitmap
-from akasha.query.executor import candidate_entries
+from akasha.query.executor import candidate_ordinals
 from akasha.storage.memtable import MemTable
 from std.testing import assert_equal, assert_raises, TestSuite
 
@@ -14,17 +14,17 @@ def test_candidate_executor_reads_only_selected_live_slots() raises:
     candidates.set(1)
     candidates.set(2)
 
-    var entries = candidate_entries(table, candidates)
+    var entries = candidate_ordinals(table, candidates)
     assert_equal(len(entries), 2)
-    assert_equal(entries[0].id, 20)
-    assert_equal(entries[1].id, 30)
+    assert_equal(table.id_at(entries[0]), 20)
+    assert_equal(table.id_at(entries[1]), 30)
 
 
 def test_candidate_executor_validates_slot_alignment() raises:
     var table = MemTable(1)
     table.apply_upsert(1, 1, [1.0])
     with assert_raises():
-        _ = candidate_entries(table, Bitmap(2))
+        _ = candidate_ordinals(table, Bitmap(2))
 
 
 def main() raises:

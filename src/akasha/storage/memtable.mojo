@@ -4,6 +4,7 @@ from akasha.document.record import (
     DocumentRecord,
     validate_fields,
 )
+from std.collections import Dict
 
 
 struct MemTableEntry(Movable):
@@ -59,6 +60,8 @@ struct MemTable:
     var dimension: Int
     var last_sequence: UInt64
     var _entries: List[MemTableEntry]
+    var _id_ordinals: Dict[Int, Int]
+    var _live_count: Int
 
     def __init__(out self, dimension: Int) raises:
         if dimension <= 0:
@@ -66,9 +69,38 @@ struct MemTable:
         self.dimension = dimension
         self.last_sequence = 0
         self._entries = List[MemTableEntry]()
+        self._id_ordinals = Dict[Int, Int]()
+        self._live_count = 0
 
     def entry_count(self) -> Int:
         return len(self._entries)
+
+    def live_count(self) -> Int:
+        """Return the number of live records without materializing them."""
+        return self._live_count
+
+    def ordinal_for(self, id: Int) -> Int:
+        """Return a stable slot (including tombstones), or -1 for an absent ID.
+        """
+        return self._id_ordinals.get(id, -1)
+
+    def entry_view(self) -> Span[MemTableEntry, origin_of(self._entries)]:
+        """Borrow immutable slots in insertion order, including tombstones."""
+        return Span(self._entries)
+
+    def live_ordinals(self, *, id_order: Bool = False) -> List[Int]:
+        """Return lightweight live slots, optionally in ascending ID order."""
+        var ordinals = List[Int](capacity=self._live_count)
+        for ordinal in range(len(self._entries)):
+            if not self._entries[ordinal].tombstone:
+                ordinals.append(
+                    self._entries[ordinal].id if id_order else ordinal
+                )
+        if id_order:
+            sort(Span(ordinals))
+            for index in range(len(ordinals)):
+                ordinals[index] = self.ordinal_for(ordinals[index])
+        return ordinals^
 
     def clone(self) raises -> MemTable:
         """Return an owned copy preserving stable ordinal slot order."""
@@ -76,6 +108,8 @@ struct MemTable:
         result.last_sequence = self.last_sequence
         for index in range(len(self._entries)):
             result._entries.append(self._entries[index].clone())
+        result._id_ordinals = self._id_ordinals.copy()
+        result._live_count = self._live_count
         return result^
 
     def slot_count(self) -> Int:
@@ -93,7 +127,7 @@ struct MemTable:
         return not self._entries[ordinal].tombstone
 
     def entry_ref_at(
-        ref self, ordinal: Int
+        self, ordinal: Int
     ) raises -> ref[origin_of(self._entries[ordinal])] MemTableEntry:
         """Borrow one stable-ordinal entry without vector or payload copies."""
         self._validate_ordinal(ordinal)
@@ -125,10 +159,12 @@ struct MemTable:
         validate_fields(fields)
 
         self._advance_sequence(sequence)
-        var index = self._find_index(id)
+        var index = self.ordinal_for(id)
         if index >= 0:
             if sequence <= self._entries[index].sequence:
                 return
+            if self._entries[index].tombstone:
+                self._live_count += 1
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = False
             self._entries[index].values = values^
@@ -138,16 +174,20 @@ struct MemTable:
         self._entries.append(
             MemTableEntry.with_fields(id, sequence, False, values^, fields^)
         )
+        self._id_ordinals[id] = len(self._entries) - 1
+        self._live_count += 1
 
     def apply_delete(mut self, id: Int, sequence: UInt64) raises:
         if sequence == 0:
             raise Error("memtable sequence must be positive")
 
         self._advance_sequence(sequence)
-        var index = self._find_index(id)
+        var index = self.ordinal_for(id)
         if index >= 0:
             if sequence <= self._entries[index].sequence:
                 return
+            if not self._entries[index].tombstone:
+                self._live_count -= 1
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = True
             self._entries[index].values = List[Float32]()
@@ -155,9 +195,10 @@ struct MemTable:
             return
 
         self._entries.append(MemTableEntry(id, sequence, True, List[Float32]()))
+        self._id_ordinals[id] = len(self._entries) - 1
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
-        var index = self._find_index(id)
+        var index = self.ordinal_for(id)
         if index < 0 or self._entries[index].tombstone:
             return Optional[DocumentRecord]()
         var vector = _clone_vector(self._entries[index].values)
@@ -172,33 +213,30 @@ struct MemTable:
 
     def live_entries(self) raises -> List[MemTableEntry]:
         """Return owned live entries sorted by ascending point ID."""
-        var result = List[MemTableEntry]()
+        var ids = List[Int](capacity=self._live_count)
         for index in range(len(self._entries)):
             if not self._entries[index].tombstone:
-                result.append(self._entries[index].clone())
-
-        for index in range(1, len(result)):
-            var cursor = index
-            while cursor > 0 and result[cursor].id < result[cursor - 1].id:
-                result.swap_elements(cursor, cursor - 1)
-                cursor -= 1
-        return result^
+                ids.append(self._entries[index].id)
+        return self._owned_entries_in_id_order(ids^)
 
     def entries_after(
         self, checkpoint_sequence: UInt64
     ) raises -> List[MemTableEntry]:
         """Return owned latest states newer than a checkpoint, including deletes.
         """
-        var result = List[MemTableEntry]()
+        var ids = List[Int]()
         for index in range(len(self._entries)):
             if self._entries[index].sequence > checkpoint_sequence:
-                result.append(self._entries[index].clone())
+                ids.append(self._entries[index].id)
+        return self._owned_entries_in_id_order(ids^)
 
-        for index in range(1, len(result)):
-            var cursor = index
-            while cursor > 0 and result[cursor].id < result[cursor - 1].id:
-                result.swap_elements(cursor, cursor - 1)
-                cursor -= 1
+    def _owned_entries_in_id_order(
+        self, var ids: List[Int]
+    ) raises -> List[MemTableEntry]:
+        sort(Span(ids))
+        var result = List[MemTableEntry](capacity=len(ids))
+        for id in ids:
+            result.append(self._entries[self.ordinal_for(id)].clone())
         return result^
 
     def apply_recovered_entries(mut self, entries: List[MemTableEntry]) raises:
@@ -255,12 +293,13 @@ struct MemTable:
             merged.append(entries[incoming_index].clone())
             incoming_index += 1
         self._entries = merged^
-
-    def _find_index(self, id: Int) -> Int:
-        for index in range(len(self._entries)):
-            if self._entries[index].id == id:
-                return index
-        return -1
+        # Segment merge changes slot order; rebuild both derived indexes here.
+        self._id_ordinals = Dict[Int, Int]()
+        self._live_count = 0
+        for ordinal in range(len(self._entries)):
+            self._id_ordinals[self._entries[ordinal].id] = ordinal
+            if not self._entries[ordinal].tombstone:
+                self._live_count += 1
 
     def _validate_ordinal(self, ordinal: Int) raises:
         if ordinal < 0 or ordinal >= len(self._entries):

@@ -27,7 +27,7 @@ from akasha.index.sparse import (
     SparseRecord,
     validate_sparse,
 )
-from akasha.query.executor import candidate_entries
+from akasha.query.executor import candidate_ordinals
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
@@ -40,7 +40,7 @@ from akasha.query.batch_executor import (
     execute_exact_candidate_batch,
     execute_exact_batch,
 )
-from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.memtable import MemTable
 from akasha.storage.generation_pins import GenerationPinRegistry
 from std.math import isfinite
 from std.memory import ArcPointer
@@ -153,12 +153,18 @@ struct ReadSnapshot(Movable):
     def documents(self) raises -> List[DocumentRecord]:
         """Return owned live records for logical export."""
         self._ensure_open()
-        var entries = self._memtable.live_entries()
-        var records = List[DocumentRecord](capacity=len(entries))
-        for index in range(len(entries)):
-            var record = self._memtable.get(entries[index].id)
-            if Bool(record):
-                records.append(record.value().clone())
+        var ordinals = self._memtable.live_ordinals(id_order=True)
+        var records = List[DocumentRecord](capacity=len(ordinals))
+        for ordinal in ordinals:
+            ref entry = self._memtable.entry_ref_at(ordinal)
+            records.append(
+                DocumentRecord(
+                    entry.id,
+                    entry.sequence,
+                    entry.values.copy(),
+                    clone_fields(entry.fields),
+                )
+            )
         return records^
 
     def sparse_records(self) raises -> List[SparseRecord]:
@@ -207,14 +213,14 @@ struct ReadSnapshot(Movable):
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _DOT_METRIC, num_workers, self._memtable.live_entries()
+            query, k, _DOT_METRIC, num_workers, self._memtable.live_ordinals()
         )
 
     def search_l2_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _L2_METRIC, num_workers, self._memtable.live_entries()
+            query, k, _L2_METRIC, num_workers, self._memtable.live_ordinals()
         )
 
     def search_cosine_parallel(
@@ -225,7 +231,7 @@ struct ReadSnapshot(Movable):
             k,
             _COSINE_METRIC,
             num_workers,
-            self._memtable.live_entries(),
+            self._memtable.live_ordinals(),
         )
 
     def search_sq8_dot(
@@ -680,17 +686,18 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        var entries = self._memtable.live_entries()
-        if len(entries) == 0:
+        var ordinals = self._memtable.live_ordinals(id_order=True)
+        if len(ordinals) == 0:
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(entries))
-        var vectors = List[List[Float32]](capacity=len(entries))
-        for index in range(len(entries)):
-            ids.append(entries[index].id)
-            vectors.append(entries[index].values.copy())
+        var ids = List[Int](capacity=len(ordinals))
+        var vectors = List[List[Float32]](capacity=len(ordinals))
+        for index in range(len(ordinals)):
+            ref entry = self._memtable.entry_ref_at(ordinals[index])
+            ids.append(entry.id)
+            vectors.append(entry.values.copy())
         var sq8 = Sq8Index.build(ids, vectors)
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(entries))
+        candidate_count = min(candidate_count, len(ordinals))
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
             candidates = sq8.search_dot(query, candidate_count)
@@ -701,7 +708,7 @@ struct ReadSnapshot(Movable):
         if rerank_k == 0:
             return candidates^
 
-        return self._exact_rerank(query, k, metric, candidates, entries)
+        return self._exact_rerank(query, k, metric, candidates)
 
     def _search_pq(
         self,
@@ -716,14 +723,15 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("PQ rerank candidate count must be zero or at least k")
-        var entries = self._memtable.live_entries()
-        if len(entries) == 0:
+        var ordinals = self._memtable.live_ordinals(id_order=True)
+        if len(ordinals) == 0:
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(entries))
-        var vectors = List[List[Float32]](capacity=len(entries))
-        for index in range(len(entries)):
-            ids.append(entries[index].id)
-            vectors.append(entries[index].values.copy())
+        var ids = List[Int](capacity=len(ordinals))
+        var vectors = List[List[Float32]](capacity=len(ordinals))
+        for index in range(len(ordinals)):
+            ref entry = self._memtable.entry_ref_at(ordinals[index])
+            ids.append(entry.id)
+            vectors.append(entry.values.copy())
         var pq = PqIndex.build(
             ids,
             vectors,
@@ -732,7 +740,7 @@ struct ReadSnapshot(Movable):
             iterations=iterations,
         )
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(entries))
+        candidate_count = min(candidate_count, len(ordinals))
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
             candidates = pq.search_dot(query, candidate_count)
@@ -742,7 +750,7 @@ struct ReadSnapshot(Movable):
             candidates = pq.search_cosine(query, candidate_count)
         if rerank_k == 0:
             return candidates^
-        return self._exact_rerank(query, k, metric, candidates, entries)
+        return self._exact_rerank(query, k, metric, candidates)
 
     def _exact_rerank(
         self,
@@ -750,7 +758,6 @@ struct ReadSnapshot(Movable):
         k: Int,
         metric: Int,
         candidates: List[SearchResult],
-        entries: List[MemTableEntry],
     ) raises -> List[SearchResult]:
 
         var topk = BoundedTopK(
@@ -758,24 +765,18 @@ struct ReadSnapshot(Movable):
             smaller_is_better=metric == _L2_METRIC,
         )
         for candidate in candidates:
-            for entry_index in range(len(entries)):
-                if entries[entry_index].id != candidate.id:
-                    continue
-                var score: Float32
-                if metric == _DOT_METRIC:
-                    score = simd_dot_product(
-                        query, entries[entry_index].values
-                    )
-                elif metric == _L2_METRIC:
-                    score = simd_l2_squared_distance(
-                        query, entries[entry_index].values
-                    )
-                else:
-                    score = simd_cosine_similarity(
-                        query, entries[entry_index].values
-                    )
-                topk.offer(entries[entry_index].id, score)
-                break
+            var ordinal = self._memtable.ordinal_for(candidate.id)
+            if ordinal < 0 or not self._memtable.is_live_at(ordinal):
+                raise Error("quantized candidate is absent from snapshot")
+            ref entry = self._memtable.entry_ref_at(ordinal)
+            var score: Float32
+            if metric == _DOT_METRIC:
+                score = simd_dot_product(query, entry.values)
+            elif metric == _L2_METRIC:
+                score = simd_l2_squared_distance(query, entry.values)
+            else:
+                score = simd_cosine_similarity(query, entry.values)
+            topk.offer(entry.id, score)
         var retained = topk.sorted_entries()
         var output = List[SearchResult](capacity=len(retained))
         for entry in retained:
@@ -802,24 +803,25 @@ struct ReadSnapshot(Movable):
         control: QueryControl,
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
-        var entries = self._memtable.live_entries()
-        control.validate_candidate_count(len(entries))
+        var ordinals = self._memtable.live_ordinals()
+        control.validate_candidate_count(len(ordinals))
         control.checkpoint(0)
-        if len(entries) == 0:
+        if len(ordinals) == 0:
             return List[SearchResult]()
         var topk = BoundedTopK(
-            min(k, len(entries)), smaller_is_better=metric == _L2_METRIC
+            min(k, len(ordinals)), smaller_is_better=metric == _L2_METRIC
         )
-        for index in range(len(entries)):
+        for index in range(len(ordinals)):
             control.checkpoint(index)
+            ref entry = self._memtable.entry_ref_at(ordinals[index])
             var score: Float32
             if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entries[index].values)
+                score = simd_dot_product(query, entry.values)
             elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entries[index].values)
+                score = simd_l2_squared_distance(query, entry.values)
             else:
-                score = simd_cosine_similarity(query, entries[index].values)
-            topk.offer(entries[index].id, score)
+                score = simd_cosine_similarity(query, entry.values)
+            topk.offer(entry.id, score)
         control.checkpoint(0)
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
@@ -833,7 +835,7 @@ struct ReadSnapshot(Movable):
         k: Int,
         metric: Int,
         num_workers: Int,
-        var entries: List[MemTableEntry],
+        var ordinals: List[Int],
     ) raises -> List[SearchResult]:
         self._ensure_open()
         var batch_metric = BATCH_DOT_METRIC
@@ -842,7 +844,7 @@ struct ReadSnapshot(Movable):
         elif metric == _COSINE_METRIC:
             batch_metric = BATCH_COSINE_METRIC
         return execute_parallel_scan(
-            self._dimension, entries, query, k, batch_metric, num_workers
+            self._memtable, ordinals, query, k, batch_metric, num_workers
         )
 
     def _search_where_parallel(
@@ -856,8 +858,8 @@ struct ReadSnapshot(Movable):
         self._ensure_open()
         expression.validate()
         var bitmap = evaluate_expression(self._metadata, expression)
-        var entries = candidate_entries(self._memtable, bitmap)
-        return self._search_parallel(query, k, metric, num_workers, entries^)
+        var ordinals = candidate_ordinals(self._memtable, bitmap)
+        return self._search_parallel(query, k, metric, num_workers, ordinals^)
 
     def _search_where_batch(
         self,
@@ -870,13 +872,13 @@ struct ReadSnapshot(Movable):
         self._ensure_open()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
-        var candidates = List[List[MemTableEntry]](capacity=len(queries))
+        var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
             var bitmap = evaluate_expression(self._metadata, expressions[index])
-            candidates.append(candidate_entries(self._memtable, bitmap))
+            candidates.append(candidate_ordinals(self._memtable, bitmap))
         return execute_exact_candidate_batch(
-            self._dimension,
+            self._memtable,
             queries,
             candidates,
             k,
@@ -907,13 +909,13 @@ struct ReadSnapshot(Movable):
         self._ensure_open()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
-        var candidates = List[List[MemTableEntry]](capacity=len(queries))
+        var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
             var bitmap = evaluate_expression(self._metadata, expressions[index])
-            candidates.append(candidate_entries(self._memtable, bitmap))
+            candidates.append(candidate_ordinals(self._memtable, bitmap))
         return execute_device_candidate_batch[use_accelerator](
-            self._dimension, queries, candidates, k, metric, options
+            self._memtable, queries, candidates, k, metric, options
         )
 
     def _search_candidates(
@@ -929,16 +931,17 @@ struct ReadSnapshot(Movable):
         var topk = BoundedTopK(
             result_count, smaller_is_better=metric == _L2_METRIC
         )
-        var entries = candidate_entries(self._memtable, candidates)
-        for index in range(len(entries)):
+        var ordinals = candidate_ordinals(self._memtable, candidates)
+        for ordinal in ordinals:
+            ref entry = self._memtable.entry_ref_at(ordinal)
             var score: Float32
             if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entries[index].values)
+                score = simd_dot_product(query, entry.values)
             elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entries[index].values)
+                score = simd_l2_squared_distance(query, entry.values)
             else:
-                score = simd_cosine_similarity(query, entries[index].values)
-            topk.offer(entries[index].id, score)
+                score = simd_cosine_similarity(query, entry.values)
+            topk.offer(entry.id, score)
 
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
@@ -1021,7 +1024,7 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     var index = MetadataIndex()
     index.begin_bulk()
     for ordinal in range(memtable.slot_count()):
-        var entry = memtable.entry_at(ordinal)
+        ref entry = memtable.entry_ref_at(ordinal)
         if entry.tombstone:
             index.delete(entry.id)
         else:

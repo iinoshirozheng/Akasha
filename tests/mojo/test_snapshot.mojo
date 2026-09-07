@@ -103,6 +103,16 @@ def test_snapshot_preserves_owned_documents_search_and_filters() raises:
     assert_true(Bool(snapshot.get(2)))
     assert_false(Bool(snapshot.get(3)))
 
+    var exported = snapshot.documents()
+    assert_equal(len(exported), 2)
+    assert_equal(exported[0].id, 1)
+    assert_equal(exported[1].id, 2)
+    assert_equal(exported[0].fields[1].value.as_string(), "first version")
+    exported[0].vector[0] = 100.0
+    exported[0].fields[0].name = "changed"
+    assert_equal(snapshot.get(1).value().vector[0], Float32(1.0))
+    assert_equal(snapshot.get(1).value().fields[0].name, "group")
+
     var exact = snapshot.search_dot([1.0, 0.0], 3)
     assert_equal(len(exact), 2)
     assert_equal(exact[0].id, 1)

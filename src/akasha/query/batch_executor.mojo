@@ -14,7 +14,7 @@ from akasha.compute.simd import (
 )
 from akasha.compute.topk import BoundedTopK
 from akasha.index.flat import SearchResult
-from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.memtable import MemTable
 from max.algorithm import parallelize
 from std.math import isfinite
 
@@ -58,7 +58,7 @@ def execute_exact_batch_reported(
 ) raises -> ExactBatchExecution:
     """Execute exact batch search and report its selected CPU backend."""
     var results = execute_exact_batch(memtable, queries, k, metric, num_workers)
-    var evaluations = len(queries) * len(memtable.live_entries())
+    var evaluations = len(queries) * memtable.live_count()
     var stats = DistanceExecutionStats(
         String("portable-simd-", portable_simd_width()),
         batch_metric_name(metric),
@@ -91,10 +91,12 @@ def execute_scalar_exact_reported(
         query_norm += value * value
     if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
         raise Error("cosine similarity requires non-zero vectors")
-    var entries = memtable.live_entries()
+    var entries = memtable.entry_view()
     var topk = BoundedTopK(k, smaller_is_better=metric == BATCH_L2_METRIC)
     for entry_index in range(len(entries)):
         ref entry = entries[entry_index]
+        if entry.tombstone:
+            continue
         var score: Float32
         if metric == BATCH_DOT_METRIC:
             score = dot_product(query, entry.values)
@@ -116,8 +118,8 @@ def execute_scalar_exact_reported(
         "",
         0,
         0,
-        len(entries),
-        len(entries),
+        memtable.live_count(),
+        memtable.live_count(),
     )
     return ExactBatchExecution(results^, stats^)
 
@@ -153,16 +155,18 @@ def execute_exact_batch(
     if len(queries) == 0:
         return List[List[SearchResult]]()
 
-    var entries = memtable.live_entries()
+    var entries = memtable.entry_view()
     if metric == BATCH_COSINE_METRIC:
         for entry_index in range(len(entries)):
+            if entries[entry_index].tombstone:
+                continue
             var candidate_norm: Float32 = 0.0
             for value in entries[entry_index].values:
                 candidate_norm += value * value
             if candidate_norm == 0.0:
                 raise Error("cosine similarity requires non-zero vectors")
 
-    var result_count = min(k, len(entries))
+    var result_count = min(k, memtable.live_count())
     var output = List[List[SearchResult]](capacity=len(queries))
     if result_count == 0:
         for _ in range(len(queries)):
@@ -182,6 +186,8 @@ def execute_exact_batch(
         query_index: Int,
     ) {imm queries, imm entries, mut heaps, imm metric}:
         for entry_index in range(len(entries)):
+            if entries[entry_index].tombstone:
+                continue
             var score: Float32
             if metric == BATCH_DOT_METRIC:
                 score = prevalidated_simd_dot_product(
@@ -215,14 +221,15 @@ def execute_exact_batch(
 
 
 def execute_exact_candidate_batch(
-    dimension: Int,
+    memtable: MemTable,
     queries: List[List[Float32]],
-    candidates: List[List[MemTableEntry]],
+    candidates: List[List[Int]],
     k: Int,
     metric: Int,
     num_workers: Int,
 ) raises -> List[List[SearchResult]]:
-    """Score one pre-materialized candidate set per query ordinal."""
+    """Score one set of borrowed stable slots per query ordinal."""
+    var entries = memtable.entry_view()
     if len(queries) != len(candidates):
         raise Error("batch query candidate count mismatch")
     if k <= 0:
@@ -236,7 +243,7 @@ def execute_exact_candidate_batch(
     ):
         raise Error("unknown batch query metric")
     for query_index in range(len(queries)):
-        if len(queries[query_index]) != dimension:
+        if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
         var query_norm: Float32 = 0.0
         for value in queries[query_index]:
@@ -245,10 +252,15 @@ def execute_exact_candidate_batch(
             query_norm += value * value
         if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
             raise Error("cosine similarity requires non-zero vectors")
+        for ordinal in candidates[query_index]:
+            if not memtable.is_live_at(ordinal):
+                raise Error("batch candidate slot is not live")
         if metric == BATCH_COSINE_METRIC:
             for entry_index in range(len(candidates[query_index])):
                 var candidate_norm: Float32 = 0.0
-                for value in candidates[query_index][entry_index].values:
+                for value in entries[
+                    candidates[query_index][entry_index]
+                ].values:
                     candidate_norm += value * value
                 if candidate_norm == 0.0:
                     raise Error("cosine similarity requires non-zero vectors")
@@ -266,15 +278,15 @@ def execute_exact_candidate_batch(
 
     def score_query(
         query_index: Int,
-    ) {imm queries, imm candidates, mut heaps, imm metric}:
+    ) {imm queries, imm candidates, imm entries, mut heaps, imm metric}:
         for entry_index in range(len(candidates[query_index])):
             var score = _score_prevalidated(
                 metric,
                 queries[query_index],
-                candidates[query_index][entry_index].values,
+                entries[candidates[query_index][entry_index]].values,
             )
             heaps[query_index].offer(
-                candidates[query_index][entry_index].id, score
+                entries[candidates[query_index][entry_index]].id, score
             )
 
     if len(queries) < 4 or num_workers == 1:

@@ -15,7 +15,7 @@ from akasha.query.batch_executor import (
     BATCH_L2_METRIC,
     batch_metric_name,
 )
-from akasha.storage.memtable import MemTableEntry
+from akasha.storage.memtable import MemTable
 from max.algorithm import parallelize
 from std.math import isfinite
 
@@ -36,8 +36,8 @@ struct ParallelScanExecution(Movable):
 
 
 def execute_parallel_scan_reported(
-    dimension: Int,
-    entries: List[MemTableEntry],
+    memtable: MemTable,
+    ordinals: List[Int],
     query: List[Float32],
     k: Int,
     metric: Int,
@@ -45,9 +45,9 @@ def execute_parallel_scan_reported(
 ) raises -> ParallelScanExecution:
     """Execute parallel exact scan and report its selected CPU backend."""
     var results = execute_parallel_scan(
-        dimension, entries, query, k, metric, num_workers
+        memtable, ordinals, query, k, metric, num_workers
     )
-    var evaluations = len(entries)
+    var evaluations = len(ordinals)
     var stats = DistanceExecutionStats(
         String("portable-simd-", portable_simd_width()),
         batch_metric_name(metric),
@@ -62,15 +62,17 @@ def execute_parallel_scan_reported(
 
 
 def execute_parallel_scan(
-    dimension: Int,
-    entries: List[MemTableEntry],
+    memtable: MemTable,
+    ordinals: List[Int],
     query: List[Float32],
     k: Int,
     metric: Int,
     num_workers: Int,
 ) raises -> List[SearchResult]:
     """Scan deterministic ordinal ranges and merge range-local Top-K heaps."""
-    if dimension <= 0 or len(query) != dimension:
+    var entries = memtable.entry_view()
+    var dimension = memtable.dimension
+    if len(query) != dimension:
         raise Error("query dimension does not match snapshot")
     if k <= 0:
         raise Error("k must be positive")
@@ -89,21 +91,23 @@ def execute_parallel_scan(
         query_norm += value * value
     if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
         raise Error("cosine similarity requires non-zero vectors")
-    for entry_index in range(len(entries)):
-        if len(entries[entry_index].values) != dimension:
+    for entry_index in range(len(ordinals)):
+        if not memtable.is_live_at(ordinals[entry_index]):
+            raise Error("parallel scan candidate slot is not live")
+        if len(entries[ordinals[entry_index]].values) != dimension:
             raise Error("parallel scan candidate dimension mismatch")
         if metric == BATCH_COSINE_METRIC:
             var candidate_norm: Float32 = 0.0
-            for value in entries[entry_index].values:
+            for value in entries[ordinals[entry_index]].values:
                 candidate_norm += value * value
             if candidate_norm == 0.0:
                 raise Error("cosine similarity requires non-zero vectors")
-    if len(entries) == 0:
+    if len(ordinals) == 0:
         return List[SearchResult]()
 
-    var result_count = min(k, len(entries))
+    var result_count = min(k, len(ordinals))
     var range_count = 8 if num_workers == 0 else num_workers
-    range_count = min(max(range_count, 1), len(entries))
+    range_count = min(max(range_count, 1), len(ordinals))
     var heaps = List[BoundedTopK](capacity=range_count)
     for _ in range(range_count):
         heaps.append(
@@ -115,24 +119,31 @@ def execute_parallel_scan(
 
     def scan_range(
         range_index: Int,
-    ) {imm entries, imm query, imm metric, imm range_count, mut heaps}:
-        var start = (len(entries) * range_index) // range_count
-        var end = (len(entries) * (range_index + 1)) // range_count
+    ) {
+        imm entries,
+        imm ordinals,
+        imm query,
+        imm metric,
+        imm range_count,
+        mut heaps,
+    }:
+        var start = (len(ordinals) * range_index) // range_count
+        var end = (len(ordinals) * (range_index + 1)) // range_count
         for entry_index in range(start, end):
             var score: Float32
             if metric == BATCH_DOT_METRIC:
                 score = prevalidated_simd_dot_product(
-                    query, entries[entry_index].values
+                    query, entries[ordinals[entry_index]].values
                 )
             elif metric == BATCH_L2_METRIC:
                 score = prevalidated_simd_l2_squared_distance(
-                    query, entries[entry_index].values
+                    query, entries[ordinals[entry_index]].values
                 )
             else:
                 score = prevalidated_simd_cosine_similarity(
-                    query, entries[entry_index].values
+                    query, entries[ordinals[entry_index]].values
                 )
-            heaps[range_index].offer(entries[entry_index].id, score)
+            heaps[range_index].offer(entries[ordinals[entry_index]].id, score)
 
     if range_count == 1:
         scan_range(0)

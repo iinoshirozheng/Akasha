@@ -669,8 +669,8 @@ def test_execution_policy_keeps_cpu_gpu_fallback_and_hnsw_layers_separate() rais
         table, queries, 12, BATCH_DOT_METRIC, 1
     )
     var parallel_execution = execute_parallel_scan_reported(
-        config.dimension,
-        table.live_entries(),
+        table,
+        table.live_ordinals(),
         query.copy(),
         12,
         BATCH_DOT_METRIC,

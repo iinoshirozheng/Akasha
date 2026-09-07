@@ -1,18 +1,15 @@
 from akasha.index.bitmap import Bitmap
-from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.memtable import MemTable
 
 
-def candidate_entries(
+def candidate_ordinals(
     memtable: MemTable, candidates: Bitmap
-) raises -> List[MemTableEntry]:
-    """Materialize only selected live stable slots for physical execution."""
+) raises -> List[Int]:
+    """Select live stable slots without materializing vectors or payloads."""
     if candidates.size() != memtable.slot_count():
         raise Error("candidate bitmap does not align with memtable slots")
-    var result = List[MemTableEntry](capacity=candidates.count())
-    var ordinals = candidates.set_ordinals()
-    for ordinal in ordinals:
-        var entry = memtable.entry_at(ordinal)
-        if entry.tombstone:
-            continue
-        result.append(entry^)
+    var result = List[Int](capacity=candidates.count())
+    for ordinal in candidates.set_ordinals():
+        if memtable.is_live_at(ordinal):
+            result.append(ordinal)
     return result^

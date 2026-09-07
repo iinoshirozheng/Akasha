@@ -20,7 +20,7 @@ from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.metadata import MetadataIndex
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
-from akasha.query.executor import candidate_entries
+from akasha.query.executor import candidate_ordinals
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
@@ -1930,12 +1930,13 @@ struct PersistentCollection:
         var topk = BoundedTopK(
             result_count, smaller_is_better=metric == _L2_METRIC
         )
-        var entries = candidate_entries(self._memtable, candidates)
-        for index in range(len(entries)):
+        var ordinals = candidate_ordinals(self._memtable, candidates)
+        for ordinal in ordinals:
+            ref entry = self._memtable.entry_ref_at(ordinal)
             var score = authoritative_f32_score(
-                metric, query, entries[index].values
+                metric, query, entry.values
             )
-            topk.offer(entries[index].id, score)
+            topk.offer(entry.id, score)
 
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
@@ -2391,7 +2392,7 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     var index = MetadataIndex()
     index.begin_bulk()
     for ordinal in range(memtable.slot_count()):
-        var entry = memtable.entry_at(ordinal)
+        ref entry = memtable.entry_ref_at(ordinal)
         if entry.tombstone:
             index.delete(entry.id)
         else:
@@ -2693,7 +2694,7 @@ def _load_or_build_metadata_cache(
             var decoded = MetadataIndex.decode_cache_payload(payload^)
             if (
                 decoded.slot_count() != memtable.slot_count()
-                or decoded.live_count() != len(memtable.live_entries())
+                or decoded.live_count() != memtable.live_count()
             ):
                 raise Error("metadata cache slot alignment mismatch")
             return _MetadataCacheLoad(decoded^, True)

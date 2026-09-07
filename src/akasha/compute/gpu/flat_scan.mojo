@@ -221,7 +221,7 @@ def execute_device_batch[
         var plan = plan_gpu_execution(
             False,
             len(queries),
-            len(memtable.live_entries()),
+            memtable.live_count(),
             memtable.dimension,
             k,
             options,
@@ -232,7 +232,7 @@ def execute_device_batch[
             var plan = plan_gpu_execution(
                 False,
                 len(queries),
-                len(memtable.live_entries()),
+                memtable.live_count(),
                 memtable.dimension,
                 k,
                 options,
@@ -242,7 +242,7 @@ def execute_device_batch[
             var plan = plan_gpu_execution(
                 True,
                 len(queries),
-                len(memtable.live_entries()),
+                memtable.live_count(),
                 memtable.dimension,
                 k,
                 options,
@@ -269,7 +269,7 @@ def execute_device_batch[
                         metric,
                         "gpu executed",
                         True,
-                        len(queries) * len(memtable.live_entries()),
+                        len(queries) * memtable.live_count(),
                     ),
                 )
             except error:
@@ -285,7 +285,7 @@ def execute_device_batch[
                         metric,
                         "gpu failure: " + String(error),
                         False,
-                        len(queries) * len(memtable.live_entries()),
+                        len(queries) * memtable.live_count(),
                     ),
                 )
 
@@ -293,9 +293,9 @@ def execute_device_batch[
 def execute_device_candidate_batch[
     use_accelerator: Bool
 ](
-    dimension: Int,
+    memtable: MemTable,
     queries: List[List[Float32]],
-    candidates: List[List[MemTableEntry]],
+    candidates: List[List[Int]],
     k: Int,
     metric: Int,
     options: GpuExecutionOptions,
@@ -311,11 +311,15 @@ def execute_device_candidate_batch[
     var any_gpu = False
     var any_cpu = False
     for query_index in range(len(queries)):
-        var table = MemTable(dimension)
+        var table = MemTable(memtable.dimension)
         for candidate_index in range(len(candidates[query_index])):
-            var values = candidates[query_index][candidate_index].values.copy()
+            var ordinal = candidates[query_index][candidate_index]
+            if not memtable.is_live_at(ordinal):
+                raise Error("device candidate slot is not live")
+            ref entry = memtable.entry_ref_at(ordinal)
+            var values = entry.values.copy()
             table.apply_upsert(
-                candidates[query_index][candidate_index].id,
+                entry.id,
                 UInt64(candidate_index + 1),
                 values^,
             )
@@ -353,7 +357,7 @@ def _cpu_fallback(
     plan: GpuPlan,
 ) raises -> DeviceBatchResult:
     var results = execute_exact_batch(memtable, queries, k, metric, 0)
-    var evaluations = len(queries) * len(memtable.live_entries())
+    var evaluations = len(queries) * memtable.live_count()
     return DeviceBatchResult(
         results^,
         False,
@@ -372,8 +376,9 @@ def _execute_gpu_batch(
     required_bytes: UInt64,
 ) raises -> List[List[SearchResult]]:
     _validate_gpu_inputs(memtable, queries, k, metric)
-    var entries = memtable.live_entries()
-    var point_count = len(entries)
+    var entries = memtable.entry_view()
+    var ordinals = memtable.live_ordinals()
+    var point_count = memtable.live_count()
     var query_count = len(queries)
     var result_count = min(k, point_count)
     if point_count > Int(Int32.MAX) or query_count > Int(Int32.MAX):
@@ -408,7 +413,7 @@ def _execute_gpu_batch(
         for point_index in range(point_count):
             for column in range(memtable.dimension):
                 host[point_index * memtable.dimension + column] = entries[
-                    point_index
+                    ordinals[point_index]
                 ].values[column]
     with queries_buffer.map_to_host() as host:
         for query_index in range(query_count):
@@ -418,7 +423,7 @@ def _execute_gpu_batch(
                 ][column]
     with ids_buffer.map_to_host() as host:
         for point_index in range(point_count):
-            host[point_index] = Int64(entries[point_index].id)
+            host[point_index] = Int64(entries[ordinals[point_index]].id)
 
     var vectors_layout = row_major(vector_count)
     var queries_layout = row_major(query_value_count)
@@ -500,7 +505,7 @@ def _validate_gpu_inputs(
         and metric != BATCH_COSINE_METRIC
     ):
         raise Error("unknown GPU query metric")
-    var entries = memtable.live_entries()
+    var entries = memtable.entry_view()
     for query_index in range(len(queries)):
         if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
@@ -513,6 +518,8 @@ def _validate_gpu_inputs(
             raise Error("cosine similarity requires non-zero vectors")
     if metric == BATCH_COSINE_METRIC:
         for entry_index in range(len(entries)):
+            if entries[entry_index].tombstone:
+                continue
             var norm: Float32 = 0.0
             for value in entries[entry_index].values:
                 norm += value * value
