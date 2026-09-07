@@ -1,17 +1,28 @@
 import json
+import zlib
 
 import pytest
 
 from akashadb.distributed.protocol import (
+    canonical_bytes,
     ClusterMetadata,
     ProtocolError,
     ReplicaJournal,
     ReplicatedEntry,
     ShardPlacement,
+    payload_checksum,
 )
+from akashadb import CollectionConfig
+from akashadb.database import _kernel_module
 
 
 def _metadata() -> ClusterMetadata:
+    requested = CollectionConfig.defaults(
+        3, ann_metric="cosine", level_seed=77
+    )
+    config = dict(
+        _kernel_module().validate_collection_config(3, requested.to_kernel())
+    )
     return ClusterMetadata(
         cluster_id="test",
         dimension=3,
@@ -24,6 +35,7 @@ def _metadata() -> ClusterMetadata:
             "n2": ("127.0.0.1", 3),
         },
         shards={0: ShardPlacement(0, 1, 1, "n0", ["n0", "n1", "n2"])},
+        collection_config=config,
     )
 
 
@@ -33,6 +45,7 @@ def test_cluster_metadata_round_trip_and_checksum_failure(tmp_path) -> None:
     expected.publish(path)
     actual = ClusterMetadata.load(path)
     assert actual.to_payload() == expected.to_payload()
+    assert actual.collection_config == expected.collection_config
 
     value = json.loads(path.read_text())
     value["payload"]["epoch"] = 7
@@ -50,7 +63,13 @@ def test_replica_journal_is_idempotent_strict_and_repairs_torn_tail(tmp_path) ->
         1,
         1,
         "request-1",
-        {"operation": "upsert", "id": 1, "vector": [1.0]},
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [],
+            "sparse": [],
+        },
     )
     journal.prepare(entry)
     journal.prepare(entry)
@@ -81,3 +100,150 @@ def test_replica_journal_is_idempotent_strict_and_repairs_torn_tail(tmp_path) ->
     path.write_bytes(value)
     with pytest.raises(ProtocolError, match="corruption"):
         ReplicaJournal(path)
+
+
+def test_metadata_without_collection_identity_is_explicitly_unsupported() -> None:
+    payload = _metadata().to_payload()
+    del payload["collection_config"]
+    with pytest.raises(ProtocolError, match="collection config"):
+        ClusterMetadata.from_payload(payload)
+
+
+@pytest.mark.parametrize("field", ["ann_metric", "m", "level_seed", "fingerprint"])
+def test_metadata_rejects_incomplete_collection_identity(field) -> None:
+    payload = _metadata().to_payload()
+    del payload["collection_config"][field]
+    with pytest.raises(ProtocolError, match="collection config fields"):
+        ClusterMetadata.from_payload(payload)
+
+
+def test_metadata_rejects_unknown_fields_and_noncanonical_fingerprint() -> None:
+    payload = _metadata().to_payload()
+    payload["unknown"] = 1
+    with pytest.raises(ProtocolError, match="fields"):
+        ClusterMetadata.from_payload(payload)
+
+    payload = _metadata().to_payload()
+    payload["collection_config"]["unknown"] = 1
+    with pytest.raises(ProtocolError, match="config fields"):
+        ClusterMetadata.from_payload(payload)
+
+    payload = _metadata().to_payload()
+    payload["collection_config"]["fingerprint"] += 1
+    with pytest.raises(ProtocolError, match="canonical"):
+        ClusterMetadata.from_payload(payload)
+
+
+def test_v1_metadata_and_journal_envelopes_migrate_explicitly(tmp_path) -> None:
+    metadata_payload = _metadata().to_payload()
+    del metadata_payload["collection_config"]
+    metadata_payload["routing_version"] = 1
+    metadata_envelope = {
+        "version": 1,
+        "payload": metadata_payload,
+        "checksum": zlib.crc32(canonical_bytes(metadata_payload)) & 0xFFFFFFFF,
+    }
+    metadata_path = tmp_path / "cluster-v1.json"
+    metadata_path.write_bytes(canonical_bytes(metadata_envelope) + b"\n")
+    migrated = ClusterMetadata.load(metadata_path)
+    assert migrated.routing_version == 2
+    assert migrated.collection_config["dimension"] == 3
+    assert migrated.collection_config["ann_metric"] == "l2"
+    assert migrated.collection_config["scalar_kind"] == "f32"
+    assert migrated.collection_config["fingerprint"] > 0
+    migrated.publish(metadata_path)
+    republished = json.loads(metadata_path.read_text())
+    assert republished["version"] == 2
+    assert republished["payload"]["routing_version"] == 2
+    assert republished["payload"]["collection_config"] == (
+        migrated.collection_config
+    )
+
+    entry = ReplicatedEntry.create(
+        0,
+        1,
+        1,
+        1,
+        "v1",
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [],
+            "sparse": [],
+        },
+    )
+    records = (
+        {"kind": "prepare", "entry": entry.to_dict()},
+        {"kind": "commit", "index": 1},
+    )
+    journal_path = tmp_path / "replica-v1.log"
+    with journal_path.open("wb") as output:
+        for payload in records:
+            envelope = {
+                "version": 1,
+                "payload": payload,
+                "checksum": zlib.crc32(canonical_bytes(payload)) & 0xFFFFFFFF,
+            }
+            output.write(canonical_bytes(envelope) + b"\n")
+    journal = ReplicaJournal(journal_path)
+    assert [item.index for item in journal.committed_after(0)] == [1]
+    journal.install_snapshot(1)
+    newest = json.loads(journal_path.read_text().splitlines()[-1])
+    assert newest["version"] == 2
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"operation": "explode"},
+        {"operation": "delete", "id": True},
+        {"operation": "delete", "id": 1, "extra": 2},
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [{"name": "x", "type": "int", "value": True}],
+            "sparse": [],
+        },
+    ],
+)
+def test_invalid_replicated_mutation_is_rejected_before_journal_write(
+    tmp_path, mutation
+) -> None:
+    path = tmp_path / "invalid.log"
+    journal = ReplicaJournal(path)
+    entry = ReplicatedEntry(
+        0,
+        1,
+        1,
+        1,
+        "invalid",
+        mutation,
+        payload_checksum(mutation),
+    )
+    with pytest.raises(ProtocolError, match="mutation"):
+        journal.prepare(entry)
+    assert not path.exists()
+
+
+def test_corrupt_complete_journal_prefix_is_not_truncated(tmp_path) -> None:
+    path = tmp_path / "corrupt-torn.log"
+    journal = ReplicaJournal(path)
+    entry = ReplicatedEntry.create(
+        0,
+        1,
+        1,
+        1,
+        "request-1",
+        {"operation": "delete", "id": 1},
+    )
+    journal.prepare(entry)
+    data = bytearray(path.read_bytes())
+    data[20] ^= 1
+    before = bytes(data) + b'{"version":2'
+    path.write_bytes(before)
+
+    with pytest.raises(ProtocolError, match="corruption"):
+        ReplicaJournal(path)
+    assert path.read_bytes() == before

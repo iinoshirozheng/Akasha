@@ -26,9 +26,9 @@ validate vector + flat typed fields
    -> exact SIMD search
 
 flush
-   -> changed dense/sparse records into paired base-or-delta segments + fsync
-   -> atomic segment renames + directory fsync
-   -> atomic Manifest v2 generation publish + directory fsync
+   -> changed dense/sparse records plus HNSW sidecar into temporary files + fsync
+   -> atomic data-file renames + directory fsync
+   -> atomic Manifest v3 generation publish + directory fsync
    -> atomic empty WAL replacement + directory fsync
    -> threshold signal coalesces into one background maintenance request
    -> worker locks the same writer boundary and may publish one full base
@@ -44,20 +44,33 @@ query -> immutable read snapshot -> typed filter -> SIMD -> bounded Top-K IDs
                                     get(ID) -> owned document <-+
 ```
 
-Approximate dense queries use a derived HNSW graph. Point IDs produce
-deterministic bounded levels; insertion connects bounded nearest neighbors,
-then search performs greedy upper-layer descent and best-first layer-zero
-expansion. The planner keeps small or selective queries on exact scan. Filtered
-HNSW search over-fetches, evaluates the Boolean expression, retains exact metric
-scores, and falls back to exact filtered scan when the graph candidates cannot
-fill `k`. Recovered WAL/segment state remains authoritative. A versioned CRC32
-`hnsw.cache` stores graph bytes only as a rebuildable acceleration artifact;
-generation, sequence, source fingerprint, payload structure, or checksum
-mismatch becomes a cache miss.
+Approximate dense queries use a derived, metric-bound HNSW graph. Seeded
+geometric levels are independent of point IDs; construction performs greedy
+upper descent, bounded `ef_construction` layer search, diversity selection, and
+symmetric degree repair with separate M0/M capacities. Query uses two heaps and
+generation-stamped visited scratch. The planner keeps small, selective,
+metric-mismatched, or unavailable queries on exact scan. A filter restricts
+result admission, not graph traversal; bounded widening may gather more eligible
+candidates before exact filtered fallback. Every public result is reranked
+against authoritative F32 vectors.
+
+The mutable graph uses append-only packed slots. Replacement and deletion mark
+old slots non-current, so they remain safe traversal bridges but cannot be
+returned. Manifest v3 commits a versioned CRC32
+`hnsw-<sequence>.bin` sidecar. Reopen validates identity, all section bounds,
+checksum, and graph structure before exposing it as an immutable mmap base;
+mapping acquisition failure may use the same validated owned decoder. Newer WAL
+mutations replay into a bounded owned delta and queries merge base/delta
+candidates through the current ID-to-source mapping. `flush()` rebuilds when
+inactive slots or delta mutations cross their configured limits, while
+`rebuild_hnsw()` provides explicit maintenance. Queries never rebuild.
+Missing/stale derived state rebuilds from authoritative records; corruption of a
+matching committed sidecar fails recovery. Legacy `hnsw.cache` is read only for
+pre-v3 manifests and is never preferred over a manifest-referenced sidecar.
 
 Sparse vectors are a companion durable state keyed by the same point IDs. A
-checksummed sparse WAL shares the collection sequence space, and every
-Manifest v2 descriptor pairs its dense base/delta with a sparse base/delta.
+checksummed sparse WAL shares the collection sequence space. Every v2/v3
+manifest descriptor pairs its dense base/delta with a sparse base/delta.
 Both are fsynced before manifest publication. Open replays paired descriptors
 in sequence order, then newer sparse WAL records, and removes sparse records
 whose dense point is not live.
@@ -126,6 +139,45 @@ Disabled or absent hardware, small work, budget rejection, allocation/launch
 failure, and injected failures all use the existing exact SIMD batch executor.
 Filtered device batches materialize indexed candidates before device scoring.
 
+## HNSW identity, storage, and operations
+
+`collection.bin` is immutable collection identity: dimension, ANN metric,
+scalar kind, M, M0, `ef_construction`, default/maximum `ef_search`, maximum
+level, rebuild thresholds, and level seed. The legacy
+`PersistentCollection.open(path, dimension)` creates L2/F32 defaults;
+`open_with_config` creates or validates an exact identity. Approximate requests
+for another metric preserve API semantics through exact fallback rather than
+searching incompatible graph geometry.
+
+F32, BF16, and F16 graph vectors support dot, squared L2, and cosine. I8
+supports dot and cosine; I8/L2 is rejected. Compact values guide traversal, but
+the MemTable/segments retain authoritative F32 and rerank candidates before
+return. The portable SIMD backend is bound once per graph for one metric/scalar
+pair and reported with actual backend, metric, scalar, and storage labels. No
+runtime multi-ISA claim is made; see
+[`ADR 0005`](adr/0005-distance-dispatch.md).
+
+The immutable sidecar is demand-paged when mapped. Its vector section costs
+four bytes per dimension for F32, two for BF16/F16, or one for I8 plus an F32
+scale per dot vector. IDs, slot flags/levels, section offsets, and bounded
+neighbor cells add graph overhead proportional to M0/M. Authoritative F32
+storage exists separately. The owned delta consumes heap memory until rebuild.
+A flush that crosses rebuild policy can pay full graph construction plus a new
+sidecar write; crash ordering keeps the previous manifest generation usable
+until the new data files and sidecar are durable and the new manifest publishes.
+Reader generation pins may delay old-file reclamation.
+
+Current durable contracts are
+[`collection.bin`](formats/collection-config-format.md),
+[`manifest.bin`](../formats/manifest-format.md),
+[`segments`](../formats/segment-format.md), and
+[`WAL`](../formats/wal-format.md). Readers preserve documented older versions.
+Writers publish collection config v1 and Segment v3; a checkpoint with an HNSW
+sidecar uses Manifest v3, while a sidecar-ineligible checkpoint remains a valid
+Manifest v2. Single WAL mutations use v2 records and atomic batches use v3
+envelopes. The HNSW sidecar v2 layout and v1 sidecar compatibility are specified
+in the production HNSW design and locked by checked-in fixtures.
+
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
 to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
@@ -172,3 +224,14 @@ lease, validates Arrow-owned buffer views, and keeps owners alive through the
 synchronous compiled-kernel call. It creates no intermediate Python list;
 accepted values are copied only at the engine ownership boundary into the
 WAL/MemTable. Premature release and invalid schemas fail before mutation.
+
+`src/bindings/c_api.mojo` is the lower-level native boundary described by
+[`ADR 0006`](adr/0006-c-abi-capability.md). `include/akasha.h` exposes ABI v1
+through an opaque Mojo-owned collection handle and fixed-width, versioned C
+PODs. Hosts retain all path, vector, result, and error buffers; calls copy input
+before return and report required result capacity without partial writes.
+Every export initializes the Mojo runtime idempotently and translates errors to
+status codes. Close takes a handle pointer, destroys ownership once, and nulls
+the caller slot. The checked surface is configured open, upsert, delete, flush,
+metric-bound ANN search, last-search stats, and close. It is linked and executed
+by a standalone C11 test rather than inferred from symbol presence alone.

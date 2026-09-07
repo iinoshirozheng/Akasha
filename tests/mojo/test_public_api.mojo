@@ -1,5 +1,6 @@
 from akasha import (
     Bitmap,
+    CollectionConfig,
     DocumentField,
     dot_product,
     FilterCondition,
@@ -7,11 +8,16 @@ from akasha import (
     FlatIndex,
     HnswIndex,
     MetadataIndex,
+    MetricKind,
     PayloadValue,
+    PersistentCollection,
     simd_dot_product,
     SparseElement,
     SparseIndex,
+    ScalarKind,
 )
+from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
+from std.ffi import c_int, external_call
 from std.testing import assert_almost_equal, assert_equal, TestSuite
 
 
@@ -52,7 +58,7 @@ def test_root_package_exports_filter_expression() raises:
 def test_root_package_exports_hnsw_index() raises:
     var index = HnswIndex(1)
     index.add(1, [1.0])
-    assert_equal(index.search_dot([1.0], 1, 8)[0].id, 1)
+    assert_equal(index.search_l2([1.0], 1, 8)[0].id, 1)
 
 
 def test_root_package_exports_sparse_index() raises:
@@ -67,6 +73,36 @@ def test_root_package_exports_metadata_index_types() raises:
     index.upsert(1, List[DocumentField]())
     assert_equal(bitmap.count(), 2)
     assert_equal(index.live_count(), 1)
+
+
+def test_root_package_preserves_two_argument_collection_open() raises:
+    var process_id = external_call["getpid", c_int]()
+    var path = String(
+        "/tmp/akasha-public-api-", Int(process_id), "-two-argument-open"
+    )
+    ensure_directory(path)
+    remove_file_if_exists(path + "/collection.bin")
+    remove_file_if_exists(path + "/collection.bin.tmp")
+    remove_file_if_exists(path + "/wal.bin")
+    remove_file_if_exists(path + "/wal.bin.tmp")
+    remove_file_if_exists(path + "/manifest.bin")
+    remove_file_if_exists(path + "/manifest.bin.tmp")
+    remove_file_if_exists(path + "/sparse.wal")
+    remove_file_if_exists(path + "/sparse.wal.tmp")
+    for sequence in range(3):
+        remove_file_if_exists(
+            path + "/segment-" + String(sequence) + ".bin"
+        )
+        remove_file_if_exists(
+            path + "/sparse-" + String(sequence) + ".bin"
+        )
+    var collection = PersistentCollection.open(path, 3)
+
+    assert_equal(collection.dimension, 3)
+    assert_equal(collection.ann_metric(), MetricKind.l2())
+    assert_equal(collection.collection_config(), CollectionConfig.defaults(3))
+    assert_equal(ScalarKind.f32().name(), "f32")
+    collection.close()
 
 
 def main() raises:

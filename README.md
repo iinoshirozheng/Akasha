@@ -1,9 +1,10 @@
 # AkashaDB
 
 AkashaDB is an experimental embedded vector database kernel written in Mojo. It
-provides validated CPU-SIMD `Float32` exact search and a crash-recoverable,
-single-writer storage engine built from a binary WAL, latest-state MemTable,
-immutable base/delta segments, generation manifests, and crash-safe compaction.
+provides validated CPU-SIMD exact search, metric-bound production HNSW with
+compact graph vectors, and a crash-recoverable single-writer storage engine
+built from a binary WAL, latest-state MemTable, immutable base/delta segments,
+generation manifests, and crash-safe compaction.
 
 ## Requirements
 
@@ -26,6 +27,7 @@ Run the persistent collection example:
 
 ```bash
 pixi run example-persistent
+pixi run example-hnsw
 ```
 
 Store a vector with a flat typed document payload, then retrieve the complete
@@ -105,14 +107,59 @@ supported.
 Approximate dense search is available through `search_dot_approx`,
 `search_l2_approx`, and `search_cosine_approx`; each accepts `ef_search` after
 `k`. Boolean-filtered variants use the `_approx_where` suffix. The planner uses
-exact scan for collections smaller than 64 live points and for selective
-filters. Otherwise it searches a deterministic, bounded in-memory HNSW graph,
-filters and exact-reranks over-fetched candidates, and falls back to exact
-filtered search if it cannot fill the requested result count. The graph is a
-derived cache lazily rebuilt from durable live state before the first
-approximate query after recovery or a mutation. A versioned, checksummed
-`hnsw.cache` speeds reopen; stale or damaged cache bytes are ignored and rebuilt
-from WAL/segments.
+exact scan for collections smaller than 64 live points, for selective filters,
+and when the requested metric differs from the graph metric. Otherwise it
+searches a deterministic HNSW graph with heap-based traversal. Filtered search
+traverses every reachable graph node but admits only live IDs in the filter
+bitmap, progressively widens `ef_search`, and exact-falls back when the candidate
+set is insufficient. ANN candidates are always reranked against authoritative
+Float32 vectors, including when the graph stores BF16, F16, or I8 values.
+
+Each collection persists one immutable ANN metric and scalar kind in
+`collection.bin`. Use `PersistentCollection.open_with_config` to choose them;
+the legacy `open(path, dimension)` entry point creates the L2/F32 defaults.
+`M` limits upper-layer degree, `M0` limits base-layer degree,
+`ef_construction` controls build breadth, and query `ef_search` trades work for
+recall up to `max_ef_search`. `level_seed` makes graph levels reproducible and
+is collection identity, not a per-run random seed. BF16 or F16 halves graph
+vector bytes; I8 quarters them before its optional per-vector scale, but I8 is
+supported only for dot and cosine. Start with the defaults, raise
+`ef_construction` for build quality, and raise `ef_search` for query recall.
+The runnable cosine/BF16 configuration is in
+[`examples/configured_hnsw.mojo`](examples/configured_hnsw.mojo).
+
+Acknowledged writes update a bounded owned delta only after WAL, MemTable, and
+metadata mutation succeeds. Replacements and deletes tombstone old graph slots;
+they remain traversable but can never be returned. `flush()` writes a
+versioned, checksummed `hnsw-<sequence>.bin` sidecar and rebuilds first when the
+inactive-slot or delta threshold requires it. `rebuild_hnsw()` is the explicit
+operator control for an immediate rebuild; queries never rebuild. Reopen
+validates and memory-maps the immutable base, then overlays newer WAL mutations
+in owned memory. Mapping acquisition failure uses validated owned loading;
+committed checksum or layout corruption fails recovery rather than serving an
+unchecked graph. Missing or stale derived state is rebuilt from authoritative
+records.
+
+For sizing, authoritative vectors still cost `dimension * 4` bytes per live
+point independently of HNSW. Graph vector payload is `dimension * 4` for F32,
+`dimension * 2` for BF16/F16, or approximately `dimension` for I8; graph IDs,
+slot metadata, and bounded adjacency add storage proportional to `M0` and `M`.
+Mapped base pages are file-backed and demand-paged, while only the mutable delta
+is heap-owned. Flush may therefore include graph rebuild and sidecar I/O when a
+threshold is crossed; provision disk for a new sidecar plus the previous
+manifest-referenced generation until publication and reader-pin reclamation
+complete.
+
+The shipped CPU backend is selected once per graph and reported honestly in
+query stats (for example `portable-simd-4` on the recorded Apple M4 Pro). This
+is the compiler-selected portable SIMD width, not runtime multi-ISA dispatch.
+See [`docs/adr/0005-distance-dispatch.md`](docs/adr/0005-distance-dispatch.md).
+Durable compatibility is specified by
+[`collection.bin`](docs/formats/collection-config-format.md),
+[`manifest.bin`](formats/manifest-format.md),
+[`segment`](formats/segment-format.md), and [`WAL`](formats/wal-format.md)
+formats; legacy readers are retained only where those contracts say so, while
+new checkpoints publish the current versions.
 
 Immutable snapshots also expose deterministic Phase 12 execution paths:
 
@@ -160,6 +207,8 @@ Run the exact-search microbenchmarks:
 pixi run bench-distance
 pixi run bench-flat
 pixi run bench-hnsw
+pixi run bench-hnsw-quality
+pixi run check-hnsw-quality
 pixi run bench-metadata
 pixi run bench-compaction
 pixi run bench-batch
@@ -226,6 +275,27 @@ typed payload, sparse, Boolean-filter, approximate, and hybrid requests; the
 extension owns the Mojo collection and performs every database operation.
 See [`docs/python-api.md`](docs/python-api.md) for atomic batch and filtered
 batch examples.
+
+### Native C ABI
+
+`include/akasha.h` exposes ABI version 1 for native hosts. It uses an opaque
+collection handle, fixed-width versioned structs, caller-owned path/vector/
+result/error buffers, and integer status codes; no Mojo layout or exception
+crosses the boundary. The surface covers configured open, upsert, delete,
+flush, metric-bound ANN search, last-search stats, and close. Close accepts a
+handle pointer, releases once, and clears the caller's slot. Build and execute
+the external C11 contract test with:
+
+```bash
+pixi run build-c
+pixi run test-c
+```
+
+The export/link/runtime-initialization capability was proven on macOS arm64
+with Mojo 1.0.0. Linux build/link commands are encoded in Pixi but require a
+Linux host gate; no cross-platform binary claim is made. See
+[`ADR 0006`](docs/adr/0006-c-abi-capability.md) for the ownership and versioning
+contract.
 
 Run the local HTTP adapter:
 
@@ -298,16 +368,24 @@ Implemented:
   postings, and sorted Int64/Float64 equality and range lookup.
 - Incremental metadata index maintenance for replace/delete and deterministic
   rebuild after WAL or snapshot recovery without changing durable formats.
-- Deterministic bounded HNSW approximate search with configurable `ef_search`,
-  lazy graph refresh, bitmap-cardinality planning, and filter-aware exact
-  fallback.
+- Metric-bound packed HNSW with M/M0, independent construction/query breadth,
+  seeded geometric levels, diversity pruning, symmetric bounded links,
+  generation-stamped visited scratch, post-commit incremental mutation,
+  filter-aware admission, authoritative F32 rerank, and exact fallback.
 - Versioned SQ8 and product quantization with deterministic codebooks,
   approximate dot/L2/cosine scoring, and optional exact rerank.
 - Fixed-range single-query parallel exact scan with deterministic local-heap
   merge for unfiltered and Boolean-filtered snapshots.
-- Checksummed HNSW and metadata derived caches keyed by manifest generation,
-  accepted sequence, and authoritative live-state fingerprint; any cache
-  failure safely rebuilds.
+- Manifest v3 HNSW sidecars with strict checksums, bounds, graph validation,
+  mmap/owned open paths, and a bounded mutable delta; tombstone or delta policy
+  triggers explicit/flush-time rebuild while graph failure keeps exact search
+  available.
+- F32, BF16, and F16 graph storage for all three metrics plus I8 dot/cosine,
+  each guarded by deterministic recall-loss and serialized-size tests.
+- One-time portable SIMD distance dispatch with backend/metric/scalar/storage
+  reporting and no metric/scalar switch in HNSW traversal loops.
+- Capability-verified C ABI v1 with an opaque Mojo-owned collection handle,
+  fixed-width versioned PODs, caller-owned buffers, and an external C11 test.
 - Batched Mojo GPU dot/L2/cosine scoring and deterministic GPU Top-K for Apple,
   NVIDIA, or AMD accelerators, with device-memory planning and exact CPU
   fallback for disabled, unavailable, small, memory-rejected, or failed work.

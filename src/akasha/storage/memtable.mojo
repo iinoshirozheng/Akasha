@@ -82,6 +82,23 @@ struct MemTable:
         """Return stable ordinal slots, including tombstones."""
         return len(self._entries)
 
+    def id_at(self, ordinal: Int) raises -> Int:
+        """Return the public ID at one stable ordinal without cloning data."""
+        self._validate_ordinal(ordinal)
+        return self._entries[ordinal].id
+
+    def is_live_at(self, ordinal: Int) raises -> Bool:
+        """Check stable-ordinal liveness without materializing a record."""
+        self._validate_ordinal(ordinal)
+        return not self._entries[ordinal].tombstone
+
+    def entry_ref_at(
+        ref self, ordinal: Int
+    ) raises -> ref[origin_of(self._entries[ordinal])] MemTableEntry:
+        """Borrow one stable-ordinal entry without vector or payload copies."""
+        self._validate_ordinal(ordinal)
+        return self._entries[ordinal]
+
     def entry_at(self, ordinal: Int) raises -> MemTableEntry:
         """Return an owned entry for one stable ordinal slot."""
         if ordinal < 0 or ordinal >= len(self._entries):
@@ -244,6 +261,10 @@ struct MemTable:
             if self._entries[index].id == id:
                 return index
         return -1
+
+    def _validate_ordinal(self, ordinal: Int) raises:
+        if ordinal < 0 or ordinal >= len(self._entries):
+            raise Error("memtable ordinal out of bounds")
 
     def _advance_sequence(mut self, sequence: UInt64):
         if sequence > self.last_sequence:

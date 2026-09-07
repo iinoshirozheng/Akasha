@@ -42,6 +42,10 @@ struct MetadataIndex:
         self._validate_ordinal(ordinal)
         return self._ids[ordinal]
 
+    def is_live_at(self, ordinal: Int) raises -> Bool:
+        self._validate_ordinal(ordinal)
+        return self._live.contains(ordinal)
+
     def ordinal_for(self, id: Int) raises -> Int:
         if id in self._ordinals:
             return self._ordinals[id]

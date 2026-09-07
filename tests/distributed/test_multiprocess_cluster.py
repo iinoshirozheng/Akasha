@@ -1,8 +1,13 @@
+import os
+from pathlib import Path
+
 import pytest
 
 import akashadb
 from akashadb.distributed import DistributedCluster, ProtocolError, QuorumUnavailable
 from akashadb.distributed.protocol import ReplicatedEntry
+from akashadb.distributed.replica import ReplicaShard, snapshot_checksum
+from akashadb.database import _kernel_module
 
 
 def test_multi_process_replication_queries_and_duplicate_delivery(tmp_path) -> None:
@@ -224,3 +229,229 @@ def test_cluster_metadata_and_acknowledged_state_survive_full_restart(tmp_path) 
         assert duplicate.index == committed.index
     finally:
         reopened.close()
+
+
+def test_distributed_config_replica_snapshot_and_stats_round_trip(tmp_path) -> None:
+    config = akashadb.CollectionConfig.defaults(
+        2,
+        ann_metric="dot",
+        scalar_kind="bf16",
+        m=8,
+        m0=16,
+        ef_construction=64,
+        level_seed=55,
+    )
+    with DistributedCluster(
+        tmp_path / "configured",
+        2,
+        config=config,
+        shard_count=1,
+        replication_factor=3,
+        node_count=4,
+    ) as cluster:
+        resolved = cluster.collection_config()
+        assert resolved == config
+        assert resolved.fingerprint is not None
+        for point_id in range(64):
+            cluster.upsert(point_id, [float(point_id + 1), 1.0])
+        results = cluster.search(
+            akashadb.SearchRequest(
+                "l2", 3, vector=[4.0, 1.0], mode="approx", ef_search=19
+            )
+        )
+        assert [item.id for item in results] == [3, 2, 4]
+        assert cluster.last_search_stats()["planner_reason"] == "metric_mismatch"
+        placement = cluster.metadata.shards[0]
+        for node in placement.replicas:
+            status = cluster.replica_status(node, 0)
+            assert status["config_fingerprint"] == resolved.fingerprint
+
+        source = placement.replicas[0]
+        status = cluster.replica_status(source, 0)
+        mismatched = dict(cluster.metadata.collection_config)
+        mismatched["ann_metric"] = "cosine"
+        with pytest.raises(ProtocolError, match="config"):
+            cluster.debug_rpc(
+                source,
+                {
+                    "operation": "install_snapshot",
+                    "shard_id": 0,
+                    "rows": [],
+                    "collection_config": mismatched,
+                    "index": status["applied_index"],
+                    "term": status["term"],
+                    "placement_epoch": status["placement_epoch"],
+                    "snapshot_checksum": snapshot_checksum(
+                        [], mismatched, status["applied_index"]
+                    ),
+                },
+            )
+        assert cluster.debug_rpc(
+            source, {"operation": "get", "shard_id": 0, "id": 3}
+        )["vector"] == [4.0, 1.0]
+        unexpected = dict(cluster.metadata.collection_config)
+        unexpected["unknown_option"] = 1
+        with pytest.raises(ProtocolError, match="config fields"):
+            cluster.debug_rpc(
+                source,
+                {
+                    "operation": "install_snapshot",
+                    "shard_id": 0,
+                    "rows": [],
+                    "collection_config": unexpected,
+                    "index": status["applied_index"],
+                    "term": status["term"],
+                    "placement_epoch": status["placement_epoch"],
+                    "snapshot_checksum": snapshot_checksum(
+                        [], unexpected, status["applied_index"]
+                    ),
+                },
+            )
+        assert cluster.debug_rpc(
+            source, {"operation": "get", "shard_id": 0, "id": 3}
+        )["vector"] == [4.0, 1.0]
+        cluster.rebalance_add_replica(0, "n3")
+        assert cluster.replica_status("n3", 0)["config_fingerprint"] == (
+            resolved.fingerprint
+        )
+
+
+def test_distributed_invalid_config_fails_before_creating_root(tmp_path) -> None:
+    root = tmp_path / "invalid-config"
+    with pytest.raises(Exception, match="m must be at least 2"):
+        DistributedCluster(
+            root,
+            2,
+            config={"m": 1},
+            shard_count=1,
+            replication_factor=1,
+            node_count=1,
+        )
+    assert not root.exists()
+
+
+def test_invalid_snapshot_rows_preserve_existing_replica_state(tmp_path) -> None:
+    with DistributedCluster(
+        tmp_path / "invalid-snapshot",
+        2,
+        shard_count=1,
+        replication_factor=1,
+        node_count=1,
+    ) as cluster:
+        cluster.upsert(7, [7.0, 1.0])
+        placement = cluster.metadata.shards[0]
+        node = placement.leader
+        status = cluster.replica_status(node, 0)
+        base_request = {
+            "operation": "install_snapshot",
+            "shard_id": 0,
+            "collection_config": dict(cluster.metadata.collection_config),
+            "index": status["applied_index"],
+            "term": status["term"],
+            "placement_epoch": status["placement_epoch"],
+        }
+        malformed_rows = (
+            [{"id": 9, "sequence": 1, "fields": [], "sparse": []}],
+            [
+                {
+                    "id": 9,
+                    "sequence": 1,
+                    "vector": [1.0, float("nan")],
+                    "fields": [],
+                    "sparse": [],
+                }
+            ],
+            [
+                {
+                    "id": True,
+                    "sequence": 1,
+                    "vector": [1.0, 0.0],
+                    "fields": [],
+                    "sparse": [],
+                }
+            ],
+        )
+        exported = cluster.debug_rpc(
+            node, {"operation": "export", "shard_id": 0}
+        )
+        with pytest.raises(ProtocolError, match="checksum"):
+            cluster.debug_rpc(
+                node,
+                {
+                    **base_request,
+                    "rows": exported["rows"],
+                    "snapshot_checksum": exported["snapshot_checksum"] + 1,
+                },
+            )
+        assert cluster.debug_rpc(
+            node, {"operation": "get", "shard_id": 0, "id": 7}
+        )["vector"] == [7.0, 1.0]
+        for rows in malformed_rows:
+            checksum = snapshot_checksum(
+                rows,
+                base_request["collection_config"],
+                base_request["index"],
+            )
+            with pytest.raises(ProtocolError):
+                cluster.debug_rpc(
+                    node,
+                    {
+                        **base_request,
+                        "rows": rows,
+                        "snapshot_checksum": checksum,
+                    },
+                )
+            assert cluster.debug_rpc(
+                node, {"operation": "get", "shard_id": 0, "id": 7}
+            )["vector"] == [7.0, 1.0]
+
+
+def test_snapshot_swap_failure_restores_previous_shard(tmp_path, monkeypatch) -> None:
+    config = dict(_kernel_module().validate_collection_config(2, None))
+    root = tmp_path / "shard-0"
+    shard = ReplicaShard(root, 0, 2, config)
+    shard.configure(1, 1)
+    shard.collection.upsert(7, [7.0, 1.0])
+    rows = [
+        {
+            "id": 9,
+            "sequence": 1,
+            "vector": [9.0, 1.0],
+            "fields": [],
+            "sparse": [],
+        }
+    ]
+    checksum = snapshot_checksum(rows, config, 0)
+    real_replace = os.replace
+
+    def fail_stage_swap(source, destination):
+        source_path = Path(source)
+        if source_path.name == ".shard-0.snapshot-stage":
+            raise OSError("injected snapshot swap failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr("akashadb.distributed.replica.os.replace", fail_stage_swap)
+    with pytest.raises(OSError, match="injected"):
+        shard.install_snapshot(rows, config, 0, 1, 1, checksum)
+    assert shard.get(7)["vector"] == [7.0, 1.0]
+    assert shard.get(9) is None
+    shard.close()
+
+
+def test_snapshot_crash_window_restores_backup_on_reopen(tmp_path) -> None:
+    config = dict(_kernel_module().validate_collection_config(2, None))
+    root = tmp_path / "shard-0"
+    shard = ReplicaShard(root, 0, 2, config)
+    shard.collection.upsert(7, [7.0, 1.0])
+    shard.close()
+
+    stage_root = tmp_path / ".shard-0.snapshot-stage"
+    backup_root = tmp_path / ".shard-0.snapshot-backup"
+    stage_root.mkdir()
+    os.replace(root, backup_root)
+
+    reopened = ReplicaShard(root, 0, 2, config)
+    assert reopened.get(7)["vector"] == [7.0, 1.0]
+    assert not stage_root.exists()
+    assert not backup_root.exists()
+    reopened.close()

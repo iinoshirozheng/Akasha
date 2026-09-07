@@ -22,6 +22,7 @@ from .exceptions import (
 from .models import (
     BatchMutation,
     BatchWriteResult,
+    CollectionConfig,
     Document,
     PayloadField,
     Projection,
@@ -29,6 +30,7 @@ from .models import (
     ResourceLimits,
     SearchRequest,
     SearchResult,
+    SearchStats,
     SparseElement,
     TraceRecord,
 )
@@ -42,6 +44,7 @@ __all__ = [
     "BatchWriteResult",
     "StorageReport",
     "Collection",
+    "CollectionConfig",
     "CancellationToken",
     "CollectionAlreadyOpenError",
     "CollectionClosedError",
@@ -57,6 +60,7 @@ __all__ = [
     "ResourceLimits",
     "SearchRequest",
     "SearchResult",
+    "SearchStats",
     "SparseElement",
     "TraceRecord",
     "ValidationError",

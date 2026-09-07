@@ -1,3 +1,9 @@
+from akasha.storage.collection_config import (
+    collection_config_exists,
+    load_collection_config,
+    publish_collection_config,
+)
+from akasha.common.config import CollectionConfig
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -7,6 +13,7 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.manifest import load_manifest, publish_manifest
+from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import (
     read_segment,
@@ -28,6 +35,7 @@ struct StorageInspection(Movable):
     var segment_count: Int
     var live_points: Int
     var valid: Bool
+    var config_fingerprint: UInt64
     var segment_names: List[String]
     var sparse_names: List[String]
 
@@ -39,6 +47,7 @@ struct StorageInspection(Movable):
         last_sequence: UInt64,
         segment_count: Int,
         live_points: Int,
+        config_fingerprint: UInt64,
         var segment_names: List[String],
         var sparse_names: List[String],
     ):
@@ -49,6 +58,7 @@ struct StorageInspection(Movable):
         self.segment_count = segment_count
         self.live_points = live_points
         self.valid = True
+        self.config_fingerprint = config_fingerprint
         self.segment_names = segment_names^
         self.sparse_names = sparse_names^
 
@@ -102,6 +112,11 @@ def inspect_storage(
             sparse_names.append(descriptor.sparse_name)
 
     var live = memtable.live_entries()
+    var config = CollectionConfig.defaults(expected_dimension)
+    if collection_config_exists(directory):
+        config = load_collection_config(directory)
+        if config.dimension != expected_dimension:
+            raise Error("collection config dimension mismatch")
     return StorageInspection(
         manifest.dimension,
         manifest.format_version,
@@ -109,6 +124,7 @@ def inspect_storage(
         manifest.last_sequence,
         len(manifest.segments),
         len(live),
+        config.fingerprint(),
         names^,
         sparse_names^,
     )
@@ -121,15 +137,35 @@ def backup_storage(
     if source == target:
         raise Error("backup source and target must differ")
     ensure_directory(target)
+    # Serialize the target preflight, immutable copies, and manifest commit
+    # with the same lock used by collection writers. Without this boundary a
+    # writer could append an acknowledged WAL record after the checks below
+    # and have it hidden or mixed by the restored snapshot sequence.
+    var target_lock = CollectionLock.acquire(target + "/collection.lock")
     if path_exists(target + "/manifest.bin"):
         raise Error("backup target already contains a committed manifest")
+    if path_exists(target + "/wal.bin") or path_exists(
+        target + "/sparse.wal"
+    ):
+        raise Error("backup target already contains authoritative WAL state")
     var report = inspect_storage(source, expected_dimension)
     var manifest = load_manifest(source, expected_dimension)
+    if collection_config_exists(source):
+        var config = load_collection_config(source)
+        if config.dimension != expected_dimension:
+            raise Error("collection config dimension mismatch")
+        # The immutable identity must reach the backup before its manifest
+        # commit point. Publication is idempotent for a retry with the same
+        # identity and rejects a stale target with a different identity.
+        publish_collection_config(target, config)
+    elif collection_config_exists(target):
+        raise Error("backup target identity is absent from legacy source")
     for name in report.segment_names:
         _copy_immutable(source, target, name)
     for name in report.sparse_names:
         _copy_immutable(source, target, name)
     publish_manifest(target, manifest^)
+    target_lock.close()
     return report^
 
 

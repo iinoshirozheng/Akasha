@@ -4,6 +4,8 @@ from akasha.compute.distance import (
     l2_squared_distance,
 )
 from akasha.compute.simd import (
+    _simd_dot_product_unchecked,
+    _simd_l2_squared_unchecked,
     simd_cosine_similarity,
     simd_dot_product,
     simd_l2_squared_distance,
@@ -26,8 +28,18 @@ def _assert_matches_scalar(size: Int) raises:
         atol=1.0e-4,
     )
     assert_almost_equal(
+        _simd_dot_product_unchecked(lhs, rhs),
+        simd_dot_product(lhs, rhs),
+        atol=1.0e-4,
+    )
+    assert_almost_equal(
         simd_l2_squared_distance(lhs, rhs),
         l2_squared_distance(lhs, rhs),
+        atol=1.0e-4,
+    )
+    assert_almost_equal(
+        _simd_l2_squared_unchecked(lhs, rhs),
+        simd_l2_squared_distance(lhs, rhs),
         atol=1.0e-4,
     )
     assert_almost_equal(

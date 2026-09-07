@@ -66,4 +66,3 @@ runtime APIs are not an accepted dependency.
 - Batch results equal sequential single-query results for all metrics and ties.
 - Concurrent stress tests preserve monotonic sequences and deterministic reads.
 - Close joins maintenance and surfaces worker failures deterministically.
-

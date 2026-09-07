@@ -1,5 +1,7 @@
 """Collection lifecycle and checkpoint routes."""
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Request
 
 from apps.server.schemas import OpenCollectionRequest
@@ -12,11 +14,23 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 def open_collection(
     name: str, body: OpenCollectionRequest, request: Request
 ) -> dict[str, object]:
-    collection = request.app.state.database.open(name, body.dimension)
+    collection = request.app.state.database.open(
+        name, body.dimension, config=body.collection_config()
+    )
     return {
         "name": name,
         "dimension": collection.dimension,
         "last_sequence": collection.last_sequence,
+        "config": asdict(collection.collection_config()),
+    }
+
+
+@router.get("/{name}/stats")
+def collection_stats(name: str, request: Request) -> dict[str, object]:
+    collection = request.app.state.database.collection(name)
+    return {
+        "config": asdict(collection.collection_config()),
+        "last_search": asdict(collection.last_search_stats()),
     }
 
 

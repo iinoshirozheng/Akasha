@@ -49,6 +49,16 @@ def _l2_kernel[width: Int](lhs: List[Float32], rhs: List[Float32]) -> Float32:
 def simd_dot_product(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:
     """Return a hardware-width SIMD dot-product score."""
     _validate_pair(lhs, rhs)
+    return _simd_dot_product_unchecked(lhs, rhs)
+
+
+def _simd_dot_product_unchecked(
+    lhs: List[Float32], rhs: List[Float32]
+) -> Float32:
+    """Return a SIMD dot product for prevalidated vectors.
+
+    Callers must guarantee non-empty, equal-length, finite inputs.
+    """
     return _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 
@@ -57,6 +67,16 @@ def simd_l2_squared_distance(
 ) raises -> Float32:
     """Return hardware-width SIMD squared Euclidean distance."""
     _validate_pair(lhs, rhs)
+    return _simd_l2_squared_unchecked(lhs, rhs)
+
+
+def _simd_l2_squared_unchecked(
+    lhs: List[Float32], rhs: List[Float32]
+) -> Float32:
+    """Return SIMD squared L2 distance for prevalidated vectors.
+
+    Callers must guarantee non-empty, equal-length, finite inputs.
+    """
     return _l2_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 
@@ -65,9 +85,9 @@ def simd_cosine_similarity(
 ) raises -> Float32:
     """Return hardware-width SIMD cosine similarity."""
     _validate_pair(lhs, rhs)
-    var product = _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
-    var lhs_norm_squared = _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, lhs)
-    var rhs_norm_squared = _dot_kernel[_FLOAT32_SIMD_WIDTH](rhs, rhs)
+    var product = _simd_dot_product_unchecked(lhs, rhs)
+    var lhs_norm_squared = _simd_dot_product_unchecked(lhs, lhs)
+    var rhs_norm_squared = _simd_dot_product_unchecked(rhs, rhs)
 
     if lhs_norm_squared == 0.0 or rhs_norm_squared == 0.0:
         raise Error("cosine similarity requires non-zero vectors")
@@ -77,22 +97,22 @@ def simd_cosine_similarity(
 def prevalidated_simd_dot_product(
     lhs: List[Float32], rhs: List[Float32]
 ) -> Float32:
-    """Score a pair already validated for equal, finite dimensions."""
-    return _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
+    """Compatibility name for the single unchecked dot implementation."""
+    return _simd_dot_product_unchecked(lhs, rhs)
 
 
 def prevalidated_simd_l2_squared_distance(
     lhs: List[Float32], rhs: List[Float32]
 ) -> Float32:
-    """Score a pair already validated for equal, finite dimensions."""
-    return _l2_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
+    """Compatibility name for the single unchecked L2 implementation."""
+    return _simd_l2_squared_unchecked(lhs, rhs)
 
 
 def prevalidated_simd_cosine_similarity(
     lhs: List[Float32], rhs: List[Float32]
 ) -> Float32:
     """Score a validated pair whose vectors both have non-zero norms."""
-    var product = _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
-    var lhs_norm_squared = _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, lhs)
-    var rhs_norm_squared = _dot_kernel[_FLOAT32_SIMD_WIDTH](rhs, rhs)
+    var product = _simd_dot_product_unchecked(lhs, rhs)
+    var lhs_norm_squared = _simd_dot_product_unchecked(lhs, lhs)
+    var rhs_norm_squared = _simd_dot_product_unchecked(rhs, rhs)
     return product / sqrt(lhs_norm_squared * rhs_norm_squared)

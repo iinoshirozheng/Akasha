@@ -64,9 +64,15 @@ upgrade on their next flush.
 HNSW and metadata cache files are outside the acknowledgement and recovery
 boundary. They are atomically published and keyed by manifest generation,
 accepted sequence, dimension, and a checksum of authoritative dense vectors,
-tombstones, sequences, and payloads. Missing, stale, truncated, structurally
-invalid, or CRC-corrupt cache files are cache misses: open or the next
-approximate query rebuilds them from recovered state. Cache publication failure
+tombstones, sequences, and payloads. Metadata indexes may be rebuilt during
+open from recovered authoritative state. Acknowledged writes update HNSW only
+after WAL, MemTable, and metadata mutation succeeds. If that derived mutation
+fails, the write remains committed and the graph is quarantined; subsequent ANN
+requests use exact search. Missing, stale, truncated, structurally invalid,
+CRC-corrupt, or authoritatively inconsistent HNSW cache files likewise leave
+ANN unavailable, and subsequent requests continue through exact fallback.
+Queries never rebuild HNSW. Explicit maintenance recovery is planned for the
+next task and is not part of the current guarantee. Cache publication failure
 is ignored and cannot fail an otherwise valid query or acknowledged write.
 
 Quantized and parallel execution run only over owned read-snapshot state. SQ8

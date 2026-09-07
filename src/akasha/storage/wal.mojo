@@ -90,6 +90,33 @@ struct WalRecord(Movable):
         return WalRecord.with_fields(sequence, id, False, values^, fields^)
 
 
+struct WalReplayState(Movable):
+    """One read-only WAL decode plus optional accepted-tail repair bytes."""
+
+    var records: List[WalRecord]
+    var valid_prefix: List[UInt8]
+    var valid_length: Int
+    var source_length: Int
+
+    def __init__(
+        out self,
+        var records: List[WalRecord],
+        var valid_prefix: List[UInt8],
+        valid_length: Int,
+        source_length: Int,
+    ):
+        self.records = records^
+        self.valid_prefix = valid_prefix^
+        self.valid_length = valid_length
+        self.source_length = source_length
+
+    def needs_repair(self) -> Bool:
+        return self.valid_length < self.source_length
+
+    def take_records(deinit self) -> List[WalRecord]:
+        return self.records^
+
+
 def encode_upsert(
     sequence: UInt64,
     id: Int,
@@ -225,24 +252,39 @@ def rotate_wal(directory: String) raises:
 
 
 def replay_wal(path: String, dimension: Int) raises -> List[WalRecord]:
-    if not path_exists(path):
-        return List[WalRecord]()
-    var bytes = read_file_bytes(path)
-    return decode_wal_bytes(bytes^, dimension)
+    var replay = preflight_wal(path, dimension)
+    return replay^.take_records()
 
 
 def recover_wal(path: String, dimension: Int) raises -> List[WalRecord]:
     """Replay a WAL and durably remove an accepted torn EOF tail."""
+    var replay = preflight_wal(path, dimension)
+    repair_wal_tail(path, replay)
+    return replay^.take_records()
+
+
+def preflight_wal(path: String, dimension: Int) raises -> WalReplayState:
+    """Decode once without modifying a missing file or accepted torn tail."""
     if not path_exists(path):
-        return List[WalRecord]()
+        return WalReplayState(
+            List[WalRecord](), List[UInt8](), 0, 0
+        )
     var bytes = read_file_bytes(path)
     var decode_copy = _copy_range(bytes, 0, len(bytes))
     var records = decode_wal_bytes(decode_copy^, dimension)
     var valid_length = _valid_prefix_length(bytes)
+    var valid_prefix = List[UInt8]()
     if valid_length < len(bytes):
-        var valid_bytes = _copy_range(bytes, 0, valid_length)
-        write_file_sync(path, valid_bytes)
-    return records^
+        valid_prefix = _copy_range(bytes, 0, valid_length)
+    return WalReplayState(
+        records^, valid_prefix^, valid_length, len(bytes)
+    )
+
+
+def repair_wal_tail(path: String, replay: WalReplayState) raises:
+    """Apply only the tail repair established by ``preflight_wal``."""
+    if replay.needs_repair():
+        write_file_sync(path, replay.valid_prefix)
 
 
 def decode_wal_bytes(
