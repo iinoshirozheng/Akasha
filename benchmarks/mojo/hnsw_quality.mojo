@@ -1,6 +1,7 @@
 from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.flat import FlatIndex, SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.storage.hnsw_store import encode_hnsw_snapshot
 from std.sys.arg import argv
 from std.time import perf_counter_ns
 
@@ -196,10 +197,13 @@ def run_dataset(
     config.ef_construction = _EF_CONSTRUCTION
     config.max_level = 16
     var approximate = HnswIndex(config)
+    var build_elapsed_ns = 0
 
     for point_id in range(point_count):
         var values = _query_vector(rng, point_id, dimension, clustered)
+        var build_start = perf_counter_ns()
         approximate.add(point_id, values)
+        build_elapsed_ns += perf_counter_ns() - build_start
         exact.add(point_id, values^)
 
     # Prepare queries and exact ground truth before entering the ANN timing
@@ -224,6 +228,7 @@ def run_dataset(
     var ann_ns_per_query = Float64(measurements.search_elapsed_ns) / Float64(
         query_count
     )
+    var serialized = encode_hnsw_snapshot(approximate, UInt64(0))
     print(
         "dataset="
         + dataset
@@ -245,6 +250,8 @@ def run_dataset(
         + String(recall)
         + " build_distances="
         + String(approximate.build_stats.distance_evaluations)
+        + " local_build_ns="
+        + String(build_elapsed_ns)
         + " directed_edges="
         + String(approximate.build_stats.directed_edges)
         + " avg_visited="
@@ -253,6 +260,8 @@ def run_dataset(
         + String(average_distances)
         + " packed_size_estimate_bytes="
         + String(_packed_size_estimate(approximate))
+        + " serialized_bytes="
+        + String(len(serialized))
         + " local_ann_search_ns_per_query="
         + String(ann_ns_per_query)
     )

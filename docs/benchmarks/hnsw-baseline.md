@@ -108,3 +108,58 @@ The existing latency benchmark uses squared L2, 1,000 points, 16 dimensions,
 `efSearch=64`. It recorded 4,371,238 build distance evaluations, 112 average
 visited slots per query, and 50,000 ns/query. The time value is a local
 diagnostic and can vary with load, compiler state, and hardware.
+
+## Final production-HNSW verification
+
+Recorded on 2026-09-07 on the same Apple M4 Pro, macOS 26.5.2 build 25F84,
+Darwin 25.5.0 arm64, 14 logical CPUs, 24 GiB RAM, and Mojo 1.0.0
+(`ed45d567`). The final run used the same commands and seeded datasets as the
+Task 14 baseline:
+
+```text
+pixi run mojo run -I src tests/mojo/test_hnsw_quality_gate.mojo
+pixi run bench-hnsw-quality
+pixi run bench-hnsw
+```
+
+The locked 8,192-point recall values remained Dot 0.9625, squared L2 0.9708,
+and cosine 0.9875. Construction work also remained 4,291,998 distances at 512
+points and 12,202,115 at 1,024 points, ratio 2.843. These deterministic gates
+did not regress.
+
+The table compares the original Task 14 10,000-point record with the final
+instrumented run. `Build time` sums only the HNSW `add` call durations; Task 14
+did not capture this seam, so no honest before value exists. Timing columns are
+diagnostic, while recall and counter columns are reproducible contracts.
+
+| Shape | Metric | Recall before → final | Build distances before → final | Final build time | Avg visited/distances before → final | ANN ns/query before → final |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Uniform | Dot | 0.948 → 0.948 | 236,372,943 → 236,372,675 | 10.649 s | 2,378.12 → 2,378.12 | 333,220 → 187,680 |
+| Eight-cluster | Dot | 1.000 → 1.000 | 73,385,618 → 73,385,409 | 7.904 s | 323.28 → 323.29 | 105,330 → 94,820 |
+| Uniform | Squared L2 | 0.961 → 0.961 | 269,865,610 → 269,865,615 | 10.505 s | 2,367.06 → 2,367.06 | 468,400 → 144,410 |
+| Eight-cluster | Squared L2 | 1.000 → 1.000 | 132,235,844 → 132,235,885 | 8.859 s | 1,089.27 → 1,089.27 | 190,400 → 118,870 |
+| Uniform | Cosine | 0.952 → 0.952 | 213,515,719 → 213,515,634 | 10.549 s | 2,376.06 → 2,376.08 | 331,860 → 154,790 |
+| Eight-cluster | Cosine | 1.000 → 1.000 | 132,800,920 → 132,807,075 | 8.966 s | 1,084.68 → 1,084.70 | 187,580 → 119,310 |
+
+The packed owned-layout estimate stayed 4,855,664 bytes for all six runs. The
+actual v2 serialized sidecars were 4,867,460 B (uniform dot), 3,386,484 B
+(cluster dot), 4,710,468 B (uniform L2), 4,711,796 B (cluster L2), 4,918,436 B
+(uniform cosine), and 4,704,164 B (cluster cosine). Variation is expected
+because frozen adjacency serializes actual edge counts rather than mutable tape
+capacity. Task 14 recorded only the estimate, so the final benchmark now emits
+both fields rather than presenting unlike values as a before/after reduction.
+
+The mmap base uses that sidecar directly and allocates no owned vector or
+adjacency copy; pages are demand-paged and share the OS file cache. Per-index
+resident bytes are not reliably measurable inside this benchmark because RSS
+includes compiler/runtime and shared file-cache pages. Mapped/owned equivalence,
+closed-view rejection, offset bounds, and base-plus-owned-delta behavior are
+therefore release-tested as invariants rather than reported as a synthetic RSS
+number.
+
+Compact scalar evidence remains the production-path table above: BF16 and F16
+pass dot/L2/cosine with zero measured public recall loss and halve vector bytes;
+I8 dot/cosine passes with zero measured loss and uses 1/4 vector bytes before
+the optional dot scale. I8/L2 remains deliberately rejected. The final small
+latency diagnostic recorded 4,371,109 build distances, 112 visited slots/query,
+and 49,950 ns/query versus 4,371,238, 112, and 50,000 in Task 14.

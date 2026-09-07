@@ -6,7 +6,13 @@
 - Scope: single-node Akasha dense approximate search
 - Reference implementation studied: USearch v2.26.1 at local commit `0ef97e1`
 - Akasha baseline: branch point `2d54d61`
-- Decision: approved planning baseline; implementation has not started
+- Decision: implemented on `codex/production-hnsw-plan`; final verification
+  recorded 2026-09-07
+
+This document retains the original baseline comparison below so the design
+rationale remains auditable. Delivery stages 1–8 are complete: graph core,
+persistence, mmap base/delta, compact scalars, distance dispatch, adapters, the
+C ABI capability gate, and release evidence all have executable tests.
 
 ## Context
 
@@ -307,7 +313,8 @@ rebuild.
 
 ### Persisted HNSW sidecar
 
-Manifest version 2 adds an optional HNSW sidecar reference:
+Manifest version 3 adds an optional HNSW sidecar reference (v2 manifests remain
+readable but have no graph-sidecar fields):
 
 ```text
 hnsw_name
@@ -330,16 +337,16 @@ write + fsync segment temporary
 write + fsync sparse sidecar temporary
 write + fsync HNSW sidecar temporary
 rename all completed data files + directory fsync
-publish + fsync manifest v2 (commit point)
+publish + fsync manifest v3 (commit point)
 rotate WALs
 remove only superseded files named by the previous valid manifest
 ```
 
-A v1 manifest or a v2 manifest without a compatible HNSW sidecar rebuilds the
-graph from authoritative live records. A checksum, sequence, configuration,
-point-count, or structural validation failure never produces partial ANN
-results: open rebuilds when the file is merely stale/missing and rejects files
-whose corruption could indicate a damaged committed checkpoint.
+A v1/v2 manifest, or a legacy manifest without a compatible HNSW sidecar,
+rebuilds the graph from authoritative live records. A checksum, sequence,
+configuration, point-count, or structural validation failure never produces
+partial ANN results: open rebuilds when derived state is merely stale/missing
+and rejects corruption in a matching manifest-committed sidecar.
 
 ### Memory-mapped frozen graph plus delta
 
@@ -402,18 +409,24 @@ function. The probe tests the compiler syntax, symbol visibility, calling
 convention, ownership boundary, and host linking command actually available in
 this pinned environment.
 
-Only after that probe passes does Akasha add an opaque-handle C API. The proposed
-surface uses fixed-width C types, caller-owned input buffers, caller-sized output
-buffers, integer status codes, and a caller-owned fixed-layout error output on
-every fallible call. No Mojo `String`, `List`, exceptions, thread-local error
-state, or layout-dependent struct crosses the boundary.
+The probe passed on macOS arm64 with an unmangled exported symbol and an external
+C11 link/run. Akasha therefore ships ABI v1 in `include/akasha.h` and
+`src/bindings/c_api.mojo`. The surface uses fixed-width C types, caller-owned
+input buffers, caller-sized output buffers, integer status codes, and a
+caller-owned fixed-layout error output on every fallible call. No Mojo `String`,
+`List`, exception, thread-local error state, or layout-dependent struct crosses
+the boundary. Every export calls idempotent `initialize_runtime()` before using
+the Mojo standard library.
 
-Representative operations are create/open/close, upsert, delete, exact/ANN
-search, flush, and query stats. Every function documents pointer lifetime and
-whether output length is input capacity or actual count. A C integration test
-builds and runs outside Mojo. If the probe fails, the task records an ADR with
-the missing capability and stops there; the existing CPython adapter remains the
-supported native integration.
+The implemented operations are configured open, close, upsert, delete,
+metric-bound ANN search, flush, and query stats. Every function documents
+pointer lifetime and whether output length is input capacity or actual count.
+Close releases once and nulls the caller's handle slot. The standalone C test
+builds with C11 warnings-as-errors and verifies allocation, persistence,
+capacity/no-partial-write behavior, errors, stats, and idempotent close. Linux
+commands are present but require a native Linux release gate; the recorded gate
+is macOS arm64. Full evidence is in
+[`ADR 0006`](../adr/0006-c-abi-capability.md).
 
 ## Query data flow
 
@@ -497,7 +510,7 @@ serialized bytes.
   `ef_search`;
 - all existing Mojo, Python, crash, build, smoke, and persistent examples pass.
 
-## Delivery stages
+## Delivery stages (completed)
 
 1. Establish recall/build/query-work oracles and immutable configuration.
 2. Replace the graph core with packed storage, heaps, reusable visited state,

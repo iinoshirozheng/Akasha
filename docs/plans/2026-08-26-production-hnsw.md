@@ -2246,24 +2246,24 @@ Step 4 after any code change.
 
 ## Completion checklist
 
-- [ ] Existing exact, sparse, hybrid, metadata, persistence, Python, and HTTP
+- [x] Existing exact, sparse, hybrid, metadata, persistence, Python, and HTTP
       behavior remains compatible.
-- [ ] ANN construction and traversal use one bound metric consistently.
-- [ ] Build no longer scans every prior point at every level.
-- [ ] M0, efConstruction, two heaps, radius termination, diversity pruning, and
+- [x] ANN construction and traversal use one bound metric consistently.
+- [x] Build no longer scans every prior point at every level.
+- [x] M0, efConstruction, two heaps, radius termination, diversity pruning, and
       symmetric bounded links are tested.
-- [ ] Query scratch does not allocate/clear an O(N) visited bitmap per query.
-- [ ] Insert/replace/delete are incremental; query never triggers full rebuild.
-- [ ] Filtered HNSW admits eligible results during traversal and exact-fallbacks
+- [x] Query scratch does not allocate/clear an O(N) visited bitmap per query.
+- [x] Insert/replace/delete are incremental; query never triggers full rebuild.
+- [x] Filtered HNSW admits eligible results during traversal and exact-fallbacks
       when required.
-- [ ] Collection config, manifest v2, and HNSW formats are versioned,
+- [x] Collection config, manifest v3, and HNSW formats are versioned,
       checksummed, bounded, and documented.
-- [ ] Owned recovery and mmap view are result-equivalent; WAL mutations live in
+- [x] Owned recovery and mmap view are result-equivalent; WAL mutations live in
       a bounded delta.
-- [ ] Every enabled compact scalar passes the stated recall-loss and size gates.
-- [ ] Backend reporting distinguishes native compiled SIMD from true runtime
+- [x] Every enabled compact scalar passes the stated recall-loss and size gates.
+- [x] Backend reporting distinguishes native compiled SIMD from true runtime
       multi-ISA dispatch.
-- [ ] C ABI is either proven by a native C integration test or explicitly
+- [x] C ABI is either proven by a native C integration test or explicitly
       recorded as unavailable for the pinned compiler.
-- [ ] Recall, work, latency, memory, and crash-ordering evidence is reproducible.
-- [ ] Full tests, crash tests, builds, examples, and quality gate pass.
+- [x] Recall, work, latency, memory, and crash-ordering evidence is reproducible.
+- [x] Full tests, crash tests, builds, examples, and quality gate pass.
