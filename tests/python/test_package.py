@@ -155,6 +155,34 @@ def test_compiled_kernel_rejects_unknown_config_before_creating_state(tmp_path) 
     assert not path.exists()
 
 
+def test_compiled_kernel_config_none_and_exact_types(tmp_path) -> None:
+    from akashadb.database import _kernel_module
+
+    kernel = _kernel_module()
+    explicit_none = kernel.Collection(
+        str(tmp_path / "explicit-none"), 2, None
+    )
+    assert explicit_none.collection_config()["ann_metric"] == "l2"
+    explicit_none.close()
+
+    invalid_values = (
+        {"default_ef_search": True},
+        {"level_seed": False},
+        {"m": 8.0},
+        {"m0": "16"},
+        {"ann_metric": 7},
+        {"scalar_kind": b"f32"},
+    )
+    for index, config in enumerate(invalid_values):
+        path = tmp_path / f"bad-type-{index}"
+        with pytest.raises(Exception, match="must be"):
+            kernel.Collection(str(path), 2, config)
+        assert not path.exists()
+
+    with pytest.raises(Exception, match="dimension must be"):
+        kernel.Collection(str(tmp_path / "bool-dimension"), True)
+
+
 def test_compiled_kernel_supports_document_dense_sparse_hybrid_and_reopen(
     tmp_path,
 ) -> None:

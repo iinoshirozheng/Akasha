@@ -72,8 +72,12 @@ class CollectionConfig:
             if value.dimension != dimension:
                 raise ValueError("collection config dimension mismatch")
             return value
+        if type(value) is not dict:
+            raise ValueError("collection config must be a dict or CollectionConfig")
         options = dict(value)
-        configured_dimension = int(options.pop("dimension", dimension))
+        configured_dimension = options.pop("dimension", dimension)
+        if type(configured_dimension) is not int:
+            raise ValueError("collection dimension must be an integer")
         if configured_dimension != dimension:
             raise ValueError("collection config dimension mismatch")
         return cls.defaults(dimension, **options)
@@ -81,19 +85,19 @@ class CollectionConfig:
     @classmethod
     def from_kernel(cls, value: dict[str, Any]) -> "CollectionConfig":
         return cls(
-            dimension=int(value["dimension"]),
-            ann_metric=str(value["ann_metric"]),  # type: ignore[arg-type]
-            scalar_kind=str(value["scalar_kind"]),  # type: ignore[arg-type]
-            m=int(value["m"]),
-            m0=int(value["m0"]),
-            ef_construction=int(value["ef_construction"]),
-            default_ef_search=int(value["default_ef_search"]),
-            max_ef_search=int(value["max_ef_search"]),
-            max_level=int(value["max_level"]),
-            rebuild_inactive_percent=int(value["rebuild_inactive_percent"]),
-            delta_max_points=int(value["delta_max_points"]),
-            level_seed=int(value["level_seed"]),
-            fingerprint=int(value["fingerprint"]),
+            dimension=value["dimension"],
+            ann_metric=value["ann_metric"],  # type: ignore[arg-type]
+            scalar_kind=value["scalar_kind"],  # type: ignore[arg-type]
+            m=value["m"],
+            m0=value["m0"],
+            ef_construction=value["ef_construction"],
+            default_ef_search=value["default_ef_search"],
+            max_ef_search=value["max_ef_search"],
+            max_level=value["max_level"],
+            rebuild_inactive_percent=value["rebuild_inactive_percent"],
+            delta_max_points=value["delta_max_points"],
+            level_seed=value["level_seed"],
+            fingerprint=value["fingerprint"],
         )
 
     def to_kernel(self) -> dict[str, object]:

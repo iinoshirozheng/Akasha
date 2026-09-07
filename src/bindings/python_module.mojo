@@ -49,8 +49,8 @@ struct BoundCollection(Movable, Writable):
                 "Collection(path, dimension, config=None) requires two or three arguments"
             )
         var path = String(py=args[0])
-        var dimension = Int(py=args[1])
-        if len(args) == 2:
+        var dimension = _exact_python_int(args[1], "dimension")
+        if len(args) == 2 or _is_python_none(args[2]):
             self.inner = Optional(PersistentCollection.open(path, dimension))
         else:
             var config = _collection_config_from_python(dimension, args[2])
@@ -701,7 +701,7 @@ struct BoundCollection(Movable, Writable):
 
 
 def _metric_kind_from_python(value: PythonObject) raises -> MetricKind:
-    var name = String(py=value)
+    var name = _exact_python_string(value, "ann_metric")
     if name == "dot":
         return MetricKind.dot()
     if name == "l2":
@@ -712,7 +712,7 @@ def _metric_kind_from_python(value: PythonObject) raises -> MetricKind:
 
 
 def _scalar_kind_from_python(value: PythonObject) raises -> ScalarKind:
-    var name = String(py=value)
+    var name = _exact_python_string(value, "scalar_kind")
     if name == "f32":
         return ScalarKind.f32()
     if name == "bf16":
@@ -727,8 +727,11 @@ def _scalar_kind_from_python(value: PythonObject) raises -> ScalarKind:
 def _collection_config_from_python(
     dimension: Int, value: PythonObject
 ) raises -> CollectionConfig:
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(value) == builtins.dict):
+        raise Error("collection config must be a dict or None")
     for raw_name in value:
-        var name = String(py=raw_name)
+        var name = _exact_python_string(raw_name, "collection config option")
         if (
             name != "dimension"
             and name != "ann_metric"
@@ -745,7 +748,12 @@ def _collection_config_from_python(
         ):
             raise Error("unknown collection config option: " + name)
     var config = CollectionConfig.defaults(dimension)
-    if Int(py=value.get("dimension", PythonObject(dimension))) != dimension:
+    if (
+        _exact_python_int(
+            value.get("dimension", PythonObject(dimension)), "dimension"
+        )
+        != dimension
+    ):
         raise Error("collection config dimension mismatch")
     config.ann_metric = _metric_kind_from_python(
         value.get("ann_metric", PythonObject(config.metric_name()))
@@ -753,39 +761,66 @@ def _collection_config_from_python(
     config.scalar_kind = _scalar_kind_from_python(
         value.get("scalar_kind", PythonObject(config.scalar_name()))
     )
-    config.m = Int(py=value.get("m", PythonObject(config.m)))
-    config.m0 = Int(py=value.get("m0", PythonObject(config.m0)))
-    config.ef_construction = Int(
-        py=value.get(
-            "ef_construction", PythonObject(config.ef_construction)
-        )
+    config.m = _exact_python_int(value.get("m", PythonObject(config.m)), "m")
+    config.m0 = _exact_python_int(
+        value.get("m0", PythonObject(config.m0)), "m0"
     )
-    config.default_ef_search = Int(
-        py=value.get(
-            "default_ef_search", PythonObject(config.default_ef_search)
-        )
+    config.ef_construction = _exact_python_int(
+        value.get("ef_construction", PythonObject(config.ef_construction)),
+        "ef_construction",
     )
-    config.max_ef_search = Int(
-        py=value.get("max_ef_search", PythonObject(config.max_ef_search))
+    config.default_ef_search = _exact_python_int(
+        value.get("default_ef_search", PythonObject(config.default_ef_search)),
+        "default_ef_search",
     )
-    config.max_level = Int(
-        py=value.get("max_level", PythonObject(config.max_level))
+    config.max_ef_search = _exact_python_int(
+        value.get("max_ef_search", PythonObject(config.max_ef_search)),
+        "max_ef_search",
     )
-    config.rebuild_inactive_percent = Int(
-        py=value.get(
+    config.max_level = _exact_python_int(
+        value.get("max_level", PythonObject(config.max_level)), "max_level"
+    )
+    config.rebuild_inactive_percent = _exact_python_int(
+        value.get(
             "rebuild_inactive_percent",
             PythonObject(config.rebuild_inactive_percent),
-        )
+        ),
+        "rebuild_inactive_percent",
     )
-    config.delta_max_points = Int(
-        py=value.get(
-            "delta_max_points", PythonObject(config.delta_max_points)
-        )
+    config.delta_max_points = _exact_python_int(
+        value.get("delta_max_points", PythonObject(config.delta_max_points)),
+        "delta_max_points",
     )
     var seed = value.get("level_seed", Python.none())
-    if Bool(py=seed != Python.none()):
-        config.level_seed = UInt64(Int64(py=seed))
+    if not _is_python_none(seed):
+        config.level_seed = UInt64(_exact_python_int64(seed, "level_seed"))
     return config^
+
+
+def _is_python_none(value: PythonObject) raises -> Bool:
+    var builtins = Python.import_module("builtins")
+    return Bool(py=builtins.type(value) == builtins.type(Python.none()))
+
+
+def _exact_python_int(value: PythonObject, name: String) raises -> Int:
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(value) == builtins.int):
+        raise Error(name + " must be an integer")
+    return Int(py=value)
+
+
+def _exact_python_int64(value: PythonObject, name: String) raises -> Int64:
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(value) == builtins.int):
+        raise Error(name + " must be an integer")
+    return Int64(py=value)
+
+
+def _exact_python_string(value: PythonObject, name: String) raises -> String:
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(value) == builtins.str):
+        raise Error(name + " must be a string")
+    return String(py=value)
 
 
 def _collection_config_to_python(config: CollectionConfig) raises -> PythonObject:
@@ -811,7 +846,10 @@ def _collection_config_to_python(config: CollectionConfig) raises -> PythonObjec
 def validate_collection_config_py(
     dimension: PythonObject, value: PythonObject
 ) raises -> PythonObject:
-    var config = _collection_config_from_python(Int(py=dimension), value)
+    var native_dimension = _exact_python_int(dimension, "dimension")
+    var config = CollectionConfig.defaults(native_dimension)
+    if not _is_python_none(value):
+        config = _collection_config_from_python(native_dimension, value)
     config.validate()
     return _collection_config_to_python(config)
 

@@ -627,6 +627,7 @@ class DistributedCluster:
                     "index": snapshot_index,
                     "term": placement.term,
                     "placement_epoch": new_epoch,
+                    "snapshot_checksum": exported["snapshot_checksum"],
                 },
             )
             tail = self._rpc(
