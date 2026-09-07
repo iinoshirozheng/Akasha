@@ -5,6 +5,13 @@
 Pixi 鎖定 MAX 26.5.0。使用者指定的 [Mojo 文件](https://mojolang.org/docs/)
 及 [llms.txt](https://mojolang.org/llms.txt) 也標示 1.0.0。
 
+## #43–#46 後續交付
+
+A07 的 SparseIndex 部分已使用官方 Dict 維護 record／term／score slots；
+swap-remove 同步修正 lookup、空 terms 回收、原分數累計順序保留。
+5 sparse、5 persistent sparse、6 snapshot tests 通過；RRF 部分下一項接續。
+[量測與限制](../benchmarks/2026-09-07-lookup-arrow.md)。
+
 ## #39–#42 實作進度
 
 使用者後續授權的四項實作已各自提交：

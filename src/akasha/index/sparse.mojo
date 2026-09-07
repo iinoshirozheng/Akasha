@@ -71,10 +71,14 @@ struct SparseIndex:
 
     var _records: List[SparseRecord]
     var _terms: List[_PostingList]
+    var _record_slots: Dict[Int, Int]
+    var _term_slots: Dict[Int, Int]
 
     def __init__(out self):
         self._records = List[SparseRecord]()
         self._terms = List[_PostingList]()
+        self._record_slots = Dict[Int, Int]()
+        self._term_slots = Dict[Int, Int]()
 
     def point_count(self) -> Int:
         return len(self._records)
@@ -86,31 +90,35 @@ struct SparseIndex:
         return result^
 
     def contains(self, id: Int) -> Bool:
-        return self._find_record(id) >= 0
+        return id in self._record_slots
 
     def upsert(mut self, id: Int, elements: List[SparseElement]) raises:
         validate_sparse(elements)
         self.delete(id)
         var owned = elements.copy()
+        self._record_slots[id] = len(self._records)
         self._records.append(SparseRecord(id, owned^))
         for element in elements:
-            var term_index = self._find_term(element.term_id)
+            var term_index = self._term_slots.get(element.term_id, -1)
             if term_index < 0:
                 self._terms.append(_PostingList(element.term_id))
                 term_index = len(self._terms) - 1
+                self._term_slots[element.term_id] = term_index
             self._terms[term_index].postings.append(
                 _Posting(id, element.weight)
             )
 
     def delete(mut self, id: Int):
-        var record_index = self._find_record(id)
+        var record_index = self._record_slots.pop(id, -1)
         if record_index < 0:
             return
         var removed = self._records[record_index].elements.copy()
         self._records.swap_elements(record_index, len(self._records) - 1)
         _ = self._records.pop()
+        if record_index < len(self._records):
+            self._record_slots[self._records[record_index].id] = record_index
         for element in removed:
-            var term_index = self._find_term(element.term_id)
+            var term_index = self._term_slots.get(element.term_id, -1)
             if term_index < 0:
                 continue
             for posting_index in range(len(self._terms[term_index].postings)):
@@ -121,6 +129,12 @@ struct SparseIndex:
                     )
                     _ = self._terms[term_index].postings.pop()
                     break
+            if len(self._terms[term_index].postings) == 0:
+                _ = self._term_slots.pop(element.term_id, -1)
+                self._terms.swap_elements(term_index, len(self._terms) - 1)
+                _ = self._terms.pop()
+                if term_index < len(self._terms):
+                    self._term_slots[self._terms[term_index].term_id] = term_index
 
     def records(self) -> List[SparseRecord]:
         var result = List[SparseRecord](capacity=len(self._records))
@@ -135,18 +149,18 @@ struct SparseIndex:
         if k <= 0:
             raise Error("k must be positive")
         var scores = List[_SparseScore]()
+        # Keep first-encounter and Float32 accumulation order independent of
+        # the dictionary's storage/iteration order.
+        var score_slots = Dict[Int, Int]()
         for query_element in query:
-            var term_index = self._find_term(query_element.term_id)
+            var term_index = self._term_slots.get(query_element.term_id, -1)
             if term_index < 0:
                 continue
             for posting in self._terms[term_index].postings:
-                var score_index = -1
-                for index in range(len(scores)):
-                    if scores[index].id == posting.id:
-                        score_index = index
-                        break
+                var score_index = score_slots.get(posting.id, -1)
                 var contribution = query_element.weight * posting.weight
                 if score_index < 0:
+                    score_slots[posting.id] = len(scores)
                     scores.append(_SparseScore(posting.id, contribution))
                 else:
                     scores[score_index].score += contribution
@@ -163,15 +177,3 @@ struct SparseIndex:
         for entry in retained:
             results.append(SearchResult(entry.id, entry.score))
         return results^
-
-    def _find_record(self, id: Int) -> Int:
-        for index in range(len(self._records)):
-            if self._records[index].id == id:
-                return index
-        return -1
-
-    def _find_term(self, term_id: Int) -> Int:
-        for index in range(len(self._terms)):
-            if self._terms[index].term_id == term_id:
-                return index
-        return -1

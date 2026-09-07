@@ -1,0 +1,367 @@
+{
+  "mode": "sparse",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "peak_rss_scope": "whole child, including build/mutation/clone; no compiler",
+  "cells": [
+    {
+      "count": 512,
+      "iterations": 20,
+      "runs": {
+        "before": [
+          {
+            "build_ns": 317000.0,
+            "selective_ns": 575.0,
+            "broad_ns": 73550.0,
+            "mutation_ns": 39000.0,
+            "clone_ns": 303000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 13811712
+          },
+          {
+            "build_ns": 280000.0,
+            "selective_ns": 580.0,
+            "broad_ns": 73100.0,
+            "mutation_ns": 39000.0,
+            "clone_ns": 261000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 13811712
+          },
+          {
+            "build_ns": 271000.0,
+            "selective_ns": 560.0,
+            "broad_ns": 72800.0,
+            "mutation_ns": 37000.0,
+            "clone_ns": 258000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 13811712
+          },
+          {
+            "build_ns": 315000.0,
+            "selective_ns": 555.0,
+            "broad_ns": 70550.0,
+            "mutation_ns": 36000.0,
+            "clone_ns": 251000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 13729792
+          },
+          {
+            "build_ns": 267000.0,
+            "selective_ns": 555.0,
+            "broad_ns": 72450.0,
+            "mutation_ns": 38000.0,
+            "clone_ns": 263000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 13746176
+          }
+        ],
+        "after": [
+          {
+            "build_ns": 170000.0,
+            "selective_ns": 390.0,
+            "broad_ns": 15750.0,
+            "mutation_ns": 17000.0,
+            "clone_ns": 135000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 14204928
+          },
+          {
+            "build_ns": 172000.0,
+            "selective_ns": 395.0,
+            "broad_ns": 15650.0,
+            "mutation_ns": 16000.0,
+            "clone_ns": 134000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 14155776
+          },
+          {
+            "build_ns": 168000.0,
+            "selective_ns": 395.0,
+            "broad_ns": 15450.0,
+            "mutation_ns": 17000.0,
+            "clone_ns": 135000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 14188544
+          },
+          {
+            "build_ns": 163000.0,
+            "selective_ns": 360.0,
+            "broad_ns": 15300.0,
+            "mutation_ns": 15000.0,
+            "clone_ns": 130000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 14155776
+          },
+          {
+            "build_ns": 166000.0,
+            "selective_ns": 395.0,
+            "broad_ns": 15650.0,
+            "mutation_ns": 17000.0,
+            "clone_ns": 152000.0,
+            "checksum": 102772.0,
+            "peak_rss_bytes": 14073856
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "build_ns": 280000.0,
+          "selective_ns": 560.0,
+          "broad_ns": 72800.0,
+          "mutation_ns": 38000.0,
+          "clone_ns": 261000.0,
+          "checksum": 102772.0,
+          "peak_rss_bytes": 13811712
+        },
+        "after": {
+          "build_ns": 168000.0,
+          "selective_ns": 395.0,
+          "broad_ns": 15650.0,
+          "mutation_ns": 17000.0,
+          "clone_ns": 135000.0,
+          "checksum": 102772.0,
+          "peak_rss_bytes": 14155776
+        }
+      }
+    },
+    {
+      "count": 2048,
+      "iterations": 20,
+      "runs": {
+        "before": [
+          {
+            "build_ns": 3088000.0,
+            "selective_ns": 1625.0,
+            "broad_ns": 1095900.0,
+            "mutation_ns": 552000.0,
+            "clone_ns": 3885000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 14270464
+          },
+          {
+            "build_ns": 3203000.0,
+            "selective_ns": 4125.0,
+            "broad_ns": 1180650.0,
+            "mutation_ns": 550000.0,
+            "clone_ns": 3210000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 14319616
+          },
+          {
+            "build_ns": 3541000.0,
+            "selective_ns": 1580.0,
+            "broad_ns": 1295950.0,
+            "mutation_ns": 562000.0,
+            "clone_ns": 3543000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 14368768
+          },
+          {
+            "build_ns": 3981000.0,
+            "selective_ns": 1655.0,
+            "broad_ns": 1139500.0,
+            "mutation_ns": 570000.0,
+            "clone_ns": 3336000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 14368768
+          },
+          {
+            "build_ns": 3716000.0,
+            "selective_ns": 1650.0,
+            "broad_ns": 1102250.0,
+            "mutation_ns": 564000.0,
+            "clone_ns": 3567000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 14319616
+          }
+        ],
+        "after": [
+          {
+            "build_ns": 509000.0,
+            "selective_ns": 405.0,
+            "broad_ns": 52650.0,
+            "mutation_ns": 132000.0,
+            "clone_ns": 552000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 15286272
+          },
+          {
+            "build_ns": 525000.0,
+            "selective_ns": 415.0,
+            "broad_ns": 67800.0,
+            "mutation_ns": 586000.0,
+            "clone_ns": 580000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 15302656
+          },
+          {
+            "build_ns": 509000.0,
+            "selective_ns": 405.0,
+            "broad_ns": 51400.0,
+            "mutation_ns": 127000.0,
+            "clone_ns": 530000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 15237120
+          },
+          {
+            "build_ns": 598000.0,
+            "selective_ns": 405.0,
+            "broad_ns": 51850.0,
+            "mutation_ns": 131000.0,
+            "clone_ns": 541000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 15368192
+          },
+          {
+            "build_ns": 487000.0,
+            "selective_ns": 385.0,
+            "broad_ns": 51750.0,
+            "mutation_ns": 126000.0,
+            "clone_ns": 521000.0,
+            "checksum": 411508.0,
+            "peak_rss_bytes": 15253504
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "build_ns": 3541000.0,
+          "selective_ns": 1650.0,
+          "broad_ns": 1139500.0,
+          "mutation_ns": 562000.0,
+          "clone_ns": 3543000.0,
+          "checksum": 411508.0,
+          "peak_rss_bytes": 14319616
+        },
+        "after": {
+          "build_ns": 509000.0,
+          "selective_ns": 405.0,
+          "broad_ns": 51850.0,
+          "mutation_ns": 131000.0,
+          "clone_ns": 541000.0,
+          "checksum": 411508.0,
+          "peak_rss_bytes": 15286272
+        }
+      }
+    },
+    {
+      "count": 8192,
+      "iterations": 20,
+      "runs": {
+        "before": [
+          {
+            "build_ns": 46661000.0,
+            "selective_ns": 5590.0,
+            "broad_ns": 17722850.0,
+            "mutation_ns": 8442000.0,
+            "clone_ns": 49949000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 16482304
+          },
+          {
+            "build_ns": 45467000.0,
+            "selective_ns": 5830.0,
+            "broad_ns": 17221500.0,
+            "mutation_ns": 8557000.0,
+            "clone_ns": 46210000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 16564224
+          },
+          {
+            "build_ns": 46352000.0,
+            "selective_ns": 5795.0,
+            "broad_ns": 17192450.0,
+            "mutation_ns": 8636000.0,
+            "clone_ns": 45949000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 16531456
+          },
+          {
+            "build_ns": 45219000.0,
+            "selective_ns": 5615.0,
+            "broad_ns": 17581750.0,
+            "mutation_ns": 8545000.0,
+            "clone_ns": 46277000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 16482304
+          },
+          {
+            "build_ns": 45774000.0,
+            "selective_ns": 5760.0,
+            "broad_ns": 17246300.0,
+            "mutation_ns": 8528000.0,
+            "clone_ns": 45760000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 16547840
+          }
+        ],
+        "after": [
+          {
+            "build_ns": 1671000.0,
+            "selective_ns": 365.0,
+            "broad_ns": 190600.0,
+            "mutation_ns": 1572000.0,
+            "clone_ns": 2185000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 19759104
+          },
+          {
+            "build_ns": 1685000.0,
+            "selective_ns": 365.0,
+            "broad_ns": 211450.0,
+            "mutation_ns": 1709000.0,
+            "clone_ns": 2128000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 19709952
+          },
+          {
+            "build_ns": 1694000.0,
+            "selective_ns": 380.0,
+            "broad_ns": 189800.0,
+            "mutation_ns": 1588000.0,
+            "clone_ns": 2054000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 19709952
+          },
+          {
+            "build_ns": 1771000.0,
+            "selective_ns": 400.0,
+            "broad_ns": 183650.0,
+            "mutation_ns": 1540000.0,
+            "clone_ns": 2028000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 19808256
+          },
+          {
+            "build_ns": 1788000.0,
+            "selective_ns": 415.0,
+            "broad_ns": 193700.0,
+            "mutation_ns": 1632000.0,
+            "clone_ns": 2018000.0,
+            "checksum": 1646452.0,
+            "peak_rss_bytes": 19742720
+          }
+        ]
+      },
+      "median": {
+        "before": {
+          "build_ns": 45774000.0,
+          "selective_ns": 5760.0,
+          "broad_ns": 17246300.0,
+          "mutation_ns": 8545000.0,
+          "clone_ns": 46210000.0,
+          "checksum": 1646452.0,
+          "peak_rss_bytes": 16531456
+        },
+        "after": {
+          "build_ns": 1694000.0,
+          "selective_ns": 380.0,
+          "broad_ns": 190600.0,
+          "mutation_ns": 1588000.0,
+          "clone_ns": 2054000.0,
+          "checksum": 1646452.0,
+          "peak_rss_bytes": 19742720
+        }
+      }
+    }
+  ]
+}

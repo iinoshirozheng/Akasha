@@ -97,9 +97,9 @@ clone 所有 live records。
 **描述：** 移除 record／term／score 的重複線性搜尋，使用已存在的 std Dict。
 
 **驗收：**
-- [ ] upsert、delete、delete/reinsert、slot 移動都更新 lookup；clone／reopen 結果一致。
-- [ ] sparse Dot 與 filtered/hybrid 結果、浮點累加順序與 ID ties 不變。
-- [ ] 多 point／term 與少量命中的固定 workload 記錄 lookup work／memory／latency，無 per-candidate 全表 ID scan。
+- [x] upsert、delete、delete/reinsert、slot 移動都更新 lookup；clone／reopen 結果一致。
+- [x] sparse Dot 與 filtered/hybrid 結果、浮點累加順序與 ID ties 不變。
+- [x] 多 point／term 與少量命中的固定 workload 記錄 lookup work／memory／latency，無 per-candidate 全表 ID scan。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_sparse_index.mojo`、
 `pixi run mojo run -I src tests/mojo/test_persistent_sparse.mojo`、
@@ -108,6 +108,9 @@ clone 所有 live records。
 **相依：** 無。**規模：** M。
 **預計檔案：** `src/akasha/index/sparse.mojo`、`tests/mojo/test_sparse_index.mojo`、
 `tests/mojo/test_persistent_sparse.mojo`；量測如需新增專用檔，限本工作負載。
+
+**完成證據：** SparseIndex／persistent sparse／snapshot 共 16 tests 通過；
+[固定 workload 與記憶體報告](../docs/benchmarks/2026-09-07-lookup-arrow.md)。
 
 ## #44：RRF fusion 使用官方 Dict 累計
 
