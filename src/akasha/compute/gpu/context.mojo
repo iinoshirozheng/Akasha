@@ -1,6 +1,7 @@
 from akasha.storage.memtable import MemTable
 from max.gpu.host import DeviceBuffer, DeviceContext
 from std.time import perf_counter_ns
+from std.math import isfinite, sqrt
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
@@ -40,12 +41,15 @@ struct GpuExecutionTimings(Copyable, Movable):
 
 
 struct GpuScratch(Movable):
-    """Reusable query/result buffers for one serialized execution stream."""
+    """Query buffers and bounded partial Top-K storage; no dense score matrix.
+    """
 
     var queries: DeviceBuffer[DType.float32]
-    var scores: DeviceBuffer[DType.float32]
+    var partial_scores: DeviceBuffer[DType.float32]
+    var partial_ids: DeviceBuffer[DType.int64]
     var candidates: DeviceBuffer[DType.int64]
     var offsets: DeviceBuffer[DType.int64]
+    var tile_offsets: DeviceBuffer[DType.int64]
     var output_ids: DeviceBuffer[DType.int64]
     var output_scores: DeviceBuffer[DType.float32]
 
@@ -53,7 +57,7 @@ struct GpuScratch(Movable):
         out self,
         context: DeviceContext,
         query_values: Int,
-        scores: Int,
+        partials: Int,
         candidates: Int,
         queries: Int,
         outputs: Int,
@@ -61,11 +65,17 @@ struct GpuScratch(Movable):
         self.queries = context.enqueue_create_buffer[DType.float32](
             query_values
         )
-        self.scores = context.enqueue_create_buffer[DType.float32](scores)
+        self.partial_scores = context.enqueue_create_buffer[DType.float32](
+            partials
+        )
+        self.partial_ids = context.enqueue_create_buffer[DType.int64](partials)
         self.candidates = context.enqueue_create_buffer[DType.int64](
             max(1, candidates)
         )
         self.offsets = context.enqueue_create_buffer[DType.int64](queries + 1)
+        self.tile_offsets = context.enqueue_create_buffer[DType.int64](
+            queries + 1
+        )
         self.output_ids = context.enqueue_create_buffer[DType.int64](outputs)
         self.output_scores = context.enqueue_create_buffer[DType.float32](
             outputs
@@ -74,28 +84,33 @@ struct GpuScratch(Movable):
     def fits(
         self,
         query_values: Int,
-        scores: Int,
+        partials: Int,
         candidates: Int,
         queries: Int,
         outputs: Int,
     ) -> Bool:
         return (
             len(self.queries) >= query_values
-            and len(self.scores) >= scores
+            and len(self.partial_scores) >= partials
             and len(self.candidates) >= max(1, candidates)
             and len(self.offsets) >= queries + 1
             and len(self.output_ids) >= outputs
-            and len(self.output_scores) >= outputs
         )
 
     def bytes(self) -> UInt64:
         return (
             UInt64(
-                len(self.queries) + len(self.scores) + len(self.output_scores)
+                len(self.queries)
+                + len(self.partial_scores)
+                + len(self.output_scores)
             )
             * 4
             + UInt64(
-                len(self.candidates) + len(self.offsets) + len(self.output_ids)
+                len(self.partial_ids)
+                + len(self.candidates)
+                + len(self.offsets)
+                + len(self.tile_offsets)
+                + len(self.output_ids)
             )
             * 8
         )
@@ -122,7 +137,7 @@ struct GpuSnapshotCache(Movable):
         self.point_count = table.live_count()
         self.dimension = table.dimension
         self.vectors = self.context.enqueue_create_buffer[DType.float32](
-            self.point_count * self.dimension
+            self.point_count * (self.dimension + 1)
         )
         self.ids = self.context.enqueue_create_buffer[DType.int64](
             self.point_count
@@ -148,29 +163,36 @@ struct GpuSnapshotCache(Movable):
                         var value = entry.values[column]
                         vectors[position * self.dimension + column] = value
                         norm += value * value
+                    if not isfinite(norm):
+                        raise Error(
+                            "GPU vector norm exceeds finite F32 accumulation"
+                        )
                     self.point_norms[position] = norm
+                    vectors[
+                        self.point_count * self.dimension + position
+                    ] = sqrt(norm)
         timings.upload_ns += perf_counter_ns() - start
         timings.vector_upload_bytes = (
             UInt64(self.point_count) * UInt64(self.dimension) * 4
         )
 
     def vector_bytes(self) -> UInt64:
-        return UInt64(self.point_count) * UInt64(self.dimension * 4 + 8)
+        return UInt64(self.point_count) * UInt64((self.dimension + 1) * 4 + 8)
 
     def ensure_scratch(
         mut self,
         query_count: Int,
-        scores: Int,
+        partials: Int,
         candidates: Int,
         output_count: Int,
         budget: UInt64,
         mut timings: GpuExecutionTimings,
     ) raises:
-        var values = query_count * self.dimension
+        var values = query_count * (self.dimension + 1)
         if self.scratch:
             if (
                 self.scratch.value().fits(
-                    values, scores, candidates, query_count, output_count
+                    values, partials, candidates, query_count, output_count
                 )
                 and self.vector_bytes() + self.scratch.value().bytes() <= budget
             ):
@@ -187,14 +209,14 @@ struct GpuSnapshotCache(Movable):
             GpuScratch(
                 self.context,
                 values,
-                scores,
+                partials,
                 candidates,
                 query_count,
                 output_count,
             )
         )
         timings.allocation_ns += perf_counter_ns() - start
-        timings.buffer_allocations += 6
+        timings.buffer_allocations += 8
         timings.resident_bytes = (
             self.vector_bytes() + self.scratch.value().bytes()
         )

@@ -33,7 +33,9 @@ def _same(
 
 
 def _resident_report(
-    snapshot: ReadSnapshot, queries: List[List[Float32]], metric: Int,
+    snapshot: ReadSnapshot,
+    queries: List[List[Float32]],
+    metric: Int,
     options: GpuExecutionOptions,
 ) raises -> DeviceBatchResult:
     if metric == 0:
@@ -44,7 +46,9 @@ def _resident_report(
 
 
 def _resident(
-    snapshot: ReadSnapshot, queries: List[List[Float32]], metric: Int,
+    snapshot: ReadSnapshot,
+    queries: List[List[Float32]],
+    metric: Int,
     options: GpuExecutionOptions,
 ) raises -> List[List[SearchResult]]:
     var report = _resident_report(snapshot, queries, metric, options)
@@ -131,7 +135,9 @@ def main() raises:
     var profile = GpuExecutionOptions(min_work_items=1, profile=True)
     var report = _resident_report(snapshot, queries, metric, profile)
     print(
-        "stages metric=" + String(metric) + " cache_hit="
+        "stages metric="
+        + String(metric)
+        + " cache_hit="
         + String(report.timings.cache_hit)
         + " prepare_ns="
         + String(report.timings.preparation_ns)
@@ -139,9 +145,9 @@ def main() raises:
         + String(report.timings.allocation_ns)
         + " map_upload_ns="
         + String(report.timings.upload_ns)
-        + " distance_sync_ns="
+        + " distance_partial_topk_sync_ns="
         + String(report.timings.distance_ns)
-        + " topk_sync_ns="
+        + " merge_sync_ns="
         + String(report.timings.topk_ns)
         + " readback_ns="
         + String(report.timings.download_ns)

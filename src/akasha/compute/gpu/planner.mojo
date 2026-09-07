@@ -1,3 +1,6 @@
+comptime GPU_TILE_POINTS = 256
+
+
 struct GpuExecutionOptions:
     """Host-side policy limits for optional GPU query execution."""
 
@@ -63,6 +66,7 @@ def plan_gpu_execution(
     options: GpuExecutionOptions,
     *,
     candidate_count: Int = -1,
+    candidate_tiles: Int = -1,
 ) raises -> GpuPlan:
     if (
         batch_size < 0
@@ -70,23 +74,43 @@ def plan_gpu_execution(
         or dimension <= 0
         or k <= 0
         or candidate_count < -1
+        or candidate_tiles < -1
     ):
         raise Error("invalid GPU query shape")
     var batch = UInt64(batch_size)
     var points = UInt64(point_count)
     var dims = UInt64(dimension)
     var result_count = UInt64(min(k, point_count))
-    var vector_bytes = _checked_mul(_checked_mul(points, dims), 4)
-    var query_bytes = _checked_mul(_checked_mul(batch, dims), 4)
+    var vector_bytes = _checked_mul(
+        _checked_mul(points, _checked_add(dims, 1)), 4
+    )
+    var query_bytes = _checked_mul(
+        _checked_mul(batch, _checked_add(dims, 1)), 4
+    )
     var id_bytes = _checked_mul(points, 8)
     var jobs = _checked_mul(batch, points)
     if candidate_count >= 0:
         if UInt64(candidate_count) > jobs:
             raise Error("GPU candidate count exceeds dense query shape")
         jobs = UInt64(candidate_count)
-    var score_bytes = _checked_mul(jobs, 4)
+    var tiles_per_query = points // GPU_TILE_POINTS + UInt64(
+        points % GPU_TILE_POINTS != 0
+    )
+    var tiles = _checked_mul(batch, tiles_per_query)
+    if candidate_count >= 0:
+        var bound = _checked_add(
+            jobs // GPU_TILE_POINTS + UInt64(jobs % GPU_TILE_POINTS != 0), batch
+        )
+        tiles = min(tiles, min(jobs, bound))
+    if candidate_tiles >= 0:
+        if UInt64(candidate_tiles) > tiles:
+            raise Error("GPU candidate tiles exceed planned bound")
+        tiles = UInt64(candidate_tiles)
+    var score_bytes = _checked_mul(
+        _checked_mul(tiles, min(result_count, UInt64(GPU_TILE_POINTS))), 12
+    )
     var candidate_bytes = _checked_mul(UInt64(max(1, candidate_count)), 8)
-    var offset_bytes = _checked_mul(_checked_add(batch, 1), 8)
+    var offset_bytes = _checked_mul(_checked_add(batch, 1), 16)
     var output_bytes = _checked_mul(_checked_mul(batch, result_count), 12)
     var transfer_bytes = _checked_add(
         _checked_add(vector_bytes, query_bytes),
