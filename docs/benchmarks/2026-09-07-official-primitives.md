@@ -54,3 +54,13 @@ python3 benchmarks/flush_compare.py --before /path/to/flush-before --after .buil
 ```
 
 測試與診斷完整日誌留在 `.build/official-primitives/`。
+
+## #40：官方 bit primitives
+
+Bitmap 的 bit count 改用 `std.bit.pop_count`，set ordinals 使用
+`count_trailing_zeros` 逐個清除最低 set bit。移除手寫 `_popcount`，保留 runtime
+大小、cached cardinality 與 bounded ascending ordinals。
+
+6 個 Bitmap tests 通過，新增 0／1／63／64／65／127／128／129／257 大小的 scalar
+set-algebra 對照、resize padding、空 word、clone 與重複 clear 驗證；另有 7 個
+filtered HNSW tests 與 5 個 filter-expression tests 通過，合計 18 tests。

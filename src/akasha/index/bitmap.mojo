@@ -1,3 +1,6 @@
+from std.bit import count_trailing_zeros, pop_count
+
+
 struct Bitmap(Movable):
     """An owned dense candidate bitmap with cached cardinality."""
 
@@ -68,15 +71,13 @@ struct Bitmap(Movable):
         var result = List[Int](capacity=self._count)
         for word_index in range(len(self._words)):
             var word = self._words[word_index]
-            if word == UInt64(0):
-                continue
-            for bit in range(64):
+            while word != UInt64(0):
+                var bit = Int(count_trailing_zeros(word))
                 var ordinal = word_index * 64 + bit
                 if ordinal >= self._size:
                     break
-                var mask = UInt64(1) << UInt64(bit)
-                if (word & mask) != UInt64(0):
-                    result.append(ordinal)
+                result.append(ordinal)
+                word &= word - UInt64(1)
         return result^
 
     def intersection(self, other: Bitmap) raises -> Bitmap:
@@ -85,7 +86,7 @@ struct Bitmap(Movable):
         for index in range(len(self._words)):
             var word = self._words[index] & other._words[index]
             result._words[index] = word
-            result._count += _popcount(word)
+            result._count += Int(pop_count(word))
         return result^
 
     def union_with(self, other: Bitmap) raises -> Bitmap:
@@ -126,17 +127,8 @@ struct Bitmap(Movable):
     def _recount_words(mut self):
         self._count = 0
         for word in self._words:
-            self._count += _popcount(word)
+            self._count += Int(pop_count(word))
 
 
 def _word_count(size: Int) -> Int:
     return (size + 63) // 64
-
-
-def _popcount(value: UInt64) -> Int:
-    var remaining = value
-    var count = 0
-    while remaining != UInt64(0):
-        remaining &= remaining - UInt64(1)
-        count += 1
-    return count

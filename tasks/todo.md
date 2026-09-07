@@ -31,9 +31,9 @@ clone 所有 live records。
 `count_trailing_zeros`。保留 runtime-sized Bitmap。
 
 **驗收：**
-- [ ] 0／all-bits／63、64 邊界／尾端 padding 與 ascending ordinals 相同。
-- [ ] cached cardinality、resize、intersection/union/difference 不變。
-- [ ] 官方 primitive 於專案 Mojo 版本編譯；移除不再使用的手寫迴圈。
+- [x] 0／all-bits／63、64 邊界／尾端 padding 與 ascending ordinals 相同。
+- [x] cached cardinality、resize、intersection/union/difference 不變。
+- [x] 官方 primitive 於專案 Mojo 版本編譯；移除不再使用的手寫迴圈。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_bitmap.mojo`、
 `pixi run mojo run -I src tests/mojo/test_hnsw_filtered.mojo`。
@@ -43,8 +43,8 @@ clone 所有 live records。
 
 ## Checkpoint A：#39／#40
 
-- [ ] narrow tests 與 #39 量測留存；更動只包含對應行為，已通過的測試不無故重跑。
-- [ ] durable format／public API diff 為空；每個 package 有獨立 commit。
+- [x] narrow tests 與 #39 量測留存；更動只包含對應行為，已通過的測試不無故重跑。
+- [x] durable format／public API diff 為空；每個 package 有獨立 commit。
 
 ## #41：Owned vector copy 使用官方 List.copy
 
