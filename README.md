@@ -10,7 +10,11 @@ generation manifests, and crash-safe compaction.
 
 - macOS Apple Silicon or Linux x86-64
 - Pixi
-- A C linker (`xcode-select --install` on macOS or GCC on Linux)
+- A C compiler and linker (`xcode-select --install` on macOS or GCC on Linux)
+
+The toolchain is pinned to Mojo 1.0.0 and MAX 26.5.0, the latest stable releases
+verified on 2026-09-07. Pixi locks both macOS ARM64 and Linux x86-64 packages.
+Nightly releases are not part of this stability baseline.
 
 ## Get started
 
@@ -29,6 +33,13 @@ Run the persistent collection example:
 pixi run example-persistent
 pixi run example-hnsw
 ```
+
+CI runs CPU tests, crash recovery, the C ABI integration test, builds, all three
+examples, and `check-hnsw-quality` on both operating systems. The matrix uses
+`fail-fast: false`, so a failure on one OS does not cancel the other. A native C
+probe also checks the mmap ABI against Mojo's layout constants, and macOS runs
+the mapping tests with a generic ARM64 CPU target without AMX. GPU validation
+remains the separate `pixi run test-gpu` gate on actual GPU hardware.
 
 Store a vector with a flat typed document payload, then retrieve the complete
 document through a search result ID:

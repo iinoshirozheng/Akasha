@@ -2,7 +2,14 @@ from std.ffi import c_int, c_long, c_size_t, external_call
 from std.io.file import O_RDONLY
 from std.memory.alloc import alloc, Layout
 from std.stat import S_ISREG
-from std.sys.info import CompilationTarget, is_triple, platform_map
+from std.sys.info import (
+    CompilationTarget,
+    _triple_attr,
+    is_little_endian,
+    is_triple,
+    platform_map,
+    size_of,
+)
 from std.sys._libc_errno import get_errno
 
 
@@ -14,6 +21,7 @@ comptime _MAP_PRIVATE = platform_map["MAP_PRIVATE", linux=2, macos=2]()
 # `fstat` writes the platform C `struct stat`. Akasha's supported Pixi hosts are
 # 64-bit macOS ARM64 and Linux x86-64. Both structs are 144 bytes, while the
 # signed 64-bit `st_size` field is at the platform-specific offset below.
+# tests/python/test_mapped_file_abi.py checks these against native C headers.
 comptime _STAT_BYTES = platform_map["struct stat size", linux=144, macos=144]()
 comptime _STAT_SIZE_OFFSET = platform_map[
     "struct stat st_size offset", linux=48, macos=96
@@ -60,13 +68,26 @@ struct MappedFile(Movable):
                 "x86_64-unknown-linux-gnu"
             ](), "MappedFile currently supports Linux x86-64 only"
         elif CompilationTarget.is_macos():
-            comptime assert (
-                CompilationTarget.is_apple_silicon()
+            # Mojo 1.0 has no public ARM64 ABI predicate. is_apple_silicon()
+            # selects AMX-capable CPU targets, and is_triple() requires an exact
+            # OS version. Read the triple through the stdlib's internal accessor
+            # until a public architecture API is available (see ADR 0004).
+            comptime triple = StaticString(_triple_attr())
+            comptime assert triple.startswith(
+                "arm64-apple-"
+            ) or triple.startswith(
+                "aarch64-apple-"
             ), "MappedFile currently supports macOS ARM64 only"
         else:
             comptime assert (
                 False
             ), "MappedFile supports only macOS ARM64 and Linux x86-64"
+
+        comptime assert is_little_endian(), "MappedFile requires little endian"
+        comptime assert size_of[Int]() == 8, "MappedFile requires 64-bit Int"
+        comptime assert (
+            size_of[c_long]() == 8
+        ), "MappedFile requires 64-bit off_t"
 
         var owned_path = path
         var descriptor = external_call["open", c_int, num_fixed_args=2](

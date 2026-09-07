@@ -62,7 +62,17 @@ The stat scratch allocation uses Mojo 1.0's layout-aware
 `alloc(Layout[Int](count=18)).into_managed()`. This gives the `st_size` word its
 required eight-byte alignment while keeping allocation ownership automatic.
 Compilation is restricted to the exact supported Linux triple and the Pixi
-macOS ARM64 target; another target must use the owned loader.
+macOS ARM64 ABI. macOS checks the ARM64 architecture prefix of the target
+triple, independently of the Darwin version and selected CPU features.
+`CompilationTarget.is_apple_silicon()` is unsuitable here: in Mojo 1.0 it
+identifies AMX-capable CPU specializations and is false for generic ARM64.
+The public `is_triple()` checks an exact triple, including the OS version;
+Mojo 1.0 has no public ARM64 ABI predicate. This boundary consequently uses
+`std.sys.info._triple_attr` to inspect the architecture, with a regression
+test for a generic CPU target. Replace that internal accessor when a suitable
+public API is available. The source for these semantics is the
+[Mojo 1.0 standard library](https://github.com/modular/modular/blob/mojo/v1.0.0/mojo/stdlib/std/sys/info.mojo).
+Compile-time assertions also require little endian and 64-bit `Int`/`c_long`.
 
 `MappedFile` stores the immutable byte base, file length, descriptor, and closed
 state. Its only public construction path without I/O creates a harmless closed
@@ -93,11 +103,13 @@ and file bounds. Slice validation uses `length <= file_length - offset`, after
 first checking `offset <= file_length`, so `offset + length` cannot overflow.
 Zero-length slices at end-of-file are valid.
 
-The wrapper does not silently fall back. A consumer may respond to an
-unsupported target or mmap failure by running the existing bounded owned-load
-path, but it must then perform the normal size, checksum, layout, and structural
-validation before accepting the file. Mapping failure never relaxes validation
-or turns committed corruption into usable data.
+The wrapper does not silently fall back. An unsupported ABI is a compile-time
+error: an owned loader for such a target must be selected at compile time,
+before instantiating `open_readonly`. The collection's runtime mmap fallback
+only catches acquisition errors on supported targets. Owned loading must still
+perform the normal size, checksum, layout, and structural validation before
+accepting the file. Mapping failure never relaxes validation or turns committed
+corruption into usable data.
 
 The mapped inode is immutable for the complete lifetime of every `MappedFile`
 that refers to it. It must not be truncated or rewritten in place. POSIX cannot
@@ -116,6 +128,24 @@ lock wrappers. Mojo 1.0 has no public errno accessor. This dependency is kept at
 the FFI boundary and should migrate when a public API becomes available.
 
 ## Verification
+
+The automated ABI gate compiles `tests/c/mapped_file_abi_probe.c` with the host
+C headers and compares its output with a Mojo probe importing the actual
+mapping constants. It checks `sizeof` and alignment of `struct stat`, offsets
+and widths of `st_size`/`st_mode`, signed file size, `off_t`/`size_t` widths,
+endianness, and the open/mmap constants. CI runs it on both supported hosts
+before the CPU suite. A linked production C shim is unnecessary for these two
+fixed ABIs; adding a new ABI still requires a verified layout or a maintained
+platform API.
+
+```bash
+pixi run pytest tests/python/test_mapped_file_abi.py -q
+```
+
+On macOS this also compiles a probe proving that `--target-cpu generic` makes
+`is_apple_silicon()` false, then executes the full mapping capability tests
+under that same target. Negative compile tests preserve rejection of macOS
+x86-64 and Linux ARM64 instead of widening support accidentally.
 
 On the development macOS ARM64 host (Mojo 1.0.0), eight capability tests open a
 page-sized fixture and verify first/last bytes, checked slices, overflow and

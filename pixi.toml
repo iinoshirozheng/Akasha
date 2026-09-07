@@ -35,7 +35,7 @@ bench-phase12 = "mojo run -I src benchmarks/mojo/phase12_bench.mojo"
 bench-phase13-gpu = "mojo run -I src benchmarks/mojo/phase13_gpu_bench.mojo"
 
 [dependencies]
-mojo = ">=1.0.0,<2"
+mojo = "==1.0.0"
 max-core = "==26.5.0"
 python = "==3.11"
 fastapi = ">=0.141.1,<0.142"

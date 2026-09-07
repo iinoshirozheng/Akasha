@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-14, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -15,5 +16,16 @@ jobs:
       - uses: prefix-dev/setup-pixi@v0.9.6
         with:
           cache: true
+      - name: Compiler target and native mmap ABI
+        run: |
+          pixi run mojo --version
+          pixi run mojo build --print-effective-target
+          pixi run pytest tests/python/test_mapped_file_abi.py -q
       - run: pixi run test
+      - run: pixi run test-crash
+      - run: pixi run test-c
       - run: pixi run build
+      - run: pixi run smoke
+      - run: pixi run example-persistent
+      - run: pixi run example-hnsw
+      - run: pixi run check-hnsw-quality
