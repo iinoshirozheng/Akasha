@@ -121,15 +121,17 @@ def test_backup_and_restore_preserve_non_default_collection_identity() raises:
     reopened.close()
 
 
-def test_restore_rejects_targets_with_uncommitted_authoritative_wal() raises:
+def test_restore_rejects_wal_state_and_active_empty_target() raises:
     var source = String("/tmp/akasha-phase15-ops-wal-source")
     var backup = String("/tmp/akasha-phase15-ops-wal-backup")
     var target = String("/tmp/akasha-phase15-ops-wal-target")
     var sparse_target = String("/tmp/akasha-phase15-ops-sparse-wal-target")
+    var active_target = String("/tmp/akasha-phase15-ops-active-target")
     _reset(source)
     _reset(backup)
     _reset(target)
     _reset(sparse_target)
+    _reset(active_target)
 
     var source_collection = PersistentCollection.open(source, 2)
     source_collection.upsert(100, [1.0, 0.0])
@@ -159,6 +161,15 @@ def test_restore_rejects_targets_with_uncommitted_authoritative_wal() raises:
         _ = restore_storage(backup, sparse_target, 2)
     assert_false(path_exists(sparse_target + "/manifest.bin"))
     assert_equal(read_file_bytes(sparse_target + "/sparse.wal")[0], UInt8(0xA5))
+
+    # The state check and manifest publication must share the writer lock.
+    var active = PersistentCollection.open(active_target, 2)
+    assert_false(path_exists(active_target + "/manifest.bin"))
+    assert_false(path_exists(active_target + "/wal.bin"))
+    with assert_raises():
+        _ = restore_storage(backup, active_target, 2)
+    assert_false(path_exists(active_target + "/manifest.bin"))
+    active.close()
 
 
 def main() raises:

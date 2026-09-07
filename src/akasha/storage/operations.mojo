@@ -13,6 +13,7 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.manifest import load_manifest, publish_manifest
+from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.segment import (
     read_segment,
@@ -136,6 +137,11 @@ def backup_storage(
     if source == target:
         raise Error("backup source and target must differ")
     ensure_directory(target)
+    # Serialize the target preflight, immutable copies, and manifest commit
+    # with the same lock used by collection writers. Without this boundary a
+    # writer could append an acknowledged WAL record after the checks below
+    # and have it hidden or mixed by the restored snapshot sequence.
+    var target_lock = CollectionLock.acquire(target + "/collection.lock")
     if path_exists(target + "/manifest.bin"):
         raise Error("backup target already contains a committed manifest")
     if path_exists(target + "/wal.bin") or path_exists(
@@ -159,6 +165,7 @@ def backup_storage(
     for name in report.sparse_names:
         _copy_immutable(source, target, name)
     publish_manifest(target, manifest^)
+    target_lock.close()
     return report^
 
 
