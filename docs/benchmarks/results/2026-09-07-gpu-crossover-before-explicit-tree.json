@@ -1,0 +1,431 @@
+{
+  "host": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "git_head": "97494535c5253b778508bde216ab57687f5b656a",
+  "binary_sha256": "434820d5969e4711b43101688760ac70b2425a9d1592fea9d687636ea2dc61a9",
+  "samples": 31,
+  "warmups": 3,
+  "scope": "identical immutable F32 data, exact CPU with automatic threads versus explicit actual GPU; snapshot capture excluded; cold includes context/allocation/vector upload",
+  "cells": [
+    {
+      "points": 2000,
+      "dimension": 32,
+      "batch": 1,
+      "metric": 0,
+      "cpu_ns": {
+        "p50": 16000,
+        "p95": 18000,
+        "throughput_qps_at_p50": 62500.0,
+        "amortized_ns_per_query_at_p50": 16000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 2304000,
+        "p95": 2810000,
+        "throughput_qps_at_p50": 434.02777777777777,
+        "amortized_ns_per_query_at_p50": 2304000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 3411000,
+        "p95": 3922000,
+        "throughput_qps_at_p50": 293.1691586045148,
+        "amortized_ns_per_query_at_p50": 3411000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 1,
+      "metric": 0,
+      "cpu_ns": {
+        "p50": 232000,
+        "p95": 255000,
+        "throughput_qps_at_p50": 4310.3448275862065,
+        "amortized_ns_per_query_at_p50": 232000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 2767000,
+        "p95": 3629000,
+        "throughput_qps_at_p50": 361.4022406938923,
+        "amortized_ns_per_query_at_p50": 2767000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 11634000,
+        "p95": 12947000,
+        "throughput_qps_at_p50": 85.954959601169,
+        "amortized_ns_per_query_at_p50": 11634000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 32,
+      "metric": 0,
+      "cpu_ns": {
+        "p50": 1557000,
+        "p95": 1788000,
+        "throughput_qps_at_p50": 20552.34425176622,
+        "amortized_ns_per_query_at_p50": 48656.25
+      },
+      "resident_gpu_ns": {
+        "p50": 6463000,
+        "p95": 6950000,
+        "throughput_qps_at_p50": 4951.261024292125,
+        "amortized_ns_per_query_at_p50": 201968.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 15088000,
+        "p95": 15528000,
+        "throughput_qps_at_p50": 2120.8907741251323,
+        "amortized_ns_per_query_at_p50": 471500.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 32,
+      "metric": 0,
+      "cpu_ns": {
+        "p50": 14858000,
+        "p95": 17781000,
+        "throughput_qps_at_p50": 2153.7219006595774,
+        "amortized_ns_per_query_at_p50": 464312.5
+      },
+      "resident_gpu_ns": {
+        "p50": 39234000,
+        "p95": 40179000,
+        "throughput_qps_at_p50": 815.6191058775552,
+        "amortized_ns_per_query_at_p50": 1226062.5,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 102695000,
+        "p95": 104341000,
+        "throughput_qps_at_p50": 311.60231754223673,
+        "amortized_ns_per_query_at_p50": 3209218.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 128,
+      "metric": 0,
+      "cpu_ns": {
+        "p50": 54432000,
+        "p95": 58733000,
+        "throughput_qps_at_p50": 2351.5579071134625,
+        "amortized_ns_per_query_at_p50": 425250.0
+      },
+      "resident_gpu_ns": {
+        "p50": 150711000,
+        "p95": 152289000,
+        "throughput_qps_at_p50": 849.3076152371094,
+        "amortized_ns_per_query_at_p50": 1177429.6875,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 214605000,
+        "p95": 217118000,
+        "throughput_qps_at_p50": 596.4446308333916,
+        "amortized_ns_per_query_at_p50": 1676601.5625,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 2000,
+      "dimension": 32,
+      "batch": 1,
+      "metric": 1,
+      "cpu_ns": {
+        "p50": 17000,
+        "p95": 21000,
+        "throughput_qps_at_p50": 58823.529411764706,
+        "amortized_ns_per_query_at_p50": 17000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 1482000,
+        "p95": 1862000,
+        "throughput_qps_at_p50": 674.7638326585695,
+        "amortized_ns_per_query_at_p50": 1482000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 2371000,
+        "p95": 2884000,
+        "throughput_qps_at_p50": 421.76296921130324,
+        "amortized_ns_per_query_at_p50": 2371000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 1,
+      "metric": 1,
+      "cpu_ns": {
+        "p50": 238000,
+        "p95": 348000,
+        "throughput_qps_at_p50": 4201.680672268908,
+        "amortized_ns_per_query_at_p50": 238000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 1825000,
+        "p95": 2399000,
+        "throughput_qps_at_p50": 547.945205479452,
+        "amortized_ns_per_query_at_p50": 1825000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 10472000,
+        "p95": 11995000,
+        "throughput_qps_at_p50": 95.49274255156608,
+        "amortized_ns_per_query_at_p50": 10472000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 32,
+      "metric": 1,
+      "cpu_ns": {
+        "p50": 1622000,
+        "p95": 1923000,
+        "throughput_qps_at_p50": 19728.72996300863,
+        "amortized_ns_per_query_at_p50": 50687.5
+      },
+      "resident_gpu_ns": {
+        "p50": 6425000,
+        "p95": 7028000,
+        "throughput_qps_at_p50": 4980.544747081712,
+        "amortized_ns_per_query_at_p50": 200781.25,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 15027000,
+        "p95": 15442000,
+        "throughput_qps_at_p50": 2129.500232914088,
+        "amortized_ns_per_query_at_p50": 469593.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 32,
+      "metric": 1,
+      "cpu_ns": {
+        "p50": 14664000,
+        "p95": 17426000,
+        "throughput_qps_at_p50": 2182.214948172395,
+        "amortized_ns_per_query_at_p50": 458250.0
+      },
+      "resident_gpu_ns": {
+        "p50": 39560000,
+        "p95": 40320000,
+        "throughput_qps_at_p50": 808.8978766430738,
+        "amortized_ns_per_query_at_p50": 1236250.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 102907000,
+        "p95": 105444000,
+        "throughput_qps_at_p50": 310.96038170386856,
+        "amortized_ns_per_query_at_p50": 3215843.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 128,
+      "metric": 1,
+      "cpu_ns": {
+        "p50": 57584000,
+        "p95": 63541000,
+        "throughput_qps_at_p50": 2222.839677688247,
+        "amortized_ns_per_query_at_p50": 449875.0
+      },
+      "resident_gpu_ns": {
+        "p50": 151122000,
+        "p95": 152785000,
+        "throughput_qps_at_p50": 846.9977898651421,
+        "amortized_ns_per_query_at_p50": 1180640.625,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 214867000,
+        "p95": 216674000,
+        "throughput_qps_at_p50": 595.7173507332443,
+        "amortized_ns_per_query_at_p50": 1678648.4375,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 2000,
+      "dimension": 32,
+      "batch": 1,
+      "metric": 2,
+      "cpu_ns": {
+        "p50": 51000,
+        "p95": 64000,
+        "throughput_qps_at_p50": 19607.843137254902,
+        "amortized_ns_per_query_at_p50": 51000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 1476000,
+        "p95": 1750000,
+        "throughput_qps_at_p50": 677.5067750677507,
+        "amortized_ns_per_query_at_p50": 1476000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 2490000,
+        "p95": 2710000,
+        "throughput_qps_at_p50": 401.60642570281124,
+        "amortized_ns_per_query_at_p50": 2490000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 1,
+      "metric": 2,
+      "cpu_ns": {
+        "p50": 2643000,
+        "p95": 2738000,
+        "throughput_qps_at_p50": 378.35792659856224,
+        "amortized_ns_per_query_at_p50": 2643000.0
+      },
+      "resident_gpu_ns": {
+        "p50": 2149000,
+        "p95": 3086000,
+        "throughput_qps_at_p50": 465.33271288971616,
+        "amortized_ns_per_query_at_p50": 2149000.0,
+        "paired_wins": 26,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 10816000,
+        "p95": 12501000,
+        "throughput_qps_at_p50": 92.45562130177515,
+        "amortized_ns_per_query_at_p50": 10816000.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 8192,
+      "dimension": 384,
+      "batch": 32,
+      "metric": 2,
+      "cpu_ns": {
+        "p50": 5324000,
+        "p95": 5918000,
+        "throughput_qps_at_p50": 6010.518407212622,
+        "amortized_ns_per_query_at_p50": 166375.0
+      },
+      "resident_gpu_ns": {
+        "p50": 6506000,
+        "p95": 7094000,
+        "throughput_qps_at_p50": 4918.536735321242,
+        "amortized_ns_per_query_at_p50": 203312.5,
+        "paired_wins": 1,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 15067000,
+        "p95": 15598000,
+        "throughput_qps_at_p50": 2123.8468175482844,
+        "amortized_ns_per_query_at_p50": 470843.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 32,
+      "metric": 2,
+      "cpu_ns": {
+        "p50": 41515000,
+        "p95": 46948000,
+        "throughput_qps_at_p50": 770.8057328676382,
+        "amortized_ns_per_query_at_p50": 1297343.75
+      },
+      "resident_gpu_ns": {
+        "p50": 39866000,
+        "p95": 40916000,
+        "throughput_qps_at_p50": 802.6890081773943,
+        "amortized_ns_per_query_at_p50": 1245812.5,
+        "paired_wins": 27,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 103964000,
+        "p95": 117572000,
+        "throughput_qps_at_p50": 307.7988534492709,
+        "amortized_ns_per_query_at_p50": 3248875.0,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    },
+    {
+      "points": 32768,
+      "dimension": 768,
+      "batch": 128,
+      "metric": 2,
+      "cpu_ns": {
+        "p50": 102831000,
+        "p95": 111196000,
+        "throughput_qps_at_p50": 1244.7608211531542,
+        "amortized_ns_per_query_at_p50": 803367.1875
+      },
+      "resident_gpu_ns": {
+        "p50": 151608000,
+        "p95": 153080000,
+        "throughput_qps_at_p50": 844.2826236082528,
+        "amortized_ns_per_query_at_p50": 1184437.5,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      },
+      "cold_gpu_ns": {
+        "p50": 215740000,
+        "p95": 219504000,
+        "throughput_qps_at_p50": 593.3067581347918,
+        "amortized_ns_per_query_at_p50": 1685468.75,
+        "paired_wins": 0,
+        "measured_gpu_benefit": false
+      }
+    }
+  ]
+}

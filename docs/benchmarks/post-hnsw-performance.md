@@ -73,6 +73,11 @@ The larger diagnostic runner is `benchmarks/post_hnsw.py`:
 - `--profile cell --points 16384 --dimension 768 --metric cosine --scalar bf16
   --seed 67890 --base-percent 75 --update-percent 10`: one reproducible cell.
 
+The fixed graph configuration uses M=24, M0=48, efConstruction=192 and the workload
+seed for levels; efSearch defaults to 128. A 256-byte string field accompanies
+each record. The representative profile samples the larger matrix; the full
+cross-product profile and million-point ingestion were not run in this delivery.
+
 Each output directory contains a provenance manifest, raw logs, per-query JSON
 and aggregate CSV. Timings cover public collection calls, including filter,
 planner, traversal and authoritative F32 rerank. They exclude Python/HTTP,
@@ -87,17 +92,73 @@ fallback. The selective mode has a nonempty ~1/32 filter and reports its exact
 execution separately. Large workloads are diagnostic by default; an explicit
 `--min-recall` can enforce a threshold without changing any existing CI gate.
 
-Initial larger observations (seed 12345, ef=128, 64 queries/mode):
+The representative run completed all 22 cells (5,632 measured queries across
+four filter modes). All three ANN-only modes had 0% exact fallback in every cell;
+the selective mode reported 100% fallback and final recall 1.0. The complete
+[quality results and source provenance](results/2026-09-07-hnsw-quality.json)
+include every cell and a command to reproduce it. Representative observations
+(seed 12345, ef=128, 64 queries/mode):
 
 | Workload | All / correlated filter / independent filter Recall@10 | ANN exact fallback |
 | --- | --- | --- |
 | 8,192 × 384, uniform dot F32, 25% initial base | 0.9078125 / 0.8921875 / 0.8625 | 0% |
 | 8,192 × 768, clustered dot BF16, 75% initial base | 1.0 / 1.0 / 1.0 | 0% |
+| 8,192 × 1,536, uniform dot F16, 100% initial base | 0.715625 / 0.684375 / 0.740625 | 0% |
+| 8,192 × 1,536, uniform cosine BF16, 100% initial base | 0.734375 / 0.6953125 / 0.7375 | 0% |
 
 These observations demonstrate why the small deterministic gate cannot establish
-quality across workloads. The first run used exact-first paired timing; use its
-recall/counter data, not a strict CPU/ANN latency ratio. Expanded results will be
-recorded as the matrix finishes.
+quality across workloads. The minimum mean recall was 0.684375, with no exact
+fallback hiding that result. Candidate recall equaled final recall in the ANN-only
+modes; F32 rerank cannot recover candidates the graph missed. This diagnostic run
+did not impose a new recall threshold or change the locked CI datasets.
+
+The representative binary predates the final mapped-load and exact-SIMD changes.
+Cells 013 and 019 were also paused during isolated GPU calibration. Its durable
+report therefore omits timing fields and retains quality/provenance only. The
+earlier interrupted matrix and interrupted scaling run are not completed evidence.
+Current CPU timing comes from the fresh supplemental run below.
+
+Two matched F32 controls and a higher-ef BF16 cell clarify the high-dimensional
+result. All use 8,192 × 1,536 uniform cosine, a 100% initial base, replacements
+and deletes, with zero ANN fallback:
+
+| Scalar / seed / ef | All recall | Correlated recall | Independent recall |
+| --- | ---: | ---: | ---: |
+| F32 / 12345 / 128 | 0.7265625 | 0.69375 | 0.734375 |
+| BF16 / 12345 / 128 | 0.734375 | 0.6953125 | 0.7375 |
+| F32 / 67890 / 128 | 0.740625 | 0.7171875 | 0.71875 |
+| BF16 / 67890 / 128 | 0.7390625 | 0.7171875 | 0.7140625 |
+| BF16 / 12345 / 512 | 0.9953125 | 0.9828125 | 0.9890625 |
+
+The F32 controls show that this low recall cannot be attributed solely to
+quantization. Higher ef improves this one workload at a cost: ef=512 public ANN
+p50 is 7.140 / 6.620 / 6.632 ms for the three modes, versus exact p50
+10.136 / 2.742 / 2.746 ms. This is one seed and does not establish a universal
+ef setting or a paired latency ratio against the older representative binary.
+
+Fresh scaling cells use clustered F32 L2, 64 dimensions, seed 12345, ef=128,
+75% initial base, 10% replacements and approximately 2.5% deletes. Ingestion
+includes online graph work; the explicit checkpoint stage builds the persisted
+base separately. Stage times have one sample each:
+
+| Points | Initial base ingestion s | Checkpoint/base build s | Delta ingestion s | Mutations s | All / correlated / independent recall |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 4,096 | 2.202 | 2.193 | 0.690 | 0.304 | 1 / 1 / 1 |
+| 16,384 | 9.886 | 9.855 | 3.053 | 1.303 | 1 / 1 / 1 |
+| 65,536 | 49.313 | 48.724 | 14.540 | 6.164 | 1 / 0.996875 / 1 |
+
+All three ANN modes again have zero fallback. At 65,536 points, all-mode public
+query p50 is 3.231 ms exact and 1.345 ms ANN. These are end-to-end collection
+measurements, not isolated `HnswIndex.search` timing or million-point evidence.
+The [18-cell supplemental report](results/2026-09-07-cpu-hnsw.json) records raw
+input specifications, build stages, nearest-rank query p50/p95, quality and
+fallback summaries, binary identity and individual reproduction commands.
+
+```sh
+pixi run bench-post-hnsw --profile representative --output .build/post-hnsw/representative
+pixi run bench-post-hnsw --profile scaling --queries 64 --output .build/post-hnsw/scaling
+pixi run bench-post-hnsw --profile cell --metric cosine --scalar bf16 --dimension 1536 --base-percent 100 --ef 512 --uniform --output .build/post-hnsw/ef512
+```
 
 ## 34: Snapshot GPU resource reuse and ragged batches
 
@@ -295,23 +356,37 @@ The minimized deterministic regression crosses a tile boundary and passes with
 block sizes 7/32/256. This fixes selection itself; no finite-candidate rerank or
 exact fallback hides a missed candidate. The correction supersedes 35's timings.
 
-Final medians in milliseconds (full report includes p95 and paired wins):
+Final calibration medians in milliseconds (the
+[full report](results/2026-09-07-gpu-crossover.json) includes p95 and paired wins):
 
 | Metric | N×D | Batch | CPU | Resident GPU | Cold GPU |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Dot | 2,000×32 | 1 | 0.016 | 2.304 | 3.411 |
-| Dot | 8,192×384 | 32 | 1.557 | 6.463 | 15.088 |
-| Dot | 32,768×768 | 128 | 54.432 | 150.711 | 214.605 |
-| L2 | 8,192×384 | 32 | 1.622 | 6.425 | 15.027 |
-| L2 | 32,768×768 | 128 | 57.584 | 151.122 | 214.867 |
-| Cosine | 8,192×384 | 1 | 2.643 | 2.149 | 10.816 |
-| Cosine | 32,768×768 | 32 | 41.515 | 39.866 | 103.964 |
-| Cosine | 32,768×768 | 128 | 102.831 | 151.608 | 215.740 |
+| Dot | 2,000×32 | 1 | 0.016 | 1.831 | 2.676 |
+| Dot | 8,192×384 | 32 | 1.580 | 6.411 | 15.188 |
+| Dot | 32,768×768 | 128 | 51.027 | 148.996 | 214.658 |
+| L2 | 8,192×384 | 32 | 1.654 | 6.272 | 14.972 |
+| L2 | 32,768×768 | 128 | 56.633 | 149.814 | 214.337 |
+| Cosine | 8,192×384 | 1 | 2.665 | 2.092 | 10.489 |
+| Cosine | 32,768×768 | 32 | 43.432 | 39.361 | 104.991 |
+| Cosine | 32,768×768 | 128 | 114.676 | 149.999 | 220.402 |
 
-The two resident cosine median wins occurred in 26/31 and 27/31 pairs; neither
-met the conservative diagnostic criterion of >=90% paired wins and GPU p95 below
-CPU p50. Every cold path lost. `GpuExecutionOptions()` therefore now defaults to
-`enabled=False`. An explicit `enabled=True` retains the existing work threshold,
+All [465 paired samples](results/2026-09-07-gpu-crossover-samples.csv) are retained.
+Separate instrumented calls confirmed cache hits, zero vector upload and zero
+buffer allocations for all 15 resident shapes. For cosine 32,768×768×32, the
+diagnostic stages were 0.033 ms preparation, 1.032 ms host mapping/upload,
+36.830 ms fused distance/partial Top-K plus synchronization, 0.278 ms merge plus
+synchronization, and 0.656 ms readback, retaining 101,650,840 device bytes.
+These are one-call stage diagnostics, not medians or device-only kernel times.
+
+The two resident cosine shapes each won 30/31 pairs. GPU p95 was 2.643 and
+40.856 ms, respectively, satisfying this run's diagnostic criterion of >=90%
+paired wins and GPU p95 below CPU p50. These are useful local opt-in candidates.
+The other 13 resident shapes and every cold path lost. The earlier
+[31-sample run before the explicit shuffle tree](results/2026-09-07-gpu-crossover-before-explicit-tree.json)
+had weaker wins (26/31 and 27/31), so these observations do not establish a stable
+cross-session or cross-hardware threshold. `GpuExecutionOptions()` now defaults
+to `enabled=False`, avoiding the broad slow path. An explicit `enabled=True`
+retains the existing work threshold,
 memory budget and actual-device execution contract. The default report states
 `disabled`; opted-in reports distinguish eligibility, cache hits, budget fallback
 and actual GPU execution. Regular exact and HNSW APIs keep their existing semantics.
@@ -322,7 +397,32 @@ CPU/HNSW decisions retain observable small-collection, selectivity, matched-coun
 metric and graph-readiness reasons. The large workload matrix demonstrates that
 ANN quality depends on distribution, dimension and ef; it does not justify
 replacing those rules with a universal dimension or cardinality cutoff. Current
-CPU/HNSW comparison cells are included with the final benchmark evidence.
+CPU/HNSW comparisons use 12 fresh F32 cells: N=512/8,192, D=384, all three metrics,
+uniform/clustered distributions, 75% initial base and later mutations. At N=512,
+all-mode ANN p50 costs 2.58–3.39 times exact, and quarter-filter ANN costs
+7.86–9.32 times exact. At N=8,192, the distribution changes the crossover:
+
+| Metric / distribution | All exact / ANN p50 ms | Correlated-quarter exact / ANN p50 ms |
+| --- | ---: | ---: |
+| Dot / uniform | 2.410 / 1.525 | 0.815 / 1.454 |
+| Dot / clustered | 2.345 / 0.650 | 0.677 / 0.556 |
+| L2 / uniform | 2.484 / 1.512 | 0.796 / 1.422 |
+| L2 / clustered | 2.318 / 0.780 | 0.693 / 0.697 |
+| Cosine / uniform | 2.623 / 1.498 | 0.854 / 1.410 |
+| Cosine / clustered | 2.480 / 0.769 | 0.742 / 0.689 |
+
+These public collection exact calls include per-pair validation, filtering and
+planning. The GPU comparison's CPU baseline is a prevalidated snapshot batch;
+its scope differs and its timings must not be substituted into this table.
+One host, two cardinalities and synthetic distributions do not establish a
+portable replacement for the current CPU/HNSW policy. Its thresholds remain
+unchanged, preserving explicit ANN coverage in the existing production quality
+gates. The measured GPU policy change is the conservative opt-in default.
+
+The final 31-sample GPU report was collected at `9b98dbc`, after the explicit
+shuffle-tree change. That commit also passed the full nine-test actual-device
+suite and an initial three-sample differential run across all 15 shapes.
+Apple GPU execution is verified; NVIDIA and AMD device execution was unavailable.
 
 ```sh
 pixi run bench-gpu-crossover --output .build/post-hnsw/crossover

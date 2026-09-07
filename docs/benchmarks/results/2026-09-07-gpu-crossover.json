@@ -1,8 +1,8 @@
 {
   "host": "macOS-26.5.2-arm64-arm-64bit",
   "machine": "arm64",
-  "git_head": "97494535c5253b778508bde216ab57687f5b656a",
-  "binary_sha256": "434820d5969e4711b43101688760ac70b2425a9d1592fea9d687636ea2dc61a9",
+  "git_head": "9b98dbc5878578dd158011be6366e6cdbd34dcdc",
+  "binary_sha256": "4abf1628fb7ec0b6d08990b146cdca07daf5398ff049b5271f079aa5059bd07e",
   "samples": 31,
   "warmups": 3,
   "scope": "identical immutable F32 data, exact CPU with automatic threads versus explicit actual GPU; snapshot capture excluded; cold includes context/allocation/vector upload",
@@ -14,26 +14,40 @@
       "metric": 0,
       "cpu_ns": {
         "p50": 16000,
-        "p95": 18000,
+        "p95": 20000,
         "throughput_qps_at_p50": 62500.0,
         "amortized_ns_per_query_at_p50": 16000.0
       },
       "resident_gpu_ns": {
-        "p50": 2304000,
-        "p95": 2810000,
-        "throughput_qps_at_p50": 434.02777777777777,
-        "amortized_ns_per_query_at_p50": 2304000.0,
+        "p50": 1831000,
+        "p95": 2297000,
+        "throughput_qps_at_p50": 546.1496450027307,
+        "amortized_ns_per_query_at_p50": 1831000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 3411000,
-        "p95": 3922000,
-        "throughput_qps_at_p50": 293.1691586045148,
-        "amortized_ns_per_query_at_p50": 3411000.0,
+        "p50": 2676000,
+        "p95": 4492000,
+        "throughput_qps_at_p50": 373.69207772795215,
+        "amortized_ns_per_query_at_p50": 2676000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 0,
+        "cache_hit": true,
+        "prepare_ns": 0,
+        "allocate_ns": 0,
+        "map_upload_ns": 612000,
+        "distance_partial_topk_sync_ns": 284000,
+        "merge_sync_ns": 200000,
+        "readback_ns": 475000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 281252
+      },
+      "raw_log_sha256": "7eeaeeb46e98fc142ed14eb7fe0065e23e0608807555961ba3d7e8f284fa03b9"
     },
     {
       "points": 8192,
@@ -41,27 +55,41 @@
       "batch": 1,
       "metric": 0,
       "cpu_ns": {
-        "p50": 232000,
-        "p95": 255000,
-        "throughput_qps_at_p50": 4310.3448275862065,
-        "amortized_ns_per_query_at_p50": 232000.0
+        "p50": 224000,
+        "p95": 275000,
+        "throughput_qps_at_p50": 4464.285714285715,
+        "amortized_ns_per_query_at_p50": 224000.0
       },
       "resident_gpu_ns": {
-        "p50": 2767000,
-        "p95": 3629000,
-        "throughput_qps_at_p50": 361.4022406938923,
-        "amortized_ns_per_query_at_p50": 2767000.0,
+        "p50": 2671000,
+        "p95": 3752000,
+        "throughput_qps_at_p50": 374.3916136278547,
+        "amortized_ns_per_query_at_p50": 2671000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 11634000,
-        "p95": 12947000,
-        "throughput_qps_at_p50": 85.954959601169,
-        "amortized_ns_per_query_at_p50": 11634000.0,
+        "p50": 11743000,
+        "p95": 19817000,
+        "throughput_qps_at_p50": 85.15711487694797,
+        "amortized_ns_per_query_at_p50": 11743000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 0,
+        "cache_hit": true,
+        "prepare_ns": 1000,
+        "allocate_ns": 0,
+        "map_upload_ns": 952000,
+        "distance_partial_topk_sync_ns": 1140000,
+        "merge_sync_ns": 397000,
+        "readback_ns": 632000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12686756
+      },
+      "raw_log_sha256": "e7dd5deb6e0465d5bf02a0526bc2aec734c631ecb3210280e94a17ea5936c555"
     },
     {
       "points": 8192,
@@ -69,27 +97,41 @@
       "batch": 32,
       "metric": 0,
       "cpu_ns": {
-        "p50": 1557000,
-        "p95": 1788000,
-        "throughput_qps_at_p50": 20552.34425176622,
-        "amortized_ns_per_query_at_p50": 48656.25
+        "p50": 1580000,
+        "p95": 1978000,
+        "throughput_qps_at_p50": 20253.164556962027,
+        "amortized_ns_per_query_at_p50": 49375.0
       },
       "resident_gpu_ns": {
-        "p50": 6463000,
-        "p95": 6950000,
-        "throughput_qps_at_p50": 4951.261024292125,
-        "amortized_ns_per_query_at_p50": 201968.75,
+        "p50": 6411000,
+        "p95": 6999000,
+        "throughput_qps_at_p50": 4991.420995164561,
+        "amortized_ns_per_query_at_p50": 200343.75,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 15088000,
-        "p95": 15528000,
-        "throughput_qps_at_p50": 2120.8907741251323,
-        "amortized_ns_per_query_at_p50": 471500.0,
+        "p50": 15188000,
+        "p95": 15995000,
+        "throughput_qps_at_p50": 2106.926520937582,
+        "amortized_ns_per_query_at_p50": 474625.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 0,
+        "cache_hit": true,
+        "prepare_ns": 6000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1022000,
+        "distance_partial_topk_sync_ns": 4577000,
+        "merge_sync_ns": 222000,
+        "readback_ns": 607000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12857752
+      },
+      "raw_log_sha256": "22d50e971a7cf1828cecef0ead0542514ae496c53ea516059265fcd6f3df0366"
     },
     {
       "points": 32768,
@@ -97,27 +139,41 @@
       "batch": 32,
       "metric": 0,
       "cpu_ns": {
-        "p50": 14858000,
-        "p95": 17781000,
-        "throughput_qps_at_p50": 2153.7219006595774,
-        "amortized_ns_per_query_at_p50": 464312.5
+        "p50": 13358000,
+        "p95": 15192000,
+        "throughput_qps_at_p50": 2395.5681988321603,
+        "amortized_ns_per_query_at_p50": 417437.5
       },
       "resident_gpu_ns": {
-        "p50": 39234000,
-        "p95": 40179000,
-        "throughput_qps_at_p50": 815.6191058775552,
-        "amortized_ns_per_query_at_p50": 1226062.5,
+        "p50": 38757000,
+        "p95": 40114000,
+        "throughput_qps_at_p50": 825.6573006166628,
+        "amortized_ns_per_query_at_p50": 1211156.25,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 102695000,
-        "p95": 104341000,
-        "throughput_qps_at_p50": 311.60231754223673,
-        "amortized_ns_per_query_at_p50": 3209218.75,
+        "p50": 102529000,
+        "p95": 112487000,
+        "throughput_qps_at_p50": 312.1068185586517,
+        "amortized_ns_per_query_at_p50": 3204031.25,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 0,
+        "cache_hit": true,
+        "prepare_ns": 9000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1347000,
+        "distance_partial_topk_sync_ns": 36859000,
+        "merge_sync_ns": 308000,
+        "readback_ns": 618000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 101650840
+      },
+      "raw_log_sha256": "3f6a9e51bc454cb45dab46fbd2127dbd1b242f708e63aefed1431d19c55dae7a"
     },
     {
       "points": 32768,
@@ -125,27 +181,41 @@
       "batch": 128,
       "metric": 0,
       "cpu_ns": {
-        "p50": 54432000,
-        "p95": 58733000,
-        "throughput_qps_at_p50": 2351.5579071134625,
-        "amortized_ns_per_query_at_p50": 425250.0
+        "p50": 51027000,
+        "p95": 54984000,
+        "throughput_qps_at_p50": 2508.4759049130853,
+        "amortized_ns_per_query_at_p50": 398648.4375
       },
       "resident_gpu_ns": {
-        "p50": 150711000,
-        "p95": 152289000,
-        "throughput_qps_at_p50": 849.3076152371094,
-        "amortized_ns_per_query_at_p50": 1177429.6875,
+        "p50": 148996000,
+        "p95": 151840000,
+        "throughput_qps_at_p50": 859.0834653279283,
+        "amortized_ns_per_query_at_p50": 1164031.25,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 214605000,
-        "p95": 217118000,
-        "throughput_qps_at_p50": 596.4446308333916,
-        "amortized_ns_per_query_at_p50": 1676601.5625,
+        "p50": 214658000,
+        "p95": 218999000,
+        "throughput_qps_at_p50": 596.2973660427284,
+        "amortized_ns_per_query_at_p50": 1677015.625,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 0,
+        "cache_hit": true,
+        "prepare_ns": 29000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1681000,
+        "distance_partial_topk_sync_ns": 146276000,
+        "merge_sync_ns": 563000,
+        "readback_ns": 749000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 103433752
+      },
+      "raw_log_sha256": "93944a56aa8c3e2249d7caf87991c566592c91199ab4629c063b2a58089bd054"
     },
     {
       "points": 2000,
@@ -153,27 +223,41 @@
       "batch": 1,
       "metric": 1,
       "cpu_ns": {
-        "p50": 17000,
-        "p95": 21000,
-        "throughput_qps_at_p50": 58823.529411764706,
-        "amortized_ns_per_query_at_p50": 17000.0
+        "p50": 16000,
+        "p95": 20000,
+        "throughput_qps_at_p50": 62500.0,
+        "amortized_ns_per_query_at_p50": 16000.0
       },
       "resident_gpu_ns": {
-        "p50": 1482000,
-        "p95": 1862000,
-        "throughput_qps_at_p50": 674.7638326585695,
-        "amortized_ns_per_query_at_p50": 1482000.0,
+        "p50": 1455000,
+        "p95": 1703000,
+        "throughput_qps_at_p50": 687.2852233676975,
+        "amortized_ns_per_query_at_p50": 1455000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 2371000,
-        "p95": 2884000,
-        "throughput_qps_at_p50": 421.76296921130324,
-        "amortized_ns_per_query_at_p50": 2371000.0,
+        "p50": 2383000,
+        "p95": 2802000,
+        "throughput_qps_at_p50": 419.639110365086,
+        "amortized_ns_per_query_at_p50": 2383000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 1,
+        "cache_hit": true,
+        "prepare_ns": 0,
+        "allocate_ns": 0,
+        "map_upload_ns": 704000,
+        "distance_partial_topk_sync_ns": 198000,
+        "merge_sync_ns": 149000,
+        "readback_ns": 486000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 281252
+      },
+      "raw_log_sha256": "6a2aa9ad54ae9695efd6c5f7a45599c66f577e1b530c7c8a06adfec04061e188"
     },
     {
       "points": 8192,
@@ -181,27 +265,41 @@
       "batch": 1,
       "metric": 1,
       "cpu_ns": {
-        "p50": 238000,
-        "p95": 348000,
-        "throughput_qps_at_p50": 4201.680672268908,
-        "amortized_ns_per_query_at_p50": 238000.0
+        "p50": 230000,
+        "p95": 243000,
+        "throughput_qps_at_p50": 4347.826086956522,
+        "amortized_ns_per_query_at_p50": 230000.0
       },
       "resident_gpu_ns": {
-        "p50": 1825000,
-        "p95": 2399000,
-        "throughput_qps_at_p50": 547.945205479452,
-        "amortized_ns_per_query_at_p50": 1825000.0,
+        "p50": 1737000,
+        "p95": 2247000,
+        "throughput_qps_at_p50": 575.7052389176741,
+        "amortized_ns_per_query_at_p50": 1737000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 10472000,
-        "p95": 11995000,
-        "throughput_qps_at_p50": 95.49274255156608,
-        "amortized_ns_per_query_at_p50": 10472000.0,
+        "p50": 10421000,
+        "p95": 10947000,
+        "throughput_qps_at_p50": 95.96008060646771,
+        "amortized_ns_per_query_at_p50": 10421000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 1,
+        "cache_hit": true,
+        "prepare_ns": 1000,
+        "allocate_ns": 0,
+        "map_upload_ns": 808000,
+        "distance_partial_topk_sync_ns": 511000,
+        "merge_sync_ns": 224000,
+        "readback_ns": 553000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12686756
+      },
+      "raw_log_sha256": "f4d05887b24a4f46029c58a80273be9d3414c535693455ae7c68a00ec00e98af"
     },
     {
       "points": 8192,
@@ -209,27 +307,41 @@
       "batch": 32,
       "metric": 1,
       "cpu_ns": {
-        "p50": 1622000,
-        "p95": 1923000,
-        "throughput_qps_at_p50": 19728.72996300863,
-        "amortized_ns_per_query_at_p50": 50687.5
+        "p50": 1654000,
+        "p95": 1800000,
+        "throughput_qps_at_p50": 19347.037484885128,
+        "amortized_ns_per_query_at_p50": 51687.5
       },
       "resident_gpu_ns": {
-        "p50": 6425000,
-        "p95": 7028000,
-        "throughput_qps_at_p50": 4980.544747081712,
-        "amortized_ns_per_query_at_p50": 200781.25,
+        "p50": 6272000,
+        "p95": 6646000,
+        "throughput_qps_at_p50": 5102.040816326531,
+        "amortized_ns_per_query_at_p50": 196000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 15027000,
-        "p95": 15442000,
-        "throughput_qps_at_p50": 2129.500232914088,
-        "amortized_ns_per_query_at_p50": 469593.75,
+        "p50": 14972000,
+        "p95": 15324000,
+        "throughput_qps_at_p50": 2137.323002938819,
+        "amortized_ns_per_query_at_p50": 467875.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 1,
+        "cache_hit": true,
+        "prepare_ns": 5000,
+        "allocate_ns": 0,
+        "map_upload_ns": 951000,
+        "distance_partial_topk_sync_ns": 4573000,
+        "merge_sync_ns": 232000,
+        "readback_ns": 639000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12857752
+      },
+      "raw_log_sha256": "f74a11bd6aae5dcab345aa6987be269f304b8c5a31710c59d5ee81bfe5623827"
     },
     {
       "points": 32768,
@@ -237,27 +349,41 @@
       "batch": 32,
       "metric": 1,
       "cpu_ns": {
-        "p50": 14664000,
-        "p95": 17426000,
-        "throughput_qps_at_p50": 2182.214948172395,
-        "amortized_ns_per_query_at_p50": 458250.0
+        "p50": 14403000,
+        "p95": 17001000,
+        "throughput_qps_at_p50": 2221.759355689787,
+        "amortized_ns_per_query_at_p50": 450093.75
       },
       "resident_gpu_ns": {
-        "p50": 39560000,
-        "p95": 40320000,
-        "throughput_qps_at_p50": 808.8978766430738,
-        "amortized_ns_per_query_at_p50": 1236250.0,
+        "p50": 39084000,
+        "p95": 39537000,
+        "throughput_qps_at_p50": 818.7493603520622,
+        "amortized_ns_per_query_at_p50": 1221375.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 102907000,
-        "p95": 105444000,
-        "throughput_qps_at_p50": 310.96038170386856,
-        "amortized_ns_per_query_at_p50": 3215843.75,
+        "p50": 102837000,
+        "p95": 107299000,
+        "throughput_qps_at_p50": 311.1720489707012,
+        "amortized_ns_per_query_at_p50": 3213656.25,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 1,
+        "cache_hit": true,
+        "prepare_ns": 8000,
+        "allocate_ns": 0,
+        "map_upload_ns": 990000,
+        "distance_partial_topk_sync_ns": 36774000,
+        "merge_sync_ns": 290000,
+        "readback_ns": 712000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 101650840
+      },
+      "raw_log_sha256": "21306f4fe49ee6ae60b9d4de93cb6a51c87e4a41cfc3e75ca0c0cc45670576c3"
     },
     {
       "points": 32768,
@@ -265,27 +391,41 @@
       "batch": 128,
       "metric": 1,
       "cpu_ns": {
-        "p50": 57584000,
-        "p95": 63541000,
-        "throughput_qps_at_p50": 2222.839677688247,
-        "amortized_ns_per_query_at_p50": 449875.0
+        "p50": 56633000,
+        "p95": 61627000,
+        "throughput_qps_at_p50": 2260.1663341161516,
+        "amortized_ns_per_query_at_p50": 442445.3125
       },
       "resident_gpu_ns": {
-        "p50": 151122000,
-        "p95": 152785000,
-        "throughput_qps_at_p50": 846.9977898651421,
-        "amortized_ns_per_query_at_p50": 1180640.625,
+        "p50": 149814000,
+        "p95": 153085000,
+        "throughput_qps_at_p50": 854.3927803810058,
+        "amortized_ns_per_query_at_p50": 1170421.875,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 214867000,
-        "p95": 216674000,
-        "throughput_qps_at_p50": 595.7173507332443,
-        "amortized_ns_per_query_at_p50": 1678648.4375,
+        "p50": 214337000,
+        "p95": 222592000,
+        "throughput_qps_at_p50": 597.1904057628874,
+        "amortized_ns_per_query_at_p50": 1674507.8125,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 1,
+        "cache_hit": true,
+        "prepare_ns": 30000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1691000,
+        "distance_partial_topk_sync_ns": 147794000,
+        "merge_sync_ns": 561000,
+        "readback_ns": 790000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 103433752
+      },
+      "raw_log_sha256": "b9f53e63cd3d52716f6e20f662a8f926d43bc7a5ad31309b21a142d06cdc4915"
     },
     {
       "points": 2000,
@@ -293,27 +433,41 @@
       "batch": 1,
       "metric": 2,
       "cpu_ns": {
-        "p50": 51000,
-        "p95": 64000,
-        "throughput_qps_at_p50": 19607.843137254902,
-        "amortized_ns_per_query_at_p50": 51000.0
+        "p50": 49000,
+        "p95": 55000,
+        "throughput_qps_at_p50": 20408.163265306124,
+        "amortized_ns_per_query_at_p50": 49000.0
       },
       "resident_gpu_ns": {
-        "p50": 1476000,
-        "p95": 1750000,
-        "throughput_qps_at_p50": 677.5067750677507,
-        "amortized_ns_per_query_at_p50": 1476000.0,
+        "p50": 1496000,
+        "p95": 1783000,
+        "throughput_qps_at_p50": 668.4491978609626,
+        "amortized_ns_per_query_at_p50": 1496000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 2490000,
-        "p95": 2710000,
-        "throughput_qps_at_p50": 401.60642570281124,
-        "amortized_ns_per_query_at_p50": 2490000.0,
+        "p50": 2329000,
+        "p95": 2821000,
+        "throughput_qps_at_p50": 429.36882782310005,
+        "amortized_ns_per_query_at_p50": 2329000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 2,
+        "cache_hit": true,
+        "prepare_ns": 1000,
+        "allocate_ns": 0,
+        "map_upload_ns": 707000,
+        "distance_partial_topk_sync_ns": 213000,
+        "merge_sync_ns": 175000,
+        "readback_ns": 442000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 281252
+      },
+      "raw_log_sha256": "5e71f3bd211dc65c60408ed7d158c59643c947ad7d02577b340056b4398e6684"
     },
     {
       "points": 8192,
@@ -321,27 +475,41 @@
       "batch": 1,
       "metric": 2,
       "cpu_ns": {
-        "p50": 2643000,
-        "p95": 2738000,
-        "throughput_qps_at_p50": 378.35792659856224,
-        "amortized_ns_per_query_at_p50": 2643000.0
+        "p50": 2665000,
+        "p95": 2683000,
+        "throughput_qps_at_p50": 375.234521575985,
+        "amortized_ns_per_query_at_p50": 2665000.0
       },
       "resident_gpu_ns": {
-        "p50": 2149000,
-        "p95": 3086000,
-        "throughput_qps_at_p50": 465.33271288971616,
-        "amortized_ns_per_query_at_p50": 2149000.0,
-        "paired_wins": 26,
-        "measured_gpu_benefit": false
+        "p50": 2092000,
+        "p95": 2643000,
+        "throughput_qps_at_p50": 478.0114722753346,
+        "amortized_ns_per_query_at_p50": 2092000.0,
+        "paired_wins": 30,
+        "measured_gpu_benefit": true
       },
       "cold_gpu_ns": {
-        "p50": 10816000,
-        "p95": 12501000,
-        "throughput_qps_at_p50": 92.45562130177515,
-        "amortized_ns_per_query_at_p50": 10816000.0,
+        "p50": 10489000,
+        "p95": 11814000,
+        "throughput_qps_at_p50": 95.33797311469158,
+        "amortized_ns_per_query_at_p50": 10489000.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 2,
+        "cache_hit": true,
+        "prepare_ns": 3000,
+        "allocate_ns": 0,
+        "map_upload_ns": 984000,
+        "distance_partial_topk_sync_ns": 1152000,
+        "merge_sync_ns": 410000,
+        "readback_ns": 601000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12686756
+      },
+      "raw_log_sha256": "48470f6007b80810007fc56a16f60b477d6cbc736e9a2564cb18aaf74e2c24b4"
     },
     {
       "points": 8192,
@@ -349,27 +517,41 @@
       "batch": 32,
       "metric": 2,
       "cpu_ns": {
-        "p50": 5324000,
-        "p95": 5918000,
-        "throughput_qps_at_p50": 6010.518407212622,
-        "amortized_ns_per_query_at_p50": 166375.0
+        "p50": 5269000,
+        "p95": 5873000,
+        "throughput_qps_at_p50": 6073.258682862023,
+        "amortized_ns_per_query_at_p50": 164656.25
       },
       "resident_gpu_ns": {
-        "p50": 6506000,
-        "p95": 7094000,
-        "throughput_qps_at_p50": 4918.536735321242,
-        "amortized_ns_per_query_at_p50": 203312.5,
-        "paired_wins": 1,
+        "p50": 6484000,
+        "p95": 6988000,
+        "throughput_qps_at_p50": 4935.225169648365,
+        "amortized_ns_per_query_at_p50": 202625.0,
+        "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 15067000,
-        "p95": 15598000,
-        "throughput_qps_at_p50": 2123.8468175482844,
-        "amortized_ns_per_query_at_p50": 470843.75,
+        "p50": 15064000,
+        "p95": 15604000,
+        "throughput_qps_at_p50": 2124.2697822623472,
+        "amortized_ns_per_query_at_p50": 470750.0,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 2,
+        "cache_hit": true,
+        "prepare_ns": 14000,
+        "allocate_ns": 0,
+        "map_upload_ns": 961000,
+        "distance_partial_topk_sync_ns": 4778000,
+        "merge_sync_ns": 241000,
+        "readback_ns": 640000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 12857752
+      },
+      "raw_log_sha256": "5369ef7c71e4433c0872356d91e825da2fd120e89207f501af01bf8348bac776"
     },
     {
       "points": 32768,
@@ -377,27 +559,41 @@
       "batch": 32,
       "metric": 2,
       "cpu_ns": {
-        "p50": 41515000,
-        "p95": 46948000,
-        "throughput_qps_at_p50": 770.8057328676382,
-        "amortized_ns_per_query_at_p50": 1297343.75
+        "p50": 43432000,
+        "p95": 45612000,
+        "throughput_qps_at_p50": 736.7839381101492,
+        "amortized_ns_per_query_at_p50": 1357250.0
       },
       "resident_gpu_ns": {
-        "p50": 39866000,
-        "p95": 40916000,
-        "throughput_qps_at_p50": 802.6890081773943,
-        "amortized_ns_per_query_at_p50": 1245812.5,
-        "paired_wins": 27,
-        "measured_gpu_benefit": false
+        "p50": 39361000,
+        "p95": 40856000,
+        "throughput_qps_at_p50": 812.9874749117147,
+        "amortized_ns_per_query_at_p50": 1230031.25,
+        "paired_wins": 30,
+        "measured_gpu_benefit": true
       },
       "cold_gpu_ns": {
-        "p50": 103964000,
-        "p95": 117572000,
-        "throughput_qps_at_p50": 307.7988534492709,
-        "amortized_ns_per_query_at_p50": 3248875.0,
+        "p50": 104991000,
+        "p95": 109714000,
+        "throughput_qps_at_p50": 304.78802945014337,
+        "amortized_ns_per_query_at_p50": 3280968.75,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 2,
+        "cache_hit": true,
+        "prepare_ns": 33000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1032000,
+        "distance_partial_topk_sync_ns": 36830000,
+        "merge_sync_ns": 278000,
+        "readback_ns": 656000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 101650840
+      },
+      "raw_log_sha256": "8d69ee35217776b7a1c457ad4a8f7c496a5d514f414da3eb07201b9cbf31a083"
     },
     {
       "points": 32768,
@@ -405,27 +601,50 @@
       "batch": 128,
       "metric": 2,
       "cpu_ns": {
-        "p50": 102831000,
-        "p95": 111196000,
-        "throughput_qps_at_p50": 1244.7608211531542,
-        "amortized_ns_per_query_at_p50": 803367.1875
+        "p50": 114676000,
+        "p95": 121477000,
+        "throughput_qps_at_p50": 1116.1882172381318,
+        "amortized_ns_per_query_at_p50": 895906.25
       },
       "resident_gpu_ns": {
-        "p50": 151608000,
-        "p95": 153080000,
-        "throughput_qps_at_p50": 844.2826236082528,
-        "amortized_ns_per_query_at_p50": 1184437.5,
+        "p50": 149999000,
+        "p95": 152668000,
+        "throughput_qps_at_p50": 853.3390222601485,
+        "amortized_ns_per_query_at_p50": 1171867.1875,
         "paired_wins": 0,
         "measured_gpu_benefit": false
       },
       "cold_gpu_ns": {
-        "p50": 215740000,
-        "p95": 219504000,
-        "throughput_qps_at_p50": 593.3067581347918,
-        "amortized_ns_per_query_at_p50": 1685468.75,
+        "p50": 220402000,
+        "p95": 225013000,
+        "throughput_qps_at_p50": 580.7569804266749,
+        "amortized_ns_per_query_at_p50": 1721890.625,
         "paired_wins": 0,
         "measured_gpu_benefit": false
-      }
+      },
+      "diagnostic_resident_profile": {
+        "metric": 2,
+        "cache_hit": true,
+        "prepare_ns": 90000,
+        "allocate_ns": 0,
+        "map_upload_ns": 1538000,
+        "distance_partial_topk_sync_ns": 147327000,
+        "merge_sync_ns": 568000,
+        "readback_ns": 713000,
+        "buffers_allocated": 0,
+        "vector_upload_bytes": 0,
+        "resident_bytes": 103433752
+      },
+      "raw_log_sha256": "08a614e95be74b8506fed947b9a85ea5b22c89e9994520e292999b8ce5f9ed4c"
     }
-  ]
+  ],
+  "seed": 12345,
+  "environment": {
+    "cpu": "Apple M4 Pro",
+    "mojo": "1.0.0",
+    "max": "26.5.0"
+  },
+  "measurement_note": "Final explicit-shuffle kernel at 9b98dbc; 31 paired samples and 3 warmups for each of 15 cells. No other Akasha benchmark/test process was active. Snapshot capture is excluded. Timings remain host-specific; two resident cosine shapes meet this run's benefit criterion, all cold GPU paths lose.",
+  "profile_scope": "One separate instrumented resident request after timing; distance/partial Top-K and merge each include launch plus synchronization. These stage timings are not percentile samples.",
+  "paired_samples_file": "2026-09-07-gpu-crossover-samples.csv"
 }
