@@ -1,4 +1,4 @@
-from akasha.document import DocumentField, PayloadValue
+from akasha.document import DocumentField, DocumentRecord, PayloadValue
 from akasha.storage.memtable import MemTable, MemTableEntry
 from std.testing import (
     assert_equal,
@@ -79,6 +79,33 @@ def test_document_upsert_replaces_payload_and_get_returns_owned_copy() raises:
     var replaced = table.get(7)
     assert_false(Bool(replaced.value().get_field("chunk")))
     assert_equal(replaced.value().get_field("page").value().as_int(), Int64(2))
+
+
+def test_empty_vector_clones_preserve_identity_and_ownership() raises:
+    var table = MemTable(3)
+    table.apply_delete(-7, 11)
+    var tombstone = table.entry_at(0)
+    var copied = tombstone.clone()
+    assert_equal(copied.id, -7)
+    assert_equal(copied.sequence, UInt64(11))
+    assert_true(copied.tombstone)
+    assert_equal(len(copied.values), 0)
+    assert_equal(len(copied.fields), 0)
+    copied.values.append(9.0)
+    assert_equal(len(tombstone.values), 0)
+    assert_equal(len(table.entry_ref_at(0).values), 0)
+
+    # Metadata-only projections legitimately carry an empty owned vector.
+    var projected = DocumentRecord(
+        -7, 11, List[Float32](), List[DocumentField]()
+    )
+    var projection_copy = projected.clone()
+    assert_equal(projection_copy.id, -7)
+    assert_equal(projection_copy.sequence, UInt64(11))
+    assert_equal(len(projection_copy.vector), 0)
+    assert_equal(len(projection_copy.fields), 0)
+    projection_copy.vector.append(8.0)
+    assert_equal(len(projected.vector), 0)
 
 
 def test_vector_upsert_clears_payload_and_delete_hides_get() raises:

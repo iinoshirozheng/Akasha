@@ -44,9 +44,7 @@ struct DocumentRecord(Movable):
         return Optional[PayloadValue]()
 
     def clone(self) raises -> DocumentRecord:
-        var vector = List[Float32](capacity=len(self.vector))
-        for value in self.vector:
-            vector.append(value)
+        var vector = self.vector.copy()
         var fields = clone_fields(self.fields)
         return DocumentRecord(self.id, self.sequence, vector^, fields^)
 

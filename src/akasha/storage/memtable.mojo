@@ -43,7 +43,7 @@ struct MemTableEntry(Movable):
         return entry^
 
     def clone(self) raises -> MemTableEntry:
-        var values = _clone_vector(self.values)
+        var values = self.values.copy()
         var fields = clone_fields(self.fields)
         return MemTableEntry.with_fields(
             self.id,
@@ -201,7 +201,7 @@ struct MemTable:
         var index = self.ordinal_for(id)
         if index < 0 or self._entries[index].tombstone:
             return Optional[DocumentRecord]()
-        var vector = _clone_vector(self._entries[index].values)
+        var vector = self._entries[index].values.copy()
         var fields = clone_fields(self._entries[index].fields)
         var record = DocumentRecord(
             id,
@@ -308,10 +308,3 @@ struct MemTable:
     def _advance_sequence(mut self, sequence: UInt64):
         if sequence > self.last_sequence:
             self.last_sequence = sequence
-
-
-def _clone_vector(values: List[Float32]) -> List[Float32]:
-    var result = List[Float32](capacity=len(values))
-    for value in values:
-        result.append(value)
-    return result^

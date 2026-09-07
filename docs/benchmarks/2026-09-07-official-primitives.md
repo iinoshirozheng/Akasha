@@ -64,3 +64,14 @@ Bitmap 的 bit count 改用 `std.bit.pop_count`，set ordinals 使用
 6 個 Bitmap tests 通過，新增 0／1／63／64／65／127／128／129／257 大小的 scalar
 set-algebra 對照、resize padding、空 word、clone 與重複 clear 驗證；另有 7 個
 filtered HNSW tests 與 5 個 filter-expression tests 通過，合計 18 tests。
+
+## #41：官方 owned vector copy
+
+collection／MemTable 的 `_clone_vector` 已移除，7 處使用者改用 `List.copy()`；
+`DocumentRecord.clone` 也改用官方 copy。WAL 與 staged batch、recovery、get 的
+owned 邊界不變。空向量／tombstone／metadata-only projection 都保留同一語意。
+
+14 個 MemTable、7 個 persistent document、6 個 snapshot、5 個 atomic batch
+tests 通過，共 32 tests。新增測試直接修改 caller mutations、returned record、
+cloned vector/payload，確認各自隔離；snapshot 在 collection 更新與 close 後仍
+保留原值，WAL 重開後也符合接受的 sequence／資料。

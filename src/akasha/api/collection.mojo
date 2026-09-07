@@ -346,7 +346,7 @@ struct PersistentCollection:
                     dense_wal.records[index].sequence,
                 )
             else:
-                var values = _clone_vector(dense_wal.records[index].values)
+                var values = dense_wal.records[index].values.copy()
                 var fields = clone_fields(dense_wal.records[index].fields)
                 memtable.apply_document_upsert(
                     dense_wal.records[index].id,
@@ -730,7 +730,7 @@ struct PersistentCollection:
         self._validate_vector(values)
         var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
-        var wal_values = _clone_vector(values)
+        var wal_values = values.copy()
         var record = WalRecord.upsert(sequence, id, wal_values^)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
@@ -760,7 +760,7 @@ struct PersistentCollection:
         self._validate_vector(values)
         var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
-        var wal_values = _clone_vector(values)
+        var wal_values = values.copy()
         var wal_fields = clone_fields(fields)
         var metadata_fields = clone_fields(fields)
         var record = WalRecord.document_upsert(
@@ -823,7 +823,7 @@ struct PersistentCollection:
                 records.append(WalRecord.delete(sequence, mutations[index].id))
                 staged_memtable.apply_delete(mutations[index].id, sequence)
                 continue
-            var wal_values = _clone_vector(mutations[index].values)
+            var wal_values = mutations[index].values.copy()
             var wal_fields = clone_fields(mutations[index].fields)
             records.append(
                 WalRecord.document_upsert(
@@ -833,7 +833,7 @@ struct PersistentCollection:
                     wal_fields^,
                 )
             )
-            var staged_values = _clone_vector(mutations[index].values)
+            var staged_values = mutations[index].values.copy()
             var staged_fields = clone_fields(mutations[index].fields)
             staged_memtable.apply_document_upsert(
                 mutations[index].id,
@@ -2287,13 +2287,6 @@ struct PersistentCollection:
         if self._last_sequence == UInt64.MAX:
             raise Error("collection sequence exhausted")
         return self._last_sequence + 1
-
-
-def _clone_vector(values: List[Float32]) -> List[Float32]:
-    var result = List[Float32](capacity=len(values))
-    for value in values:
-        result.append(value)
-    return result^
 
 
 def _copy_hnsw_search_stats(stats: HnswSearchStats) -> HnswSearchStats:

@@ -52,9 +52,9 @@ clone 所有 live records。
 向量複製。此包保留 owned API，不把 get 變成 borrowed view。
 
 **驗收：**
-- [ ] 改用官方 owned copy，移除過時 helper；不引入新的通用 clone 抽象。
-- [ ] 改變 caller input／returned vector 不影響 collection；snapshot isolation 不變。
-- [ ] payload clone、空值、sequence 與 ID 行為保持，未改動資料格式。
+- [x] 改用官方 owned copy，移除過時 helper；不引入新的通用 clone 抽象。
+- [x] 改變 caller input／returned vector 不影響 collection；snapshot isolation 不變。
+- [x] payload clone、空值、sequence 與 ID 行為保持，未改動資料格式。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_memtable.mojo`、
 `pixi run mojo run -I src tests/mojo/test_persistent_documents.mojo`、

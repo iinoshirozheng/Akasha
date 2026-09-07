@@ -1,4 +1,5 @@
 from akasha import (
+    BatchMutation,
     DocumentField,
     PayloadValue,
     PersistentCollection,
@@ -92,6 +93,49 @@ def test_upsert_document_is_immediately_available_through_get() raises:
         "vector databases",
     )
     assert_equal(record.value().get_field("page").value().as_int(), Int64(7))
+
+
+def test_batch_input_get_clone_and_snapshot_keep_independent_values() raises:
+    var path = String("/tmp/akasha-owned-vector-copies")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 3)
+    var mutations = List[BatchMutation]()
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("payload", PayloadValue.string("x" * 256)))
+    mutations.append(BatchMutation.document_upsert(-7, [1.0, -2.0, 3.0], fields^))
+    mutations.append(BatchMutation.upsert(99, [4.0, 5.0, 6.0]))
+    _ = collection.apply_batch(mutations)
+    mutations[0].values[0] = 99.0
+    mutations[0].fields[0].name = "caller-change"
+    mutations[1].values[2] = 99.0
+
+    var record = collection.get(-7)
+    assert_equal(record.value().id, -7)
+    assert_equal(record.value().sequence, UInt64(1))
+    assert_equal(record.value().vector[0], Float32(1.0))
+    var cloned = record.value().clone()
+    cloned.vector[1] = 99.0
+    cloned.fields[0].value = PayloadValue.string("clone-change")
+    assert_equal(record.value().vector[1], Float32(-2.0))
+    assert_equal(record.value().get_field("payload").value().as_string(), "x" * 256)
+    record.value().vector[0] = 88.0
+    record.value().fields[0].name = "result-change"
+
+    var snapshot = collection.snapshot()
+    collection.upsert(-7, [7.0, 8.0, 9.0])
+    collection.close()
+    var frozen = snapshot.get(-7)
+    assert_equal(frozen.value().sequence, UInt64(1))
+    assert_equal(frozen.value().vector[0], Float32(1.0))
+    assert_equal(frozen.value().get_field("payload").value().as_string(), "x" * 256)
+    snapshot.close()
+
+    var reopened = PersistentCollection.open(path, 3)
+    assert_equal(reopened.get(-7).value().sequence, UInt64(3))
+    assert_equal(reopened.get(-7).value().vector[0], Float32(7.0))
+    assert_equal(len(reopened.get(-7).value().fields), 0)
+    assert_equal(reopened.get(99).value().vector[2], Float32(6.0))
+    reopened.close()
 
 
 def test_document_survives_wal_only_reopen() raises:
