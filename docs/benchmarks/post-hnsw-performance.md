@@ -48,3 +48,53 @@ encoding still request owned records explicitly.
 
 Five-sample nearest-rank p95 is the maximum. CPU and GPU sample policies differ;
 these numbers locate a problem and must not be used as a generalized speed ratio.
+
+## 33: Production-path quality and scaling workloads
+
+`pixi run check-post-hnsw-quality` exercises all 11 supported metric/scalar
+pairs at 512 points × 32 dimensions, with replacements, deletes and four filter
+modes. All 11 cells passed a 0.95 mean recall gate; the three ANN modes had zero
+fallback, while the selective mode explicitly reported exact execution.
+`test_segmented_hnsw.mojo` also passed all 18 tests after extracting the internal
+candidate seam. The existing locked datasets and thresholds are unchanged.
+
+The larger diagnostic runner is `benchmarks/post_hnsw.py`:
+
+- `--profile representative`: 22 cells, two seeds, all 11 metric/scalar pairs,
+  8,192 points, 384/768/1536 dimensions, uniform/clustered distributions and
+  25/75/100 percent initial base sizes. Each cell has 10 percent replacements,
+  approximately 2.5 percent deletes, 64 measured queries per filter mode and
+  three warmups. IDs are shuffled with deterministic Fisher–Yates.
+- `--profile full`: the full cross-product of those dimensions, seeds,
+  distributions, base ratios and metric/scalar pairs.
+- `--profile scaling --queries 32`: 4,096, 16,384 and 65,536 points at 64
+  dimensions. Timings separate initial ingestion, explicit base construction,
+  delta ingestion and later mutations; all include actual collection work.
+- `--profile cell --points 16384 --dimension 768 --metric cosine --scalar bf16
+  --seed 67890 --base-percent 75 --update-percent 10`: one reproducible cell.
+
+Each output directory contains a provenance manifest, raw logs, per-query JSON
+and aggregate CSV. Timings cover public collection calls, including filter,
+planner, traversal and authoritative F32 rerank. They exclude Python/HTTP,
+initial snapshot capture and diagnostic candidate extraction. Paired exact/ANN
+call order alternates across queries in the current runner; p50/p95 use nearest
+rank over the recorded query samples. Hardware/load still affect timing.
+
+Candidate recall is measured by a separate untimed call to the same production
+candidate collector, before any exact fallback or rerank. Final recall and
+fallback reason come from the public query. ANN-only modes fail if they use exact
+fallback. The selective mode has a nonempty ~1/32 filter and reports its exact
+execution separately. Large workloads are diagnostic by default; an explicit
+`--min-recall` can enforce a threshold without changing any existing CI gate.
+
+Initial larger observations (seed 12345, ef=128, 64 queries/mode):
+
+| Workload | All / correlated filter / independent filter Recall@10 | ANN exact fallback |
+| --- | --- | --- |
+| 8,192 × 384, uniform dot F32, 25% initial base | 0.9078125 / 0.8921875 / 0.8625 | 0% |
+| 8,192 × 768, clustered dot BF16, 75% initial base | 1.0 / 1.0 / 1.0 | 0% |
+
+These observations demonstrate why the small deterministic gate cannot establish
+quality across workloads. The first run used exact-first paired timing; use its
+recall/counter data, not a strict CPU/ANN latency ratio. Expanded results will be
+recorded as the matrix finishes.

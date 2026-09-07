@@ -29,3 +29,4 @@ jobs:
       - run: pixi run example-persistent
       - run: pixi run example-hnsw
       - run: pixi run check-hnsw-quality
+      - run: pixi run check-post-hnsw-quality

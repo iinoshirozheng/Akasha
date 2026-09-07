@@ -11,7 +11,7 @@ Use Mojo 1.0.0 and MAX 26.5.0, the latest stable packages verified on 2026-09-07
 | --- | --- | --- | --- |
 | 31 | mmap ABI guard and complete independent OS CI | Native macOS and Linux CPU, crash, C ABI, build, examples, quality | Merged `71f86cf` into main; Actions 34086702699 passed |
 | 32 | MemTable ID lookup, live count, borrowed scans, efficient owned sorting | Scrambled IDs, stale writes, delete/reinsert, clone and recovery ordinal changes; before/after ingest and scan measurement | Complete; 67 targeted Mojo tests, 49 Python tests, 3 actual-device GPU tests passed |
-| 33 | Reproducible larger workload harness and quality observability | Fixed seeds, high dimensions, updates/deletes, filters, base/delta; candidate recall, final recall, fallback rate and end-to-end latency reported separately | Pending |
+| 33 | Reproducible larger workload harness and quality observability | Fixed seeds, high dimensions, updates/deletes, filters, base/delta; candidate recall, final recall, fallback rate and end-to-end latency reported separately | Harness and CI gate implemented; 11 smoke cells and 18 segmented tests passed; larger matrix running |
 | 34 | Reusable GPU execution resources tied to immutable F32 snapshots, ragged batches | Actual device differential tests; old/new snapshot freshness; preparation, allocation and transfer evidence | Pending |
 | 35 | Tiled distance and parallel partial Top-K with deterministic merge | All metrics, ties, odd dimensions, varied K, ragged/empty sets; actual device end-to-end comparison and bounded scratch | Pending |
 | 36 | Measured compact SIMD and HNSW allocation improvements | Codegen inspection and benchmark evidence; deterministic recall gates preserved | Pending |

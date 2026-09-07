@@ -534,6 +534,15 @@ struct SegmentedHnsw(Movable):
         memtable: MemTable,
         lookup: HnswIdOrdinalLookup,
     ) raises -> List[SearchResult]:
+        var candidates = self._search_candidates(query, k, ef_search)
+        return self._rerank(query, k, candidates^, memtable, lookup)
+
+    def _search_candidates(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+    ) raises -> List[Int]:
         self._validate_identity()
         record_distance_dispatch(
             self._distance_dispatch_counters,
@@ -585,7 +594,7 @@ struct SegmentedHnsw(Movable):
             candidates = self._collect_candidates[DISTANCE_COSINE_I8](
                 query, k, ef_search
             )
-        return self._rerank(query, k, candidates^, memtable, lookup)
+        return candidates^
 
     def search_allowed(
         mut self,
@@ -597,6 +606,22 @@ struct SegmentedHnsw(Movable):
         memtable: MemTable,
         lookup: HnswIdOrdinalLookup,
     ) raises -> List[SearchResult]:
+        var candidates = self._search_allowed_candidates(
+            query, k, ef_search, max_ef, allowed, memtable
+        )
+        return self._rerank_allowed(
+            query, k, candidates^, memtable, lookup, allowed
+        )
+
+    def _search_allowed_candidates(
+        mut self,
+        query: List[Float32],
+        k: Int,
+        ef_search: Int,
+        max_ef: Int,
+        allowed: HnswEligibility,
+        memtable: MemTable,
+    ) raises -> List[Int]:
         self._validate_identity()
         if max_ef <= 0 or ef_search > max_ef:
             raise Error("segmented HNSW widening range is invalid")
@@ -651,9 +676,7 @@ struct SegmentedHnsw(Movable):
             candidates = self._collect_allowed_candidates[DISTANCE_COSINE_I8](
                 query, k, ef_search, max_ef, allowed
             )
-        return self._rerank_allowed(
-            query, k, candidates^, memtable, lookup, allowed
-        )
+        return candidates^
 
     def _collect_candidates[
         backend_tag: Int
