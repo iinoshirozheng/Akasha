@@ -273,3 +273,56 @@ pixi run mojo build -I src benchmarks/mojo/recovery_open_bench.mojo -o /tmp/reco
 /tmp/recovery-bench prepare /tmp/akasha-recovery-benchmark
 /usr/bin/time -l /tmp/recovery-bench open /tmp/akasha-recovery-benchmark
 ```
+
+## 38: measured policy, including a boundary-tie correction
+
+The final crossover experiment paused other Akasha benchmark/test processes while
+sampling. It uses 3 warmups and 31 paired samples per cell, alternating CPU and
+resident GPU order, plus a separate cold GPU execution per sample. All 15 cells
+require exact ID agreement and bounded score error before reporting timings.
+`benchmarks/gpu_crossover.py` reports batch p50/p95, amortized cost per query,
+throughput, paired win counts, and cache state separately. These are local Apple
+M4 Pro measurements; a scalar work count is not a universal hardware cost model.
+
+This larger differential test caught a K-boundary defect: at N=32,768, D=768,
+batch=128, L2 query 81, CPU exact scores tied at 450.614 for IDs 8465 and 20590,
+while a dimension/warp-size sum excluded ID 8465. GPU reductions now use the host
+exact SIMD accumulator groups, the same half-split reduction tree and scalar
+tail. Cosine caches the CPU-computed squared norms and uses the same square-root
+product. Arbitrary partial-warp block sizes use the same per-point SIMD grouping.
+The minimized deterministic regression crosses a tile boundary and passes with
+block sizes 7/32/256. This fixes selection itself; no finite-candidate rerank or
+exact fallback hides a missed candidate. The correction supersedes 35's timings.
+
+Final medians in milliseconds (full report includes p95 and paired wins):
+
+| Metric | N×D | Batch | CPU | Resident GPU | Cold GPU |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Dot | 2,000×32 | 1 | 0.016 | 2.304 | 3.411 |
+| Dot | 8,192×384 | 32 | 1.557 | 6.463 | 15.088 |
+| Dot | 32,768×768 | 128 | 54.432 | 150.711 | 214.605 |
+| L2 | 8,192×384 | 32 | 1.622 | 6.425 | 15.027 |
+| L2 | 32,768×768 | 128 | 57.584 | 151.122 | 214.867 |
+| Cosine | 8,192×384 | 1 | 2.643 | 2.149 | 10.816 |
+| Cosine | 32,768×768 | 32 | 41.515 | 39.866 | 103.964 |
+| Cosine | 32,768×768 | 128 | 102.831 | 151.608 | 215.740 |
+
+The two resident cosine median wins occurred in 26/31 and 27/31 pairs; neither
+met the conservative diagnostic criterion of >=90% paired wins and GPU p95 below
+CPU p50. Every cold path lost. `GpuExecutionOptions()` therefore now defaults to
+`enabled=False`. An explicit `enabled=True` retains the existing work threshold,
+memory budget and actual-device execution contract. The default report states
+`disabled`; opted-in reports distinguish eligibility, cache hits, budget fallback
+and actual GPU execution. Regular exact and HNSW APIs keep their existing semantics.
+There is no fabricated cross-hardware threshold, persistent cost-model database,
+or GPU policy inside `DistanceBackend`.
+
+CPU/HNSW decisions retain observable small-collection, selectivity, matched-count,
+metric and graph-readiness reasons. The large workload matrix demonstrates that
+ANN quality depends on distribution, dimension and ef; it does not justify
+replacing those rules with a universal dimension or cardinality cutoff. Current
+CPU/HNSW comparison cells are included with the final benchmark evidence.
+
+```sh
+pixi run bench-gpu-crossover --output .build/post-hnsw/crossover
+```

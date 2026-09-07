@@ -59,7 +59,7 @@ def _same(
 def test_collection_gpu_cache_reuses_and_old_snapshot_survives_mutations() raises:
     var collection = _collection("/tmp/akasha-gpu-cache-freshness")
     var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var first = collection.search_device_dot_batch[True](queries, 3, options)
     var warm = collection.search_device_dot_batch[True](queries, 3, options)
     assert_true(first.used_gpu and warm.used_gpu)
@@ -127,7 +127,7 @@ def test_ragged_gpu_batch_handles_empty_singleton_and_large_k_for_all_metrics() 
             FilterCondition.equal("missing", PayloadValue.boolean(True))
         )
     )
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     for k in [1, 7, 64]:
         var dot = snapshot.search_device_dot_where_batch[True](
             queries, filters, k, options
@@ -158,27 +158,35 @@ def test_cache_respects_lower_budget_and_discards_failed_stream() raises:
     var large = List[List[Float32]]()
     for _ in range(64):
         large.append([1.0, 0.0, 0.0])
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var initial = snapshot.search_device_dot_batch[True](large, 10, options)
     assert_true(initial.used_gpu)
     var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
     var smaller = snapshot.search_device_dot_batch[True](
         queries,
         3,
-        GpuExecutionOptions(min_work_items=1, memory_budget_bytes=4096),
+        GpuExecutionOptions(
+            enabled=True, min_work_items=1, memory_budget_bytes=4096
+        ),
     )
     assert_true(smaller.used_gpu and smaller.timings.cache_hit)
     assert_true(smaller.timings.resident_bytes <= UInt64(4096))
     assert_equal(smaller.timings.vector_upload_bytes, UInt64(0))
     var constrained = snapshot.search_device_dot_batch[True](
-        queries, 3, GpuExecutionOptions(min_work_items=1, memory_budget_bytes=100)
+        queries,
+        3,
+        GpuExecutionOptions(
+            enabled=True, min_work_items=1, memory_budget_bytes=100
+        ),
     )
     assert_false(constrained.used_gpu)
     assert_false(Bool(snapshot._gpu_state[].cache))
     var failed = snapshot.search_device_dot_batch[True](
         queries,
         3,
-        GpuExecutionOptions(min_work_items=1, fail_before_launch=True),
+        GpuExecutionOptions(
+            enabled=True, min_work_items=1, fail_before_launch=True
+        ),
     )
     assert_false(failed.used_gpu)
     var recovered = snapshot.search_device_dot_batch[True](queries, 3, options)
@@ -193,7 +201,7 @@ def test_concurrent_queries_serialize_shared_snapshot_scratch() raises:
     var collection = _collection("/tmp/akasha-gpu-cache-concurrent")
     var snapshot = collection.snapshot()
     var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     _ = snapshot.search_device_dot_batch[True](queries, 3, options)
     var outputs = List[Int](length=8, fill=0)
 

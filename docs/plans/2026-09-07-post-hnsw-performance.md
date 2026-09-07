@@ -16,7 +16,7 @@ Use Mojo 1.0.0 and MAX 26.5.0, the latest stable packages verified on 2026-09-07
 | 35 | Tiled distance and parallel partial Top-K with deterministic merge | All metrics, ties, odd dimensions, varied K, ragged/empty sets; actual device end-to-end comparison and bounded scratch | Complete; eight actual-device tests and four planner tests passed; six paired workloads recorded |
 | 36 | Measured compact SIMD and HNSW allocation improvements | Codegen inspection and benchmark evidence; deterministic recall gates preserved | Complete; packed owned/mapped loads, accumulator experiment, exhaustive decode tests and quality gates; profiling did not justify scratch refactoring |
 | 37 | Cold/warm open and validation scratch accounting/optimization | Same CRC algorithm and corruption checks; stage timings and peak memory recorded | Complete; CRC table, sorted reciprocal audit, mincore-confirmed cold/warm benchmark, recovery and peak RSS evidence |
-| 38 | Execution policy calibrated from measured crossover | CPU/HNSW/GPU selection reasons; cold/resident, latency/throughput separated; no slower GPU default | Pending |
+| 38 | Execution policy calibrated from measured crossover | CPU/HNSW/GPU selection reasons; cold/resident, latency/throughput separated; no slower GPU default | Complete; 15 paired actual-device cells, CPU opt-in policy and K-boundary reduction regression; final CPU/HNSW comparisons recorded with 33 |
 
 ## Validation policy
 

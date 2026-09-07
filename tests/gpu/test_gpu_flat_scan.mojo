@@ -33,7 +33,7 @@ def test_real_gpu_batch_scores_and_topk_match_cpu() raises:
     var queries = List[List[Float32]]()
     queries.append([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     queries.append([7.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     for metric in [BATCH_DOT_METRIC, BATCH_L2_METRIC, BATCH_COSINE_METRIC]:
         var expected = execute_exact_batch(table, queries, 8, metric, 1)
         var actual = execute_device_batch[use_accelerator=True](

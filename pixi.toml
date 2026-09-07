@@ -34,6 +34,8 @@ bench-compaction = "mojo run -I src benchmarks/mojo/compaction_bench.mojo"
 bench-batch = "mojo run -I src benchmarks/mojo/batch_query_bench.mojo"
 bench-phase11 = { cmd = "mojo run -I src benchmarks/mojo/phase11_bench.mojo", depends-on = ["build-native-worker"] }
 bench-phase12 = "mojo run -I src benchmarks/mojo/phase12_bench.mojo"
+bench-gpu-crossover = "python benchmarks/gpu_crossover.py"
+bench-mmap-open = "python benchmarks/mmap_open.py"
 bench-phase13-gpu = "mojo run -I src benchmarks/mojo/phase13_gpu_bench.mojo"
 
 [dependencies]

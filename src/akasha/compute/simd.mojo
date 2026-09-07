@@ -3,6 +3,10 @@ from std.math import sqrt
 from std.sys import simd_width_of
 
 
+comptime EXACT_SIMD_GROUPS = 4
+comptime EXACT_WIDE_MIN_DIMENSION = 64
+
+
 comptime _FLOAT32_SIMD_WIDTH = simd_width_of[DType.float32]()
 
 
@@ -61,8 +65,8 @@ def _simd_dot_product_unchecked(
     """
     # Four native register groups shorten the accumulator dependency chain.
     # Retain the narrow loop for short vectors to avoid a long scalar tail.
-    if len(lhs) >= 64:
-        return _dot_kernel[_FLOAT32_SIMD_WIDTH * 4](lhs, rhs)
+    if len(lhs) >= EXACT_WIDE_MIN_DIMENSION:
+        return _dot_kernel[_FLOAT32_SIMD_WIDTH * EXACT_SIMD_GROUPS](lhs, rhs)
     return _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 
@@ -81,8 +85,8 @@ def _simd_l2_squared_unchecked(
 
     Callers must guarantee non-empty, equal-length, finite inputs.
     """
-    if len(lhs) >= 64:
-        return _l2_kernel[_FLOAT32_SIMD_WIDTH * 4](lhs, rhs)
+    if len(lhs) >= EXACT_WIDE_MIN_DIMENSION:
+        return _l2_kernel[_FLOAT32_SIMD_WIDTH * EXACT_SIMD_GROUPS](lhs, rhs)
     return _l2_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 

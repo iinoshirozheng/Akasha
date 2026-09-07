@@ -1,10 +1,11 @@
+from akasha.compute.simd import EXACT_SIMD_GROUPS, EXACT_WIDE_MIN_DIMENSION
 from akasha.compute.gpu.planner import GPU_TILE_POINTS
 from layout import TileTensor, TensorLayout, row_major, stack_allocation
 from max.gpu.memory import AddressSpace
 from max.gpu.sync import barrier
 from std.gpu import block_dim, block_idx, thread_idx, WARP_SIZE, lane_id
 from std.gpu.primitives import warp
-from std.math import isnan
+from std.math import isnan, sqrt
 
 
 @always_inline
@@ -24,8 +25,51 @@ def _better[
         return lhs > rhs
 
 
+@always_inline
+def _score_point[
+    metric: Int, width: Int, L: TensorLayout
+](
+    vectors: TileTensor[DType.float32, L, MutAnyOrigin],
+    queries: TileTensor[DType.float32, L, MutAnyOrigin],
+    vector_offset: Int,
+    query_offset: Int,
+    dimension: Int,
+) -> Float32:
+    """Same lane grouping, reduction tree and scalar tail as CPU exact SIMD."""
+    comptime assert vectors.flat_rank == 1 and queries.flat_rank == 1
+    var lanes = SIMD[DType.float32, width](0.0)
+    var component = 0
+    while component + width <= dimension:
+        var left = SIMD[DType.float32, width](0.0)
+        var right = SIMD[DType.float32, width](0.0)
+        comptime for lane in range(width):
+            left[lane] = rebind[Float32](
+                queries[query_offset + component + lane]
+            )
+            right[lane] = rebind[Float32](
+                vectors[vector_offset + component + lane]
+            )
+        comptime if metric == 1:
+            var delta = left - right
+            lanes += delta * delta
+        else:
+            lanes += left * right
+        component += width
+    var total = lanes.reduce_add()
+    while component < dimension:
+        var left = rebind[Float32](queries[query_offset + component])
+        var right = rebind[Float32](vectors[vector_offset + component])
+        comptime if metric == 1:
+            var delta = left - right
+            total += delta * delta
+        else:
+            total += left * right
+        component += 1
+    return total
+
+
 def distance_partial_topk[
-    metric: Int, L: TensorLayout
+    metric: Int, host_width: Int, L: TensorLayout
 ](
     vectors: TileTensor[DType.float32, L, MutAnyOrigin],
     queries: TileTensor[DType.float32, L, MutAnyOrigin],
@@ -87,7 +131,18 @@ def distance_partial_topk[
         and live.flat_rank == 1
         and best.flat_rank == 1
     )
-    if block_dim.x >= WARP_SIZE and block_dim.x % WARP_SIZE == 0:
+    # Match the host exact SIMD lane grouping; reducing all warp lanes
+    # over dimension/WARP_SIZE changes near-tie membership at the K boundary.
+    var accumulation_width = (
+        host_width * EXACT_SIMD_GROUPS if dimension
+        >= EXACT_WIDE_MIN_DIMENSION else host_width
+    )
+    var vector_end = Int(dimension) // accumulation_width * accumulation_width
+    if (
+        block_dim.x >= WARP_SIZE
+        and block_dim.x % WARP_SIZE == 0
+        and accumulation_width <= WARP_SIZE
+    ):
         var lane = lane_id()
         for point in range(tid // WARP_SIZE, count, block_dim.x // WARP_SIZE):
             var position = (
@@ -95,7 +150,11 @@ def distance_partial_topk[
                 != 0 else start + point - query_start
             )
             var score: Float32 = 0.0
-            for column in range(lane, Int(dimension), WARP_SIZE):
+            for column in range(
+                lane,
+                vector_end if lane < accumulation_width else 0,
+                accumulation_width,
+            ):
                 var lhs = rebind[Float32](
                     queries[query * Int(dimension) + column]
                 )
@@ -109,11 +168,28 @@ def distance_partial_topk[
                     score += lhs * rhs
             score = warp.sum(score)
             if lane == 0:
+                for column in range(vector_end, Int(dimension)):
+                    var lhs = rebind[Float32](
+                        queries[query * Int(dimension) + column]
+                    )
+                    var rhs = rebind[Float32](
+                        vectors[position * Int(dimension) + column]
+                    )
+                    comptime if metric == 1:
+                        var delta = lhs - rhs
+                        score += delta * delta
+                    else:
+                        score += lhs * rhs
                 comptime if metric == 2:
-                    score /= rebind[Float32](
-                        queries[Int(query_count) * Int(dimension) + query]
-                    ) * rebind[Float32](
-                        vectors[Int(point_count) * Int(dimension) + position]
+                    score /= sqrt(
+                        rebind[Float32](
+                            queries[Int(query_count) * Int(dimension) + query]
+                        )
+                        * rebind[Float32](
+                            vectors[
+                                Int(point_count) * Int(dimension) + position
+                            ]
+                        )
                     )
                 scores[point] = score
                 keys[point] = rebind[Int64](ids[position])
@@ -124,24 +200,31 @@ def distance_partial_topk[
                 Int(rebind[Int64](candidates[start + point])) if filtered
                 != 0 else start + point - query_start
             )
-            var score: Float32 = 0.0
-            for column in range(Int(dimension)):
-                var lhs = rebind[Float32](
-                    queries[query * Int(dimension) + column]
+            var score: Float32
+            if dimension >= EXACT_WIDE_MIN_DIMENSION:
+                score = _score_point[metric, host_width * EXACT_SIMD_GROUPS](
+                    vectors,
+                    queries,
+                    position * Int(dimension),
+                    query * Int(dimension),
+                    Int(dimension),
                 )
-                var rhs = rebind[Float32](
-                    vectors[position * Int(dimension) + column]
+            else:
+                score = _score_point[metric, host_width](
+                    vectors,
+                    queries,
+                    position * Int(dimension),
+                    query * Int(dimension),
+                    Int(dimension),
                 )
-                comptime if metric == 1:
-                    var delta = lhs - rhs
-                    score += delta * delta
-                else:
-                    score += lhs * rhs
             comptime if metric == 2:
-                score /= rebind[Float32](
-                    queries[Int(query_count) * Int(dimension) + query]
-                ) * rebind[Float32](
-                    vectors[Int(point_count) * Int(dimension) + position]
+                score /= sqrt(
+                    rebind[Float32](
+                        queries[Int(query_count) * Int(dimension) + query]
+                    )
+                    * rebind[Float32](
+                        vectors[Int(point_count) * Int(dimension) + position]
+                    )
                 )
             scores[point] = score
             keys[point] = rebind[Int64](ids[position])

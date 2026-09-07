@@ -24,6 +24,33 @@ def _same(
             raise Error("GPU benchmark result count differs")
         for rank in range(len(expected[query])):
             if expected[query][rank].id != actual[query][rank].id:
+                print(
+                    "mismatch query=",
+                    query,
+                    "rank=",
+                    rank,
+                    "cpu_id=",
+                    expected[query][rank].id,
+                    "cpu_score=",
+                    expected[query][rank].score,
+                    "gpu_id=",
+                    actual[query][rank].id,
+                    "gpu_score=",
+                    actual[query][rank].score,
+                )
+                for item in range(len(expected[query])):
+                    print(
+                        "rank=",
+                        item,
+                        "cpu_id=",
+                        expected[query][item].id,
+                        "cpu_score=",
+                        expected[query][item].score,
+                        "gpu_id=",
+                        actual[query][item].id,
+                        "gpu_score=",
+                        actual[query][item].score,
+                    )
                 raise Error("GPU benchmark ID differential failed")
             var score = expected[query][rank].score
             if abs(actual[query][rank].score - score) > 1.0e-4 + 1.0e-5 * abs(
@@ -87,7 +114,7 @@ def main() raises:
     var snapshot = ReadSnapshot.capture(
         config, 1, table.last_sequence, table, sparse, pins
     )
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var expected = execute_exact_batch(table, queries, 10, metric, 0)
     for _ in range(3):
         _same(expected, execute_exact_batch(table, queries, 10, metric, 0))
@@ -132,7 +159,9 @@ def main() raises:
             + String(cold_ns)
         )
     # PROFILE_BEGIN: diagnostic syncs are excluded from the samples above.
-    var profile = GpuExecutionOptions(min_work_items=1, profile=True)
+    var profile = GpuExecutionOptions(
+        enabled=True, min_work_items=1, profile=True
+    )
     var report = _resident_report(snapshot, queries, metric, profile)
     print(
         "stages metric="

@@ -37,7 +37,11 @@ def test_compile_time_disabled_device_path_matches_cpu_all_metrics() raises:
     for metric in [BATCH_DOT_METRIC, BATCH_L2_METRIC, BATCH_COSINE_METRIC]:
         var expected = execute_exact_batch(table, queries, 5, metric, 1)
         var actual = execute_device_batch[use_accelerator=False](
-            table, queries, 5, metric, GpuExecutionOptions(min_work_items=1)
+            table,
+            queries,
+            5,
+            metric,
+            GpuExecutionOptions(enabled=True, min_work_items=1),
         )
         assert_false(actual.used_gpu)
         assert_equal(actual.reason, "no accelerator")
@@ -85,9 +89,7 @@ def test_snapshot_device_fallback_preserves_filtered_results_and_close() raises:
     var collection = PersistentCollection.open(path, 2)
     for id in range(1, 7):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
         collection.upsert_document(
             id, [Float32(id), Float32(id % 3) + 1.0], fields^
         )
@@ -99,9 +101,12 @@ def test_snapshot_device_fallback_preserves_filtered_results_and_close() raises:
     )
     var expressions = List[FilterExpression]()
     expressions.append(expression^)
-    var result = snapshot.search_device_dot_where_batch[
-        use_accelerator=False
-    ](queries, expressions, 2, GpuExecutionOptions(min_work_items=1))
+    var result = snapshot.search_device_dot_where_batch[use_accelerator=False](
+        queries,
+        expressions,
+        2,
+        GpuExecutionOptions(enabled=True, min_work_items=1),
+    )
     assert_false(result.used_gpu)
     assert_equal(result.results[0][0].id, 6)
     assert_equal(result.results[0][1].id, 4)

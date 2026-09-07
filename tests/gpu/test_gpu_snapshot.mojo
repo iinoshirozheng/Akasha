@@ -32,9 +32,7 @@ def test_real_gpu_snapshot_filtered_batch_matches_cpu() raises:
     var collection = PersistentCollection.open(path, 3)
     for id in range(1, 41):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
         collection.upsert_document(
             id,
             [Float32(id), Float32(id % 7) + 0.5, Float32(id % 11)],
@@ -48,9 +46,7 @@ def test_real_gpu_snapshot_filtered_batch_matches_cpu() raises:
     for _ in range(2):
         expressions.append(
             FilterExpression.condition(
-                FilterCondition.equal(
-                    "keep", PayloadValue.boolean(True)
-                )
+                FilterCondition.equal("keep", PayloadValue.boolean(True))
             )
         )
     var expected = snapshot.search_cosine_where_batch(
@@ -62,7 +58,7 @@ def test_real_gpu_snapshot_filtered_batch_matches_cpu() raises:
         queries,
         expressions,
         5,
-        GpuExecutionOptions(min_work_items=1),
+        GpuExecutionOptions(enabled=True, min_work_items=1),
     )
     assert_true(actual.used_gpu)
     for query_index in range(len(expected)):
@@ -92,12 +88,12 @@ def test_real_device_launch_failure_falls_back_to_cpu() raises:
     var actual = snapshot.search_device_l2_batch[use_accelerator=True](
         queries,
         4,
-        GpuExecutionOptions(min_work_items=1, fail_before_launch=True),
+        GpuExecutionOptions(
+            enabled=True, min_work_items=1, fail_before_launch=True
+        ),
     )
     assert_false(actual.used_gpu)
-    assert_equal(
-        actual.reason, "gpu failure: injected GPU launch failure"
-    )
+    assert_equal(actual.reason, "gpu failure: injected GPU launch failure")
     for index in range(4):
         assert_equal(actual.results[0][index].id, expected[0][index].id)
         assert_equal(actual.results[0][index].score, expected[0][index].score)

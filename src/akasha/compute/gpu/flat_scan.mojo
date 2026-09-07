@@ -25,8 +25,9 @@ from akasha.query.batch_executor import (
 from akasha.storage.memtable import MemTable
 from layout import TileTensor, row_major
 from akasha.compute.gpu.kernels import distance_partial_topk, merge_partial_topk
-from std.math import ceildiv, isfinite, sqrt
-from std.sys import has_accelerator
+from std.math import ceildiv, isfinite
+from std.sys import has_accelerator, simd_width_of
+from akasha.compute.simd import prevalidated_simd_dot_product
 from std.time import perf_counter_ns
 from std.utils import BlockingScopedLock
 
@@ -321,14 +322,15 @@ def _execute_gpu_batch(
     start = perf_counter_ns()
     with scratch.queries.map_to_host() as host:
         for query_index in range(query_count):
-            var norm: Float32 = 0.0
             for column in range(cache.dimension):
                 var value = queries[query_index][column]
                 host[query_index * cache.dimension + column] = value
-                norm += value * value
+            var norm = prevalidated_simd_dot_product(
+                queries[query_index], queries[query_index]
+            )
             if not isfinite(norm):
                 raise Error("GPU query norm exceeds finite F32 accumulation")
-            host[query_count * cache.dimension + query_index] = sqrt(norm)
+            host[query_count * cache.dimension + query_index] = norm
     with scratch.offsets.map_to_host() as host:
         for index in range(len(offsets)):
             host[index] = Int64(offsets[index])
@@ -448,7 +450,7 @@ def _launch_gpu[
         output_scores_buffer, row_major(query_count * result_stride)
     )
     comptime partial_kernel = distance_partial_topk[
-        metric, type_of(vectors.layout)
+        metric, simd_width_of[DType.float32](), type_of(vectors.layout)
     ]
     comptime merge_kernel = merge_partial_topk[metric, type_of(vectors.layout)]
     var start = perf_counter_ns()

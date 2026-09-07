@@ -14,7 +14,7 @@ def test_gpu_planner_rejects_disabled_unavailable_and_small_workloads() raises:
     assert_false(disabled.use_gpu)
     assert_equal(disabled.reason, "disabled")
 
-    options = GpuExecutionOptions()
+    options = GpuExecutionOptions(enabled=True)
     var unavailable = plan_gpu_execution(False, 8, 1_000, 128, 10, options)
     assert_equal(unavailable.reason, "no accelerator")
     var small = plan_gpu_execution(True, 1, 32, 4, 10, options)
@@ -23,7 +23,7 @@ def test_gpu_planner_rejects_disabled_unavailable_and_small_workloads() raises:
 
 def test_gpu_planner_accounts_for_memory_and_accepts_large_work() raises:
     var constrained = GpuExecutionOptions(
-        memory_budget_bytes=1_024, min_work_items=1
+        enabled=True, memory_budget_bytes=1_024, min_work_items=1
     )
     var rejected = plan_gpu_execution(True, 8, 1_000, 128, 10, constrained)
     assert_false(rejected.use_gpu)
@@ -36,7 +36,7 @@ def test_gpu_planner_accounts_for_memory_and_accepts_large_work() raises:
         1_000,
         128,
         10,
-        GpuExecutionOptions(memory_budget_bytes=32_000_000),
+        GpuExecutionOptions(enabled=True, memory_budget_bytes=32_000_000),
     )
     assert_true(eligible.use_gpu)
     assert_equal(eligible.reason, "gpu eligible")
@@ -62,7 +62,7 @@ def test_tiled_topk_fits_without_a_dense_score_matrix() raises:
         32,
         10,
         GpuExecutionOptions(
-            min_work_items=1, memory_budget_bytes=32 * 1024 * 1024
+            enabled=True, min_work_items=1, memory_budget_bytes=32 * 1024 * 1024
         ),
     )
     assert_true(plan.use_gpu)
@@ -74,7 +74,7 @@ def test_tiled_topk_fits_without_a_dense_score_matrix() raises:
         769,
         33,
         800,
-        GpuExecutionOptions(min_work_items=1),
+        GpuExecutionOptions(enabled=True, min_work_items=1),
         candidate_count=1155,
         candidate_tiles=7,
     )
@@ -83,6 +83,19 @@ def test_tiled_topk_fits_without_a_dense_score_matrix() raises:
         _ = plan_gpu_execution(
             True, 1, 10, 4, 1, GpuExecutionOptions(), candidate_tiles=-2
         )
+
+
+def test_gpu_is_opt_in_until_a_workload_has_a_measured_crossover() raises:
+    var plan = plan_gpu_execution(
+        True, 128, 32768, 768, 10, GpuExecutionOptions()
+    )
+    assert_false(plan.use_gpu)
+    assert_equal(plan.reason, "disabled")
+    var opted_in = plan_gpu_execution(
+        True, 128, 32768, 768, 10, GpuExecutionOptions(enabled=True)
+    )
+    assert_true(opted_in.use_gpu)
+    assert_equal(opted_in.reason, "gpu eligible")
 
 
 def main() raises:

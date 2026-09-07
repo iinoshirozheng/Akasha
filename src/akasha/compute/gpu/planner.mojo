@@ -2,7 +2,8 @@ comptime GPU_TILE_POINTS = 256
 
 
 struct GpuExecutionOptions:
-    """Host-side policy limits for optional GPU query execution."""
+    """Host policy limits. GPU is opt-in until this hardware has a measured benefit.
+    """
 
     var enabled: Bool
     var memory_budget_bytes: Int
@@ -14,7 +15,7 @@ struct GpuExecutionOptions:
     def __init__(
         out self,
         *,
-        enabled: Bool = True,
+        enabled: Bool = False,
         memory_budget_bytes: Int = 512 * 1024 * 1024,
         min_work_items: Int = 65_536,
         block_size: Int = 256,

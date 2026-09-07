@@ -182,7 +182,7 @@ var pq = snapshot.search_pq_l2(
     query, 10, subquantizers=4, centroids=16, rerank_k=50
 )
 var device = snapshot.search_device_l2_batch[use_accelerator=True](
-    queries, 10, GpuExecutionOptions()
+    queries, 10, GpuExecutionOptions(enabled=True)
 )
 ```
 
@@ -191,6 +191,13 @@ subvector centroids. `rerank_k=0` returns approximate scores; a value at least
 `k` rescores those candidates against the snapshot's original Float32 vectors.
 Single-query parallel scan uses fixed ordinal ranges and deterministic heap
 merge, so worker scheduling cannot alter ties.
+
+GPU execution is opt-in: `GpuExecutionOptions()` defaults to CPU execution.
+The measured Apple M4 Pro workloads still favor CPU after GPU optimization;
+`enabled=True` permits the existing work/memory checks and actual-device path.
+Run `pixi run bench-gpu-crossover` on your hardware and compare cold and resident
+costs separately. Results expose the planner reason, cache hit, allocation/upload
+counts and optional stage timings. See [the measured results](docs/benchmarks/post-hnsw-performance.md).
 
 Caller-provided sparse vectors use ascending `(term_id, weight)` elements:
 

@@ -1,7 +1,8 @@
+from akasha.compute.simd import prevalidated_simd_dot_product
 from akasha.storage.memtable import MemTable
 from max.gpu.host import DeviceBuffer, DeviceContext
 from std.time import perf_counter_ns
-from std.math import isfinite, sqrt
+from std.math import isfinite
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
@@ -158,19 +159,18 @@ struct GpuSnapshotCache(Movable):
                 for position in range(len(ordinals)):
                     ref entry = table.entry_ref_at(ordinals[position])
                     ids[position] = Int64(entry.id)
-                    var norm: Float32 = 0.0
                     for column in range(self.dimension):
                         var value = entry.values[column]
                         vectors[position * self.dimension + column] = value
-                        norm += value * value
+                    var norm = prevalidated_simd_dot_product(
+                        entry.values, entry.values
+                    )
                     if not isfinite(norm):
                         raise Error(
                             "GPU vector norm exceeds finite F32 accumulation"
                         )
                     self.point_norms[position] = norm
-                    vectors[
-                        self.point_count * self.dimension + position
-                    ] = sqrt(norm)
+                    vectors[self.point_count * self.dimension + position] = norm
         timings.upload_ns += perf_counter_ns() - start
         timings.vector_upload_bytes = (
             UInt64(self.point_count) * UInt64(self.dimension) * 4

@@ -16,8 +16,7 @@ def _vector(seed: Int) -> List[Float32]:
     var values = List[Float32](capacity=_DIMENSION)
     for column in range(_DIMENSION):
         values.append(
-            Float32((seed * 31 + column * 17 + seed * column) % 257)
-            / 41.0
+            Float32((seed * 31 + column * 17 + seed * column) % 257) / 41.0
             + 0.01
         )
     return values^
@@ -61,11 +60,9 @@ def _run_workload(table: MemTable, batch_size: Int) raises:
     for query_index in range(batch_size):
         queries.append(_vector(50_000 + query_index))
     var cpu_start = perf_counter_ns()
-    var expected = execute_exact_batch(
-        table, queries, 10, BATCH_L2_METRIC, 0
-    )
+    var expected = execute_exact_batch(table, queries, 10, BATCH_L2_METRIC, 0)
     var cpu_ns = perf_counter_ns() - cpu_start
-    var options = GpuExecutionOptions(min_work_items=1)
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var warmup = execute_device_batch[use_accelerator=True](
         table, queries, 10, BATCH_L2_METRIC, options
     )

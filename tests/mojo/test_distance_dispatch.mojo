@@ -683,7 +683,7 @@ def test_execution_policy_keeps_cpu_gpu_fallback_and_hnsw_layers_separate() rais
         queries,
         12,
         BATCH_DOT_METRIC,
-        GpuExecutionOptions(min_work_items=1),
+        GpuExecutionOptions(enabled=True, min_work_items=1),
     )
     var ann = index.search(query, 12, ef_search=12)
     var expected_backend = String("portable-simd-", portable_simd_width())
