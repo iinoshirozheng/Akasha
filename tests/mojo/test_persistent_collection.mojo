@@ -14,6 +14,7 @@ from akasha.storage.manifest import (
 )
 from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.segment import (
+    encode_segment_v3,
     SEGMENT_KIND_BASE,
     SEGMENT_KIND_DELTA,
     write_segment_v3,
@@ -325,6 +326,47 @@ def test_recovery_skips_retained_pre_checkpoint_wal() raises:
     assert_equal(len(result), 1)
     assert_equal(result[0].id, 7)
     assert_equal(recovered.last_sequence(), UInt64(1))
+
+
+def test_flush_preserves_base_delta_bytes_and_noop_checkpoint() raises:
+    var path = _test_directory("flush-bytes")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 2)
+    collection.upsert(10, [1.0, 2.0])
+    collection.upsert(20, [3.0, 4.0])
+    collection.flush()
+    var base = List[MemTableEntry]()
+    base.append(MemTableEntry(10, 1, False, [1.0, 2.0]))
+    base.append(MemTableEntry(20, 2, False, [3.0, 4.0]))
+    var expected_base = encode_segment_v3(2, SEGMENT_KIND_BASE, 0, 2, base)
+    assert_equal(read_file_bytes(path + "/segment-base-2.bin"), expected_base)
+
+    collection.upsert(10, [5.0, 6.0])
+    collection.delete(20)
+    collection.upsert(30, [7.0, 8.0])
+    collection.flush()
+    var delta = List[MemTableEntry]()
+    delta.append(MemTableEntry(10, 3, False, [5.0, 6.0]))
+    delta.append(MemTableEntry(20, 4, True, List[Float32]()))
+    delta.append(MemTableEntry(30, 5, False, [7.0, 8.0]))
+    var expected_delta = encode_segment_v3(2, SEGMENT_KIND_DELTA, 3, 5, delta)
+    assert_equal(read_file_bytes(path + "/segment-base-2.bin"), expected_base)
+    assert_equal(read_file_bytes(path + "/segment-delta-5.bin"), expected_delta)
+    var manifest = load_manifest(path, 2)
+    collection.flush()
+    var unchanged = load_manifest(path, 2)
+    assert_equal(unchanged.last_sequence, manifest.last_sequence)
+    assert_equal(len(unchanged.segments), len(manifest.segments))
+    assert_equal(read_file_bytes(path + "/segment-delta-5.bin"), expected_delta)
+    assert_equal(len(read_file_bytes(path + "/wal.bin")), 0)
+    collection.close()
+
+    var reopened = PersistentCollection.open(path, 2)
+    assert_equal(reopened.last_sequence(), UInt64(5))
+    assert_equal(reopened.get(10).value().vector[1], Float32(6.0))
+    assert_equal(Bool(reopened.get(20)), False)
+    assert_equal(reopened.get(30).value().vector[1], Float32(8.0))
+    reopened.close()
 
 
 def test_recovery_applies_base_and_deltas_in_manifest_sequence_order() raises:

@@ -1,7 +1,7 @@
 # 下一輪工作包 checklist
 
 依據：[plan.md](plan.md)。基線 `a8895c6`，engine `9b98dbc`。
-這份清單是規劃；尚未授予新的功能完成狀態。#39–#46 是建議交付序號。
+使用者已授權實作 #39–#42；其餘維持規劃。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
 ## #39：移除 incremental flush 被丟棄的全量複製
@@ -10,9 +10,9 @@
 clone 所有 live records。
 
 **驗收：**
-- [ ] base checkpoint、incremental upsert/delete、無新寫入的既有行為與 durable bytes 保持一致。
-- [ ] 大 base 加少量 delta 時，不呼叫被丟棄的 full materialization；記錄前後 copied bytes／peak memory 與 flush 時間。
-- [ ] reopen、tombstone、checkpoint crash ordering 的既有測試通過。
+- [x] base checkpoint、incremental upsert/delete、無新寫入的既有行為與 durable bytes 保持一致。
+- [x] 大 base 加少量 delta 時，不呼叫被丟棄的 full materialization；記錄前後 copied bytes／peak memory 與 flush 時間。
+- [x] reopen、tombstone、checkpoint crash ordering 的既有測試通過。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_persistent_collection.mojo`、
 `pixi run mojo run -I src tests/mojo/test_compaction.mojo`、
@@ -22,6 +22,8 @@ clone 所有 live records。
 **相依：** 無。**規模：** M。
 **預計檔案：** `src/akasha/api/collection.mojo`、
 `tests/mojo/test_persistent_collection.mojo`、`benchmarks/mojo/compaction_bench.mojo`。
+
+**完成證據：** [#39 量測與驗證](../docs/benchmarks/2026-09-07-official-primitives.md)。
 
 ## #40：Bitmap 使用官方 bit primitives
 

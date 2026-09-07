@@ -1,7 +1,7 @@
 # #31–#38 之後的執行規劃
 
 規劃日期：2026-09-07。複核基線：`main` 的 `a8895c6`；engine 是 `9b98dbc`。
-本輪交付規劃與文件更新，不包含引擎實作。
+規劃後使用者已授權實作 #39–#42；進度與驗證以 todo.md 為準。
 工作包 #39–#46 是延續既有交付序號的建議編號，不是已建立的 GitHub issues。
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。

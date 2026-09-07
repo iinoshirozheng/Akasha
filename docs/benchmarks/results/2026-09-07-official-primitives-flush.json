@@ -1,0 +1,297 @@
+{
+  "binaries": {
+    "before": {
+      "path": "/Users/ray/Projects/Akasha/.build/official-primitives/flush-before",
+      "sha256": "6c38084f37bad0081fecb2bd251afff86f7ff7f1af8d6cef67274a47584dcf6a"
+    },
+    "after": {
+      "path": "/Users/ray/Projects/Akasha/.build/official-primitives/flush-after",
+      "sha256": "c4755a92d0e1e124148be1bcf43e6d7f03eb62972dd10514d97b4963149415af"
+    }
+  },
+  "rss_scope": "whole open/update/flush/close child; excludes fixture construction and compiler",
+  "latency_scope": "public collection.flush only; includes index/cache publication and fsync",
+  "trials": [
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215154000,
+        "peak_rss_bytes": 330645504,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 217407000,
+        "peak_rss_bytes": 330776576,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215814000,
+        "peak_rss_bytes": 330678272,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215653000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215935000,
+        "peak_rss_bytes": 330711040,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 218144000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215966000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215116000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 218423000,
+        "peak_rss_bytes": 354418688,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 219405000,
+        "peak_rss_bytes": 330678272,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 211751000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 216976000,
+        "peak_rss_bytes": 330645504,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215974000,
+        "peak_rss_bytes": 330694656,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 211683000,
+        "peak_rss_bytes": 330711040,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "source_baseline": "1246e27",
+  "after_source_change": "collection._flush_unlocked: materialize live_entries only in the first-checkpoint branch",
+  "trace": {
+    "workload": {
+      "points": 128,
+      "dimension": 8,
+      "delta": 4,
+      "payload_bytes": 64
+    },
+    "method": "isolated source copies print on MemTable.live_entries and MemTableEntry.clone; count only between flush_begin and flush_end; no instrumentation in timed binaries",
+    "result": {
+      "before": {
+        "live_entries_calls": 1,
+        "record_clones": 260,
+        "vector_bytes": 8320
+      },
+      "after": {
+        "live_entries_calls": 0,
+        "record_clones": 132,
+        "vector_bytes": 4224
+      }
+    },
+    "remaining_clone_source": "authoritative_index_checksum calls MemTable.entry_at for all slots"
+  },
+  "workload_logical_bytes_avoided": {
+    "vectors": 2097152,
+    "payload_strings": 33554432,
+    "method": "full live clone removed; formula from fixed workload, excluding field names, entry headers and allocator overhead"
+  }
+}

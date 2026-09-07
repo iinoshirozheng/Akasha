@@ -69,7 +69,7 @@ from akasha.storage.manifest import (
 )
 from akasha.storage.lock import CollectionLock
 from akasha.storage.operations import backup_storage, StorageInspection
-from akasha.storage.memtable import MemTable
+from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.segment import (
     read_segment,
     SEGMENT_KIND_BASE,
@@ -1475,13 +1475,15 @@ struct PersistentCollection:
         var level = 1
         var min_sequence = UInt64(0)
         var segment_prefix = String("segment-base-")
-        var entries = self._memtable.live_entries()
+        var entries: List[MemTableEntry]
         if has_previous_manifest:
             kind = SEGMENT_KIND_DELTA
             level = 0
             min_sequence = previous_sequence + 1
             segment_prefix = "segment-delta-"
             entries = self._memtable.entries_after(previous_sequence)
+        else:
+            entries = self._memtable.live_entries()
         var segment_name = segment_prefix + String(self._last_sequence) + ".bin"
         var temporary_path = self._path + "/" + segment_name + ".tmp"
         var final_path = self._path + "/" + segment_name
