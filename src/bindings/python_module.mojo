@@ -14,6 +14,7 @@ from akasha import (
     QueryControl,
     CancellationToken,
 )
+from akasha.index.sparse import validate_sparse
 from akasha.index.flat import SearchResult
 from akasha.storage.operations import (
     inspect_storage,
@@ -23,6 +24,7 @@ from akasha.storage.operations import (
 from std.os import abort
 from std.python import Python, PythonObject
 from std.python.bindings import PythonModuleBuilder
+from std.python.numpy import from_numpy_array
 
 
 struct BoundCollection(Movable, Writable):
@@ -324,73 +326,10 @@ struct BoundCollection(Movable, Writable):
         """Consume validated Arrow-owned buffers without Python list staging."""
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
-        var row_count = Int(py=descriptor["row_count"])
-        if row_count <= 0 or row_count > 65_536:
-            raise Error("Arrow batch row count is invalid")
-        var ids = descriptor["ids"]
-        var vectors = descriptor["vectors"]
-        var dimension = self[].inner.value().dimension
-        if len(ids) != row_count or len(vectors) != row_count * dimension:
-            raise Error("Arrow primitive buffer length mismatch")
-
-        var mutations = List[BatchMutation](capacity=row_count)
-        var sparse_rows = List[List[SparseElement]](capacity=row_count)
-        var has_sparse = Bool(py=descriptor["has_sparse"])
-        var sparse_offsets = descriptor["sparse_offsets"]
-        var sparse_terms = descriptor["sparse_terms"]
-        var sparse_weights = descriptor["sparse_weights"]
-        var sparse_value_base = Int(py=descriptor["sparse_value_base"])
-        if has_sparse and len(sparse_offsets) != row_count + 1:
-            raise Error("Arrow sparse offsets length mismatch")
-
-        for row in range(row_count):
-            var vector = List[Float32](capacity=dimension)
-            for column in range(dimension):
-                vector.append(Float32(py=vectors[row * dimension + column]))
-            var fields = List[DocumentField]()
-            for payload in descriptor["payloads"]:
-                var raw = payload["values"][row].as_py()
-                if Bool(py=raw == Python.none()):
-                    continue
-                fields.append(
-                    DocumentField(
-                        String(py=payload["name"]),
-                        _payload_value(String(py=payload["type"]), raw),
-                    )
-                )
-            mutations.append(
-                BatchMutation.document_upsert(
-                    Int(py=ids[row]), vector^, fields^
-                )
-            )
-
-            var sparse = List[SparseElement]()
-            if has_sparse:
-                var begin = Int(py=sparse_offsets[row]) - sparse_value_base
-                var end = Int(py=sparse_offsets[row + 1]) - sparse_value_base
-                if begin < 0 or end < begin or end > len(sparse_terms):
-                    raise Error("Arrow sparse offsets are invalid")
-                if len(sparse_terms) != len(sparse_weights):
-                    raise Error("Arrow sparse value buffers are misaligned")
-                for index in range(begin, end):
-                    sparse.append(
-                        SparseElement(
-                            Int(py=sparse_terms[index]),
-                            Float32(py=sparse_weights[index]),
-                        )
-                    )
-            sparse_rows.append(sparse^)
-
-        # PersistentCollection performs complete batch validation before WAL
-        # sequence allocation. Sparse rows have also been fully materialized.
-        _ = self[].inner.value().apply_batch(mutations)
-        if has_sparse:
-            for row in range(row_count):
-                if len(sparse_rows[row]) != 0:
-                    self[].inner.value().upsert_sparse(
-                        Int(py=ids[row]), sparse_rows[row]
-                    )
-        return PythonObject(row_count)
+        return _apply_arrow_buffers(
+            self[].inner.value(), descriptor, descriptor["ids"], descriptor["vectors"],
+            descriptor["sparse_offsets"], descriptor["sparse_terms"], descriptor["sparse_weights"],
+        )
 
     @staticmethod
     def search_dot(
@@ -1120,3 +1059,83 @@ def PyInit__kernel() abi("C") -> PythonObject:
         return module.finalize()
     except error:
         abort(String("failed to create Akasha Python module: ", error))
+
+
+def _apply_arrow_buffers(
+    mut collection: PersistentCollection,
+    descriptor: PythonObject,
+    ids_array: PythonObject,
+    vectors_array: PythonObject,
+    offsets_array: PythonObject,
+    terms_array: PythonObject,
+    weights_array: PythonObject,
+) raises -> PythonObject:
+    """Immutable Python arguments keep each owner alive for its typed borrow."""
+    var row_count = Int(py=descriptor["row_count"])
+    if row_count <= 0 or row_count > 65_536:
+        raise Error("Arrow batch row count is invalid")
+    var ids = from_numpy_array[DType.int64](ids_array)
+    var vectors = from_numpy_array[DType.float32](vectors_array)
+    var dimension = collection.dimension
+    if len(ids) != row_count or len(vectors) != row_count * dimension:
+        raise Error("Arrow primitive buffer length mismatch")
+
+    var mutations = List[BatchMutation](capacity=row_count)
+    var sparse_rows = List[List[SparseElement]](capacity=row_count)
+    var has_sparse = Bool(py=descriptor["has_sparse"])
+    var sparse_offsets = from_numpy_array[DType.int32](offsets_array)
+    var sparse_terms = from_numpy_array[DType.int64](terms_array)
+    var sparse_weights = from_numpy_array[DType.float32](weights_array)
+    if has_sparse and len(sparse_offsets) != row_count + 1:
+        raise Error("Arrow sparse offsets length mismatch")
+
+    for row in range(row_count):
+        var vector = List[Float32](capacity=dimension)
+        vector.extend(vectors[row * dimension : (row + 1) * dimension])
+        var fields = List[DocumentField]()
+        for payload in descriptor["payloads"]:
+            var raw = payload["values"][row].as_py()
+            if Bool(py=raw == Python.none()):
+                continue
+            fields.append(
+                DocumentField(
+                    String(py=payload["name"]),
+                    _payload_value(String(py=payload["type"]), raw),
+                )
+            )
+        mutations.append(
+            BatchMutation.document_upsert(
+                Int(ids[row]), vector^, fields^
+            )
+        )
+
+        var sparse = List[SparseElement]()
+        if has_sparse:
+            var begin = Int(sparse_offsets[row])
+            var end = Int(sparse_offsets[row + 1])
+            if begin < 0 or end <= begin or end > len(sparse_terms):
+                raise Error("Arrow sparse offsets are invalid")
+            if len(sparse_terms) != len(sparse_weights):
+                raise Error("Arrow sparse value buffers are misaligned")
+            for index in range(begin, end):
+                sparse.append(
+                    SparseElement(
+                        Int(sparse_terms[index]),
+                        sparse_weights[index],
+                    )
+                )
+            validate_sparse(sparse)
+        sparse_rows.append(sparse^)
+
+    # PersistentCollection performs complete batch validation before WAL
+    # sequence allocation. Every sparse row was also validated before any write.
+    # Dense batch and subsequent sparse writes retain their existing separate
+    # WAL commits; this method does not promise combined failure atomicity.
+    _ = collection.apply_batch(mutations)
+    if has_sparse:
+        for row in range(row_count):
+            if len(sparse_rows[row]) != 0:
+                collection.upsert_sparse(
+                    Int(ids[row]), sparse_rows[row]
+                )
+    return PythonObject(row_count)

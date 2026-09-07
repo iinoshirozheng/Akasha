@@ -1,0 +1,130 @@
+{
+  "label": "after45",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "pyarrow": "21.0.0",
+  "numpy": "2.4.6",
+  "cells": [
+    {
+      "rows": 512,
+      "dimension": 256,
+      "payload_bytes_per_row": 0,
+      "sparse_elements_per_row": 0,
+      "runs": [
+        {
+          "prepare_ns": 88167,
+          "kernel_ns": 201640875,
+          "ingress_ns": 201731209,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 1376,
+          "wal_file_bytes": 536612
+        },
+        {
+          "prepare_ns": 85667,
+          "kernel_ns": 199745125,
+          "ingress_ns": 199831959,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 1376,
+          "wal_file_bytes": 536612
+        },
+        {
+          "prepare_ns": 78709,
+          "kernel_ns": 200557958,
+          "ingress_ns": 200638375,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 1376,
+          "wal_file_bytes": 536612
+        },
+        {
+          "prepare_ns": 84166,
+          "kernel_ns": 199853334,
+          "ingress_ns": 199939250,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 1376,
+          "wal_file_bytes": 536612
+        },
+        {
+          "prepare_ns": 70583,
+          "kernel_ns": 218607250,
+          "ingress_ns": 218679625,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 1376,
+          "wal_file_bytes": 536612
+        }
+      ],
+      "allocation_probe": {
+        "prepare_ns": 200583,
+        "kernel_ns": 199829417,
+        "ingress_ns": 200032042,
+        "python_traced_peak_bytes": 4839,
+        "arrow_prepare_allocated_delta_bytes": 1376,
+        "wal_file_bytes": 536612
+      },
+      "median": {
+        "prepare_ns": 84166,
+        "kernel_ns": 200557958,
+        "ingress_ns": 200638375
+      }
+    },
+    {
+      "rows": 512,
+      "dimension": 256,
+      "payload_bytes_per_row": 64,
+      "sparse_elements_per_row": 4,
+      "runs": [
+        {
+          "prepare_ns": 166958,
+          "kernel_ns": 221948292,
+          "ingress_ns": 222115750,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 3096,
+          "wal_file_bytes": 618020
+        },
+        {
+          "prepare_ns": 143791,
+          "kernel_ns": 221107917,
+          "ingress_ns": 221252250,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 3096,
+          "wal_file_bytes": 618020
+        },
+        {
+          "prepare_ns": 184041,
+          "kernel_ns": 223185417,
+          "ingress_ns": 223369958,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 3096,
+          "wal_file_bytes": 618020
+        },
+        {
+          "prepare_ns": 144042,
+          "kernel_ns": 221734750,
+          "ingress_ns": 221879167,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 3096,
+          "wal_file_bytes": 618020
+        },
+        {
+          "prepare_ns": 151375,
+          "kernel_ns": 220977291,
+          "ingress_ns": 221129208,
+          "python_traced_peak_bytes": null,
+          "arrow_prepare_allocated_delta_bytes": 3096,
+          "wal_file_bytes": 618020
+        }
+      ],
+      "allocation_probe": {
+        "prepare_ns": 621375,
+        "kernel_ns": 222293625,
+        "ingress_ns": 222916167,
+        "python_traced_peak_bytes": 16893,
+        "arrow_prepare_allocated_delta_bytes": 3096,
+        "wal_file_bytes": 618020
+      },
+      "median": {
+        "prepare_ns": 151375,
+        "kernel_ns": 221734750,
+        "ingress_ns": 221879167
+      }
+    }
+  ]
+}

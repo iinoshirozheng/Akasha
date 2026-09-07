@@ -129,6 +129,8 @@ clone 所有 live records。
 **相依：** 無；整合驗證可在 #43 後一次完成。**規模：** S。
 **預計檔案：** `src/akasha/query/fusion.mojo`、`tests/mojo/test_rank_fusion.mojo`。
 
+**#44 commit：** `ff00ddd`；RRF／persistent sparse 共 10 tests 通過。
+
 ## Checkpoint C：#43／#44
 
 - [x] Sparse／hybrid／snapshot narrow tests 通過；記錄效能與 retained memory。
@@ -141,9 +143,9 @@ F32 與 sparse primitive buffers 一次借用成 Span，消除元素級 Python b
 同步呼叫期間保留 producer owner；WAL/MemTable 仍依既有 owned 合約接收資料。
 
 **驗收：**
-- [ ] 指標相同、sliced offset／dtype／contiguity／readonly／bounds／null 檢查有真實 buffer 測試；原 producer 可安全釋放。
-- [ ] compiled primitive loop 不再呼叫逐元素 Python 轉型；寫入／重開／dense+sparse 結果相同，不擴大 atomic batch 宣稱。
-- [ ] payload materialization 與 durable owned copy 單獨計量；不宣稱整條 ingest 零複製，不提供會懸空的 retained Span。
+- [x] 指標相同、sliced offset／dtype／contiguity／readonly／bounds／null 檢查有真實 buffer 測試；原 producer 可安全釋放。
+- [x] compiled primitive loop 不再呼叫逐元素 Python 轉型；寫入／重開／dense+sparse 結果相同，不擴大 atomic batch 宣稱。
+- [x] payload materialization 與 durable owned copy 單獨計量；不宣稱整條 ingest 零複製，不提供會懸空的 retained Span。
 
 **驗證：** `pixi run build-python`、
 `pixi run env PYTHONPATH=python:. pytest tests/python/test_arrow_c_data.py -q`、

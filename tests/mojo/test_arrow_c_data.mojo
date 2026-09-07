@@ -4,6 +4,8 @@ from bindings.arrow_c_data import (
     validate_fixed_size_vectors,
     validate_sparse_offsets,
 )
+from std.python import Python, PythonObject
+from std.python.numpy import from_numpy_array
 from std.testing import (
     assert_equal,
     assert_false,
@@ -41,6 +43,33 @@ def test_arrow_consumer_release_callback_is_exactly_once() raises:
     with assert_raises():
         lease.release()
     assert_equal(lease.release_callback_calls(), 1)
+
+
+def _check_typed_borrow[dtype: DType](
+    array: PythonObject, expected_address: Int
+) raises:
+    var values = from_numpy_array[dtype](array)
+    assert_equal(Int(values.unsafe_ptr()), expected_address)
+    assert_equal(len(values), 3)
+    assert_equal(values[0], Scalar[dtype](2))
+    assert_equal(values[2], Scalar[dtype](4))
+
+
+def test_arrow_numpy_native_span_pointer_identity_and_readonly() raises:
+    var np = Python.import_module("numpy")
+    var pa = Python.import_module("pyarrow")
+    var floats = pa.array(np.arange(8, dtype="float32")).slice(2, 3)
+    var ids = pa.array(np.arange(8, dtype="int64")).slice(2, 3)
+    var offsets = pa.array(np.arange(8, dtype="int32")).slice(2, 3)
+    var float_view = floats.to_numpy(zero_copy_only=True)
+    assert_false(Bool(py=float_view.flags.writeable))
+    _check_typed_borrow[DType.float32](float_view, Int(py=floats.buffers()[1].address) + 8)
+    _check_typed_borrow[DType.int64](ids.to_numpy(zero_copy_only=True), Int(py=ids.buffers()[1].address) + 16)
+    _check_typed_borrow[DType.int32](offsets.to_numpy(zero_copy_only=True), Int(py=offsets.buffers()[1].address) + 8)
+    with assert_raises():
+        _ = from_numpy_array[DType.float32](float_view)
+    with assert_raises():
+        _check_typed_borrow[DType.int64](float_view, 0)
 
 
 def main() raises:

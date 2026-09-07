@@ -12,6 +12,9 @@ swap-remove 同步修正 lookup、空 terms 回收、原分數累計順序保留
 5 sparse、5 persistent sparse、6 snapshot tests 通過。RRF `_accumulate` 也改為 Dict
 查找 slots，維持 dense→sparse 的 Float32 累計順序；5 RRF + 5 persistent sparse
 tests 通過。A07 的上述查找均已替換，posting 內刪除仍掃該 term 的 postings。
+A08/Z03 的 Arrow primitive ingress 已使用 PyArrow NumPy view + 官方 readonly Span；
+20 Python + 3 Mojo tests 驗證真實 buffer、slice、壽命與無 Python element indexing。
+A08 其他 list-based Python API、Z04 result export 與 durable owned copies 未被此項移除。
 [量測與限制](../benchmarks/2026-09-07-lookup-arrow.md)。
 
 ## #39–#42 實作進度

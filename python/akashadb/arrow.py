@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import math
 from typing import Any
 
 from .database import Collection
@@ -60,7 +59,8 @@ def upsert_record_batch(
     """Synchronously ingest Arrow buffers without Python list materialization.
 
     Accepted values are necessarily copied into Akasha's WAL/MemTable ownership
-    domain. The Arrow producer remains alive for the complete kernel call.
+    domain. The Arrow producer remains alive for the complete kernel call; its
+    buffers must not be mutated or resized until this synchronous call returns.
     """
 
     owns_lease = not isinstance(producer, ArrowBatchLease)
@@ -87,10 +87,12 @@ def results_to_record_batch(results: Sequence[SearchResult]) -> Any:
 
 
 def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
+    import numpy as np
     import pyarrow as pa
 
     if not isinstance(batch, pa.RecordBatch):
         raise TypeError("Arrow producer must yield one RecordBatch")
+    batch.validate(full=True)
     if batch.num_rows <= 0:
         raise ValueError("Arrow record batch cannot be empty")
     names = batch.schema.names
@@ -121,12 +123,9 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
             "vector must be non-null fixed-size float32 list matching collection dimension"
         )
 
-    id_view = _primitive_view(ids, "q", ids.offset, batch.num_rows)
-    vector_start = vectors.offset * collection.dimension + vectors.values.offset
+    id_view = _primitive_view(ids, 0, batch.num_rows)
     vector_view = _primitive_view(
-        vectors.values,
-        "f",
-        vector_start,
+        vectors.values, vectors.offset * collection.dimension,
         batch.num_rows * collection.dimension,
     )
 
@@ -134,10 +133,9 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
     has_weights = "sparse_weights" in names
     if has_terms != has_weights:
         raise ValueError("sparse term and weight columns must appear together")
-    sparse_offsets: Any = memoryview(b"")
-    sparse_terms: Any = memoryview(b"")
-    sparse_weights: Any = memoryview(b"")
-    sparse_value_base = 0
+    sparse_offsets = np.empty(0, dtype=np.int32)
+    sparse_terms = np.empty(0, dtype=np.int64)
+    sparse_weights = np.empty(0, dtype=np.float32)
     if has_terms:
         terms = batch.column("sparse_term_ids")
         weights = batch.column("sparse_weights")
@@ -154,32 +152,28 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
         weight_offsets = weights.offsets
         if not term_offsets.equals(weight_offsets):
             raise ValueError("sparse term and weight offsets must match")
-        sparse_offsets = _primitive_view(
-            term_offsets, "i", term_offsets.offset, batch.num_rows + 1
-        )
-        sparse_value_base = terms.values.offset
-        if weights.values.offset != sparse_value_base:
-            raise ValueError("sparse child array offsets must match")
-        sparse_terms = _primitive_view(
-            terms.values, "q", terms.values.offset, len(terms.values)
-        )
-        sparse_weights = _primitive_view(
-            weights.values, "f", weights.values.offset, len(weights.values)
-        )
-        for row in range(batch.num_rows):
-            begin = int(sparse_offsets[row]) - sparse_value_base
-            end = int(sparse_offsets[row + 1]) - sparse_value_base
-            if begin < 0 or end <= begin or end > len(sparse_terms):
-                raise ValueError("sparse offsets must identify non-empty bounded rows")
-            previous = -1
-            for index in range(begin, end):
-                term = int(sparse_terms[index])
-                weight = float(sparse_weights[index])
-                if term < 0 or term <= previous:
-                    raise ValueError("sparse term IDs must be non-negative and ascending")
-                if not math.isfinite(weight) or weight == 0.0:
-                    raise ValueError("sparse weights must be finite and non-zero")
-                previous = term
+        sparse_offsets = _primitive_view(term_offsets, 0, batch.num_rows + 1)
+        # Arrow list offsets index the logical child array. Child slicing is
+        # already applied by to_numpy; do not subtract the child's offset.
+        sparse_terms = _primitive_view(terms.values, 0, len(terms.values))
+        sparse_weights = _primitive_view(weights.values, 0, len(weights.values))
+        if (
+            len(sparse_terms) != len(sparse_weights)
+            or sparse_offsets[0] < 0
+            or sparse_offsets[-1] > len(sparse_terms)
+            or np.any(sparse_offsets[1:] <= sparse_offsets[:-1])
+        ):
+            raise ValueError("sparse offsets must identify non-empty bounded rows")
+        begin, end = int(sparse_offsets[0]), int(sparse_offsets[-1])
+        active_terms = sparse_terms[begin:end]
+        active_weights = sparse_weights[begin:end]
+        invalid_order = active_terms[1:] <= active_terms[:-1]
+        # Adjacent values in different rows need not be ascending.
+        invalid_order[sparse_offsets[1:-1] - begin - 1] = False
+        if np.any(active_terms < 0) or np.any(invalid_order):
+            raise ValueError("sparse term IDs must be non-negative and ascending")
+        if not np.all(np.isfinite(active_weights)) or np.any(active_weights == 0.0):
+            raise ValueError("sparse weights must be finite and non-zero")
 
     payloads: list[dict[str, Any]] = []
     type_names = {
@@ -208,23 +202,16 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
         "sparse_offsets": sparse_offsets,
         "sparse_terms": sparse_terms,
         "sparse_weights": sparse_weights,
-        "sparse_value_base": sparse_value_base,
         "payloads": payloads,
         "owners": batch,
     }
 
 
-def _primitive_view(
-    array: Any, format_code: str, start: int, count: int
-) -> memoryview:
-    buffer = array.buffers()[1]
-    if buffer is None:
-        raise ValueError("Arrow primitive data buffer is missing")
-    values = memoryview(buffer).cast(format_code)
-    end = start + count
-    if start < 0 or end > len(values):
+def _primitive_view(array: Any, start: int, count: int) -> Any:
+    """Borrow an Arrow numeric slice; retain its owner through NumPy.base."""
+    if start < 0 or count < 0 or start + count > len(array):
         raise ValueError("Arrow primitive buffer bounds are invalid")
-    return values[start:end]
+    return array.slice(start, count).to_numpy(zero_copy_only=True, writable=False)
 
 
 # Compatibility copying helpers. Their names deliberately do not claim C Data
