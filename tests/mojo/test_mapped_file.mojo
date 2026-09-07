@@ -196,5 +196,23 @@ def test_default_owner_is_closed_and_harmless() raises:
         _ = mapped.checked_slice(UInt64(0), UInt64(0))
 
 
+def test_packed_unaligned_load_checks_full_range_and_lifetime() raises:
+    var path = _fixture_path("packed")
+    _write_page_fixture(path)
+    var mapped = MappedFile.open_readonly(path)
+    var values = mapped.load_scalars[DType.uint16, 4](1)
+    for lane in range(4):
+        assert_equal(
+            values[lane], UInt16(1 + 2 * lane) | (UInt16(2 + 2 * lane) << 8)
+        )
+    with assert_raises():
+        _ = mapped.load_scalars[DType.uint16, 4](_PAGE_BYTES - 7)
+    with assert_raises():
+        _ = mapped.load_scalars[DType.uint16, 4](-1)
+    mapped.close()
+    with assert_raises():
+        _ = mapped.load_scalars[DType.uint16, 4](0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -164,3 +164,51 @@ Resident 8,192×384×32 now retains 12,857,752 device bytes. Stage profiling sep
 `distance_partial_topk_sync_ns` from `merge_sync_ns`; both include launch and
 synchronization overhead. These GPU paths remain slower than CPU at these shapes.
 Raw logs: `.build/post-hnsw/gpu35-*`; compile and execute the same commands as 34.
+
+## 36: compact loads and accumulator measurements
+
+A 2-second native `sample` of the original 8,192×1,536 uniform F16 build placed
+1,512/1,664 main-thread samples in member/member distance and 133 in query/member
+distance. Allocation had one sample. The original run was stopped after more than
+40 minutes without a complete cell; its partial timing is not reported as a result.
+The evidence prioritizes scalar decode over another build-scratch refactor. Existing
+construction/search scratch and reciprocal-link contracts remain in use.
+
+Generated ARM64 assembly confirmed per-byte bounds checks, scalar `fcvt` and stack
+lane insertion. The dot specialization already eliminated the unused L2 arithmetic.
+Owned and mmap distance paths now use bounded packed loads. Float conversion keeps
+finite-value checks; I8 widens packed signed bytes and still validates the maximum
+code and safe accumulation bound. Mapped loads return copied SIMD values and do not
+expose raw pointers beyond their owner. Tails and unaligned ranges remain bounded.
+
+`compact_distance_bench.mojo` covers all 11 supported backend tags and dimensions
+31/384/768/1536, five samples of 2,000 calls with changing slots. On Apple M4 Pro,
+median nanoseconds/call at D=1,536 (dot):
+
+| Scalar | Query before | Query after | Member before | Member after |
+| --- | ---: | ---: | ---: | ---: |
+| F32 | 274.5 | 285.0 | 274.0 | 287.5 |
+| BF16 | 2986.5 | 340.0 | 5555.5 | 351.0 |
+| F16 | 3062.5 | 346.5 | 5608.0 | 353.0 |
+| I8 | 3947.0 | 291.5 | 3829.5 | 322.0 |
+
+Assembly now contains packed `fcvtl`, BF16 `shll`, and I8 `sshll` conversions. The
+portable implementation does not assume native integer dot-product instructions.
+The separate accumulator benchmark compares one/two/four native register groups:
+at D=1,536, dot was roughly 281/137/76 ns and L2 290/154/81 ns. General exact SIMD
+kernels use four groups at dimensions >=64 and keep the original narrow short-vector
+loop. HNSW floating accumulation order is retained.
+
+Validation includes all 65,536 encodings for each F16/BF16 representation, signed
+I8 extension, invalid/truncated/closed mmap access, high-dimensional scalar/SIMD
+comparison, all 11 owned/mapped/segmented backend pairs, compact rerank quality and
+existing locked F32 quality gates. The broader production matrix is separately
+reported under 33; microkernel timings do not imply collection-level speedups.
+
+Reproduce:
+
+```sh
+pixi run mojo run -I src benchmarks/mojo/compact_distance_bench.mojo
+pixi run mojo run -I src benchmarks/mojo/simd_accumulator_bench.mojo
+pixi run mojo build --emit asm -I src benchmarks/mojo/compact_distance_bench.mojo -o /tmp/compact.s
+```

@@ -72,5 +72,10 @@ def test_simd_rejects_invalid_vectors() raises:
         _ = simd_l2_squared_distance(lhs, mismatched)
 
 
+def test_four_register_accumulators_and_high_dimensional_tails() raises:
+    for size in [64, 65, 127, 384, 769, 1536]:
+        _assert_matches_scalar(size)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -167,6 +167,27 @@ struct MappedFile(Movable):
             raise Error("mapped byte offset is out of bounds")
         return self._base.value()[unsafe_offset=offset]
 
+    @always_inline
+    def load_scalars[
+        dtype: DType, width: Int
+    ](self, byte_offset: Int) raises -> SIMD[dtype, width]:
+        """Copy a bounded unaligned native-endian chunk, without exposing a pointer.
+        """
+        self._ensure_open()
+        comptime byte_count = width * size_of[Scalar[dtype]]()
+        if (
+            byte_offset < 0
+            or byte_count > self._length
+            or byte_offset > self._length - byte_count
+        ):
+            raise Error("mapped scalar chunk is out of bounds")
+        return (
+            self._base.value()
+            .unsafe_offset(byte_offset)
+            .unsafe_bitcast[Scalar[dtype]]()
+            .unsafe_load[width=width, alignment=1]()
+        )
+
     def checked_slice(
         ref self, offset: UInt64, length: UInt64
     ) raises -> MappedBytes[origin_of(self)]:

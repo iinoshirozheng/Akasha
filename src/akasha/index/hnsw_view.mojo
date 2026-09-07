@@ -38,7 +38,7 @@ from akasha.index.hnsw_core import (
 )
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswSearchStats
-from akasha.index.hnsw_storage import HnswGraphAccess
+from akasha.index.hnsw_storage import HnswGraphAccess, _decode_packed_float
 from akasha.storage.mapped_file import MappedFile
 from std.collections import Dict
 from std.memory import bitcast
@@ -428,20 +428,14 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             var lanes = SIMD[DType.int32, width](0)
             var component = 0
             while component + width <= self._config.dimension:
-                var left = SIMD[DType.int32, width](0)
-                var right = SIMD[DType.int32, width](0)
-                for lane in range(width):
-                    left[lane] = Int32(query[component + lane])
-                    right[lane] = Int32(
-                        bitcast[DType.int8](
-                            self._mapping.byte_at(
-                                self._vector_offset
-                                + scalar_base
-                                + component
-                                + lane
-                            )
-                        )
-                    )
+                var left = (
+                    query.unsafe_ptr()
+                    .unsafe_load[width=width](component)
+                    .cast[DType.int32]()
+                )
+                var right = self._mapping.load_scalars[DType.int8, width](
+                    self._vector_offset + scalar_base + component
+                ).cast[DType.int32]()
                 lanes += left * right
                 component += width
             var accumulator = lanes.reduce_add()
@@ -475,29 +469,24 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 var left = query.unsafe_ptr().unsafe_load[width=width](
                     component
                 )
-                var right = SIMD[DType.float32, width](0.0)
-                for lane in range(width):
-                    var scalar = scalar_base + component + lane
-                    comptime if (
-                        backend_tag == DISTANCE_DOT_F32
-                        or backend_tag == DISTANCE_L2_F32
-                        or backend_tag == DISTANCE_COSINE_F32
-                    ):
-                        right[lane] = bitcast[DType.float32](
-                            self._read_u32(self._vector_offset + scalar * 4)
+                var scalar = scalar_base + component
+                var right: SIMD[DType.float32, width]
+                comptime if backend_tag == DISTANCE_DOT_F32 or backend_tag == DISTANCE_L2_F32 or backend_tag == DISTANCE_COSINE_F32:
+                    right = self._mapping.load_scalars[DType.float32, width](
+                        self._vector_offset + scalar * 4
+                    )
+                elif backend_tag == DISTANCE_DOT_BF16 or backend_tag == DISTANCE_L2_BF16 or backend_tag == DISTANCE_COSINE_BF16:
+                    right = _decode_packed_float[DType.bfloat16, width](
+                        self._mapping.load_scalars[DType.uint16, width](
+                            self._vector_offset + scalar * 2
                         )
-                    elif (
-                        backend_tag == DISTANCE_DOT_BF16
-                        or backend_tag == DISTANCE_L2_BF16
-                        or backend_tag == DISTANCE_COSINE_BF16
-                    ):
-                        right[lane] = decode_bf16(
-                            self._read_u16(self._vector_offset + scalar * 2)
+                    )
+                else:
+                    right = _decode_packed_float[DType.float16, width](
+                        self._mapping.load_scalars[DType.uint16, width](
+                            self._vector_offset + scalar * 2
                         )
-                    else:
-                        right[lane] = decode_f16(
-                            self._read_u16(self._vector_offset + scalar * 2)
-                        )
+                    )
                 product_lanes += left * right
                 var difference = left - right
                 l2_lanes += difference * difference

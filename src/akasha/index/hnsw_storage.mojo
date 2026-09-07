@@ -30,14 +30,59 @@ from akasha.compute.quantization import (
     validate_i8_decoded_component_bound,
 )
 from std.collections import Dict
-from std.math import isfinite
+from std.math import abs, isfinite
 from std.memory import bitcast
 from std.sys import simd_width_of
+from std.sys.info import is_little_endian
 
 
 comptime HNSW_EMPTY_NEIGHBOR = UInt32.MAX
 comptime _UINT32_MAX_AS_INT = 4_294_967_295
 comptime _UINT16_MAX_AS_INT = 65_535
+
+
+@always_inline
+def _load_compact_float[
+    scalar: DType, width: Int
+](bytes: List[UInt8], offset: Int) raises -> SIMD[DType.float32, width]:
+    """Decode a complete validated chunk; tails use width=1.
+
+    Storage is little endian. Unaligned loads never read beyond the chunk and
+    finite-value validation remains active for corrupted in-memory storage.
+    """
+    if offset < 0 or width * 2 > len(bytes) or offset > len(bytes) - width * 2:
+        raise Error("compact vector chunk exceeds storage")
+    var bits = (
+        bytes.unsafe_ptr()
+        .unsafe_bitcast[UInt16]()
+        .unsafe_load[width=width, alignment=1](offset // 2)
+    )
+    # All currently supported mmap/CPU targets are little endian. Keep owned
+    # storage decoding portable when a big-endian compiler target is added.
+    comptime if not is_little_endian():
+        bits = (bits >> 8) | (bits << 8)
+    return _decode_packed_float[scalar, width](bits)
+
+
+@always_inline
+def _decode_packed_float[
+    scalar: DType, width: Int
+](bits: SIMD[DType.uint16, width]) raises -> SIMD[DType.float32, width]:
+    var values = bitcast[scalar](bits).cast[DType.float32]()
+    if not isfinite(values).reduce_and():
+        raise Error("compact graph scalars must be finite")
+    return values
+
+
+@always_inline
+def _load_compact_i8[
+    width: Int
+](bytes: List[UInt8], offset: Int) raises -> SIMD[DType.int32, width]:
+    if offset < 0 or width > len(bytes) or offset > len(bytes) - width:
+        raise Error("compact vector chunk exceeds storage")
+    return bitcast[DType.int8](
+        bytes.unsafe_ptr().unsafe_load[width=width](offset)
+    ).cast[DType.int32]()
 
 
 trait HnswGraphAccess:
@@ -532,19 +577,15 @@ struct HnswStorage(HnswGraphAccess):
             var maximum_code = 0
             var component = 0
             while component + width <= self.dimension:
-                var left = SIMD[DType.int32, width](0)
-                var right = SIMD[DType.int32, width](0)
-                for lane in range(width):
-                    left[lane] = Int32(query[component + lane])
-                    var code = bitcast[DType.int8](
-                        self.vector_bytes[offset + component + lane]
-                    )
-                    right[lane] = Int32(code)
-                    var magnitude = Int(code)
-                    if magnitude < 0:
-                        magnitude = -magnitude
-                    if magnitude > maximum_code:
-                        maximum_code = magnitude
+                var left = (
+                    query.unsafe_ptr()
+                    .unsafe_load[width=width](component)
+                    .cast[DType.int32]()
+                )
+                var right = _load_compact_i8[width](
+                    self.vector_bytes, offset + component
+                )
+                maximum_code = max(maximum_code, Int(abs(right).reduce_max()))
                 lanes += left * right
                 component += width
             var accumulator = lanes.reduce_add()
@@ -579,7 +620,7 @@ struct HnswStorage(HnswGraphAccess):
                 var left = query.unsafe_ptr().unsafe_load[width=width](
                     component
                 )
-                var right = SIMD[DType.float32, width](0.0)
+                var right: SIMD[DType.float32, width]
                 comptime if (
                     backend_tag == DISTANCE_DOT_F32
                     or backend_tag == DISTANCE_L2_F32
@@ -593,19 +634,13 @@ struct HnswStorage(HnswGraphAccess):
                     or backend_tag == DISTANCE_L2_BF16
                     or backend_tag == DISTANCE_COSINE_BF16
                 ):
-                    for lane in range(width):
-                        var scalar = (offset + component + lane) * 2
-                        var bits = UInt16(self.vector_bytes[scalar]) | (
-                            UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
-                        )
-                        right[lane] = decode_bf16(bits)
+                    right = _load_compact_float[DType.bfloat16, width](
+                        self.vector_bytes, (offset + component) * 2
+                    )
                 else:
-                    for lane in range(width):
-                        var scalar = (offset + component + lane) * 2
-                        var bits = UInt16(self.vector_bytes[scalar]) | (
-                            UInt16(self.vector_bytes[scalar + 1]) << UInt16(8)
-                        )
-                        right[lane] = decode_f16(bits)
+                    right = _load_compact_float[DType.float16, width](
+                        self.vector_bytes, (offset + component) * 2
+                    )
                 product_lanes += left * right
                 var difference = left - right
                 l2_lanes += difference * difference
@@ -663,27 +698,14 @@ struct HnswStorage(HnswGraphAccess):
             var rhs_maximum = 0
             var component = 0
             while component + width <= self.dimension:
-                var left = SIMD[DType.int32, width](0)
-                var right = SIMD[DType.int32, width](0)
-                for lane in range(width):
-                    var lhs_code = bitcast[DType.int8](
-                        self.vector_bytes[lhs_offset + component + lane]
-                    )
-                    var rhs_code = bitcast[DType.int8](
-                        self.vector_bytes[rhs_offset + component + lane]
-                    )
-                    left[lane] = Int32(lhs_code)
-                    right[lane] = Int32(rhs_code)
-                    var lhs_magnitude = Int(lhs_code)
-                    if lhs_magnitude < 0:
-                        lhs_magnitude = -lhs_magnitude
-                    if lhs_magnitude > lhs_maximum:
-                        lhs_maximum = lhs_magnitude
-                    var rhs_magnitude = Int(rhs_code)
-                    if rhs_magnitude < 0:
-                        rhs_magnitude = -rhs_magnitude
-                    if rhs_magnitude > rhs_maximum:
-                        rhs_maximum = rhs_magnitude
+                var left = _load_compact_i8[width](
+                    self.vector_bytes, lhs_offset + component
+                )
+                var right = _load_compact_i8[width](
+                    self.vector_bytes, rhs_offset + component
+                )
+                lhs_maximum = max(lhs_maximum, Int(abs(left).reduce_max()))
+                rhs_maximum = max(rhs_maximum, Int(abs(right).reduce_max()))
                 lanes += left * right
                 component += width
             var accumulator = lanes.reduce_add()
@@ -727,8 +749,8 @@ struct HnswStorage(HnswGraphAccess):
             var l2_lanes = SIMD[DType.float32, width](0.0)
             var component = 0
             while component + width <= self.dimension:
-                var left = SIMD[DType.float32, width](0.0)
-                var right = SIMD[DType.float32, width](0.0)
+                var left: SIMD[DType.float32, width]
+                var right: SIMD[DType.float32, width]
                 comptime if (
                     backend_tag == DISTANCE_DOT_F32
                     or backend_tag == DISTANCE_L2_F32
@@ -741,45 +763,20 @@ struct HnswStorage(HnswGraphAccess):
                         width=width
                     ](rhs_offset + component)
                 else:
-                    for lane in range(width):
-                        comptime if (
-                            backend_tag == DISTANCE_DOT_BF16
-                            or backend_tag == DISTANCE_L2_BF16
-                            or backend_tag == DISTANCE_COSINE_BF16
-                        ):
-                            var lhs_scalar = (lhs_offset + component + lane) * 2
-                            var rhs_scalar = (rhs_offset + component + lane) * 2
-                            var lhs_bits = UInt16(
-                                self.vector_bytes[lhs_scalar]
-                            ) | (
-                                UInt16(self.vector_bytes[lhs_scalar + 1])
-                                << UInt16(8)
-                            )
-                            var rhs_bits = UInt16(
-                                self.vector_bytes[rhs_scalar]
-                            ) | (
-                                UInt16(self.vector_bytes[rhs_scalar + 1])
-                                << UInt16(8)
-                            )
-                            left[lane] = decode_bf16(lhs_bits)
-                            right[lane] = decode_bf16(rhs_bits)
-                        else:
-                            var lhs_scalar = (lhs_offset + component + lane) * 2
-                            var rhs_scalar = (rhs_offset + component + lane) * 2
-                            var lhs_bits = UInt16(
-                                self.vector_bytes[lhs_scalar]
-                            ) | (
-                                UInt16(self.vector_bytes[lhs_scalar + 1])
-                                << UInt16(8)
-                            )
-                            var rhs_bits = UInt16(
-                                self.vector_bytes[rhs_scalar]
-                            ) | (
-                                UInt16(self.vector_bytes[rhs_scalar + 1])
-                                << UInt16(8)
-                            )
-                            left[lane] = decode_f16(lhs_bits)
-                            right[lane] = decode_f16(rhs_bits)
+                    comptime if backend_tag == DISTANCE_DOT_BF16 or backend_tag == DISTANCE_L2_BF16 or backend_tag == DISTANCE_COSINE_BF16:
+                        left = _load_compact_float[DType.bfloat16, width](
+                            self.vector_bytes, (lhs_offset + component) * 2
+                        )
+                        right = _load_compact_float[DType.bfloat16, width](
+                            self.vector_bytes, (rhs_offset + component) * 2
+                        )
+                    else:
+                        left = _load_compact_float[DType.float16, width](
+                            self.vector_bytes, (lhs_offset + component) * 2
+                        )
+                        right = _load_compact_float[DType.float16, width](
+                            self.vector_bytes, (rhs_offset + component) * 2
+                        )
                 product_lanes += left * right
                 var difference = left - right
                 l2_lanes += difference * difference

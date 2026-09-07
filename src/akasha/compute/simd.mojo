@@ -59,6 +59,10 @@ def _simd_dot_product_unchecked(
 
     Callers must guarantee non-empty, equal-length, finite inputs.
     """
+    # Four native register groups shorten the accumulator dependency chain.
+    # Retain the narrow loop for short vectors to avoid a long scalar tail.
+    if len(lhs) >= 64:
+        return _dot_kernel[_FLOAT32_SIMD_WIDTH * 4](lhs, rhs)
     return _dot_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 
@@ -77,6 +81,8 @@ def _simd_l2_squared_unchecked(
 
     Callers must guarantee non-empty, equal-length, finite inputs.
     """
+    if len(lhs) >= 64:
+        return _l2_kernel[_FLOAT32_SIMD_WIDTH * 4](lhs, rhs)
     return _l2_kernel[_FLOAT32_SIMD_WIDTH](lhs, rhs)
 
 
