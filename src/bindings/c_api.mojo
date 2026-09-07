@@ -200,10 +200,10 @@ def akasha_collection_open(
         return _invalid(error, "collection config must not be null")
     if _is_null(out_collection):
         return _invalid(error, "out_collection must not be null")
-    var output = out_collection.unsafe_bitcast[
-        Optional[OpaquePointer[MutUntrackedOrigin]]
-    ]()
-    output[] = None
+    # `akasha_collection_t **` is a C pointer slot. Read and write its fixed
+    # 64-bit representation directly instead of depending on Mojo Optional's
+    # niche layout across the ABI boundary.
+    _store_u64(out_collection, 0, UInt64(0))
     var owned_path: String
     var config: CollectionConfig
     try:
@@ -218,7 +218,7 @@ def akasha_collection_open(
         var holder = OwnedPointer(collection^)
         var allocation = holder^.unsafe_take_allocation()
         var raw = allocation^.unsafe_leak()
-        output[] = Optional(raw.unsafe_bitcast[NoneType]())
+        _store_u64(out_collection, 0, UInt64(Int(raw)))
         return _STATUS_OK
     except caught:
         return _engine_error(error, String(caught))
@@ -234,16 +234,15 @@ def akasha_collection_close(
         return _STATUS_INVALID_ARGUMENT
     if _is_null(collection_pointer):
         return _invalid(error, "collection pointer must not be null")
-    var slot = collection_pointer.unsafe_bitcast[
-        Optional[OpaquePointer[MutUntrackedOrigin]]
-    ]()
-    var maybe_handle = slot[]
-    if not maybe_handle:
+    var handle_address = _load_u64(collection_pointer, 0)
+    if handle_address == 0:
         return _STATUS_OK
-    var handle = maybe_handle.value()
     # Invalidate caller storage before running fallible shutdown. The owned
     # allocation below always releases the object, including on error.
-    slot[] = None
+    _store_u64(collection_pointer, 0, UInt64(0))
+    var handle = Pointer[NoneType, MutUntrackedOrigin](
+        unsafe_from_address=Int(handle_address)
+    )
     var holder = OwnedPointer[PersistentCollection](
         unsafe_from_opaque_pointer=handle
     )
