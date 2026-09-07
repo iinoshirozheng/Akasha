@@ -27,7 +27,9 @@ Online backup opens the collection, checkpoints accepted WAL state, pins the
 committed manifest generation, verifies every referenced file, copies immutable
 files, and publishes the destination manifest last. Restore repeats strict
 validation and also publishes its target manifest last. The target must not
-already contain a committed manifest.
+already contain a committed manifest, dense WAL, or sparse WAL. A WAL-only
+collection is authoritative even without a manifest and is never overwritten
+or merged by restore.
 
 Logical export writes one owned point per NDJSON line, including vector, typed
 payload fields, and sparse elements. Import parses and validates the complete

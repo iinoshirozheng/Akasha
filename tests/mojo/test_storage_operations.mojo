@@ -121,5 +121,45 @@ def test_backup_and_restore_preserve_non_default_collection_identity() raises:
     reopened.close()
 
 
+def test_restore_rejects_targets_with_uncommitted_authoritative_wal() raises:
+    var source = String("/tmp/akasha-phase15-ops-wal-source")
+    var backup = String("/tmp/akasha-phase15-ops-wal-backup")
+    var target = String("/tmp/akasha-phase15-ops-wal-target")
+    var sparse_target = String("/tmp/akasha-phase15-ops-sparse-wal-target")
+    _reset(source)
+    _reset(backup)
+    _reset(target)
+    _reset(sparse_target)
+
+    var source_collection = PersistentCollection.open(source, 2)
+    source_collection.upsert(100, [1.0, 0.0])
+    source_collection.flush()
+    _ = source_collection.backup_to(backup)
+    source_collection.close()
+
+    # A WAL-only collection has no committed manifest but is authoritative.
+    var target_collection = PersistentCollection.open(target, 2)
+    target_collection.upsert(7, [0.0, 1.0])
+    target_collection.close()
+    assert_false(path_exists(target + "/manifest.bin"))
+    assert_true(path_exists(target + "/wal.bin"))
+
+    with assert_raises():
+        _ = restore_storage(backup, target, 2)
+    assert_false(path_exists(target + "/manifest.bin"))
+
+    var reopened = PersistentCollection.open(target, 2)
+    assert_true(Bool(reopened.get(7)))
+    assert_false(Bool(reopened.get(100)))
+    reopened.close()
+
+    # Reject sparse state independently, before inspecting or copying it.
+    write_file_sync(sparse_target + "/sparse.wal", [UInt8(0xA5)])
+    with assert_raises():
+        _ = restore_storage(backup, sparse_target, 2)
+    assert_false(path_exists(sparse_target + "/manifest.bin"))
+    assert_equal(read_file_bytes(sparse_target + "/sparse.wal")[0], UInt8(0xA5))
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

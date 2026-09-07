@@ -138,6 +138,10 @@ def backup_storage(
     ensure_directory(target)
     if path_exists(target + "/manifest.bin"):
         raise Error("backup target already contains a committed manifest")
+    if path_exists(target + "/wal.bin") or path_exists(
+        target + "/sparse.wal"
+    ):
+        raise Error("backup target already contains authoritative WAL state")
     var report = inspect_storage(source, expected_dimension)
     var manifest = load_manifest(source, expected_dimension)
     if collection_config_exists(source):
