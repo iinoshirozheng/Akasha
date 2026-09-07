@@ -1,15 +1,22 @@
 # Akasha 單機目標：生命週期、Arrow、向量型別與效能
 
-日期：2026-09-07。研究基線：`94ff55f`；這是建議路線，未宣稱下列工作已實作。
+日期：2026-09-07。原研究基線：`94ff55f`；#31–#38 完成後以 `a8895c6` 複核。
+已驗證 engine 為 `9b98dbc`。下列 M1–M6 是能力路線，完成狀態依個別項目判定。
 依據：[函式與資料複製盤點](../research/2026-09-07-lifecycle-zero-copy-api-audit.md)。
 既有 [#31–#38 執行計畫](2026-09-07-post-hnsw-performance.md) 保留原本編號與交付狀態。
 本文 M1–M6 是能力里程碑，不是 repository 原有 Phase 或 issue 編號。
+下一輪可執行工作包見 [tasks/plan.md](../../tasks/plan.md)，唯一執行 checklist 在
+[tasks/todo.md](../../tasks/todo.md)。#31–#38 已完成，GPU／SIMD／CRC 工作不重排。
 
 ## 目標到第幾步
 
 **M4 完成時，應具備約定向量型別、Qdrant 類型的單機生命週期，以及可安全借用的
 Arrow 資料交換。M5 完成索引／查詢效能工作；M6 通過實測後，才能說在已驗收的
 workload 上達到 Qdrant 同等速度。** 不能用完成項目數代替效能證據。
+
+M 編號表示能力相依關係，不是所有工作必須串行：同步 Arrow typed ingress 可以在
+現有 producer lease 上先做；長壽命 scanner／generation-backed export 才依賴 M3。
+Qdrant 對照基線與高維 recall–latency 曲線應提前建立，M6 保留作最終驗收。
 
 Qdrant 用作單機搜尋與維護行為的對照，Lance／Arrow 用作 columnar data、schema、
 scanner 與 buffer ownership 的參考。單機目標不需要先完成 Raft、跨機 sharding
@@ -106,9 +113,9 @@ copy budget：借用交換不複製完整 primitive buffer；snapshot 不複製 
   IVF／binary／MaxSim 分別有適用的索引與 rerank 路徑，避免一律塞進同一 HNSW。
 - 延用 #33 的 candidate recall／final recall／fallback observability；補上新型別與
   lifecycle 的工作負載，不用降低 recall 換取表面速度。
-- 整合 #34–#38 的 GPU context/buffer 重用、distance／Top-K、CPU SIMD、載入驗證、
-  crossover。MAX 官方 kernels 通過可 import、Metal／CUDA target、ties 與 scratch
-  capability gate 才採用；GPU ANN 視目標 workload 的實測缺口另行加入。
+- #34–#38 的 GPU context/buffer 重用、distance／Top-K、CPU SIMD、載入驗證與
+  crossover 已完成。M3 ownership 改動須保持這些既有能力；官方 kernel 的後續替換仍
+  需通過 target／ties／allocation gate，GPU ANN 視目標 workload 的實測缺口另行加入。
 - Planner 根據 filter selectivity、index readiness、資料量／維度、K／batch、device
   residency 決定 exact／ANN／GPU，建立可讀取的選擇原因與 bounded work。
 
@@ -135,9 +142,9 @@ Qdrant 沒有直接對應的型別／metric，採適合的獨立 oracle／refere
 |---:|---|---|---|
 | 1. HNSW、layout、pruning、mmap | USearch、Qdrant | HNSW 已合併；持續量測 scratch／layout | M1、M5 |
 | 2. Filtered ANN／不足 K 補搜 | Qdrant、pgvector | 已有 filtered candidate expansion；需新型別與高選擇性測量 | M5、M6 |
-| 3. GPU context／resident buffers | Faiss、cuVS、MAX | #34 正在開發，需連到 generation owner | M3、M5 |
-| 4. Tiled distance／parallel Top-K | Faiss、cuVS、MAX | #35 待交付；先查官方 kernels | M1、M5 |
-| 5. CPU SIMD／compact layout | USearch、Faiss、Mojo stdlib | 已有 SIMD；#36 擴充量測 | M1、M5 |
+| 3. GPU context／resident buffers | Faiss、cuVS、MAX | #34 完成；M3 改 owner 時保留 freshness 與資源預算 | M3、M5 |
+| 4. Tiled distance／parallel Top-K | Faiss、cuVS、MAX | #35/#38 完成並驗證；後續僅依 profiling 或等價官方 API 替換 | M1、M5 |
+| 5. CPU SIMD／compact layout | USearch、Faiss、Mojo stdlib | #36 完成 compact loads 與量測；scratch 未有改寫依據 | M1、M5 |
 | 6. SQ／PQ／IVF | Faiss、Lance | SQ8/PQ 已有，但 snapshot 路徑逐 query build；IVF 另補 | M3、M5 |
 | 7. GPU ANN／CAGRA／multi-GPU | cuVS、Faiss | 另設 workload 與硬體目標；非單機 CPU parity 必備 | M5 後按需要 |
 | 8. WAL／LSM／compaction／backpressure | RocksDB、Qdrant | 已有 WAL、manifest、segments、recovery；copy/lock 問題待解 | M1、M3 |
@@ -159,6 +166,7 @@ Arrow ownership 依 [C Data Interface](https://arrow.apache.org/docs/format/CDat
 Mojo typed borrow 依 [from_numpy_array](https://mojolang.org/docs/std/python/numpy/from_numpy_array/)。
 其他專案是各課題的閱讀入口，並非聲稱其每個實作可直接連結到 Mojo／Metal。
 
-下一個獨立實作切片：**M1 的 bit/List primitives 與 incremental flush 複製修正**。
-隨後定 M2 ownership/schema 合約，將 M3 lifecycle 作為 M4 zero-copy exchange 的基礎。
-與正在進行的 #34–#38 以檔案與 commit 邊界協調，整合後重新盤點 GPU owner 與 snapshot。
+下一個獨立實作切片：**#39 incremental flush 複製修正**；#40–#42 整理官方 bit／List
+primitives，#43/#44 優化 sparse／fusion lookup，#45 打通同步 Arrow primitive borrow。
+#46 定案 generation／vector-field ownership 合約及量測基線，再把 M3 拆成小型實作包。
+不必等待所有新向量型別完成才改善 F32 snapshot，也不必等待 M4 完整交付才移除 Arrow boxing。

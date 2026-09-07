@@ -5,6 +5,26 @@
 Pixi 鎖定 MAX 26.5.0。使用者指定的 [Mojo 文件](https://mojolang.org/docs/)
 及 [llms.txt](https://mojolang.org/llms.txt) 也標示 1.0.0。
 
+## #31–#38 完成後的複核
+
+2026-09-07 已以 `a8895c6` 複核；engine 基線是已驗證的 `9b98dbc`。
+原始 inventory／探針及下方歷史查核保留 `94ff55f` 基線，不把舊行號冒充目前行號。
+
+| 舊項目 | 複核結果 | 後續處理 |
+|---|---|---|
+| Z08 GPU 每次建立 context／全量 staging／filtered candidate MemTable | #34 的 snapshot cache 與 ragged candidates 已解決；#35 加入 tiled partial Top-K，#38 校準 policy | 關閉原始重複工作；M3 改 ownership 時保留 cache freshness／budget／close 回歸 |
+| A15 自製 GPU kernels | 已完成 #35/#38 的實作與實機驗證；官方 kernels 是否可等價替代仍是獨立判斷 | 不因有自訂 kernel 就重寫已驗證路徑；只有公開 API 適用或 profiling 顯示收益才再開替換工作 |
+| A12 CRC 速度、Z10 mapped validation 記憶體 | #37 已做相同 polynomial 的 CRC table、排序 reciprocal audit 與 peak RSS 量測 | 保留格式與安全檢查；不重做 CRC 優化。WAL owned decode copies（Z06）仍另有改善空間 |
+| A16 compact SIMD、M5 execution crossover | #36/#38 已完成；GPU 保持 opt-in | 沿用證據，沒有新資料不增加 kernel／scratch 改寫 |
+| A01–A10 的通用 API 候選（上述已完成部分除外） | bitmap、List loops、heaps/sorts、sparse/fusion lookup、Arrow boxing 仍存在 | 先做可直接驗收的小替換；heap/sort 需語意與量測適配 |
+| Z01/Z02/Z03/Z04/Z07/Z09、L02–L06 | snapshot clone、flush 無效 clone、Arrow materialization、whole-file backup、query-time PQ、長鎖仍存在 | 列入下一輪，不能由 GPU cache 完成推定共享 authoritative generation 已完成 |
+
+#31–#38 的 macOS／Linux CI 已成功，Apple M4 Pro 的 9 個實機 GPU tests 有交付紀錄。
+高維 uniform workload 在 ef=128 的最低 Recall@10 約 0.684375，且尚無 Qdrant 同條件
+效能比較；它們是新目標的缺口，不回溯改寫原工作包的驗收範圍。
+目前執行順序以 [tasks/plan.md](../../tasks/plan.md) 與
+[tasks/todo.md](../../tasks/todo.md) 為準。
+
 ## 結論與盤點範圍
 
 目標包含 Qdrant 類型的資料／索引生命週期、可量測的最少資料複製，以及優先
