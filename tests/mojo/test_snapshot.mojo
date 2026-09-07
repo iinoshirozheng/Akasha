@@ -1,4 +1,5 @@
 from akasha import (
+    CollectionConfig,
     DocumentField,
     FilterCondition,
     FilterExpression,
@@ -6,6 +7,7 @@ from akasha import (
     PersistentCollection,
     ReadSnapshot,
     SparseElement,
+    MetricKind,
 )
 from akasha.storage.filesystem import (
     ensure_directory,
@@ -114,6 +116,30 @@ def test_snapshot_preserves_owned_documents_search_and_filters() raises:
     var live_document = collection.get(1)
     assert_equal(live_document.value().vector[0], Float32(9.0))
     assert_false(Bool(collection.get(2)))
+    collection.close()
+
+
+def test_snapshot_preserves_collection_configuration_identity() raises:
+    var path = String("/tmp/akasha-task28-snapshot-config")
+    _reset(path)
+    remove_file_if_exists(path + "/collection.bin")
+    remove_file_if_exists(path + "/collection.bin.tmp")
+    var config = CollectionConfig.defaults(2)
+    config.ann_metric = MetricKind.cosine()
+    config.m = 8
+    config.m0 = 16
+    config.ef_construction = 64
+    config.level_seed = UInt64(77)
+    var collection = PersistentCollection.open_with_config(path, config)
+    var snapshot = collection.snapshot()
+
+    assert_equal(snapshot.collection_config(), config)
+    assert_equal(snapshot.config_fingerprint(), config.fingerprint())
+    var exposed = snapshot.collection_config()
+    exposed.m = 12
+    exposed.level_seed = UInt64(99)
+    assert_equal(snapshot.collection_config(), config)
+    assert_equal(snapshot.config_fingerprint(), config.fingerprint())
     collection.close()
 
 

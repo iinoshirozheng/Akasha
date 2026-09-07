@@ -23,6 +23,7 @@ class StorageReport:
     segment_count: int
     live_points: int
     valid: bool
+    config_fingerprint: int
     segment_names: tuple[str, ...]
     sparse_names: tuple[str, ...]
 
@@ -36,6 +37,7 @@ class StorageReport:
             segment_count=int(value["segment_count"]),
             live_points=int(value["live_points"]),
             valid=bool(value["valid"]),
+            config_fingerprint=int(value["config_fingerprint"]),
             segment_names=tuple(str(name) for name in value["segment_names"]),
             sparse_names=tuple(str(name) for name in value["sparse_names"]),
         )

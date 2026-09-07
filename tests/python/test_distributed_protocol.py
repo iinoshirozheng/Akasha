@@ -9,9 +9,15 @@ from akashadb.distributed.protocol import (
     ReplicatedEntry,
     ShardPlacement,
 )
+from akashadb import CollectionConfig
 
 
 def _metadata() -> ClusterMetadata:
+    config = CollectionConfig.defaults(
+        3, ann_metric="cosine", level_seed=77
+    ).to_kernel()
+    config["level_seed"] = 77
+    config["fingerprint"] = 123
     return ClusterMetadata(
         cluster_id="test",
         dimension=3,
@@ -24,6 +30,7 @@ def _metadata() -> ClusterMetadata:
             "n2": ("127.0.0.1", 3),
         },
         shards={0: ShardPlacement(0, 1, 1, "n0", ["n0", "n1", "n2"])},
+        collection_config=config,
     )
 
 
@@ -33,6 +40,7 @@ def test_cluster_metadata_round_trip_and_checksum_failure(tmp_path) -> None:
     expected.publish(path)
     actual = ClusterMetadata.load(path)
     assert actual.to_payload() == expected.to_payload()
+    assert actual.collection_config == expected.collection_config
 
     value = json.loads(path.read_text())
     value["payload"]["epoch"] = 7
@@ -81,3 +89,18 @@ def test_replica_journal_is_idempotent_strict_and_repairs_torn_tail(tmp_path) ->
     path.write_bytes(value)
     with pytest.raises(ProtocolError, match="corruption"):
         ReplicaJournal(path)
+
+
+def test_metadata_without_collection_identity_is_explicitly_unsupported() -> None:
+    payload = _metadata().to_payload()
+    del payload["collection_config"]
+    with pytest.raises(ProtocolError, match="collection config"):
+        ClusterMetadata.from_payload(payload)
+
+
+@pytest.mark.parametrize("field", ["ann_metric", "m", "level_seed", "fingerprint"])
+def test_metadata_rejects_incomplete_collection_identity(field) -> None:
+    payload = _metadata().to_payload()
+    del payload["collection_config"][field]
+    with pytest.raises(ProtocolError, match="collection config fields"):
+        ClusterMetadata.from_payload(payload)

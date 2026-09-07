@@ -99,3 +99,32 @@ def test_invalid_import_limits_cancellation_and_orphan_quarantine(tmp_path) -> N
     assert [path.name for path in moved] == ["segment-delta-999.bin"]
     assert unrelated.exists()
     assert all((tmp_path / "bounded" / name).exists() for name in report.segment_names)
+
+
+def test_backup_and_restore_preserve_full_collection_identity(tmp_path) -> None:
+    config = akashadb.CollectionConfig.defaults(
+        2,
+        ann_metric="cosine",
+        scalar_kind="bf16",
+        m=8,
+        m0=16,
+        ef_construction=64,
+        level_seed=91,
+    )
+    source = akashadb.Collection(tmp_path / "configured-source", 2, config=config)
+    source.upsert(1, [1.0, 0.0])
+    source.flush()
+    fingerprint = source.collection_config().fingerprint
+    backup = akashadb.backup_collection(source, tmp_path / "configured-backup")
+    source.close()
+    assert backup.config_fingerprint == fingerprint
+
+    restored = akashadb.restore_storage(
+        tmp_path / "configured-backup", tmp_path / "configured-restored", 2
+    )
+    assert restored.config_fingerprint == fingerprint
+    reopened = akashadb.Collection(
+        tmp_path / "configured-restored", 2, config=config
+    )
+    assert reopened.collection_config() == config
+    reopened.close()

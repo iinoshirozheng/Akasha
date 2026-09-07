@@ -224,3 +224,96 @@ def test_cluster_metadata_and_acknowledged_state_survive_full_restart(tmp_path) 
         assert duplicate.index == committed.index
     finally:
         reopened.close()
+
+
+def test_distributed_config_replica_snapshot_and_stats_round_trip(tmp_path) -> None:
+    config = akashadb.CollectionConfig.defaults(
+        2,
+        ann_metric="dot",
+        scalar_kind="bf16",
+        m=8,
+        m0=16,
+        ef_construction=64,
+        level_seed=55,
+    )
+    with DistributedCluster(
+        tmp_path / "configured",
+        2,
+        config=config,
+        shard_count=1,
+        replication_factor=3,
+        node_count=4,
+    ) as cluster:
+        resolved = cluster.collection_config()
+        assert resolved == config
+        assert resolved.fingerprint is not None
+        for point_id in range(64):
+            cluster.upsert(point_id, [float(point_id + 1), 1.0])
+        results = cluster.search(
+            akashadb.SearchRequest(
+                "l2", 3, vector=[4.0, 1.0], mode="approx", ef_search=19
+            )
+        )
+        assert [item.id for item in results] == [3, 2, 4]
+        assert cluster.last_search_stats()["planner_reason"] == "metric_mismatch"
+        placement = cluster.metadata.shards[0]
+        for node in placement.replicas:
+            status = cluster.replica_status(node, 0)
+            assert status["config_fingerprint"] == resolved.fingerprint
+
+        source = placement.replicas[0]
+        status = cluster.replica_status(source, 0)
+        mismatched = dict(cluster.metadata.collection_config)
+        mismatched["ann_metric"] = "cosine"
+        with pytest.raises(ProtocolError, match="config mismatch"):
+            cluster.debug_rpc(
+                source,
+                {
+                    "operation": "install_snapshot",
+                    "shard_id": 0,
+                    "rows": [],
+                    "collection_config": mismatched,
+                    "index": status["applied_index"],
+                    "term": status["term"],
+                    "placement_epoch": status["placement_epoch"],
+                },
+            )
+        assert cluster.debug_rpc(
+            source, {"operation": "get", "shard_id": 0, "id": 3}
+        )["vector"] == [4.0, 1.0]
+        unexpected = dict(cluster.metadata.collection_config)
+        unexpected["unknown_option"] = 1
+        with pytest.raises(ProtocolError, match="config fields"):
+            cluster.debug_rpc(
+                source,
+                {
+                    "operation": "install_snapshot",
+                    "shard_id": 0,
+                    "rows": [],
+                    "collection_config": unexpected,
+                    "index": status["applied_index"],
+                    "term": status["term"],
+                    "placement_epoch": status["placement_epoch"],
+                },
+            )
+        assert cluster.debug_rpc(
+            source, {"operation": "get", "shard_id": 0, "id": 3}
+        )["vector"] == [4.0, 1.0]
+        cluster.rebalance_add_replica(0, "n3")
+        assert cluster.replica_status("n3", 0)["config_fingerprint"] == (
+            resolved.fingerprint
+        )
+
+
+def test_distributed_invalid_config_fails_before_creating_root(tmp_path) -> None:
+    root = tmp_path / "invalid-config"
+    with pytest.raises(Exception, match="m must be at least 2"):
+        DistributedCluster(
+            root,
+            2,
+            config={"m": 1},
+            shard_count=1,
+            replication_factor=1,
+            node_count=1,
+        )
+    assert not root.exists()

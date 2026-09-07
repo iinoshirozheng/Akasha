@@ -1,5 +1,6 @@
 from akasha import (
     BatchMutation,
+    CollectionConfig,
     DocumentField,
     DocumentRecord,
     FieldProjection,
@@ -7,6 +8,8 @@ from akasha import (
     FilterExpression,
     PayloadValue,
     PersistentCollection,
+    MetricKind,
+    ScalarKind,
     SparseElement,
     QueryControl,
     CancellationToken,
@@ -41,11 +44,20 @@ struct BoundCollection(Movable, Writable):
         kwargs: PythonObject,
     ) raises:
         self = BoundCollection()
-        if len(args) != 2:
-            raise Error("Collection(path, dimension) requires two arguments")
+        if len(args) != 2 and len(args) != 3:
+            raise Error(
+                "Collection(path, dimension, config=None) requires two or three arguments"
+            )
         var path = String(py=args[0])
         var dimension = Int(py=args[1])
-        self.inner = Optional(PersistentCollection.open(path, dimension))
+        if len(args) == 2:
+            self.inner = Optional(PersistentCollection.open(path, dimension))
+        else:
+            var config = _collection_config_from_python(dimension, args[2])
+            config.validate()
+            self.inner = Optional(
+                PersistentCollection.open_with_config(path, config)
+            )
 
     @staticmethod
     def close(py_self: PythonObject) raises -> PythonObject:
@@ -60,6 +72,43 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         return PythonObject(self[].inner.value().last_sequence())
+
+    @staticmethod
+    def collection_config(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        return _collection_config_to_python(
+            self[].inner.value().collection_config()
+        )
+
+    @staticmethod
+    def last_search_stats(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var stats = self[].inner.value().last_search_stats()
+        return Python.dict(
+            planner_reason=PythonObject(
+                self[].inner.value().last_dense_plan_reason()
+            ),
+            backend_name=PythonObject(stats.backend_name),
+            metric_name=PythonObject(stats.metric_name),
+            scalar_name=PythonObject(stats.scalar_name),
+            storage_name=PythonObject(stats.storage_name),
+            fallback_reason=PythonObject(stats.fallback_reason),
+            requested_ef=PythonObject(stats.requested_ef),
+            effective_ef=PythonObject(stats.effective_ef),
+            widening_rounds=PythonObject(stats.widening_rounds),
+            upper_visited=PythonObject(stats.upper_visited),
+            base_visited=PythonObject(stats.base_visited),
+            visited=PythonObject(stats.upper_visited + stats.base_visited),
+            distance_evaluations=PythonObject(stats.distance_evaluations),
+            retained_candidates=PythonObject(stats.retained_candidates),
+            reranked_candidates=PythonObject(stats.reranked_candidates),
+            filtered_rejections=PythonObject(stats.filtered_rejections),
+            inactive_rejections=PythonObject(stats.inactive_rejections),
+            base_candidates=PythonObject(stats.base_candidates),
+            delta_candidates=PythonObject(stats.delta_candidates),
+        )
 
     @staticmethod
     def upsert(
@@ -651,6 +700,122 @@ struct BoundCollection(Movable, Writable):
         raise Error("unknown dense metric")
 
 
+def _metric_kind_from_python(value: PythonObject) raises -> MetricKind:
+    var name = String(py=value)
+    if name == "dot":
+        return MetricKind.dot()
+    if name == "l2":
+        return MetricKind.l2()
+    if name == "cosine":
+        return MetricKind.cosine()
+    raise Error("unknown ann_metric")
+
+
+def _scalar_kind_from_python(value: PythonObject) raises -> ScalarKind:
+    var name = String(py=value)
+    if name == "f32":
+        return ScalarKind.f32()
+    if name == "bf16":
+        return ScalarKind.bf16()
+    if name == "f16":
+        return ScalarKind.f16()
+    if name == "i8":
+        return ScalarKind.i8()
+    raise Error("unknown scalar_kind")
+
+
+def _collection_config_from_python(
+    dimension: Int, value: PythonObject
+) raises -> CollectionConfig:
+    for raw_name in value:
+        var name = String(py=raw_name)
+        if (
+            name != "dimension"
+            and name != "ann_metric"
+            and name != "scalar_kind"
+            and name != "m"
+            and name != "m0"
+            and name != "ef_construction"
+            and name != "default_ef_search"
+            and name != "max_ef_search"
+            and name != "max_level"
+            and name != "rebuild_inactive_percent"
+            and name != "delta_max_points"
+            and name != "level_seed"
+        ):
+            raise Error("unknown collection config option: " + name)
+    var config = CollectionConfig.defaults(dimension)
+    if Int(py=value.get("dimension", PythonObject(dimension))) != dimension:
+        raise Error("collection config dimension mismatch")
+    config.ann_metric = _metric_kind_from_python(
+        value.get("ann_metric", PythonObject(config.metric_name()))
+    )
+    config.scalar_kind = _scalar_kind_from_python(
+        value.get("scalar_kind", PythonObject(config.scalar_name()))
+    )
+    config.m = Int(py=value.get("m", PythonObject(config.m)))
+    config.m0 = Int(py=value.get("m0", PythonObject(config.m0)))
+    config.ef_construction = Int(
+        py=value.get(
+            "ef_construction", PythonObject(config.ef_construction)
+        )
+    )
+    config.default_ef_search = Int(
+        py=value.get(
+            "default_ef_search", PythonObject(config.default_ef_search)
+        )
+    )
+    config.max_ef_search = Int(
+        py=value.get("max_ef_search", PythonObject(config.max_ef_search))
+    )
+    config.max_level = Int(
+        py=value.get("max_level", PythonObject(config.max_level))
+    )
+    config.rebuild_inactive_percent = Int(
+        py=value.get(
+            "rebuild_inactive_percent",
+            PythonObject(config.rebuild_inactive_percent),
+        )
+    )
+    config.delta_max_points = Int(
+        py=value.get(
+            "delta_max_points", PythonObject(config.delta_max_points)
+        )
+    )
+    var seed = value.get("level_seed", Python.none())
+    if Bool(py=seed != Python.none()):
+        config.level_seed = UInt64(Int64(py=seed))
+    return config^
+
+
+def _collection_config_to_python(config: CollectionConfig) raises -> PythonObject:
+    return Python.dict(
+        dimension=PythonObject(config.dimension),
+        ann_metric=PythonObject(config.metric_name()),
+        scalar_kind=PythonObject(config.scalar_name()),
+        m=PythonObject(config.m),
+        m0=PythonObject(config.m0),
+        ef_construction=PythonObject(config.ef_construction),
+        default_ef_search=PythonObject(config.default_ef_search),
+        max_ef_search=PythonObject(config.max_ef_search),
+        max_level=PythonObject(config.max_level),
+        rebuild_inactive_percent=PythonObject(
+            config.rebuild_inactive_percent
+        ),
+        delta_max_points=PythonObject(config.delta_max_points),
+        level_seed=PythonObject(config.level_seed),
+        fingerprint=PythonObject(config.fingerprint()),
+    )
+
+
+def validate_collection_config_py(
+    dimension: PythonObject, value: PythonObject
+) raises -> PythonObject:
+    var config = _collection_config_from_python(Int(py=dimension), value)
+    config.validate()
+    return _collection_config_to_python(config)
+
+
 def _ensure_open(collection: BoundCollection) raises:
     if not Bool(collection.inner):
         raise Error("collection is closed")
@@ -822,6 +987,7 @@ def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
         segment_count=PythonObject(report.segment_count),
         live_points=PythonObject(report.live_points),
         valid=PythonObject(report.valid),
+        config_fingerprint=PythonObject(report.config_fingerprint),
         segment_names=segments,
         sparse_names=sparse,
     )
@@ -850,6 +1016,12 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_py_init[BoundCollection.py_init]()
             .def_method[BoundCollection.close]("close")
             .def_method[BoundCollection.last_sequence]("last_sequence")
+            .def_method[BoundCollection.collection_config](
+                "collection_config"
+            )
+            .def_method[BoundCollection.last_search_stats](
+                "last_search_stats"
+            )
             .def_method[BoundCollection.upsert]("upsert")
             .def_method[BoundCollection.upsert_document]("upsert_document")
             .def_method[BoundCollection.apply_batch]("apply_batch")
@@ -884,6 +1056,9 @@ def PyInit__kernel() abi("C") -> PythonObject:
         )
         module.def_function[inspect_storage_py]("inspect_storage")
         module.def_function[restore_storage_py]("restore_storage")
+        module.def_function[validate_collection_config_py](
+            "validate_collection_config"
+        )
         return module.finalize()
     except error:
         abort(String("failed to create Akasha Python module: ", error))

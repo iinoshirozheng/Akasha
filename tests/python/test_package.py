@@ -1,9 +1,158 @@
 import akashadb
 from akashadb.arrow import results_to_columns, upsert_columns
+import pytest
 
 
 def test_package_exposes_project_version() -> None:
     assert akashadb.__version__ == "0.1.0"
+
+
+def test_collection_config_round_trip_reopen_and_stats_are_owned_primitives(
+    tmp_path,
+) -> None:
+    path = tmp_path / "configured"
+    requested = akashadb.CollectionConfig(
+        dimension=2,
+        ann_metric="dot",
+        scalar_kind="bf16",
+        m=8,
+        m0=16,
+        ef_construction=64,
+        default_ef_search=24,
+        max_ef_search=96,
+        max_level=20,
+        rebuild_inactive_percent=30,
+        delta_max_points=256,
+        level_seed=12345,
+    )
+    collection = akashadb.Collection(path, 2, config=requested)
+    assert collection.collection_config() == requested
+    raw = collection._kernel.collection_config()
+    resolved = collection.collection_config()
+    assert resolved.fingerprint is not None
+    expected = requested.to_kernel()
+    expected["level_seed"] = requested.level_seed
+    assert raw == {**expected, "fingerprint": resolved.fingerprint}
+    assert all(
+        isinstance(value, (str, int)) and not isinstance(value, (dict, list))
+        for value in raw.values()
+    )
+    raw["m"] = 999
+    assert collection._kernel.collection_config()["m"] == 8
+
+    for point_id in range(64):
+        collection.upsert(point_id, [float(point_id + 1), 1.0])
+    exact = collection.search(
+        akashadb.SearchRequest("l2", 3, vector=[4.0, 1.0])
+    )
+    approximate = collection.search(
+        akashadb.SearchRequest(
+            "l2", 3, vector=[4.0, 1.0], mode="approx", ef_search=19
+        )
+    )
+    assert approximate == exact
+    stats = collection.last_search_stats()
+    assert stats.planner_reason == stats.fallback_reason == "metric_mismatch"
+    assert stats.metric_name == "l2"
+    assert stats.scalar_name == "f32"
+    assert stats.requested_ef == 19
+    assert stats.effective_ef == 19
+    raw_stats = collection._kernel.last_search_stats()
+    assert raw_stats["visited"] == (
+        raw_stats["upper_visited"] + raw_stats["base_visited"]
+    )
+    assert all(
+        isinstance(value, (str, int)) and not isinstance(value, (dict, list))
+        for value in raw_stats.values()
+    )
+    raw_stats["planner_reason"] = "mutated"
+    assert collection._kernel.last_search_stats()["planner_reason"] == (
+        "metric_mismatch"
+    )
+    collection.close()
+
+    reopened = akashadb.Collection(path, 2, config=requested)
+    assert reopened.collection_config() == requested
+    reopened.close()
+    with pytest.raises(akashadb.ValidationError, match="ann_metric"):
+        akashadb.Collection(path, 2)
+
+
+def test_legacy_dimension_only_open_and_local_database_config_checks(tmp_path) -> None:
+    legacy = akashadb.Collection(tmp_path / "legacy", 3)
+    assert legacy.collection_config() == akashadb.CollectionConfig.defaults(3)
+    legacy.close()
+
+    database = akashadb.LocalDatabase(tmp_path / "database")
+    config = akashadb.CollectionConfig.defaults(2, ann_metric="cosine")
+    opened = database.open("named", 2, config=config)
+    assert opened.collection_config() == config
+    assert database.open("named", 2, config=config) is opened
+    with pytest.raises(akashadb.ValidationError, match="configuration mismatch"):
+        database.open("named", 2)
+    database.close_all()
+
+
+def test_python_collection_config_rejects_invalid_shape() -> None:
+    with pytest.raises(ValueError, match="ann_metric"):
+        akashadb.CollectionConfig.defaults(2, ann_metric="angular")
+    with pytest.raises(ValueError, match="dimension"):
+        akashadb.CollectionConfig.defaults(0)
+
+
+def test_collection_accepts_partial_ann_config_dict(tmp_path) -> None:
+    collection = akashadb.Collection(
+        tmp_path / "partial-config",
+        2,
+        config={"ann_metric": "dot", "m": 8, "m0": 16, "ef_construction": 64},
+    )
+    assert collection.collection_config().ann_metric == "dot"
+    assert collection.collection_config().m == 8
+    collection.close()
+
+
+@pytest.mark.parametrize("seed", [0, 0xFFFF_FFFF_FFFF_FFFF])
+def test_collection_config_preserves_unsigned_seed_extremes(tmp_path, seed) -> None:
+    collection = akashadb.Collection(
+        tmp_path / f"seed-{seed}", 2, config={"level_seed": seed}
+    )
+    assert collection.collection_config().level_seed == seed
+    collection.close()
+
+
+def test_empty_collection_stats_are_owned_zero_primitives(tmp_path) -> None:
+    collection = akashadb.Collection(tmp_path / "empty-stats", 2)
+    stats = collection._kernel.last_search_stats()
+    assert stats["planner_reason"] == ""
+    assert stats["fallback_reason"] == ""
+    assert all(
+        stats[name] == 0
+        for name in (
+            "requested_ef",
+            "effective_ef",
+            "widening_rounds",
+            "upper_visited",
+            "base_visited",
+            "visited",
+            "distance_evaluations",
+            "retained_candidates",
+            "reranked_candidates",
+            "filtered_rejections",
+            "inactive_rejections",
+            "base_candidates",
+            "delta_candidates",
+        )
+    )
+    stats["visited"] = 99
+    assert collection._kernel.last_search_stats()["visited"] == 0
+    collection.close()
+
+
+def test_compiled_kernel_rejects_unknown_config_before_creating_state(tmp_path) -> None:
+    path = tmp_path / "unknown-kernel-config"
+    with pytest.raises(Exception, match="unknown collection config option"):
+        akashadb._kernel.Collection(str(path), 2, {"unsupported": 1})
+    assert not path.exists()
 
 
 def test_compiled_kernel_supports_document_dense_sparse_hybrid_and_reopen(

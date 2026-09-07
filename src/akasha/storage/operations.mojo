@@ -3,6 +3,7 @@ from akasha.storage.collection_config import (
     load_collection_config,
     publish_collection_config,
 )
+from akasha.common.config import CollectionConfig
 from akasha.storage.filesystem import (
     atomic_replace,
     ensure_directory,
@@ -33,6 +34,7 @@ struct StorageInspection(Movable):
     var segment_count: Int
     var live_points: Int
     var valid: Bool
+    var config_fingerprint: UInt64
     var segment_names: List[String]
     var sparse_names: List[String]
 
@@ -44,6 +46,7 @@ struct StorageInspection(Movable):
         last_sequence: UInt64,
         segment_count: Int,
         live_points: Int,
+        config_fingerprint: UInt64,
         var segment_names: List[String],
         var sparse_names: List[String],
     ):
@@ -54,6 +57,7 @@ struct StorageInspection(Movable):
         self.segment_count = segment_count
         self.live_points = live_points
         self.valid = True
+        self.config_fingerprint = config_fingerprint
         self.segment_names = segment_names^
         self.sparse_names = sparse_names^
 
@@ -107,6 +111,11 @@ def inspect_storage(
             sparse_names.append(descriptor.sparse_name)
 
     var live = memtable.live_entries()
+    var config = CollectionConfig.defaults(expected_dimension)
+    if collection_config_exists(directory):
+        config = load_collection_config(directory)
+        if config.dimension != expected_dimension:
+            raise Error("collection config dimension mismatch")
     return StorageInspection(
         manifest.dimension,
         manifest.format_version,
@@ -114,6 +123,7 @@ def inspect_storage(
         manifest.last_sequence,
         len(manifest.segments),
         len(live),
+        config.fingerprint(),
         names^,
         sparse_names^,
     )

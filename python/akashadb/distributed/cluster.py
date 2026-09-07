@@ -9,7 +9,14 @@ from threading import RLock
 from typing import Any
 import uuid
 
-from akashadb.models import PayloadField, SearchRequest, SearchResult, SparseElement
+from akashadb.database import _kernel_module
+from akashadb.models import (
+    CollectionConfig,
+    PayloadField,
+    SearchRequest,
+    SearchResult,
+    SparseElement,
+)
 
 from .protocol import (
     ClusterMetadata,
@@ -45,6 +52,7 @@ class DistributedCluster:
         root: str | Path,
         dimension: int,
         *,
+        config: CollectionConfig | dict[str, Any] | None = None,
         shard_count: int = 2,
         replication_factor: int = 3,
         node_count: int = 3,
@@ -54,17 +62,29 @@ class DistributedCluster:
             raise ValueError("cluster dimension and shard count must be positive")
         if replication_factor <= 0 or node_count < replication_factor:
             raise ValueError("node count must cover replication factor")
+        requested = CollectionConfig.from_options(dimension, config)
+        canonical_config = dict(
+            _kernel_module().validate_collection_config(
+                dimension, requested.to_kernel()
+            )
+        )
+        self._config = CollectionConfig.from_kernel(canonical_config)
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.metadata_path = self.root / "cluster-metadata.json"
         self.dimension = dimension
         self._lock = RLock()
         self._closed = False
+        self._last_search_stats: dict[str, Any] = {}
         identity = cluster_id or uuid.uuid4().hex
         self.authkey = hashlib.sha256(identity.encode()).digest()
         self.nodes: dict[str, ReplicaProcess] = {
             f"n{index}": ReplicaProcess(
-                f"n{index}", self.root / "nodes" / f"n{index}", dimension, self.authkey
+                f"n{index}",
+                self.root / "nodes" / f"n{index}",
+                dimension,
+                canonical_config,
+                self.authkey,
             )
             for index in range(node_count)
         }
@@ -75,6 +95,9 @@ class DistributedCluster:
             if metadata.dimension != dimension:
                 self.close()
                 raise ProtocolError("cluster reopen dimension mismatch")
+            if metadata.collection_config != canonical_config:
+                self.close()
+                raise ProtocolError("cluster reopen collection config mismatch")
             if set(metadata.members) != set(members):
                 self.close()
                 raise ProtocolError("cluster reopen member set mismatch")
@@ -100,6 +123,7 @@ class DistributedCluster:
                 1,
                 members,
                 shards,
+                canonical_config,
             )
         self._publish_metadata()
         try:
@@ -141,6 +165,12 @@ class DistributedCluster:
         self._ensure_open()
         unsigned = point_id & 0xFFFFFFFFFFFFFFFF
         return unsigned % self.metadata.shard_count
+
+    def collection_config(self) -> CollectionConfig:
+        return CollectionConfig.from_kernel(dict(self.metadata.collection_config))
+
+    def last_search_stats(self) -> dict[str, Any]:
+        return dict(self._last_search_stats)
 
     def upsert(
         self,
@@ -384,17 +414,21 @@ class DistributedCluster:
     def _fanout(self, request: SearchRequest) -> list[SearchResult]:
         wire = self._request_to_dict(request)
         results: list[SearchResult] = []
+        stats: list[dict[str, Any]] = []
         for shard_id in range(self.metadata.shard_count):
             placement = self.metadata.shards[shard_id]
             raw = self._query_shard(placement, wire)
             results.extend(
-                SearchResult(int(item["id"]), float(item["score"])) for item in raw
+                SearchResult(int(item["id"]), float(item["score"]))
+                for item in raw["items"]
             )
+            stats.append(dict(raw["stats"]))
+        self._last_search_stats = self._merge_search_stats(stats)
         return results
 
     def _query_shard(
         self, placement: ShardPlacement, request: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         ordered = [placement.leader] + [
             node for node in placement.replicas if node != placement.leader
         ]
@@ -414,6 +448,41 @@ class DistributedCluster:
             except (ReplicaUnavailable, StaleEpochError, ProtocolError):
                 continue
         raise QuorumUnavailable("distributed query has no caught-up replica")
+
+    @staticmethod
+    def _merge_search_stats(values: list[dict[str, Any]]) -> dict[str, Any]:
+        if not values:
+            return {}
+        merged = dict(values[0])
+        summed = {
+            "upper_visited",
+            "base_visited",
+            "visited",
+            "distance_evaluations",
+            "retained_candidates",
+            "reranked_candidates",
+            "filtered_rejections",
+            "inactive_rejections",
+            "base_candidates",
+            "delta_candidates",
+        }
+        maximum = {"requested_ef", "effective_ef", "widening_rounds"}
+        labels = {
+            "planner_reason",
+            "backend_name",
+            "metric_name",
+            "scalar_name",
+            "storage_name",
+            "fallback_reason",
+        }
+        for name in summed:
+            merged[name] = sum(int(value[name]) for value in values)
+        for name in maximum:
+            merged[name] = max(int(value[name]) for value in values)
+        for name in labels:
+            distinct = {str(value[name]) for value in values}
+            merged[name] = distinct.pop() if len(distinct) == 1 else "mixed"
+        return merged
 
     def _search_hybrid(self, request: SearchRequest, epoch: int) -> list[SearchResult]:
         if request.vector is None or not request.sparse:
@@ -554,6 +623,7 @@ class DistributedCluster:
                     "operation": "install_snapshot",
                     "shard_id": shard_id,
                     "rows": exported["rows"],
+                    "collection_config": exported["collection_config"],
                     "index": snapshot_index,
                     "term": placement.term,
                     "placement_epoch": new_epoch,

@@ -1,12 +1,148 @@
 """Typed, dependency-free Python request and result values."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Literal, TypeAlias
 
 
 Metric: TypeAlias = Literal["dot", "l2", "cosine"]
+ScalarKind: TypeAlias = Literal["f32", "bf16", "f16", "i8"]
 PayloadKind: TypeAlias = Literal["string", "int", "float", "bool"]
 PayloadScalar: TypeAlias = str | int | float | bool
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionConfig:
+    """Friendly Python shape for the Mojo-owned durable collection identity."""
+
+    dimension: int
+    ann_metric: Metric = "l2"
+    scalar_kind: ScalarKind = "f32"
+    m: int = 16
+    m0: int = 32
+    ef_construction: int = 128
+    default_ef_search: int = 64
+    max_ef_search: int = 512
+    max_level: int = 32
+    rebuild_inactive_percent: int = 25
+    delta_max_points: int = 10_000
+    level_seed: int = 0xA5A5A5A5A5A5A5A5
+    fingerprint: int | None = field(default=None, compare=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.dimension, int) or isinstance(self.dimension, bool):
+            raise ValueError("collection dimension must be an integer")
+        if self.dimension <= 0:
+            raise ValueError("collection dimension must be positive")
+        if self.ann_metric not in {"dot", "l2", "cosine"}:
+            raise ValueError("unknown ann_metric")
+        if self.scalar_kind not in {"f32", "bf16", "f16", "i8"}:
+            raise ValueError("unknown scalar_kind")
+        for name in (
+            "m",
+            "m0",
+            "ef_construction",
+            "default_ef_search",
+            "max_ef_search",
+            "max_level",
+            "rebuild_inactive_percent",
+            "delta_max_points",
+            "level_seed",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(f"collection {name} must be an integer")
+        if self.level_seed < 0 or self.level_seed > 0xFFFF_FFFF_FFFF_FFFF:
+            raise ValueError("collection level_seed must fit unsigned 64-bit")
+        if self.fingerprint is not None and (
+            not isinstance(self.fingerprint, int) or isinstance(self.fingerprint, bool)
+        ):
+            raise ValueError("collection fingerprint must be an integer")
+
+    @classmethod
+    def defaults(cls, dimension: int, **overrides: Any) -> "CollectionConfig":
+        return replace(cls(dimension=dimension), **overrides)
+
+    @classmethod
+    def from_options(
+        cls, dimension: int, value: "CollectionConfig | dict[str, Any] | None"
+    ) -> "CollectionConfig":
+        if value is None:
+            return cls.defaults(dimension)
+        if isinstance(value, cls):
+            if value.dimension != dimension:
+                raise ValueError("collection config dimension mismatch")
+            return value
+        options = dict(value)
+        configured_dimension = int(options.pop("dimension", dimension))
+        if configured_dimension != dimension:
+            raise ValueError("collection config dimension mismatch")
+        return cls.defaults(dimension, **options)
+
+    @classmethod
+    def from_kernel(cls, value: dict[str, Any]) -> "CollectionConfig":
+        return cls(
+            dimension=int(value["dimension"]),
+            ann_metric=str(value["ann_metric"]),  # type: ignore[arg-type]
+            scalar_kind=str(value["scalar_kind"]),  # type: ignore[arg-type]
+            m=int(value["m"]),
+            m0=int(value["m0"]),
+            ef_construction=int(value["ef_construction"]),
+            default_ef_search=int(value["default_ef_search"]),
+            max_ef_search=int(value["max_ef_search"]),
+            max_level=int(value["max_level"]),
+            rebuild_inactive_percent=int(value["rebuild_inactive_percent"]),
+            delta_max_points=int(value["delta_max_points"]),
+            level_seed=int(value["level_seed"]),
+            fingerprint=int(value["fingerprint"]),
+        )
+
+    def to_kernel(self) -> dict[str, object]:
+        # Mojo's CPython integer conversion currently enters through signed
+        # Int64. Preserve all 64 seed bits across that boundary.
+        kernel_seed = self.level_seed
+        if kernel_seed > 0x7FFF_FFFF_FFFF_FFFF:
+            kernel_seed -= 1 << 64
+        return {
+            "dimension": self.dimension,
+            "ann_metric": self.ann_metric,
+            "scalar_kind": self.scalar_kind,
+            "m": self.m,
+            "m0": self.m0,
+            "ef_construction": self.ef_construction,
+            "default_ef_search": self.default_ef_search,
+            "max_ef_search": self.max_ef_search,
+            "max_level": self.max_level,
+            "rebuild_inactive_percent": self.rebuild_inactive_percent,
+            "delta_max_points": self.delta_max_points,
+            "level_seed": kernel_seed,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SearchStats:
+    planner_reason: str
+    backend_name: str
+    metric_name: str
+    scalar_name: str
+    storage_name: str
+    fallback_reason: str
+    requested_ef: int
+    effective_ef: int
+    widening_rounds: int
+    upper_visited: int
+    base_visited: int
+    visited: int
+    distance_evaluations: int
+    retained_candidates: int
+    reranked_candidates: int
+    filtered_rejections: int
+    inactive_rejections: int
+    base_candidates: int
+    delta_candidates: int
+
+    @classmethod
+    def from_kernel(cls, value: dict[str, Any]) -> "SearchStats":
+        return cls(**{field.name: value[field.name] for field in fields(cls)})
 
 
 @dataclass(frozen=True, slots=True)

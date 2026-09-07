@@ -2,11 +2,72 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+
+from akashadb import CollectionConfig
 
 
 class OpenCollectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     dimension: int = Field(gt=0)
+    ann_metric: Literal["dot", "l2", "cosine"] | None = Field(
+        default=None, validation_alias=AliasChoices("ann_metric", "annMetric")
+    )
+    scalar_kind: Literal["f32", "bf16", "f16", "i8"] | None = Field(
+        default=None, validation_alias=AliasChoices("scalar_kind", "scalarKind")
+    )
+    m: int | None = Field(
+        default=None, ge=0, validation_alias=AliasChoices("m", "M")
+    )
+    m0: int | None = Field(
+        default=None, ge=0, validation_alias=AliasChoices("m0", "M0")
+    )
+    ef_construction: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("ef_construction", "efConstruction"),
+    )
+    default_ef_search: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("default_ef_search", "defaultEfSearch"),
+    )
+    max_ef_search: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("max_ef_search", "maxEfSearch"),
+    )
+    max_level: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("max_level", "maxLevel"),
+    )
+    rebuild_inactive_percent: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices(
+            "rebuild_inactive_percent", "rebuildInactivePercent"
+        ),
+    )
+    delta_max_points: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias=AliasChoices("delta_max_points", "deltaMaxPoints"),
+    )
+    level_seed: int | None = Field(
+        default=None,
+        ge=0,
+        le=0xFFFF_FFFF_FFFF_FFFF,
+        validation_alias=AliasChoices("level_seed", "levelSeed"),
+    )
+
+    def collection_config(self) -> CollectionConfig | None:
+        values = self.model_dump(exclude_none=True)
+        dimension = int(values.pop("dimension"))
+        if not values:
+            return None
+        return CollectionConfig.defaults(dimension, **values)
 
 
 class PayloadFieldRequest(BaseModel):

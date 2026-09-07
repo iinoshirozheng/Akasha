@@ -10,8 +10,25 @@ from typing import Any
 import zlib
 
 
-PROTOCOL_VERSION = 1
-ROUTING_VERSION = 1
+PROTOCOL_VERSION = 2
+ROUTING_VERSION = 2
+COLLECTION_CONFIG_FIELDS = frozenset(
+    {
+        "dimension",
+        "ann_metric",
+        "scalar_kind",
+        "m",
+        "m0",
+        "ef_construction",
+        "default_ef_search",
+        "max_ef_search",
+        "max_level",
+        "rebuild_inactive_percent",
+        "delta_max_points",
+        "level_seed",
+        "fingerprint",
+    }
+)
 
 
 class ProtocolError(RuntimeError):
@@ -71,6 +88,7 @@ class ClusterMetadata:
     epoch: int
     members: dict[str, tuple[str, int]]
     shards: dict[int, ShardPlacement]
+    collection_config: dict[str, Any]
     request_table: dict[str, dict[str, Any]] = field(default_factory=dict)
     routing_version: int = ROUTING_VERSION
 
@@ -79,6 +97,12 @@ class ClusterMetadata:
             raise ProtocolError("invalid cluster metadata header")
         if self.routing_version != ROUTING_VERSION or self.epoch <= 0:
             raise ProtocolError("unsupported routing metadata")
+        if set(self.collection_config) != COLLECTION_CONFIG_FIELDS:
+            raise ProtocolError("cluster collection config fields are incomplete")
+        if int(self.collection_config.get("dimension", 0)) != self.dimension:
+            raise ProtocolError("cluster collection config dimension mismatch")
+        if int(self.collection_config.get("fingerprint", 0)) <= 0:
+            raise ProtocolError("cluster collection config fingerprint is missing")
         if set(self.shards) != set(range(self.shard_count)):
             raise ProtocolError("cluster metadata must cover every shard")
         for shard_id, placement in self.shards.items():
@@ -106,6 +130,7 @@ class ClusterMetadata:
             "replication_factor": self.replication_factor,
             "epoch": self.epoch,
             "routing_version": self.routing_version,
+            "collection_config": dict(self.collection_config),
             "members": {
                 node: [address[0], address[1]]
                 for node, address in sorted(self.members.items())
@@ -119,6 +144,8 @@ class ClusterMetadata:
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "ClusterMetadata":
+        if not isinstance(payload.get("collection_config"), dict):
+            raise ProtocolError("cluster collection config is missing")
         metadata = cls(
             cluster_id=str(payload["cluster_id"]),
             dimension=int(payload["dimension"]),
@@ -134,6 +161,7 @@ class ClusterMetadata:
                 int(shard): ShardPlacement(**placement)
                 for shard, placement in payload["shards"].items()
             },
+            collection_config=dict(payload["collection_config"]),
             request_table=dict(payload.get("request_table", {})),
         )
         metadata.validate()

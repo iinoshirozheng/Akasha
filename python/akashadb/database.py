@@ -9,6 +9,7 @@ from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_err
 from .models import (
     BatchMutation,
     BatchWriteResult,
+    CollectionConfig,
     Document,
     PayloadField,
     Projection,
@@ -16,6 +17,7 @@ from .models import (
     ResourceLimits,
     SearchRequest,
     SearchResult,
+    SearchStats,
     SparseElement,
     TraceRecord,
 )
@@ -24,6 +26,8 @@ from .models import (
 class KernelCollection(Protocol):
     def close(self) -> None: ...
     def last_sequence(self) -> int: ...
+    def collection_config(self) -> dict[str, Any]: ...
+    def last_search_stats(self) -> dict[str, Any]: ...
     def upsert(self, id: int, vector: list[float]) -> None: ...
     def upsert_document(
         self, id: int, vector: list[float], fields: list[dict[str, object]]
@@ -108,19 +112,35 @@ class Collection:
         path: str | Path,
         dimension: int,
         *,
+        config: CollectionConfig | dict[str, Any] | None = None,
         kernel: KernelCollection | None = None,
         limits: ResourceLimits | None = None,
     ) -> None:
         try:
+            requested = (
+                None
+                if config is None
+                else CollectionConfig.from_options(dimension, config)
+            )
+        except (TypeError, ValueError) as error:
+            raise ValidationError(str(error)) from error
+        try:
             self._kernel: KernelCollection = (
                 kernel
                 if kernel is not None
-                else _kernel_module().Collection(str(path), dimension)
+                else (
+                    _kernel_module().Collection(str(path), dimension)
+                    if requested is None
+                    else _kernel_module().Collection(
+                        str(path), dimension, requested.to_kernel()
+                    )
+                )
             )
         except Exception as error:
             raise map_kernel_error(error) from error
         self.path = Path(path)
         self.dimension = dimension
+        self._config = CollectionConfig.from_kernel(self._kernel.collection_config())
         self.limits = limits or ResourceLimits()
         self._operations = 0
         self._writes = 0
@@ -186,6 +206,12 @@ class Collection:
     @property
     def last_sequence(self) -> int:
         return int(self._call("last_sequence"))
+
+    def collection_config(self) -> CollectionConfig:
+        return CollectionConfig.from_kernel(dict(self._call("collection_config")))
+
+    def last_search_stats(self) -> SearchStats:
+        return SearchStats.from_kernel(dict(self._call("last_search_stats")))
 
     def upsert(
         self,
@@ -403,15 +429,27 @@ class LocalDatabase:
         self.root.mkdir(parents=True, exist_ok=True)
         self._collections: dict[str, Collection] = {}
 
-    def open(self, name: str, dimension: int) -> Collection:
+    def open(
+        self,
+        name: str,
+        dimension: int,
+        *,
+        config: CollectionConfig | dict[str, Any] | None = None,
+    ) -> Collection:
         if not name or "/" in name or "\\" in name or name in {".", ".."}:
             raise ValidationError("collection name must be one safe path component")
         if name in self._collections:
             collection = self._collections[name]
             if collection.dimension != dimension:
                 raise ValidationError("open collection dimension mismatch")
+            try:
+                requested = CollectionConfig.from_options(dimension, config)
+            except (TypeError, ValueError) as error:
+                raise ValidationError(str(error)) from error
+            if collection.collection_config() != requested:
+                raise ValidationError("open collection configuration mismatch")
             return collection
-        collection = Collection(self.root / name, dimension)
+        collection = Collection(self.root / name, dimension, config=config)
         self._collections[name] = collection
         return collection
 

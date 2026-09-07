@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 import multiprocessing
 from multiprocessing.connection import Client, Connection, Listener
 import os
@@ -13,12 +14,14 @@ from typing import Any
 from akashadb.database import Collection
 from akashadb.models import (
     BatchMutation,
+    CollectionConfig,
     PayloadField,
     SearchRequest,
     SparseElement,
 )
 
 from .protocol import (
+    COLLECTION_CONFIG_FIELDS,
     ProtocolError,
     ReplicaJournal,
     ReplicatedEntry,
@@ -56,10 +59,17 @@ def _load_checked(path: Path, default: dict[str, Any]) -> dict[str, Any]:
 
 
 class ReplicaShard:
-    def __init__(self, root: Path, shard_id: int, dimension: int) -> None:
+    def __init__(
+        self,
+        root: Path,
+        shard_id: int,
+        dimension: int,
+        config: dict[str, Any],
+    ) -> None:
         self.root = root
         self.shard_id = shard_id
         self.dimension = dimension
+        self.config = CollectionConfig.from_kernel(config)
         self.root.mkdir(parents=True, exist_ok=True)
         state = _load_checked(
             self.root / "replica-state.json",
@@ -69,7 +79,9 @@ class ReplicaShard:
         self.placement_epoch = int(state["placement_epoch"])
         self.applied_index = int(state["applied_index"])
         self.journal = ReplicaJournal(self.root / "replicated.log")
-        self.collection = Collection(self.root / "collection", dimension)
+        self.collection = Collection(
+            self.root / "collection", dimension, config=self.config
+        )
         self._replay_committed()
 
     def _publish_state(self) -> None:
@@ -143,7 +155,7 @@ class ReplicaShard:
             self.applied_index = entry.index
             self._publish_state()
 
-    def query(self, request: dict[str, Any]) -> list[dict[str, Any]]:
+    def query(self, request: dict[str, Any]) -> dict[str, Any]:
         sparse = [
             SparseElement(int(item["term_id"]), float(item["weight"]))
             for item in request.get("sparse", [])
@@ -159,10 +171,11 @@ class ReplicaShard:
             rank_constant=int(request.get("rank_constant", 60)),
             filter=request.get("filter"),
         )
-        return [
+        items = [
             {"id": result.id, "score": result.score}
             for result in self.collection.search(typed)
         ]
+        return {"items": items, "stats": asdict(self.collection.last_search_stats())}
 
     def get(self, point_id: int) -> dict[str, Any] | None:
         document = self.collection.get(point_id)
@@ -184,12 +197,18 @@ class ReplicaShard:
     def install_snapshot(
         self,
         rows: list[dict[str, Any]],
+        config: dict[str, Any],
         index: int,
         term: int,
         placement_epoch: int,
     ) -> dict[str, Any]:
         if index < self.applied_index:
             raise ProtocolError("snapshot cannot regress applied index")
+        if set(config) != COLLECTION_CONFIG_FIELDS:
+            raise ProtocolError("snapshot collection config fields mismatch")
+        incoming = CollectionConfig.from_kernel(config)
+        if incoming != self.config or incoming.fingerprint != self.config.fingerprint:
+            raise ProtocolError("snapshot collection config mismatch")
         self.collection.close()
         collection_path = self.root / "collection"
         if collection_path.exists():
@@ -197,7 +216,9 @@ class ReplicaShard:
         journal_path = self.root / "replicated.log"
         if journal_path.exists():
             journal_path.unlink()
-        self.collection = Collection(collection_path, self.dimension)
+        self.collection = Collection(
+            collection_path, self.dimension, config=self.config
+        )
         if rows:
             mutations: list[BatchMutation] = []
             sparse_rows: list[tuple[int, list[SparseElement]]] = []
@@ -244,6 +265,7 @@ class ReplicaShard:
             "placement_epoch": self.placement_epoch,
             "applied_index": self.applied_index,
             "last_sequence": self.collection.last_sequence,
+            "config_fingerprint": self.collection.collection_config().fingerprint,
         }
 
     def close(self) -> None:
@@ -254,6 +276,7 @@ def replica_server_main(
     node_id: str,
     root: str,
     dimension: int,
+    config: dict[str, Any],
     authkey: bytes,
     ready: Connection,
 ) -> None:
@@ -292,7 +315,12 @@ def replica_server_main(
                 if operation == "configure":
                     shard = shards.get(shard_id)
                     if shard is None:
-                        shard = ReplicaShard(Path(root) / f"shard-{shard_id}", shard_id, dimension)
+                        shard = ReplicaShard(
+                            Path(root) / f"shard-{shard_id}",
+                            shard_id,
+                            dimension,
+                            config,
+                        )
                         shards[shard_id] = shard
                     result = shard.configure(
                         int(request["term"]), int(request["placement_epoch"])
@@ -313,12 +341,14 @@ def replica_server_main(
                         result = {
                             "rows": shard.export_records(),
                             "applied_index": shard.applied_index,
+                            "collection_config": config,
                         }
                     elif operation == "entries":
                         result = shard.entries_after(int(request["after_index"]))
                     elif operation == "install_snapshot":
                         result = shard.install_snapshot(
                             request["rows"],
+                            request["collection_config"],
                             int(request["index"]),
                             int(request["term"]),
                             int(request["placement_epoch"]),
@@ -360,11 +390,13 @@ class ReplicaProcess:
         node_id: str,
         root: str | Path,
         dimension: int,
+        config: dict[str, Any],
         authkey: bytes,
     ) -> None:
         self.node_id = node_id
         self.root = Path(root)
         self.dimension = dimension
+        self.config = dict(config)
         self.authkey = authkey
         self.address: tuple[str, int] | None = None
         self.process: multiprocessing.Process | None = None
@@ -376,7 +408,14 @@ class ReplicaProcess:
         parent, child = context.Pipe(duplex=False)
         self.process = context.Process(
             target=replica_server_main,
-            args=(self.node_id, str(self.root), self.dimension, self.authkey, child),
+            args=(
+                self.node_id,
+                str(self.root),
+                self.dimension,
+                self.config,
+                self.authkey,
+                child,
+            ),
             name=f"akasha-replica-{self.node_id}",
         )
         self.process.start()

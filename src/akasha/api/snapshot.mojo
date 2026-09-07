@@ -3,6 +3,7 @@ from akasha.compute.simd import (
     simd_dot_product,
     simd_l2_squared_distance,
 )
+from akasha.common.config import CollectionConfig
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import (
     DeviceBatchResult,
@@ -53,6 +54,7 @@ comptime _COSINE_METRIC = 2
 struct ReadSnapshot(Movable):
     """An immutable, owned collection view at one accepted sequence."""
 
+    var _config: CollectionConfig
     var _dimension: Int
     var _generation: UInt64
     var _sequence: UInt64
@@ -64,7 +66,7 @@ struct ReadSnapshot(Movable):
 
     def __init__(
         out self,
-        dimension: Int,
+        config: CollectionConfig,
         generation: UInt64,
         sequence: UInt64,
         var memtable: MemTable,
@@ -72,7 +74,8 @@ struct ReadSnapshot(Movable):
         var sparse: SparseIndex,
         var pins: ArcPointer[GenerationPinRegistry],
     ):
-        self._dimension = dimension
+        self._config = config.copy()
+        self._dimension = config.dimension
         self._generation = generation
         self._sequence = sequence
         self._memtable = memtable^
@@ -83,14 +86,16 @@ struct ReadSnapshot(Movable):
 
     @staticmethod
     def capture(
-        dimension: Int,
+        config: CollectionConfig,
         generation: UInt64,
         sequence: UInt64,
         memtable: MemTable,
         sparse: SparseIndex,
         pins: ArcPointer[GenerationPinRegistry],
     ) raises -> ReadSnapshot:
-        if dimension <= 0 or memtable.dimension != dimension:
+        config.validate()
+        var dimension = config.dimension
+        if memtable.dimension != dimension:
             raise Error("snapshot dimension mismatch")
         if memtable.last_sequence > sequence:
             raise Error("snapshot sequence precedes memtable")
@@ -100,7 +105,7 @@ struct ReadSnapshot(Movable):
         var owned_pins = pins
         owned_pins[].pin(generation)
         return ReadSnapshot(
-            dimension,
+            config,
             generation,
             sequence,
             owned^,
@@ -125,6 +130,12 @@ struct ReadSnapshot(Movable):
 
     def last_sequence(self) -> UInt64:
         return self._sequence
+
+    def collection_config(self) -> CollectionConfig:
+        return self._config.copy()
+
+    def config_fingerprint(self) -> UInt64:
+        return self._config.fingerprint()
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
         self._ensure_open()

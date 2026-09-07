@@ -1,4 +1,5 @@
 from akasha.compute.topk import BoundedTopK
+from akasha.compute.dispatch import portable_simd_width
 from akasha.compute.gpu.flat_scan import DeviceBatchResult
 from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.api.batch import BatchMutation, BatchWriteResult
@@ -14,6 +15,7 @@ from akasha.document.record import (
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.metadata import MetadataIndex
@@ -157,6 +159,7 @@ struct PersistentCollection:
     var _hnsw_unavailable_reason: String
     var _hnsw_mutations_since_rebuild: Int
     var _last_dense_plan_reason: String
+    var _last_search_stats: HnswSearchStats
     var _last_hnsw_rerank_candidates: Int
     var _last_hnsw_rerank_ordinal_lookups: Int
     var _last_hnsw_rerank_linear_id_scans: Int
@@ -218,6 +221,7 @@ struct PersistentCollection:
         )
         self._hnsw_mutations_since_rebuild = 0
         self._last_dense_plan_reason = ""
+        self._last_search_stats = HnswSearchStats()
         self._last_hnsw_rerank_candidates = 0
         self._last_hnsw_rerank_ordinal_lookups = 0
         self._last_hnsw_rerank_linear_id_scans = 0
@@ -602,6 +606,12 @@ struct PersistentCollection:
             self._ensure_open()
             return self._last_dense_plan_reason.copy()
 
+    def last_search_stats(self) raises -> HnswSearchStats:
+        """Return an owned copy of the most recent approximate-query stats."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return _copy_hnsw_search_stats(self._last_search_stats)
+
     def hnsw_slot_count(self) raises -> Int:
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
@@ -675,7 +685,7 @@ struct PersistentCollection:
         if path_exists(self._path + "/manifest.bin"):
             generation = load_manifest(self._path, self._config.dimension).generation
         return ReadSnapshot.capture(
-            self._config.dimension,
+            self._config,
             generation,
             self._last_sequence,
             self._memtable,
@@ -1705,11 +1715,24 @@ struct PersistentCollection:
         self._last_dense_plan_reason = plan.reason.copy()
         if not plan.use_hnsw:
             var conditions = List[FilterCondition]()
-            return self._search_filtered(query, k, metric, conditions)
+            var exact = self._search_filtered(query, k, metric, conditions)
+            self._record_exact_fallback_stats(
+                metric, ef_search, plan.initial_ef, count, len(exact), plan.reason
+            )
+            return exact^
         if not self._ensure_hnsw_id_lookup():
             self._last_dense_plan_reason = "graph_unavailable"
             var conditions = List[FilterCondition]()
-            return self._search_filtered(query, k, metric, conditions)
+            var exact = self._search_filtered(query, k, metric, conditions)
+            self._record_exact_fallback_stats(
+                metric,
+                ef_search,
+                plan.initial_ef,
+                count,
+                len(exact),
+                "graph_unavailable",
+            )
+            return exact^
         try:
             var candidates = self._hnsw.search(
                 query,
@@ -1719,6 +1742,7 @@ struct PersistentCollection:
                 self._hnsw_id_lookup.value(),
             )
             var segmented_stats = self._hnsw.last_search_stats()
+            self._last_search_stats = _copy_hnsw_search_stats(segmented_stats)
             if segmented_stats.fallback_reason != "":
                 self._last_dense_plan_reason = (
                     segmented_stats.fallback_reason.copy()
@@ -1740,6 +1764,14 @@ struct PersistentCollection:
             var exact = self._search_filtered(query, k, metric, conditions)
             self._mark_hnsw_unavailable("search_failed")
             self._last_dense_plan_reason = "graph_unavailable"
+            self._record_exact_fallback_stats(
+                metric,
+                ef_search,
+                plan.initial_ef,
+                count,
+                len(exact),
+                "graph_unavailable",
+            )
             return exact^
 
     def _search_approx_where_unlocked(
@@ -1772,10 +1804,28 @@ struct PersistentCollection:
         )
         self._last_dense_plan_reason = plan.reason.copy()
         if not plan.use_hnsw:
-            return self._search_where(query, k, metric, expression)
+            var exact = self._search_where(query, k, metric, expression)
+            self._record_exact_fallback_stats(
+                metric,
+                ef_search,
+                plan.initial_ef,
+                matched_count,
+                len(exact),
+                plan.reason,
+            )
+            return exact^
         if not self._ensure_hnsw_id_lookup():
             self._last_dense_plan_reason = "graph_unavailable"
-            return self._search_where(query, k, metric, expression)
+            var exact = self._search_where(query, k, metric, expression)
+            self._record_exact_fallback_stats(
+                metric,
+                ef_search,
+                plan.initial_ef,
+                matched_count,
+                len(exact),
+                "graph_unavailable",
+            )
+            return exact^
         try:
             var allowed_bitmap = matched.clone()
             var eligibility = HnswEligibility(
@@ -1791,6 +1841,7 @@ struct PersistentCollection:
                 self._hnsw_id_lookup.value(),
             )
             var segmented_stats = self._hnsw.last_search_stats()
+            self._last_search_stats = _copy_hnsw_search_stats(segmented_stats)
             if segmented_stats.fallback_reason != "":
                 self._last_dense_plan_reason = (
                     segmented_stats.fallback_reason.copy()
@@ -1811,7 +1862,43 @@ struct PersistentCollection:
             var exact = self._search_where(query, k, metric, expression)
             self._mark_hnsw_unavailable("search_failed")
             self._last_dense_plan_reason = "graph_unavailable"
+            self._record_exact_fallback_stats(
+                metric,
+                ef_search,
+                plan.initial_ef,
+                matched_count,
+                len(exact),
+                "graph_unavailable",
+            )
             return exact^
+
+    def _record_exact_fallback_stats(
+        mut self,
+        metric: Int,
+        requested_ef: Int,
+        effective_ef: Int,
+        visited: Int,
+        retained: Int,
+        reason: String,
+    ):
+        var stats = HnswSearchStats()
+        stats.requested_ef = requested_ef
+        stats.effective_ef = effective_ef
+        stats.base_visited = visited
+        stats.distance_evaluations = visited
+        stats.retained_candidates = retained
+        stats.reranked_candidates = retained
+        stats.backend_name = String("portable-simd-", portable_simd_width())
+        if metric == _DOT_METRIC:
+            stats.metric_name = "dot"
+        elif metric == _L2_METRIC:
+            stats.metric_name = "l2"
+        else:
+            stats.metric_name = "cosine"
+        stats.scalar_name = "f32"
+        stats.storage_name = "exact"
+        stats.fallback_reason = reason.copy()
+        self._last_search_stats = stats^
 
     def _search_where(
         self,
@@ -2171,6 +2258,28 @@ def _clone_vector(values: List[Float32]) -> List[Float32]:
     var result = List[Float32](capacity=len(values))
     for value in values:
         result.append(value)
+    return result^
+
+
+def _copy_hnsw_search_stats(stats: HnswSearchStats) -> HnswSearchStats:
+    var result = HnswSearchStats()
+    result.requested_ef = stats.requested_ef
+    result.effective_ef = stats.effective_ef
+    result.widening_rounds = stats.widening_rounds
+    result.upper_visited = stats.upper_visited
+    result.base_visited = stats.base_visited
+    result.distance_evaluations = stats.distance_evaluations
+    result.retained_candidates = stats.retained_candidates
+    result.reranked_candidates = stats.reranked_candidates
+    result.filtered_rejections = stats.filtered_rejections
+    result.inactive_rejections = stats.inactive_rejections
+    result.base_candidates = stats.base_candidates
+    result.delta_candidates = stats.delta_candidates
+    result.backend_name = stats.backend_name.copy()
+    result.metric_name = stats.metric_name.copy()
+    result.scalar_name = stats.scalar_name.copy()
+    result.storage_name = stats.storage_name.copy()
+    result.fallback_reason = stats.fallback_reason.copy()
     return result^
 
 
