@@ -48,12 +48,32 @@ struct BoundCollection(Movable, Writable):
             raise Error(
                 "Collection(path, dimension, config=None) requires two or three arguments"
             )
+        var keyword_count = 0
+        # PythonTypeBuilder passes a null kwargs pointer when no keywords are
+        # present. Follow its own stdlib initializer pattern before touching it.
+        if kwargs._obj_ptr:
+            keyword_count = len(kwargs)
+            for raw_name in kwargs:
+                var name = _exact_python_string(
+                    raw_name, "Collection keyword"
+                )
+                if name != "config":
+                    raise Error("unknown Collection keyword: " + name)
+        if len(args) == 3 and keyword_count != 0:
+            raise Error("Collection config specified more than once")
         var path = String(py=args[0])
         var dimension = _exact_python_int(args[1], "dimension")
-        if len(args) == 2 or _is_python_none(args[2]):
+        var config_value = Python.none()
+        if len(args) == 3:
+            config_value = args[2]
+        elif keyword_count == 1:
+            config_value = kwargs["config"]
+        if _is_python_none(config_value):
             self.inner = Optional(PersistentCollection.open(path, dimension))
         else:
-            var config = _collection_config_from_python(dimension, args[2])
+            var config = _collection_config_from_python(
+                dimension, config_value
+            )
             config.validate()
             self.inner = Optional(
                 PersistentCollection.open_with_config(path, config)

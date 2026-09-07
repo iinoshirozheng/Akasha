@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,12 @@ INDEX_RECORD_FIELDS = frozenset({"kind", "index"})
 REQUEST_RECORD_FIELDS = frozenset(
     {"shard_id", "term", "index", "checksum", "status"}
 )
+DELETE_MUTATION_FIELDS = frozenset({"operation", "id"})
+UPSERT_MUTATION_FIELDS = frozenset(
+    {"operation", "id", "vector", "fields", "sparse"}
+)
+MUTATION_PAYLOAD_FIELDS = frozenset({"name", "type", "value"})
+MUTATION_SPARSE_FIELDS = frozenset({"term_id", "weight"})
 
 
 class ProtocolError(RuntimeError):
@@ -101,6 +108,15 @@ def _exact_int(value: Any, name: str) -> int:
     if type(value) is not int:
         raise ProtocolError(f"{name} must be an integer")
     return value
+
+
+def _finite_number(value: Any) -> bool:
+    if type(value) not in {int, float}:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 def _decode_envelope_versioned(
@@ -161,6 +177,79 @@ def _legacy_default_collection_config(dimension: int) -> dict[str, Any]:
         return dict(_kernel_module().validate_collection_config(dimension, None))
     except Exception as error:
         raise ProtocolError("invalid legacy collection dimension") from error
+
+
+def validate_replicated_mutation(
+    mutation: Any, dimension: int | None = None
+) -> None:
+    if type(mutation) is not dict or type(mutation.get("operation")) is not str:
+        raise ProtocolError("replicated mutation operation is invalid")
+    operation = mutation["operation"]
+    if operation == "delete":
+        if set(mutation) != DELETE_MUTATION_FIELDS:
+            raise ProtocolError("replicated delete mutation fields mismatch")
+        _exact_int(mutation["id"], "replicated mutation id")
+        return
+    if operation != "upsert":
+        raise ProtocolError("replicated mutation operation is invalid")
+    if set(mutation) != UPSERT_MUTATION_FIELDS:
+        raise ProtocolError("replicated upsert mutation fields mismatch")
+    _exact_int(mutation["id"], "replicated mutation id")
+
+    vector = mutation["vector"]
+    if type(vector) is not list or not vector:
+        raise ProtocolError("replicated mutation vector must be a nonempty list")
+    if dimension is not None and len(vector) != dimension:
+        raise ProtocolError("replicated mutation vector dimension mismatch")
+    for value in vector:
+        if not _finite_number(value):
+            raise ProtocolError(
+                "replicated mutation vector must contain finite numbers"
+            )
+
+    payload = mutation["fields"]
+    if type(payload) is not list:
+        raise ProtocolError("replicated mutation payload must be a list")
+    names: set[str] = set()
+    for item in payload:
+        if type(item) is not dict or set(item) != MUTATION_PAYLOAD_FIELDS:
+            raise ProtocolError("replicated mutation payload fields mismatch")
+        name = item["name"]
+        kind = item["type"]
+        value = item["value"]
+        if type(name) is not str or not name or name in names:
+            raise ProtocolError("replicated mutation payload names are invalid")
+        names.add(name)
+        if type(kind) is not str or kind not in {
+            "string",
+            "int",
+            "float",
+            "bool",
+        }:
+            raise ProtocolError("replicated mutation payload type is invalid")
+        if kind == "string" and type(value) is not str:
+            raise ProtocolError("replicated mutation string payload is invalid")
+        if kind == "int" and type(value) is not int:
+            raise ProtocolError("replicated mutation integer payload is invalid")
+        if kind == "bool" and type(value) is not bool:
+            raise ProtocolError("replicated mutation boolean payload is invalid")
+        if kind == "float" and not _finite_number(value):
+            raise ProtocolError("replicated mutation float payload is invalid")
+
+    sparse = mutation["sparse"]
+    if type(sparse) is not list:
+        raise ProtocolError("replicated mutation sparse vector must be a list")
+    term_ids: set[int] = set()
+    for item in sparse:
+        if type(item) is not dict or set(item) != MUTATION_SPARSE_FIELDS:
+            raise ProtocolError("replicated mutation sparse fields mismatch")
+        term_id = _exact_int(item["term_id"], "replicated mutation sparse term")
+        weight = item["weight"]
+        if term_id < 0 or term_id in term_ids:
+            raise ProtocolError("replicated mutation sparse term is invalid")
+        if not _finite_number(weight):
+            raise ProtocolError("replicated mutation sparse weight is invalid")
+        term_ids.add(term_id)
 
 
 @dataclass(slots=True)
@@ -453,10 +542,23 @@ class ReplicatedEntry:
         )
 
     def validate(self) -> None:
+        for name, value in (
+            ("shard_id", self.shard_id),
+            ("term", self.term),
+            ("placement_epoch", self.placement_epoch),
+            ("index", self.index),
+            ("mutation_checksum", self.mutation_checksum),
+        ):
+            _exact_int(value, f"replicated {name}")
         if self.shard_id < 0 or self.term <= 0 or self.placement_epoch <= 0:
             raise ProtocolError("invalid replicated entry epoch")
-        if self.index <= 0 or not self.request_id:
+        if (
+            type(self.request_id) is not str
+            or self.index <= 0
+            or not self.request_id
+        ):
             raise ProtocolError("invalid replicated entry identity")
+        validate_replicated_mutation(self.mutation)
         if self.mutation_checksum != payload_checksum(self.mutation):
             raise ProtocolError("replicated mutation checksum mismatch")
 
@@ -505,13 +607,10 @@ class ReplicaJournal:
             return
         data = self.path.read_bytes()
         complete_size = len(data)
-        if data and not data.endswith(b"\n"):
+        repair_torn_tail = bool(data and not data.endswith(b"\n"))
+        if repair_torn_tail:
             complete_size = data.rfind(b"\n") + 1
             data = data[:complete_size]
-            with self.path.open("r+b") as file:
-                file.truncate(complete_size)
-                file.flush()
-                os.fsync(file.fileno())
         for line in data.splitlines():
             if not line:
                 continue
@@ -542,6 +641,11 @@ class ReplicaJournal:
                 self.snapshot_index = max(self.snapshot_index, index)
             else:
                 raise ProtocolError("unknown replica journal record")
+        if repair_torn_tail:
+            with self.path.open("r+b") as file:
+                file.truncate(complete_size)
+                file.flush()
+                os.fsync(file.fileno())
 
     def _append(self, payload: dict[str, Any]) -> None:
         data = canonical_bytes(checked_envelope(payload)) + b"\n"

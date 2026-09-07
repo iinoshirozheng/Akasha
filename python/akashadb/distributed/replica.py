@@ -30,6 +30,7 @@ from .protocol import (
     checked_envelope,
     decode_envelope,
     payload_checksum,
+    validate_replicated_mutation,
 )
 
 
@@ -277,6 +278,7 @@ class ReplicaShard:
 
     def prepare(self, entry: ReplicatedEntry) -> dict[str, Any]:
         self._validate_entry_epoch(entry)
+        validate_replicated_mutation(entry.mutation, self.dimension)
         if entry.index <= self.journal.snapshot_index:
             raise ProtocolError("replicated index predates installed snapshot")
         self.journal.prepare(entry)
@@ -284,6 +286,7 @@ class ReplicaShard:
 
     def commit(self, entry: ReplicatedEntry) -> dict[str, Any]:
         self._validate_entry_epoch(entry)
+        validate_replicated_mutation(entry.mutation, self.dimension)
         self.journal.prepare(entry)
         committed = self.journal.commit(entry.index)
         if committed.index > self.applied_index:
@@ -293,6 +296,7 @@ class ReplicaShard:
         return {"committed_index": entry.index, "applied_index": self.applied_index}
 
     def _apply(self, mutation: dict[str, Any]) -> None:
+        validate_replicated_mutation(mutation, self.dimension)
         operation = mutation["operation"]
         point_id = int(mutation["id"])
         if operation == "delete":

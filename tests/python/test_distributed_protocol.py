@@ -10,6 +10,7 @@ from akashadb.distributed.protocol import (
     ReplicaJournal,
     ReplicatedEntry,
     ShardPlacement,
+    payload_checksum,
 )
 from akashadb import CollectionConfig
 from akashadb.database import _kernel_module
@@ -62,7 +63,13 @@ def test_replica_journal_is_idempotent_strict_and_repairs_torn_tail(tmp_path) ->
         1,
         1,
         "request-1",
-        {"operation": "upsert", "id": 1, "vector": [1.0]},
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [],
+            "sparse": [],
+        },
     )
     journal.prepare(entry)
     journal.prepare(entry)
@@ -153,7 +160,18 @@ def test_v1_metadata_and_journal_envelopes_migrate_explicitly(tmp_path) -> None:
     )
 
     entry = ReplicatedEntry.create(
-        0, 1, 1, 1, "v1", {"operation": "upsert", "id": 1, "vector": [1.0]}
+        0,
+        1,
+        1,
+        1,
+        "v1",
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [],
+            "sparse": [],
+        },
     )
     records = (
         {"kind": "prepare", "entry": entry.to_dict()},
@@ -173,3 +191,59 @@ def test_v1_metadata_and_journal_envelopes_migrate_explicitly(tmp_path) -> None:
     journal.install_snapshot(1)
     newest = json.loads(journal_path.read_text().splitlines()[-1])
     assert newest["version"] == 2
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"operation": "explode"},
+        {"operation": "delete", "id": True},
+        {"operation": "delete", "id": 1, "extra": 2},
+        {
+            "operation": "upsert",
+            "id": 1,
+            "vector": [1.0],
+            "fields": [{"name": "x", "type": "int", "value": True}],
+            "sparse": [],
+        },
+    ],
+)
+def test_invalid_replicated_mutation_is_rejected_before_journal_write(
+    tmp_path, mutation
+) -> None:
+    path = tmp_path / "invalid.log"
+    journal = ReplicaJournal(path)
+    entry = ReplicatedEntry(
+        0,
+        1,
+        1,
+        1,
+        "invalid",
+        mutation,
+        payload_checksum(mutation),
+    )
+    with pytest.raises(ProtocolError, match="mutation"):
+        journal.prepare(entry)
+    assert not path.exists()
+
+
+def test_corrupt_complete_journal_prefix_is_not_truncated(tmp_path) -> None:
+    path = tmp_path / "corrupt-torn.log"
+    journal = ReplicaJournal(path)
+    entry = ReplicatedEntry.create(
+        0,
+        1,
+        1,
+        1,
+        "request-1",
+        {"operation": "delete", "id": 1},
+    )
+    journal.prepare(entry)
+    data = bytearray(path.read_bytes())
+    data[20] ^= 1
+    before = bytes(data) + b'{"version":2'
+    path.write_bytes(before)
+
+    with pytest.raises(ProtocolError, match="corruption"):
+        ReplicaJournal(path)
+    assert path.read_bytes() == before

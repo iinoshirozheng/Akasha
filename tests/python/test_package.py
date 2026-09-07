@@ -165,6 +165,29 @@ def test_compiled_kernel_config_none_and_exact_types(tmp_path) -> None:
     assert explicit_none.collection_config()["ann_metric"] == "l2"
     explicit_none.close()
 
+    keyword = kernel.Collection(
+        str(tmp_path / "keyword-config"),
+        2,
+        config={"ann_metric": "dot"},
+    )
+    assert keyword.collection_config()["ann_metric"] == "dot"
+    keyword.close()
+
+    unsupported_path = tmp_path / "unsupported-keyword"
+    with pytest.raises(Exception, match="keyword"):
+        kernel.Collection(str(unsupported_path), 2, unsupported=True)
+    assert not unsupported_path.exists()
+
+    duplicate_path = tmp_path / "duplicate-config"
+    with pytest.raises(Exception, match="config"):
+        kernel.Collection(
+            str(duplicate_path),
+            2,
+            {"ann_metric": "dot"},
+            config={"ann_metric": "cosine"},
+        )
+    assert not duplicate_path.exists()
+
     invalid_values = (
         {"default_ef_search": True},
         {"level_seed": False},
