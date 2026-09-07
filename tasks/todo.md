@@ -109,6 +109,8 @@ clone 所有 live records。
 **預計檔案：** `src/akasha/index/sparse.mojo`、`tests/mojo/test_sparse_index.mojo`、
 `tests/mojo/test_persistent_sparse.mojo`；量測如需新增專用檔，限本工作負載。
 
+**完成 commit：** `85a9b85`。
+
 **完成證據：** SparseIndex／persistent sparse／snapshot 共 16 tests 通過；
 [固定 workload 與記憶體報告](../docs/benchmarks/2026-09-07-lookup-arrow.md)。
 
@@ -117,9 +119,9 @@ clone 所有 live records。
 **描述：** `_accumulate` 以 ID lookup 替代遍歷已有 scores，沿用目前 RRF 公式與輸入順序。
 
 **驗收：**
-- [ ] overlapping／disjoint lists、empty input、負 ID、ties 與 rank_constant 皆符合現有合約。
-- [ ] 浮點累加順序與 deterministic output 不被 Dict iteration order 改變。
-- [ ] 隨 fetch_k 增大的量測顯示移除 quadratic ID lookup，包含 Dict 記憶體成本。
+- [x] overlapping／disjoint lists、empty input、負 ID、ties 與 rank_constant 皆符合現有合約。
+- [x] 浮點累加順序與 deterministic output 不被 Dict iteration order 改變。
+- [x] 隨 fetch_k 增大的量測顯示移除 quadratic ID lookup，包含 Dict 記憶體成本。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_rank_fusion.mojo`、
 `pixi run mojo run -I src tests/mojo/test_persistent_sparse.mojo`。
@@ -129,8 +131,8 @@ clone 所有 live records。
 
 ## Checkpoint C：#43／#44
 
-- [ ] Sparse／hybrid／snapshot narrow tests 通過；記錄效能與 retained memory。
-- [ ] 沒有新增格式或自訂 hash table，查核 A07 逐項更新。
+- [x] Sparse／hybrid／snapshot narrow tests 通過；記錄效能與 retained memory。
+- [x] 沒有新增格式或自訂 hash table，查核 A07 逐項更新。
 
 ## #45：Arrow primitive ingress 改為 typed borrow
 

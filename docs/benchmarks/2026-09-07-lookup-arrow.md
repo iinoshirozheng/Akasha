@@ -7,7 +7,7 @@
 
 官方 [Dict](https://mojolang.org/docs/std/collections/dict/Dict/) 的 `get`／
 `pop(key, default)` 維護 record／term／score slots，沿用 List 的累計順序。
-刪除搬移時修正位置，移除空 term，clone 重建獨立 lookup。沒有格式改动。
+刪除搬移時修正位置，移除空 term，clone 重建獨立 lookup。沒有格式改動。
 
 5 sparse tests（含 slot 搬移、刪除重插、負 ID、clone 與 Float32 cancellation）、
 5 persistent sparse tests（WAL／checkpoint reopen、filtered／hybrid、compaction）、
@@ -46,3 +46,28 @@ pixi run python benchmarks/lookup_compare.py .build/official-primitives-43-46/lo
 
 逐次資料：[sparse lookup JSON](results/2026-09-07-sparse-lookup.json)。此為 kernel
 workload，沒有 Qdrant 對照，不代表服務吞吐或全工作負載效能。
+
+## #44 RRF
+
+同一 harness、5 對交替程序，每次 20 queries，k=10，兩份長度 N 的排名有一半重疊，
+包含負 ID。相同公式與 dense→sparse 累計順序；5 RRF tests 與 5 persistent sparse
+再驗證通過。Sparse/snapshot 無新變動，沿用 #43 結果。
+
+| fetch_k | RRF ms 前→後 | Peak RSS MiB 前→後 |
+|---:|---:|---:|
+| 512 | 0.2665→0.0215 | 13.00→13.36 |
+| 2,048 | 4.1832→0.0671 | 13.06→13.80 |
+| 8,192 | 66.4427→0.2571 | 13.67→15.78 |
+
+原 score ID 比較為 Θ(N²)，新版本每 query 為 2N 次 Dict get、1.5N 次 insert，
+再走原來的 Top-K。N 放大 16 倍，舊查詢約 249 倍、新查詢約 12 倍。
+Dict 僅 query 暫存，return 後不保留 owner；8,192 時 12,288 entries 的 key/value
+payload 下限 196,608 bytes，另有容量／metadata／allocator 成本。峰值 RSS 是整個
+程序的量測，可能包含 allocator 留存；不是全數有效 entries 的 heap size。
+
+```sh
+pixi run mojo build -I src benchmarks/mojo/lookup_bench.mojo -o .build/official-primitives-43-46/lookup-after44
+pixi run python benchmarks/lookup_compare.py .build/official-primitives-43-46/lookup-before .build/official-primitives-43-46/lookup-after44 --mode fusion --output docs/benchmarks/results/2026-09-07-fusion-lookup.json
+```
+
+[逐次 fusion 結果](results/2026-09-07-fusion-lookup.json)。輸出 checksum 每組前後一致。

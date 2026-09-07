@@ -9,7 +9,9 @@ Pixi 鎖定 MAX 26.5.0。使用者指定的 [Mojo 文件](https://mojolang.org/d
 
 A07 的 SparseIndex 部分已使用官方 Dict 維護 record／term／score slots；
 swap-remove 同步修正 lookup、空 terms 回收、原分數累計順序保留。
-5 sparse、5 persistent sparse、6 snapshot tests 通過；RRF 部分下一項接續。
+5 sparse、5 persistent sparse、6 snapshot tests 通過。RRF `_accumulate` 也改為 Dict
+查找 slots，維持 dense→sparse 的 Float32 累計順序；5 RRF + 5 persistent sparse
+tests 通過。A07 的上述查找均已替換，posting 內刪除仍掃該 term 的 postings。
 [量測與限制](../benchmarks/2026-09-07-lookup-arrow.md)。
 
 ## #39–#42 實作進度

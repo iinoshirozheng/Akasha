@@ -23,8 +23,9 @@ def reciprocal_rank_fusion(
     if rank_constant <= 0:
         raise Error("RRF rank constant must be positive")
     var scores = List[_FusionScore]()
-    _accumulate(scores, dense, rank_constant)
-    _accumulate(scores, sparse, rank_constant)
+    var score_slots = Dict[Int, Int]()
+    _accumulate(scores, score_slots, dense, rank_constant)
+    _accumulate(scores, score_slots, sparse, rank_constant)
     if len(scores) == 0:
         return List[SearchResult]()
     var capacity = k
@@ -42,17 +43,15 @@ def reciprocal_rank_fusion(
 
 def _accumulate(
     mut scores: List[_FusionScore],
+    mut score_slots: Dict[Int, Int],
     ranking: List[SearchResult],
     rank_constant: Int,
 ):
     for index in range(len(ranking)):
         var contribution = Float32(1.0 / Float64(rank_constant + index + 1))
-        var found = -1
-        for score_index in range(len(scores)):
-            if scores[score_index].id == ranking[index].id:
-                found = score_index
-                break
+        var found = score_slots.get(ranking[index].id, -1)
         if found < 0:
+            score_slots[ranking[index].id] = len(scores)
             scores.append(_FusionScore(ranking[index].id, contribution))
         else:
             scores[found].score += contribution
