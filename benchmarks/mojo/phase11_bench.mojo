@@ -1,5 +1,5 @@
-from akasha import BatchMutation, PersistentCollection, ReadSnapshot
-from akasha.index.sparse import SparseIndex
+from akasha import BatchMutation, CollectionConfig, DocumentField, PayloadValue, PersistentCollection, ReadSnapshot
+from akasha.index.sparse import SparseElement, SparseIndex
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.manifest import load_manifest
@@ -7,6 +7,8 @@ from akasha.storage.memtable import MemTable, MemTableEntry
 from max.algorithm import parallelize
 from std.atomic import Atomic
 from std.memory import ArcPointer
+from std.python import Python
+from std.sys.arg import argv
 from std.time import perf_counter_ns
 
 
@@ -35,7 +37,7 @@ def _snapshot_benchmark() raises:
 
     var capture_start = perf_counter_ns()
     var snapshot = ReadSnapshot.capture(
-        _DIMENSION,
+        CollectionConfig.defaults(_DIMENSION),
         0,
         UInt64(_POINT_COUNT),
         table,
@@ -58,6 +60,74 @@ def _snapshot_benchmark() raises:
         search_elapsed,
     )
     snapshot.close()
+
+
+def _rss_bytes() raises -> Int:
+    # RSS of this running Mojo process, outside capture timers. Python/runtime
+    # imports are warmed before baseline; ps reports KiB on macOS and Linux.
+    var args = Python.list()
+    for arg in ["ps", "-o", "rss=", "-p"]:
+        args.append(arg)
+    args.append(Python.import_module("builtins").str(Python.import_module("os").getpid()))
+    var output = Python.import_module("subprocess").check_output(args)
+    return Int(py=Python.import_module("builtins").int(output)) * 1024
+
+
+def _cost_upsert(mut table: MemTable, mut sparse: SparseIndex, id: Int, sequence: UInt64, revision: Int) raises:
+    var values = List[Float32](length=128, fill=Float32(revision))
+    var fields = List[DocumentField]()
+    fields.append(DocumentField("text", PayloadValue.string("p" * 255 + String(revision))))
+    table.apply_document_upsert(id, sequence, values^, fields^)
+    sparse.upsert(id, [SparseElement(0, Float32(revision + 1)), SparseElement(id + 1, Float32(revision + 1))])
+
+
+def _snapshot_cost_benchmark(delta: Int, leases: Int) raises:
+    comptime points = 4096
+    if delta < 0 or delta > points or leases < 1 or leases > 8:
+        raise Error("invalid snapshot cost dimensions")
+    _ = _rss_bytes()
+    var table = MemTable(128)
+    var sparse = SparseIndex()
+    for id in range(points):
+        _cost_upsert(table, sparse, id, UInt64(2 * id + 1), 0)
+    var sequence = UInt64(2 * points)
+    var pins = ArcPointer(GenerationPinRegistry())
+    var snapshots = List[ReadSnapshot](capacity=leases)
+    var config = CollectionConfig.defaults(128)
+    var baseline_rss = _rss_bytes()
+    var elapsed = 0
+    for capture in range(leases):
+        for id in range(delta):
+            _cost_upsert(table, sparse, id, sequence + 1, capture + 1)
+            sequence += 2  # one dense and one sparse accepted operation
+        var start = perf_counter_ns()
+        snapshots.append(ReadSnapshot.capture(config, 7, sequence, table, sparse, pins))
+        var duration = perf_counter_ns() - start
+        elapsed += duration
+        # Count logical authoritative data actually retained in each owned
+        # snapshot; extra index copies, padding and allocator metadata excluded.
+        var logical_bytes = points * (128 * 4 + 256 + 2 * (8 + 4))
+        print("snapshot_capture delta=" + String(delta) + " leases=" + String(leases) + " capture=" + String(capture) + " generation=7 sequence=" + String(sequence) + " capture_ns=" + String(duration) + " authoritative_copy_bytes=" + String(logical_bytes))
+    var held_rss = _rss_bytes()
+    for capture in range(leases):
+        var expected = Float32(capture + 1 if delta > 0 else 0)
+        var document = snapshots[capture].get(0)
+        if snapshots[capture].generation() != 7 or document.value().vector[0] != expected:
+            raise Error("snapshot cost visibility mismatch")
+        if snapshots[capture].last_sequence() != UInt64(2 * points + 2 * delta * (capture + 1)):
+            raise Error("snapshot cost sequence mismatch")
+        if document.value().get_field("text").value().as_string() != "p" * 255 + String(Int(expected)):
+            raise Error("snapshot cost payload mismatch")
+        var sparse_hit = snapshots[capture].search_sparse_dot([SparseElement(1, 1.0)], 1)
+        if len(sparse_hit) != 1 or sparse_hit[0].id != 0 or sparse_hit[0].score != expected + 1.0:
+            raise Error("snapshot cost sparse mismatch")
+        snapshots[capture].close()
+    var closed_rss = _rss_bytes()
+    snapshots.clear()
+    if pins[].active_count() != 0:
+        raise Error("snapshot cost pin leak")
+    var dropped_rss = _rss_bytes()
+    print("snapshot_memory delta=" + String(delta) + " leases=" + String(leases) + " capture_total_ns=" + String(elapsed) + " baseline_rss=" + String(baseline_rss) + " held_rss=" + String(held_rss) + " closed_rss=" + String(closed_rss) + " dropped_rss=" + String(dropped_rss))
 
 
 def _reset(directory: String) raises:
@@ -142,6 +212,13 @@ def _maintenance_benchmark() raises:
 
 
 def main() raises:
+    var args = argv()
+    if len(args) == 4 and args[1] == "--snapshot-cost":
+        _snapshot_cost_benchmark(Int(args[2]), Int(args[3]))
+        return
     _snapshot_benchmark()
     _concurrency_benchmark()
     _maintenance_benchmark()
+    for delta in [0, 16]:
+        for leases in [1, 8]:
+            _snapshot_cost_benchmark(delta, leases)

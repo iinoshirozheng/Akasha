@@ -1,0 +1,80 @@
+{
+  "engine_commit": "234547a",
+  "commits": {
+    "43": "85a9b85",
+    "44": "ff00ddd",
+    "45": "234547a"
+  },
+  "toolchain": "Mojo 1.0.0 (ed45d567); MAX 26.5.0",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "cpu": "Apple M4 Pro",
+  "checks": [
+    {
+      "gate": "cpu",
+      "command": "pixi run test",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/integration-cpu.log",
+      "log_sha256": "5a1b474f3c6763d6403ce7de3a1579ca7f6744ee29fbb35849d9a8b28b517e99",
+      "mojo_files": 83,
+      "mojo_tests": 650,
+      "python_tests": 66,
+      "python_warnings": 2
+    },
+    {
+      "gate": "crash",
+      "command": "pixi run test-crash",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/crash.log",
+      "log_sha256": "e5e7defcb97d70f6b496d6036a9a23fa449c592f5f8e302052a93e436d0104bb",
+      "mojo_files": 5,
+      "mojo_tests": 9
+    },
+    {
+      "gate": "c-abi",
+      "command": "pixi run test-c",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/c-abi.log",
+      "log_sha256": "0f09dd49304fc71094d29ed872c12520ac14b7a63f432c801b997857ea1b5302"
+    },
+    {
+      "gate": "build",
+      "command": "pixi run build",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/build.log",
+      "log_sha256": "81c77f51e4387b8518615f81f787afec1ed0e64d755257e8e66940e8ad3ac612"
+    },
+    {
+      "gate": "hnsw-quality",
+      "command": "pixi run check-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/hnsw-quality.log",
+      "log_sha256": "aac896c37d9117aaaacf881642daa56c1bf42ded8161a30f1473ffa756df2b74"
+    },
+    {
+      "gate": "post-hnsw-quality",
+      "command": "pixi run check-post-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/post-hnsw-quality.log",
+      "log_sha256": "fedb3867df9f161d9778a71a4288fcbb0ac7607c531f45a9ed6401262fefa1d9"
+    },
+    {
+      "gate": "phase11",
+      "command": "pixi run bench-phase11",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/phase11.log",
+      "log_sha256": "f5c36abd1b78fb4342fe38dc61698e555a96e6ca41806f0a69588973f43a6a61"
+    },
+    {
+      "gate": "owner-probe",
+      "command": "pixi run mojo run -I src docs/research/2026-09-07-generation-owner-probe.mojo",
+      "exit_code": 0,
+      "log": ".build/official-primitives-43-46/owner-probe.log",
+      "log_sha256": "65ed4ac85e0a11dbd228b84bbad8098ff579e85695abf15b331e8fc36c933509"
+    }
+  ],
+  "design_artifacts": {
+    "benchmarks/mojo/phase11_bench.mojo": "cced879724b4fdbae394948b5c1d676d7d9d2eff7e18dc6bb37ac4b6439d636b",
+    "docs/research/2026-09-07-generation-owner-probe.mojo": "96b5668ad8e0ec0aa409f59291a03b1f1393e8f16a81da01b17b085d742e2a00"
+  },
+  "gpu": "unchanged engine/query path; prior evidence reused; no new device run"
+}

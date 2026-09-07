@@ -1,4 +1,4 @@
-# #43–#45 lookup／Arrow 驗證
+# #43–#46 lookup／Arrow／ownership 驗證
 
 2026-09-07，Apple M4 Pro／macOS，Pixi Mojo 1.0.0 (`ed45d567`)／MAX 26.5.0。
 基線 `7c75cc6`；工作分支 `codex/official-primitives-43-46`。
@@ -134,3 +134,29 @@ pixi run env PYTHONPATH=python:. python benchmarks/arrow_ingress.py --label afte
 
 [Before raw results](results/2026-09-07-arrow-before.json)、
 [after raw results](results/2026-09-07-arrow-after.json)。上限／空批次錯誤沿用現有公開路徑。
+
+## 整合完成與 #46
+
+Engine `234547a` 的完整驗證已通過：
+
+| Gate | 結果 |
+|---|---|
+| `pixi run test` | 83 Mojo files／650 tests；66 Python tests，0 failures |
+| `pixi run test-crash` | 5 files／9 tests 通過 |
+| `pixi run test-c` | C ABI build／test exit 0 |
+| `pixi run build` | Python module 與三個 Mojo examples 編譯通過 |
+| `pixi run check-hnsw-quality` | 6 smoke cells recall=1.0 |
+| `pixi run check-post-hnsw-quality` | 11 cells 通過既有 0.95 gate；selective fallback 依既有 policy 記錄 |
+| `pixi run bench-phase11` | 既有三組 benchmark 加四組 snapshot cost cells 通過 |
+| generation owner probe | Mojo 1.0 編譯／執行通過 |
+
+Python 的 2 個 builtin Collection `__module__` deprecation warnings 與先前相同。
+GPU engine/query source 沒有變動，實機測試沿用上一批證據，未宣稱本輪重跑或跨廠牌驗證。
+品質 smoke 含既有 exact fallback cells，不等於所有高維 ANN-only workload 達標。
+
+#46 完成 [ADR 0007](../adr/0007-generation-field-ownership.md)、
+[snapshot 成本與 compiler owner 限制](../research/2026-09-07-generation-costs.md)，
+以及 [#47–#63 後續清單](../../tasks/todo.md)。沒有實作整套 shared generations 或
+Qdrant 生命週期功能；這是該工作包明定的設計／量測交付範圍。
+
+[驗證 manifest](results/2026-09-07-lookup-arrow-validation.json) 保存命令、結果與 log hashes。

@@ -1,7 +1,8 @@
 # #31–#38 之後的執行規劃
 
 規劃日期：2026-09-07。複核基線：`main` 的 `a8895c6`；engine 是 `9b98dbc`。
-規劃後使用者已授權實作 #39–#42；進度與驗證以 todo.md 為準。
+使用者已依序授權 #39–#42 與 #43–#46；目前 #43–#45 engine 已提交，
+#46 ownership 設計／成本／後續切片已交付；進度與驗證以 todo.md 為準。
 工作包 #39–#46 是延續既有交付序號的建議編號，不是已建立的 GitHub issues。
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
@@ -14,7 +15,7 @@ native macOS／Linux 各通過 638 Mojo tests、Python 49／48 tests、9 crash t
 C ABI、build、examples 與 quality gates；Apple M4 Pro 的 9 GPU tests 依交付紀錄通過。
 `9b98dbc` 後兩筆提交只新增／更新文件與研究產物；本輪不重跑未變動的 engine suite。
 
-新目標仍有以下缺口：
+以下為規劃時缺口；#39–#45 的已完成部分見下方交付紀錄，生命週期功能仍待下一批：
 
 | 類別 | 複核證據 | 規劃 |
 |---|---|---|
@@ -39,8 +40,8 @@ C ABI、build、examples 與 quality gates；Apple M4 Pro 的 9 GPU tests 依交
 | 批次 | 工作 | 交付邊界 |
 |---|---|---|
 | 第一批 | #39 flush、#40 bit、#41 vector copy、#42 byte append | 4 個小改動各自驗證與提交；持久化 bytes／公開合約不變 |
-| 第二批 | #43 sparse Dict、#44 fusion Dict、#45 Arrow typed ingress | 各自端到端可運作；保留 ties、更新刪除與 producer ownership |
-| 設計檢查點 | #46 generation／field ownership 合約與成本基線 | 明確選定實作方式並拆出小工作包；不是一次重寫全庫 |
+| 第二批（完成） | #43 `85a9b85`、#44 `ff00ddd`、#45 `234547a` | Dict slots 與 typed ingress 已驗證；650 Mojo／66 Python tests 通過 |
+| 設計檢查點（完成） | #46 ADR 0007、cost harness、owner probe | 只完成設計／量測與 #47–#63 拆解，未實作 shared generation |
 | 下一批能力 | 共享 snapshots → 背景 compaction／backup → index lifecycle → leased scanner/export | 依 #46 定案結果切片；每片包含 correctness／失敗路徑驗收 |
 | 向量擴充 | named F32 → native scalar → binary → multivector/MaxSim | 每一型別都有 durable migration、write/read/search/reopen；不與核心 ownership 同批改 |
 | 品質／速度對照 | Qdrant 基線與 recall–latency 曲線提前，整合後再跑最終矩陣 | 固定硬體、資料、recall、filter、並行與 service 邊界 |
@@ -49,57 +50,47 @@ C ABI、build、examples 與 quality gates；Apple M4 Pro 的 9 GPU tests 依交
 數字表示工作包識別，實際依賴以 checklist 為準。官方 heap/sort 的評估也不阻擋
 生命週期設計，避免低影響清理延後最大的 snapshot／writer-lock 問題。
 
-## 架構原則與待定案的具體問題
+## #46 已定案的架構與下一批
 
-沿用已決定的最小核心：不可變資料共享 owner，新增寫入進 delta，generation pins
-控制回收，Mojo origin-tracked Span 控制借用，公開官方 std／MAX API 優先。
-不預先增加通用 storage backend／scheduler framework。
+完整合約是 [ADR 0007](../docs/adr/0007-generation-field-ownership.md)，
+量測／compiler 限制見 [成本報告](../docs/research/2026-09-07-generation-costs.md)。
+4,096×128 + payload/sparse 的每份 snapshot 仍複製至少 3.094 MiB content；
+8 份約增 39 MiB RSS，16-point delta 沒有明顯減少 capture 成本。
 
-#46 必須解決：
+採用 immutable base／sealed runs，加有界 mutable head descriptors；字段資料接受後
+由獨立 immutable owner 保管。Capture 分享 base/field owners，只複製有界 head。
+同 G 不同 accepted sequence、同 sequence 不同 layout 各有正確 root identity；
+exact/filter/sparse/hybrid 共用全點 visibility resolver，shadow 在 Top-K 前處理。
 
-1. 區分 manifest generation、accepted sequence 與 in-memory view identity：兩個
-   snapshot 可有相同 manifest generation 卻不同 sequence。CPU／GPU／PQ cache key
-   不能只用 manifest generation，也不能讓 flush 前的新寫入使用舊快取。
-2. authoritative base／delta 的 ownership 與資料布局。先在現有 dense F32、payload、
-   sparse 路徑落地，保留 field kind/scalar/dimension 的明確邊界；不能靠 `ArcPointer`
-   包住可變 MemTable 就宣稱 snapshot isolation，也不能每次寫入 clone 全庫。
-3. 凍結、sequence visibility、replace/delete masking、metadata/sparse 一致性；
-   已有 snapshot 的值和 owned `get` 合約保持不變。
-4. short publish 必須驗證輸入 generation 並處理新寫入；若失敗，舊代持續可用。
-   不能僅把 `BlockingScopedLock` 移出就產生 manifest lost update。備份必須複製被
-   pin 的那一份 manifest／檔案清單，不能解鎖後再讀最新 manifest。
-5. close/drain/release 與 Arrow/GPU ownership。lease 必須持有真實 owner，裸指標
-   或 release 次數模型不構成存活保證；最後使用者離開後才關閉 mapping／回收。
-6. 新向量欄位及 dense/sparse 原子更新的 durable 合約。需要格式改動就明確版本化、
-   遷移與相容測試，不在 List→Span 的小替換中偷渡。
+官方 ArcPointer 負責生命週期，但其 pointee mutation 並非 thread-safe。Mojo 1.0
+compile-only probe 也顯示 origin 標註不能單獨阻止 wrapper close 後沿用 Span。因此
+同步 operation／Arrow export 各自持 strong owner；Span 不作可任意 retained 的裸介面。
+Close 停新操作、鎖外 drain，再 drop 自己的 owner；已有 snapshot/export 獨立存活。
 
-參考已查閱的 Qdrant `lib/shard/src/optimize.rs` 的 COW/proxy、鎖外建置與短發布；
-RocksDB `db/snapshot_impl.h` 的 sequence visibility，以及既有
-[Phase 11 合約](../docs/plans/2026-08-26-snapshots-concurrency-batch-design.md)。
-把狀態轉移套入 Akasha，不複製整套上游型別／鎖抽象。
+Compaction 採 pin inputs → 鎖外 build/fsync → 核對 G/config → 保留 accepted tail →
+短發布 → lease-aware retirement。新 flush 造成 generation conflict 就丟棄新輸出並
+有界重排，不能覆蓋新 manifest。Backup 持精確 captured manifest/files lease，分塊
+copy 並 manifest-last。SQ8/PQ/HNSW artifacts 綁 root/field/config，避免 query 重建。
 
-## 後續能力的拆分規則
+下一批以 todo 中獨立工作包執行：
 
-以下是尚待 #46 選定表示法的能力順序，不能當成可一次實作的大工作包。
-在寫程式前，把每個能力拆成約 2–5 個檔案的垂直切片，放進 todo.md，附上測試。
-
-| 能力 | 最小端到端成果 | 驗收重點 |
+| 順序 | 工作包 | 可驗收能力 |
 |---|---|---|
-| Shared snapshot | F32 exact/get 在後續寫入後仍讀到舊值，再延伸 metadata/sparse/hybrid | snapshot 不複製 immutable base，替換刪除不洩漏到舊 view；中間切片明列仍 owned 的欄位 |
-| Background compaction | pin committed inputs、鎖外 build、generation conflict 檢查、短發布 | 寫入持續進行、無 lost update、取消／失敗、crash 邊界 |
-| Backup lifetime | 固定 manifest lease、有界 buffer copy、manifest-last | 來源持續 flush/compact、備份獨立可重開、峰值記憶體有界 |
-| Index lifecycle | 先把 SQ8/PQ 提升成 config/view 綁定的可重用物件，再接 rebuild jobs | query 不重複 training、新舊 view 不混用、old index 到成功發布前可用 |
-| Direct result export | 直接寫最終 ID/score buffers，由 Arrow consumer 持有結果 owner | 不經 Python row objects；結果可獨立存活，release exactly once |
-| Borrowed scanner | Arrow view 共享 immutable data columns 與 generation lease | slice/null/offset、close／compaction 後仍有效、最後 lease 才回收 |
-| 向量 fields | 每種 representation 各有 write/read/search/reopen 切片 | schema mismatch、mixed field、partial update/delete、format migration、metric oracle |
+| 引擎主線 1 | #47 → #48 → #49 | 同 view 共享 root → bounded dense delta → payload/sparse 一致性 |
+| 引擎主線 2 | #50 → #51 → #52 | operation/close/GPU owner → compaction conditional publish → worker |
+| 可提早並行的能力 | #53 backup、#54/#55 quantized artifacts、#56 HNSW rebuild | 依 todo 的實際 dependencies 啟動 |
+| Arrow | #57 直接 result（只依賴 #45）；#58 leased scanner | owned result 可先做，引用 base 的 scanner 需 generation lease |
+| 速度／品質 | #59 提前跑 | Qdrant 同 recall 與高維曲線，最後才驗收 parity |
+| 官方 API 清理 | #60 sort、#61 heap、#62 WAL decode、#63 fingerprint/existence | 各自等價與量測 gate，不阻擋 snapshot 主線 |
 
-直接結果匯出若持有獨立 result owner，可以在 shared generation 前做；只有引用
-generation data 的 view 需要 generation lease。這項區分避免把所有 Arrow 工作
-強迫排到生命週期末端。
+#47 只是 repeated capture 共享，直到 #48/#49 才能驗收小 delta 無全庫 clone。
+Named fields/native scalar/binary/multivector 仍依 M4–M6 逐型別；先有獨立 durable
+migration 合約與 fixtures，再做 writer/API/search/reopen，不能把 graph codec 當權威 dtype。
 
 ## 官方 API 查核的剩餘工作
 
-#39–#42 已更新 audit 的處置／證據；#43–#45 完成後續更新，不重新宣稱 1,567 個舊宣告全數已審。
+#39–#45 均已更新 audit 的處置／證據；A07 lookup 完成、A08/Z03 Arrow 部分完成，
+其他 Python list API／direct export／durable copies 仍保留。不重新宣稱 1,567 個舊宣告全數已審。
 先處理 A03 metadata sorts、A04 heaps、Z06 WAL borrowed decoder、A09/A10 filesystem
 helpers，再按熱路徑成本查剩餘模組。每項記錄：採用 API／版本／等價語意／測試，
 或保留 domain wrapper 的具體原因。動態 Bitmap、CRC durable bytes、fd-based fstat、
@@ -119,8 +110,9 @@ production workload 或容許差距，不影響 #39–#46，但完成前不能�
 每個工作包先跑 narrow tests，新的 persistence 行為加 crash／compatibility。
 每 2–3 個相關修改設 checkpoint；整合後才跑完整 CPU/Python、crash、C ABI、build
 與 quality gates。GPU owner/query path 有變才加實機 GPU，沿用未變動的成功證據。
-規劃階段只改 Markdown。#39–#42 實作後，完整 CPU/Python、crash、C ABI、build
-與兩組 quality gates 已通過；數字與效能量測見上方驗證報告。
+本輪 #43–#45 的完整 CPU、crash、C ABI、build 與兩組品質 gate 均通過，量測見
+[#43–#46 驗證報告](../docs/benchmarks/2026-09-07-lookup-arrow.md)。
+#46 只改量測 harness／設計與 compiled probe，不把設計驗證當引擎功能驗收。
 
 ## 協調與風險
 

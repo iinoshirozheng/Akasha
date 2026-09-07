@@ -17,6 +17,11 @@ A08/Z03 的 Arrow primitive ingress 已使用 PyArrow NumPy view + 官方 readon
 A08 其他 list-based Python API、Z04 result export 與 durable owned copies 未被此項移除。
 [量測與限制](../benchmarks/2026-09-07-lookup-arrow.md)。
 
+#46 已交付 [ADR 0007](../adr/0007-generation-field-ownership.md)、
+[成本與 owner probe](2026-09-07-generation-costs.md) 以及 #47–#63 後續切片。
+L02–L06／Z01／Z04／Z07／Z09 的實作仍未完成；不能以設計完成關閉它們。
+Mojo 1.0 的 close/Span 反例支持 operation/export 獨立 owner，並非 origin 標註即可保證。
+
 ## #39–#42 實作進度
 
 使用者後續授權的四項實作已各自提交：
