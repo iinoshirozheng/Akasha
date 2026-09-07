@@ -288,7 +288,8 @@ This larger differential test caught a K-boundary defect: at N=32,768, D=768,
 batch=128, L2 query 81, CPU exact scores tied at 450.614 for IDs 8465 and 20590,
 while a dimension/warp-size sum excluded ID 8465. GPU reductions now use the host
 exact SIMD accumulator groups, the same half-split reduction tree and scalar
-tail. Cosine caches the CPU-computed squared norms and uses the same square-root
+tail. The final shader spells out descending shuffle reductions instead of the
+upstream `warp.sum` dispatch, which can choose a different tree on AMD. Cosine caches the CPU-computed squared norms and uses the same square-root
 product. Arbitrary partial-warp block sizes use the same per-point SIMD grouping.
 The minimized deterministic regression crosses a tile boundary and passes with
 block sizes 7/32/256. This fixes selection itself; no finite-candidate rerank or

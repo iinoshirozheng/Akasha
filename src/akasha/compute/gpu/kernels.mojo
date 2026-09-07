@@ -166,7 +166,12 @@ def distance_partial_topk[
                     score += delta * delta
                 else:
                     score += lhs * rhs
-            score = warp.sum(score)
+            # Specify the tree explicitly: warp.sum may select a different
+            # hardware reduction order on another GPU architecture.
+            var reduction_stride = WARP_SIZE // 2
+            while reduction_stride > 0:
+                score += warp.shuffle_down(score, UInt32(reduction_stride))
+                reduction_stride //= 2
             if lane == 0:
                 for column in range(vector_end, Int(dimension)):
                     var lhs = rebind[Float32](
