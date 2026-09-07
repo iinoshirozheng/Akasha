@@ -234,8 +234,10 @@ struct HnswValidationStats(Copyable, Movable):
 
     var owned_level_cells: Int
     var directed_edges: Int
+    var auxiliary_reserved_bytes: Int
 
     def __init__(out self):
+        self.auxiliary_reserved_bytes = 0
         self.owned_level_cells = 0
         self.directed_edges = 0
 
@@ -605,7 +607,7 @@ def _audit_bidirectional_links_with_stats[
             level_groups[group_key] = UInt32(owned_level_cells)
             owned_level_cells += 1
 
-    var edges = Dict[UInt64, Bool]()
+    var edges = List[UInt64]()
     var required_reverse_edges = List[UInt64]()
     var directed_edges = 0
     for index in range(graph.slot_count()):
@@ -626,7 +628,7 @@ def _audit_bidirectional_links_with_stats[
                 var edge_key = (UInt64(source_group) << UInt64(32)) | UInt64(
                     neighbor
                 )
-                edges[edge_key] = True
+                edges.append(edge_key)
                 var target_group_key = (UInt64(level) << UInt64(32)) | UInt64(
                     neighbor
                 )
@@ -636,12 +638,17 @@ def _audit_bidirectional_links_with_stats[
                 )
                 directed_edges += 1
 
-    for reverse in required_reverse_edges:
-        if reverse not in edges:
+    sort(Span(edges))
+    sort(Span(required_reverse_edges))
+    for index in range(len(edges)):
+        if edges[index] != required_reverse_edges[index]:
             raise Error("HNSW graph contains an asymmetric edge")
 
     stats.owned_level_cells = owned_level_cells
     stats.directed_edges = directed_edges
+    stats.auxiliary_reserved_bytes = (
+        edges.capacity() + required_reverse_edges.capacity()
+    ) * 8
 
 
 def validate_bidirectional_links_with_stats[

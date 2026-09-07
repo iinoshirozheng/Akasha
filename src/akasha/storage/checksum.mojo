@@ -1,3 +1,4 @@
+from std.collections import Array
 from std.memory import bitcast
 
 
@@ -14,15 +15,26 @@ def crc32_range(data: List[UInt8], start: Int, end: Int) -> UInt32:
     return ~checksum
 
 
+def _crc32_table() -> Array[UInt32, 256]:
+    var table = Array[UInt32, 256](fill=0)
+    for byte in range(256):
+        var remainder = UInt32(byte)
+        for _ in range(8):
+            remainder = (remainder >> 1) ^ (
+                UInt32(0xEDB88320) if remainder & 1 else UInt32(0)
+            )
+        table[byte] = remainder
+    return table^
+
+
+comptime _CRC32_TABLE = _crc32_table()
+
+
+@always_inline
 def _crc32_update(checksum: UInt32, byte: UInt8) -> UInt32:
-    """Update an in-progress CRC-32/ISO-HDLC accumulator by one byte."""
-    var result = checksum ^ UInt32(byte)
-    for _ in range(8):
-        if result & 1:
-            result = (result >> 1) ^ UInt32(0xEDB88320)
-        else:
-            result >>= 1
-    return result
+    """One byte of CRC-32/ISO-HDLC (same polynomial, init and final XOR)."""
+    var table = materialize[_CRC32_TABLE]()
+    return (checksum >> 8) ^ table[Int((checksum ^ UInt32(byte)) & 0xFF)]
 
 
 struct BinaryWriter:

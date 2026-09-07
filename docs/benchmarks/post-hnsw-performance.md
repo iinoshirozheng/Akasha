@@ -212,3 +212,64 @@ pixi run mojo run -I src benchmarks/mojo/compact_distance_bench.mojo
 pixi run mojo run -I src benchmarks/mojo/simd_accumulator_bench.mojo
 pixi run mojo build --emit asm -I src benchmarks/mojo/compact_distance_bench.mojo -o /tmp/compact.s
 ```
+
+## 37: verified cold open, checksum and validation memory
+
+The checksum now uses a compile-time 256-entry table for the existing
+CRC-32/ISO-HDLC polynomial `0xEDB88320`, initial accumulator `0xffffffff` and final
+complement. This is the byte-table pattern documented in
+[zlib's CRC implementation](https://github.com/madler/zlib/blob/v1.3.1/crc32.c),
+not CRC32C. No dependency, durable version or encoded bytes changed. A 16 MiB
+byte buffer took roughly 109–129 ms before and 32–33 ms after, with the same CRC.
+
+Reciprocal-link validation sorts two complete arrays of level-aware edge keys
+and compares them, replacing the large edge hash table. All local duplicate,
+range, lifecycle and level checks still precede this audit. Sorting costs
+O(E log E), trading somewhat more validation time for lower peak memory.
+`HnswValidationStats.auxiliary_reserved_bytes` reports the actual two-array
+capacity; it excludes the level-group dictionary and runtime allocations. The
+benchmark separately measures whole-process peak RSS with `wait4`.
+
+`benchmarks/mmap_open.py` generates a valid symmetric degree-32 level-0 graph with
+32,768 nodes, 384 dimensions and 1,048,576 directed edges: 55,967,908 bytes. This
+fixture isolates storage validation volume, not ANN graph construction quality.
+On macOS it creates each cold file through `F_NOCACHE` writes, fsyncs it, then
+checks page residency with `mincore` before opening. All seven cold trials had
+0% resident pages; all warm trials had 100%. Linux uses fsync plus
+`POSIX_FADV_DONTNEED`, and also records residency rather than assuming eviction.
+Copy/fixture preparation is excluded. Seven cold samples and 21 warm samples:
+
+| Median stage | Before cold ms | After cold ms | Before warm ms | After warm ms |
+| --- | ---: | ---: | ---: | ---: |
+| mmap acquisition | 0.035 | 0.033 | 0.483 | 0.466 |
+| checksum/page-in | 424.387 | 185.842 | 361.372 | 111.156 |
+| layout parsing | 0.003 | 0.003 | 0.003 | 0.003 |
+| structure/link validation | 332.340 | 390.774 | 325.570 | 392.339 |
+| source-map adoption | 1.197 | 1.228 | 1.188 | 1.192 |
+| open through validation | 755.194 | 578.287 | 688.201 | 502.827 |
+
+Median peak RSS fell from 197.1 to 101.7 MB for cold children and 198.8 to 102.8 MB
+for warm children. RSS includes runtime, mapped resident pages and transient
+validation objects. The retained mapped size alone does not describe this peak.
+The arrays retain 16 MiB instead of the old 8 MiB reverse list plus the large edge
+hash table. Each child starts independently, so previous fixture construction or
+previous child's high-water mark cannot contaminate its RSS.
+
+A separate public collection recovery fixture contains 4,096 checkpointed vectors
+plus 409 WAL replacements. Public open (including authoritative recovery,
+sidecars, metadata and source maps) took 461.8 ms in the first process run and a
+median 130.2 ms over six later opens, with 36.3 MB process peak RSS. These pages
+were not evicted; this is a process-start comparison, not a physical-cold claim.
+It is not subtracted from the different mmap fixture's stages.
+
+Known-answer CRC, all-byte streaming/range differentials, reciprocal-link tests,
+CRC-valid structural corruption tests and frozen v1 byte-exact fixtures passed.
+Full persistence/crash gates run as part of integrated validation.
+
+```sh
+pixi run python benchmarks/mmap_open.py --output .build/post-hnsw/mmap-results
+pixi run mojo run -I src benchmarks/mojo/checksum_bench.mojo
+pixi run mojo build -I src benchmarks/mojo/recovery_open_bench.mojo -o /tmp/recovery-bench
+/tmp/recovery-bench prepare /tmp/akasha-recovery-benchmark
+/usr/bin/time -l /tmp/recovery-bench open /tmp/akasha-recovery-benchmark
+```

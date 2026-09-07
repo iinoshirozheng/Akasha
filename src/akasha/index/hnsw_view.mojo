@@ -27,7 +27,8 @@ from akasha.compute.quantization import (
 )
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw_core import (
-    _audit_bidirectional_links,
+    _audit_bidirectional_links_with_stats,
+    HnswValidationStats,
     HnswEligibility,
     HnswResultAdmission,
     HnswSearchAdmission,
@@ -546,6 +547,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         )
 
     def validate_structure(self) raises:
+        var stats = HnswValidationStats()
+        self.validate_structure_with_stats(stats)
+
+    def validate_structure_with_stats(
+        self, mut stats: HnswValidationStats
+    ) raises:
         """Re-audit mapped nodes, vectors, counts, edges, and entry point."""
         self.validate_search_ready()
         if self._slots < 0 or self._live_points < 0:
@@ -674,7 +681,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 or self._entry_level < maximum_live_level
             ):
                 raise Error("HNSW snapshot entry point is invalid")
-        _audit_bidirectional_links(self)
+        _audit_bidirectional_links_with_stats(self, stats)
 
     def search(
         mut self,

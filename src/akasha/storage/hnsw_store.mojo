@@ -1,3 +1,5 @@
+from akasha.index.hnsw_core import HnswValidationStats
+from std.time import perf_counter_ns
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.quantization import (
     decode_bf16,
@@ -20,6 +22,21 @@ from std.collections import Dict
 from std.math import isfinite
 from std.memory import bitcast
 from std.sys.info import is_64bit
+
+
+struct HnswOpenStats(Copyable, Movable):
+    var mapping_ns: Int
+    var checksum_ns: Int
+    var layout_ns: Int
+    var validation_ns: Int
+    var validation: HnswValidationStats
+
+    def __init__(out self):
+        self.mapping_ns = 0
+        self.checksum_ns = 0
+        self.layout_ns = 0
+        self.validation_ns = 0
+        self.validation = HnswValidationStats()
 
 
 comptime HNSW_SNAPSHOT_VERSION = UInt16(1)
@@ -188,12 +205,8 @@ def encode_hnsw_snapshot(
     var scale_width = _snapshot_scale_width(
         index.config.ann_metric, index.config.scalar_kind
     )
-    var vector_length = _checked_mul_u64(
-        vector_scalars, UInt64(vector_width)
-    )
-    var scale_length = _checked_mul_u64(
-        UInt64(slots), UInt64(scale_width)
-    )
+    var vector_length = _checked_mul_u64(vector_scalars, UInt64(vector_width))
+    var scale_length = _checked_mul_u64(UInt64(slots), UInt64(scale_width))
     var count_length = _checked_mul_u64(level_cells, UInt64(4))
     var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
     var node_offset = UInt64(header_bytes)
@@ -376,9 +389,7 @@ def hnsw_snapshot_eligibility(
             _checked_mul_u64(UInt64(slots), UInt64(index.config.dimension)),
             UInt64(vector_width),
         )
-        var scale_length = _checked_mul_u64(
-            UInt64(slots), UInt64(scale_width)
-        )
+        var scale_length = _checked_mul_u64(UInt64(slots), UInt64(scale_width))
         var count_length = _checked_mul_u64(level_cells, UInt64(4))
         var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
         var vector_offset = _align8(
@@ -387,9 +398,7 @@ def hnsw_snapshot_eligibility(
         var scale_offset = _align8(
             _checked_add_u64(vector_offset, vector_length)
         )
-        var count_offset = _align8(
-            _checked_add_u64(scale_offset, scale_length)
-        )
+        var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
         var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
         var file_length = _checked_add_u64(
             _checked_add_u64(edge_offset, edge_length),
@@ -631,7 +640,10 @@ def decode_hnsw_snapshot_owned(
         )
     )
     var vector_codes = List[Int8](
-        capacity=(slots * config.dimension if config.scalar_kind == ScalarKind.i8() else 0)
+        capacity=(
+            slots * config.dimension if config.scalar_kind
+            == ScalarKind.i8() else 0
+        )
     )
     for _ in range(slots):
         var prepared = List[Float32](capacity=config.dimension)
@@ -675,7 +687,9 @@ def decode_hnsw_snapshot_owned(
             prepared.append(scale)
             index.metric.validate_prepared_vector(prepared)
 
-    _read_zero_padding(reader, Int(count_offset - (scale_offset + scale_length)))
+    _read_zero_padding(
+        reader, Int(count_offset - (scale_offset + scale_length))
+    )
     var level_edge_counts = List[Int](capacity=level_count)
     var total_edges_from_counts = 0
     var count_index = 0
@@ -836,10 +850,23 @@ def open_hnsw_snapshot_view(
     path: String, config: CollectionConfig, sequence: UInt64
 ) raises -> HnswGraphView:
     """Map, completely validate, and return one immutable graph view."""
+    var stats = HnswOpenStats()
+    return open_hnsw_snapshot_view_with_stats(path, config, sequence, stats)
+
+
+def open_hnsw_snapshot_view_with_stats(
+    path: String,
+    config: CollectionConfig,
+    sequence: UInt64,
+    mut stats: HnswOpenStats,
+) raises -> HnswGraphView:
     _require_snapshot_config(config)
+    stats = HnswOpenStats()
+    var started = perf_counter_ns()
     var mapping = MappedFile.open_readonly(path)
+    stats.mapping_ns = perf_counter_ns() - started
     return _open_hnsw_snapshot_view_from_mapping(
-        mapping^, config, sequence, False
+        mapping^, config, sequence, False, stats
     )
 
 
@@ -882,8 +909,9 @@ def try_open_compatible_hnsw_snapshot_view(
         mapping, config, sequence, manifest_live_point_count
     ):
         return HnswMappedSnapshotLoad(0, HnswGraphView())
+    var stats = HnswOpenStats()
     var view = _open_hnsw_snapshot_view_from_mapping(
-        mapping^, config, sequence, True
+        mapping^, config, sequence, True, stats
     )
     return HnswMappedSnapshotLoad(1, view^)
 
@@ -893,6 +921,7 @@ def _open_hnsw_snapshot_view_from_mapping(
     config: CollectionConfig,
     sequence: UInt64,
     checksum_already_validated: Bool,
+    mut stats: HnswOpenStats,
 ) raises -> HnswGraphView:
     var encoded_size = mapping.byte_length()
     if encoded_size < 8 + _CHECKSUM_BYTES:
@@ -900,6 +929,7 @@ def _open_hnsw_snapshot_view_from_mapping(
     if encoded_size > _MAX_SNAPSHOT_BYTES:
         raise Error("HNSW snapshot exceeds implementation size limit")
 
+    var started = perf_counter_ns()
     var checksum_offset = encoded_size - _CHECKSUM_BYTES
     var stored_checksum = _mapped_u32(mapping, checksum_offset)
     if not checksum_already_validated:
@@ -908,6 +938,9 @@ def _open_hnsw_snapshot_view_from_mapping(
             checksum = _crc32_update(checksum, mapping.byte_at(offset))
         if ~checksum != stored_checksum:
             raise Error("HNSW snapshot checksum mismatch")
+
+    stats.checksum_ns = perf_counter_ns() - started
+    started = perf_counter_ns()
 
     if (
         mapping.byte_at(0) != UInt8(0x41)
@@ -976,10 +1009,9 @@ def _open_hnsw_snapshot_view_from_mapping(
                 raise Error("nonzero HNSW snapshot reserved extension bytes")
         scale_offset = _mapped_u64(mapping, 160)
         scale_length = _mapped_u64(mapping, 168)
-        if (
-            _mapped_u64(mapping, 176) != UInt64(0)
-            or _mapped_u64(mapping, 184) != UInt64(0)
-        ):
+        if _mapped_u64(mapping, 176) != UInt64(0) or _mapped_u64(
+            mapping, 184
+        ) != UInt64(0):
             raise Error("nonzero HNSW snapshot reserved extension bytes")
         if vector_width != _snapshot_vector_width(config.scalar_kind):
             raise Error("HNSW snapshot scalar width mismatch")
@@ -1066,7 +1098,10 @@ def _open_hnsw_snapshot_view_from_mapping(
         Int(count_offset),
         Int(edge_offset),
     )
-    view.validate_structure()
+    stats.layout_ns = perf_counter_ns() - started
+    started = perf_counter_ns()
+    view.validate_structure_with_stats(stats.validation)
+    stats.validation_ns = perf_counter_ns() - started
     return view^
 
 
@@ -1232,7 +1267,9 @@ def _validate_snapshot_graph_vectors(index: HnswIndex) raises:
             for component in range(index.config.dimension):
                 prepared.append(
                     Float32(
-                        bitcast[DType.int8](index.graph.vector_bytes[base + component])
+                        bitcast[DType.int8](
+                            index.graph.vector_bytes[base + component]
+                        )
                     )
                 )
             prepared.append(_graph_i8_scale(index, UInt32(slot_index)))
