@@ -85,7 +85,12 @@ clone 所有 live records。
 ## Checkpoint B：#41／#42
 
 - [x] owned-result regressions 與 format fixtures 通過，沒有 silent borrow 或 CRC 格式改變。
-- [ ] 第一批完成後執行一次 `pixi run build`，更新 A01/A02/A05/A06/Z02 的查核狀態。
+- [x] 第一批完成後執行一次 `pixi run build`，更新 A01/A02/A05/A06/Z02 的查核狀態。
+
+**整合完成：** engine `ae9524c`；645 Mojo、49 Python、9 crash tests、C ABI、build、
+既有與 11-cell post-HNSW quality gates 全部通過。#39–#42 分別為 `dc0a9f5`、
+`a4a8b86`、`209a34a`、`ae9524c`。A06 僅完成本批範圍內的 BinaryWriter，其他候選保留。
+指令／量測／限制見 [驗證報告](../docs/benchmarks/2026-09-07-official-primitives.md)。
 
 ## #43：SparseIndex 使用官方 Dict lookup
 

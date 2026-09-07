@@ -32,6 +32,10 @@ C ABI、build、examples 與 quality gates；Apple M4 Pro 的 9 GPU tests 依交
 
 ## 執行順序
 
+#39–#42 已各自實作及提交，對應 `dc0a9f5`、`a4a8b86`、`209a34a`、`ae9524c`。
+針對修改的驗證已通過；完整整合 gate 的結果集中於
+[驗證報告](../docs/benchmarks/2026-09-07-official-primitives.md)。
+
 | 批次 | 工作 | 交付邊界 |
 |---|---|---|
 | 第一批 | #39 flush、#40 bit、#41 vector copy、#42 byte append | 4 個小改動各自驗證與提交；持久化 bytes／公開合約不變 |
@@ -95,7 +99,7 @@ generation data 的 view 需要 generation lease。這項區分避免把所有 A
 
 ## 官方 API 查核的剩餘工作
 
-#39–#45 完成後，更新 inventory 的處置／證據，不重新宣稱 1,567 個舊宣告全數已審。
+#39–#42 已更新 audit 的處置／證據；#43–#45 完成後續更新，不重新宣稱 1,567 個舊宣告全數已審。
 先處理 A03 metadata sorts、A04 heaps、Z06 WAL borrowed decoder、A09/A10 filesystem
 helpers，再按熱路徑成本查剩餘模組。每項記錄：採用 API／版本／等價語意／測試，
 或保留 domain wrapper 的具體原因。動態 Bitmap、CRC durable bytes、fd-based fstat、
@@ -115,7 +119,8 @@ production workload 或容許差距，不影響 #39–#46，但完成前不能�
 每個工作包先跑 narrow tests，新的 persistence 行為加 crash／compatibility。
 每 2–3 個相關修改設 checkpoint；整合後才跑完整 CPU/Python、crash、C ABI、build
 與 quality gates。GPU owner/query path 有變才加實機 GPU，沿用未變動的成功證據。
-本輪只改 Markdown，驗證文件連結、序號／相依與來源位置。
+規劃階段只改 Markdown。#39–#42 實作後，完整 CPU/Python、crash、C ABI、build
+與兩組 quality gates 已通過；數字與效能量測見上方驗證報告。
 
 ## 協調與風險
 

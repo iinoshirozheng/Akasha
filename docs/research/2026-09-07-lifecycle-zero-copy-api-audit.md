@@ -5,7 +5,27 @@
 Pixi 鎖定 MAX 26.5.0。使用者指定的 [Mojo 文件](https://mojolang.org/docs/)
 及 [llms.txt](https://mojolang.org/llms.txt) 也標示 1.0.0。
 
-## #31–#38 完成後的複核
+## #39–#42 實作進度
+
+使用者後續授權的四項實作已各自提交：
+
+| 查核項目 | 工作包／commit | 已驗證的改動 |
+|---|---|---|
+| Z02 | #39 `dc0a9f5` | incremental flush 不再建立並丟棄 full live entries；base/delta bytes、no-op、重開與 checkpoint crash 驗證通過 |
+| A01/A02 | #40 `a4a8b86` | 使用官方 `pop_count`／`count_trailing_zeros`；跨 word／padding／集合運算與 filtered HNSW 通過 |
+| A05 | #41 `209a34a` | 兩個 `_clone_vector` 移除，DocumentRecord 也使用 `List.copy`；owned input/result/snapshot 隔離驗證通過 |
+| A06 的 BinaryWriter 部分 | #42 `ae9524c` | `write_bytes` 使用 `List.extend(Span(...))`；bytes ownership、take/reuse、CRC 與 v1 compatibility 通過 |
+
+A06 的 retired-file batch／其他 Movable 容器整理仍留待後續；沒有把整個 A06 標為完成。
+原始 inventory 保留歷史基線，不能把已刪 helper 的舊行號套在新來源。
+詳細測試、copy trace、端到端量測與限制見
+[#39–#42 驗證報告](../benchmarks/2026-09-07-official-primitives.md)。
+
+#39 的追蹤也確認 `authoritative_index_checksum` 仍逐 slot 用 owned `entry_at` 複製
+資料並重新編碼全量 fingerprint。這個不同呼叫路徑未在 #39 改動，後續可和 Z06
+borrowed decoder／cache publication 一起量測；不能宣稱整個 flush 已只有 delta 成本。
+
+## #31–#38 完成後的複核（#39 實作前）
 
 2026-09-07 已以 `a8895c6` 複核；engine 基線是已驗證的 `9b98dbc`。
 原始 inventory／探針及下方歷史查核保留 `94ff55f` 基線，不把舊行號冒充目前行號。

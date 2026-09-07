@@ -1,0 +1,46 @@
+{
+  "core_commit": "ae9524c",
+  "environment": "Apple M4 Pro / native macOS / Mojo 1.0.0 / MAX 26.5.0",
+  "mojo_tests": 645,
+  "mojo_test_files": 83,
+  "python_tests": 49,
+  "crash_tests": 9,
+  "gates": [
+    {
+      "command": "pixi run test",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-test.log",
+      "sha256": "fc69860fe9dd0e5385c1806c61bd5d8f610aaafa538b3e2b93d64e4f212810f2"
+    },
+    {
+      "command": "pixi run test-crash",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-crash.log",
+      "sha256": "0b1f8765a75d9deedaa895493e4c933393dc4b8c0c29bdeb81cb686e549640e6"
+    },
+    {
+      "command": "pixi run test-c",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-c.log",
+      "sha256": "0f09dd49304fc71094d29ed872c12520ac14b7a63f432c801b997857ea1b5302"
+    },
+    {
+      "command": "pixi run build",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-build.log",
+      "sha256": "81c77f51e4387b8518615f81f787afec1ed0e64d755257e8e66940e8ad3ac612"
+    },
+    {
+      "command": "pixi run check-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-quality.log",
+      "sha256": "edca99c95212fa09ec2adf192afd165e65bcd01bd703b9732ddc4cf7bb86c92e"
+    },
+    {
+      "command": "pixi run check-post-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/official-primitives/integrated-post-quality.log",
+      "sha256": "fedb3867df9f161d9778a71a4288fcbb0ac7607c531f45a9ed6401262fefa1d9"
+    }
+  ]
+}

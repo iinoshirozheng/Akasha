@@ -24,8 +24,8 @@ scanner 與 buffer ownership 的參考。單機目標不需要先完成 Raft、�
 
 ## M1：官方 API 與可量測基線
 
-- 先完成 A01/A02/A05/A06：官方 bit primitives、List copy／extend；Z02：incremental
-  flush 先分支，避免 clone 全量 live entries 後丟棄。
+- #39–#42 已完成 A01/A02/A05、A06 的 BinaryWriter：官方 bit primitives、List
+  copy／extend；Z02 incremental flush 先分支，避免 clone 全量 live entries 後丟棄。
 - A03/A04 的 sort／BinaryHeap 先用編譯探針與既有 deterministic ties 測試適配，
   再量測 String copy、bounded replace-root 與 scratch allocation，符合合約才採用。
 - 每個自訂通用 helper 要能回答：官方 API／既有依賴是否有對應能力、目前版本是否
@@ -166,7 +166,8 @@ Arrow ownership 依 [C Data Interface](https://arrow.apache.org/docs/format/CDat
 Mojo typed borrow 依 [from_numpy_array](https://mojolang.org/docs/std/python/numpy/from_numpy_array/)。
 其他專案是各課題的閱讀入口，並非聲稱其每個實作可直接連結到 Mojo／Metal。
 
-下一個獨立實作切片：**#39 incremental flush 複製修正**；#40–#42 整理官方 bit／List
-primitives，#43/#44 優化 sparse／fusion lookup，#45 打通同步 Arrow primitive borrow。
+#39–#42 的 incremental flush 與官方 bit／List primitives 已各自實作及提交，驗證紀錄見
+[#39–#42 報告](../benchmarks/2026-09-07-official-primitives.md)。下一個獨立切片是
+**#43 sparse Dict lookup**，接著 #44 fusion lookup、#45 同步 Arrow primitive borrow。
 #46 定案 generation／vector-field ownership 合約及量測基線，再把 M3 拆成小型實作包。
 不必等待所有新向量型別完成才改善 F32 snapshot，也不必等待 M4 完整交付才移除 Arrow boxing。

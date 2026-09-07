@@ -3,6 +3,40 @@
 環境：2026-09-07，Apple M4 Pro、Mojo 1.0.0 (`ed45d567`)、MAX 26.5.0。
 起點 `1246e27`（engine 同 `9b98dbc`）。每個工作包獨立驗證／提交。
 
+## 整合結果
+
+四個工作包已完成：#39 `dc0a9f5`、#40 `a4a8b86`、#41 `209a34a`、#42 `ae9524c`。
+在 `ae9524c` 的相同 source/tests/dependencies 上完成以下本機原生驗證：
+
+| Command | 結果 |
+|---|---|
+| `pixi run test` | 83 個 Mojo 檔案、645 tests 通過；Python 49 tests 通過 |
+| `pixi run test-crash` | 9 tests 通過 |
+| `pixi run test-c` | C ABI integration 通過 |
+| `pixi run build` | Mojo examples 與 Python shared library 編譯成功 |
+| `pixi run check-hnsw-quality` | 既有 locked quality gates 通過 |
+| `pixi run check-post-hnsw-quality` | 11 cells 通過；ANN-only 無 exact fallback |
+
+pytest 另回報 2 個 extension metadata deprecation warnings；沒有測試失敗。
+本輪未新增 Linux CI／實機 GPU 結果，未變更 GPU code、ABI、依賴或 durable formats。
+各 gate 指令、source commit 與日誌 hashes 在
+[validation JSON](results/2026-09-07-official-primitives-validation.json)。
+
+全部驗證結束後，使用下方相同 workload 再跑 7 組 paired trials，比較原始 baseline
+與整合後 `ae9524c`；沒有 compiler 或測試並行。每次重新複製同一 prepared fixture，
+before/after 執行順序交替。
+
+| 指標 | Baseline median | #39–#42 median |
+|---|---:|---:|
+| Public flush | 218.317 ms | 178.084 ms |
+| Open/update/flush/close process peak RSS | 315.422 MiB | 282.984 MiB |
+
+此 workload 的 median latency 減少 18.4%，process peak RSS median 減少 32.438 MiB。
+7 組 before/after 的所有 `.bin` 檔案 hashes 完全相同。
+這是合併效果，不把差異歸因於單一工作包，也不外推到所有 workload；
+#39 單獨量測未顯示端到端改善，原始結果仍保留於下節。
+[Combined results JSON](results/2026-09-07-official-primitives-combined.json)
+
 ## #39：Incremental flush
 
 `_flush_unlocked` 現在先選 base／delta，再 materialize owned entries。

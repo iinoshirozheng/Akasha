@@ -1,0 +1,271 @@
+{
+  "binaries": {
+    "before": {
+      "path": "/Users/ray/Projects/Akasha/.build/official-primitives/flush-before",
+      "sha256": "6c38084f37bad0081fecb2bd251afff86f7ff7f1af8d6cef67274a47584dcf6a"
+    },
+    "after": {
+      "path": "/Users/ray/Projects/Akasha/.build/official-primitives/flush-final",
+      "sha256": "2337579163084b5b7745a460f89425b6398eba1ce74ce57c74753f8af32f986f"
+    }
+  },
+  "rss_scope": "whole open/update/flush/close child; excludes fixture construction and compiler",
+  "latency_scope": "public collection.flush only; includes index/cache publication and fsync",
+  "trials": [
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 216119000,
+        "peak_rss_bytes": 330694656,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 177292000,
+        "peak_rss_bytes": 296828928,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 176401000,
+        "peak_rss_bytes": 296714240,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 215438000,
+        "peak_rss_bytes": 330743808,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 217472000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 178084000,
+        "peak_rss_bytes": 296812544,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 180040000,
+        "peak_rss_bytes": 296714240,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 220781000,
+        "peak_rss_bytes": 339034112,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 218317000,
+        "peak_rss_bytes": 330711040,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 178793000,
+        "peak_rss_bytes": 296730624,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 177365000,
+        "peak_rss_bytes": 296796160,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 220254000,
+        "peak_rss_bytes": 330678272,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "before": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 223945000,
+        "peak_rss_bytes": 330760192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "after": {
+        "points": 8192,
+        "dimension": 64,
+        "delta": 16,
+        "payload_bytes": 4096,
+        "flush_ns": 178985000,
+        "peak_rss_bytes": 287752192,
+        "durable_sha256": {
+          "collection.bin": "95acc025b5f9288c89f5653c9f45a539a8f1590b6f344026e0006b920adbe94d",
+          "manifest.bin": "ed46d25bf4a470a5e277ea426ce67d1ffda78bb269e361750211cabe4d42703f",
+          "segment-base-8192.bin": "2d6eab0592a684a4f3e29fcfaf222559774303758ce613004cc1b8ae4bcfe224",
+          "segment-delta-8208.bin": "f99e881af6d2e230698b93cb286f6ebcf57c4ea93711c2c42cd09dca10301482",
+          "sparse-base-8192.bin": "113ed7c760e767fcf6e29bde3d3931c07311df7a3e1ec54ea0cea9cbf10112d2",
+          "sparse-delta-8208.bin": "f0841359c1114492e92b5ad82a03991a42d2e0468a4a26bb9d7a1169b4a012c9",
+          "wal.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "source_baseline": "1246e27",
+  "source_after": "ae9524c",
+  "scope": "combined #39-42; cannot attribute the measured change to one package"
+}
