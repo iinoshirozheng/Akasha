@@ -75,3 +75,12 @@ owned 邊界不變。空向量／tombstone／metadata-only projection 都保留�
 tests 通過，共 32 tests。新增測試直接修改 caller mutations、returned record、
 cloned vector/payload，確認各自隔離；snapshot 在 collection 更新與 close 後仍
 保留原值，WAL 重開後也符合接受的 sequence／資料。
+
+## #42：官方 bulk append
+
+`BinaryWriter.write_bytes` 改用 `List.extend(Span(values))`，借用只持續於 append，
+writer 仍持有獨立 bytes。CRC table、polynomial、byte order 與 reader 檢查不變。
+
+5 個 checksum/codec tests（含新增的 16,387-byte 多段 append、empty chunks、
+來源修改、take/reuse 與 aliasing 驗證）、1 個 CRC table、2 個 WAL v1 compatibility、
+1 個 segment v1 compatibility tests 通過，合計 9 tests。

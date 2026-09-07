@@ -70,9 +70,9 @@ clone 所有 live records。
 **描述：** `write_bytes` 改用官方 bulk append；沿用 #37 的 CRC table 與既有 binary codec。
 
 **驗收：**
-- [ ] empty／連續多段／大 buffer append 後 bytes 與現有 codec fixtures 完全相同。
-- [ ] `take_bytes` 後 writer 可重用，來源 buffer 壽命／修改不影響已寫 bytes。
-- [ ] CRC polynomial、byte order、bounds／corruption checks 不變。
+- [x] empty／連續多段／大 buffer append 後 bytes 與現有 codec fixtures 完全相同。
+- [x] `take_bytes` 後 writer 可重用，來源 buffer 壽命／修改不影響已寫 bytes。
+- [x] CRC polynomial、byte order、bounds／corruption checks 不變。
 
 **驗證：** `pixi run mojo run -I src tests/mojo/test_storage_checksum.mojo`、
 `pixi run mojo run -I src tests/mojo/test_crc32_table.mojo`、
@@ -84,7 +84,7 @@ clone 所有 live records。
 
 ## Checkpoint B：#41／#42
 
-- [ ] owned-result regressions 與 format fixtures 通過，沒有 silent borrow 或 CRC 格式改變。
+- [x] owned-result regressions 與 format fixtures 通過，沒有 silent borrow 或 CRC 格式改變。
 - [ ] 第一批完成後執行一次 `pixi run build`，更新 A01/A02/A05/A06/Z02 的查核狀態。
 
 ## #43：SparseIndex 使用官方 Dict lookup

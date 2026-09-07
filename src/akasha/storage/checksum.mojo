@@ -70,8 +70,7 @@ struct BinaryWriter:
         self.write_u64(bitcast[DType.uint64](value))
 
     def write_bytes(mut self, values: List[UInt8]):
-        for value in values:
-            self._bytes.append(value)
+        self._bytes.extend(Span(values))
 
     def take_bytes(mut self) -> List[UInt8]:
         var result = self._bytes^
