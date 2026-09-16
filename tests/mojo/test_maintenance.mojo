@@ -1,4 +1,4 @@
-from akasha import PersistentCollection
+from akasha import PersistentCollection, ReadSnapshot
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -6,6 +6,7 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.manifest import load_manifest
+from std.utils import BlockingScopedLock
 from std.testing import (
     assert_equal,
     assert_false,
@@ -119,6 +120,33 @@ def test_background_compaction_respects_snapshot_generation_pins() raises:
     _ = collection.maintenance()
     assert_false(path_exists(path + "/segment-base-1.bin"))
     assert_false(path_exists(path + "/sparse-base-1.bin"))
+    collection.close()
+
+
+
+def test_background_publication_drops_cached_root_before_retiring_files() raises:
+    var path = String("/tmp/akasha-47-background-root-cache")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    for id in range(1, 5):
+        collection.upsert(id, [Float32(id)])
+        collection.flush()
+    var snapshot: ReadSnapshot
+    # Hold the existing writer lock through threshold scheduling and capture
+    # so the worker deterministically sees a cached root for its input layout.
+    with BlockingScopedLock(collection._writer_lock[]):
+        collection._upsert_unlocked(5, [5.0])
+        collection._flush_unlocked()
+        snapshot = collection._snapshot_unlocked()
+    _ = collection.wait_for_maintenance()
+    assert_false(Bool(collection._read_generations[].root))
+    assert_equal(collection._pins[].active_count(), 1)
+    assert_true(path_exists(path + "/segment-base-1.bin"))
+    assert_equal(len(snapshot.documents()), 5)
+    snapshot.close()
+    assert_equal(collection._pins[].active_count(), 0)
+    _ = collection.maintenance()
+    assert_false(path_exists(path + "/segment-base-1.bin"))
     collection.close()
 
 

@@ -19,7 +19,6 @@ from akasha.document.record import (
 )
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
-from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import PqIndex, Sq8Index
 from akasha.index.sparse import (
     SparseElement,
@@ -42,6 +41,7 @@ from akasha.query.batch_executor import (
 )
 from akasha.storage.memtable import MemTable
 from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.read_generation import ReadBase, ReadGeneration
 from std.math import isfinite
 from std.memory import ArcPointer
 
@@ -58,33 +58,18 @@ struct ReadSnapshot(Movable):
     var _dimension: Int
     var _generation: UInt64
     var _sequence: UInt64
-    var _memtable: MemTable
-    var _metadata: MetadataIndex
-    var _sparse: SparseIndex
-    var _pins: ArcPointer[GenerationPinRegistry]
-    var _closed: Bool
+    var _root: Optional[ArcPointer[ReadGeneration]]
     var _gpu_state: ArcPointer[GpuSnapshotState]
 
-    def __init__(
-        out self,
-        config: CollectionConfig,
-        generation: UInt64,
-        sequence: UInt64,
-        var memtable: MemTable,
-        var metadata: MetadataIndex,
-        var sparse: SparseIndex,
-        var pins: ArcPointer[GenerationPinRegistry],
-    ):
-        self._config = config.copy()
-        self._dimension = config.dimension
-        self._generation = generation
-        self._sequence = sequence
-        self._memtable = memtable^
-        self._metadata = metadata^
-        self._sparse = sparse^
-        self._pins = pins^
-        self._closed = False
-        self._gpu_state = ArcPointer(GpuSnapshotState(generation, sequence))
+    def __init__(out self, var root: ArcPointer[ReadGeneration]):
+        self._config = root[].config.copy()
+        self._dimension = root[].config.dimension
+        self._generation = root[].generation
+        self._sequence = root[].sequence
+        # Device scratch/cache is still per handle. Closing a sibling must not
+        # release another handle's GPU state merely because CPU data is shared.
+        self._gpu_state = ArcPointer(GpuSnapshotState(self._generation, self._sequence))
+        self._root = Optional(root^)
 
     @staticmethod
     def capture(
@@ -95,38 +80,22 @@ struct ReadSnapshot(Movable):
         sparse: SparseIndex,
         pins: ArcPointer[GenerationPinRegistry],
     ) raises -> ReadSnapshot:
-        config.validate()
-        var dimension = config.dimension
-        if memtable.dimension != dimension:
-            raise Error("snapshot dimension mismatch")
-        if memtable.last_sequence > sequence:
-            raise Error("snapshot sequence precedes memtable")
-        var owned = memtable.clone()
-        var metadata = _build_metadata(owned)
-        var owned_sparse = sparse.clone()
-        var owned_pins = pins
-        owned_pins[].pin(generation)
         return ReadSnapshot(
-            config,
-            generation,
-            sequence,
-            owned^,
-            metadata^,
-            owned_sparse^,
-            owned_pins^,
+            ReadGeneration.capture(config, generation, sequence, 1, memtable, sparse, pins)
         )
 
-    def __deinit__(deinit self):
-        if not self._closed:
-            self._pins[].unpin(self._generation)
-
     def close(mut self):
-        """Release the manifest generation pin; safe to call repeatedly."""
-        if self._closed:
+        """Drop this handle's data owner and device state; idempotent."""
+        if not self._root:
             return
         self._gpu_state[].release()
-        self._pins[].unpin(self._generation)
-        self._closed = True
+        self._root = Optional[ArcPointer[ReadGeneration]]()
+
+    def _base(self) raises -> ref[origin_of(self._root.value()[]._base[], self)] ReadBase:
+        # Union with immutable self makes the returned borrow readonly despite
+        # ArcPointer's mutable dereference. No borrowed buffer escapes the API.
+        self._ensure_open()
+        return self._root.value()[]._base[]
 
     def generation(self) -> UInt64:
         return self._generation
@@ -142,13 +111,13 @@ struct ReadSnapshot(Movable):
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
         self._ensure_open()
-        return self._memtable.get(id)
+        return self._base().memtable.get(id)
 
     def get_projected(
         self, id: Int, projection: FieldProjection
     ) raises -> Optional[DocumentRecord]:
         self._ensure_open()
-        var document = self._memtable.get(id)
+        var document = self._base().memtable.get(id)
         if not Bool(document):
             return Optional[DocumentRecord]()
         return Optional(project_document(document.value(), projection))
@@ -156,10 +125,10 @@ struct ReadSnapshot(Movable):
     def documents(self) raises -> List[DocumentRecord]:
         """Return owned live records for logical export."""
         self._ensure_open()
-        var ordinals = self._memtable.live_ordinals(id_order=True)
+        var ordinals = self._base().memtable.live_ordinals(id_order=True)
         var records = List[DocumentRecord](capacity=len(ordinals))
         for ordinal in ordinals:
-            ref entry = self._memtable.entry_ref_at(ordinal)
+            ref entry = self._base().memtable.entry_ref_at(ordinal)
             records.append(
                 DocumentRecord(
                     entry.id,
@@ -173,7 +142,7 @@ struct ReadSnapshot(Movable):
     def sparse_records(self) raises -> List[SparseRecord]:
         """Return an owned sparse snapshot for logical export."""
         self._ensure_open()
-        var source = self._sparse.records()
+        var source = self._base().sparse.records()
         var records = List[SparseRecord](capacity=len(source))
         for index in range(len(source)):
             records.append(source[index].clone())
@@ -216,14 +185,14 @@ struct ReadSnapshot(Movable):
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _DOT_METRIC, num_workers, self._memtable.live_ordinals()
+            query, k, _DOT_METRIC, num_workers, self._base().memtable.live_ordinals()
         )
 
     def search_l2_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _L2_METRIC, num_workers, self._memtable.live_ordinals()
+            query, k, _L2_METRIC, num_workers, self._base().memtable.live_ordinals()
         )
 
     def search_cosine_parallel(
@@ -234,7 +203,7 @@ struct ReadSnapshot(Movable):
             k,
             _COSINE_METRIC,
             num_workers,
-            self._memtable.live_ordinals(),
+            self._base().memtable.live_ordinals(),
         )
 
     def search_sq8_dot(
@@ -322,7 +291,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[List[SearchResult]]:
         self._ensure_open()
         return execute_exact_batch(
-            self._memtable, queries, k, BATCH_DOT_METRIC, num_workers
+            self._base().memtable, queries, k, BATCH_DOT_METRIC, num_workers
         )
 
     def search_l2_batch(
@@ -334,7 +303,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[List[SearchResult]]:
         self._ensure_open()
         return execute_exact_batch(
-            self._memtable, queries, k, BATCH_L2_METRIC, num_workers
+            self._base().memtable, queries, k, BATCH_L2_METRIC, num_workers
         )
 
     def search_cosine_batch(
@@ -346,7 +315,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[List[SearchResult]]:
         self._ensure_open()
         return execute_exact_batch(
-            self._memtable, queries, k, BATCH_COSINE_METRIC, num_workers
+            self._base().memtable, queries, k, BATCH_COSINE_METRIC, num_workers
         )
 
     def search_device_dot_batch[use_accelerator: Bool](
@@ -536,7 +505,7 @@ struct ReadSnapshot(Movable):
         self, query: List[SparseElement], k: Int
     ) raises -> List[SearchResult]:
         self._ensure_open()
-        return self._sparse.search_dot(query, k)
+        return self._base().sparse.search_dot(query, k)
 
     def search_sparse_dot_where(
         self,
@@ -549,14 +518,14 @@ struct ReadSnapshot(Movable):
         if k <= 0:
             raise Error("k must be positive")
         expression.validate()
-        var matched = evaluate_expression(self._metadata, expression)
-        var count = self._sparse.point_count()
+        var matched = evaluate_expression(self._base().metadata, expression)
+        var count = self._base().sparse.point_count()
         if count == 0:
             return List[SearchResult]()
-        var candidates = self._sparse.search_dot(query, count)
+        var candidates = self._base().sparse.search_dot(query, count)
         var result = List[SearchResult]()
         for candidate in candidates:
-            if self._metadata.contains_id(matched, candidate.id):
+            if self._base().metadata.contains_id(matched, candidate.id):
                 result.append(candidate)
                 if len(result) == k:
                     break
@@ -680,7 +649,7 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         for index in range(len(conditions)):
             conditions[index].validate()
-        var candidates = evaluate_all(self._metadata, conditions)
+        var candidates = evaluate_all(self._base().metadata, conditions)
         return self._search_candidates(query, k, metric, candidates)
 
     def _search_sq8(
@@ -689,13 +658,13 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        var ordinals = self._memtable.live_ordinals(id_order=True)
+        var ordinals = self._base().memtable.live_ordinals(id_order=True)
         if len(ordinals) == 0:
             return List[SearchResult]()
         var ids = List[Int](capacity=len(ordinals))
         var vectors = List[List[Float32]](capacity=len(ordinals))
         for index in range(len(ordinals)):
-            ref entry = self._memtable.entry_ref_at(ordinals[index])
+            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
             ids.append(entry.id)
             vectors.append(entry.values.copy())
         var sq8 = Sq8Index.build(ids, vectors)
@@ -726,13 +695,13 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("PQ rerank candidate count must be zero or at least k")
-        var ordinals = self._memtable.live_ordinals(id_order=True)
+        var ordinals = self._base().memtable.live_ordinals(id_order=True)
         if len(ordinals) == 0:
             return List[SearchResult]()
         var ids = List[Int](capacity=len(ordinals))
         var vectors = List[List[Float32]](capacity=len(ordinals))
         for index in range(len(ordinals)):
-            ref entry = self._memtable.entry_ref_at(ordinals[index])
+            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
             ids.append(entry.id)
             vectors.append(entry.values.copy())
         var pq = PqIndex.build(
@@ -768,10 +737,10 @@ struct ReadSnapshot(Movable):
             smaller_is_better=metric == _L2_METRIC,
         )
         for candidate in candidates:
-            var ordinal = self._memtable.ordinal_for(candidate.id)
-            if ordinal < 0 or not self._memtable.is_live_at(ordinal):
+            var ordinal = self._base().memtable.ordinal_for(candidate.id)
+            if ordinal < 0 or not self._base().memtable.is_live_at(ordinal):
                 raise Error("quantized candidate is absent from snapshot")
-            ref entry = self._memtable.entry_ref_at(ordinal)
+            ref entry = self._base().memtable.entry_ref_at(ordinal)
             var score: Float32
             if metric == _DOT_METRIC:
                 score = simd_dot_product(query, entry.values)
@@ -795,7 +764,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         expression.validate()
-        var candidates = evaluate_expression(self._metadata, expression)
+        var candidates = evaluate_expression(self._base().metadata, expression)
         return self._search_candidates(query, k, metric, candidates)
 
     def _search_controlled(
@@ -806,7 +775,7 @@ struct ReadSnapshot(Movable):
         control: QueryControl,
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
-        var ordinals = self._memtable.live_ordinals()
+        var ordinals = self._base().memtable.live_ordinals()
         control.validate_candidate_count(len(ordinals))
         control.checkpoint(0)
         if len(ordinals) == 0:
@@ -816,7 +785,7 @@ struct ReadSnapshot(Movable):
         )
         for index in range(len(ordinals)):
             control.checkpoint(index)
-            ref entry = self._memtable.entry_ref_at(ordinals[index])
+            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
             var score: Float32
             if metric == _DOT_METRIC:
                 score = simd_dot_product(query, entry.values)
@@ -847,7 +816,7 @@ struct ReadSnapshot(Movable):
         elif metric == _COSINE_METRIC:
             batch_metric = BATCH_COSINE_METRIC
         return execute_parallel_scan(
-            self._memtable, ordinals, query, k, batch_metric, num_workers
+            self._base().memtable, ordinals, query, k, batch_metric, num_workers
         )
 
     def _search_where_parallel(
@@ -860,8 +829,8 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._ensure_open()
         expression.validate()
-        var bitmap = evaluate_expression(self._metadata, expression)
-        var ordinals = candidate_ordinals(self._memtable, bitmap)
+        var bitmap = evaluate_expression(self._base().metadata, expression)
+        var ordinals = candidate_ordinals(self._base().memtable, bitmap)
         return self._search_parallel(query, k, metric, num_workers, ordinals^)
 
     def _search_where_batch(
@@ -878,10 +847,10 @@ struct ReadSnapshot(Movable):
         var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._memtable, bitmap))
+            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
+            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
         return execute_exact_candidate_batch(
-            self._memtable,
+            self._base().memtable,
             queries,
             candidates,
             k,
@@ -899,7 +868,7 @@ struct ReadSnapshot(Movable):
         self._ensure_open()
         var candidates = List[List[Int]]()
         return execute_snapshot_device_batch[use_accelerator](
-            self._memtable, queries, candidates, False, k, metric, options,
+            self._base().memtable, queries, candidates, False, k, metric, options,
             self._gpu_state[],
         )
 
@@ -917,10 +886,10 @@ struct ReadSnapshot(Movable):
         var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._memtable, bitmap))
+            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
+            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
         return execute_snapshot_device_batch[use_accelerator](
-            self._memtable, queries, candidates, True, k, metric, options,
+            self._base().memtable, queries, candidates, True, k, metric, options,
             self._gpu_state[],
         )
 
@@ -937,9 +906,9 @@ struct ReadSnapshot(Movable):
         var topk = BoundedTopK(
             result_count, smaller_is_better=metric == _L2_METRIC
         )
-        var ordinals = candidate_ordinals(self._memtable, candidates)
+        var ordinals = candidate_ordinals(self._base().memtable, candidates)
         for ordinal in ordinals:
-            ref entry = self._memtable.entry_ref_at(ordinal)
+            ref entry = self._base().memtable.entry_ref_at(ordinal)
             var score: Float32
             if metric == _DOT_METRIC:
                 score = simd_dot_product(query, entry.values)
@@ -996,7 +965,7 @@ struct ReadSnapshot(Movable):
         var dense = self._search_filtered(
             dense_query, fetch_k, metric, conditions
         )
-        var sparse = self._sparse.search_dot(sparse_query, fetch_k)
+        var sparse = self._base().sparse.search_dot(sparse_query, fetch_k)
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _search_hybrid_where(
@@ -1022,21 +991,5 @@ struct ReadSnapshot(Movable):
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _ensure_open(self) raises:
-        if self._closed:
+        if not self._root:
             raise Error("snapshot is closed")
-
-
-def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
-    var index = MetadataIndex()
-    index.begin_bulk()
-    for ordinal in range(memtable.slot_count()):
-        ref entry = memtable.entry_ref_at(ordinal)
-        if entry.tombstone:
-            index.delete(entry.id)
-        else:
-            var fields = clone_fields(entry.fields)
-            index.upsert(entry.id, fields^)
-    index.finish_bulk()
-    if index.slot_count() != memtable.slot_count():
-        raise Error("snapshot metadata slot alignment failed")
-    return index^

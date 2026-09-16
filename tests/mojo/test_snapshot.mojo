@@ -14,6 +14,11 @@ from akasha.storage.filesystem import (
     path_exists,
     remove_file_if_exists,
 )
+from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.memtable import MemTable
+from akasha.storage.read_generation import ReadGenerationCache
+from akasha.index.sparse import SparseIndex
+from std.memory import ArcPointer
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -302,6 +307,164 @@ def test_snapshot_freezes_sparse_hybrid_and_filtered_results() raises:
     with assert_raises():
         _ = snapshot.search_sparse_dot([SparseElement(7, 1.0)], 1)
     collection.close()
+
+
+
+def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
+    var path = String("/tmp/akasha-47-shared-root")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    var fields = _fields("old", "shared")
+    collection.upsert_document(1, [2.0], fields^)
+    collection.upsert_sparse(1, [SparseElement(7, 3.0)])
+    var first = collection.snapshot()
+    var second = collection.snapshot()
+    assert_true(first._root.value() is second._root.value())
+    assert_equal(first._root.value().count(), UInt64(3))
+    assert_equal(collection._read_generations[].revision, UInt64(1))
+    assert_equal(collection._pins[].active_count(), 1)
+    assert_equal(
+        Int(first._base().memtable.entry_ref_at(0).values.unsafe_ptr()),
+        Int(second._base().memtable.entry_ref_at(0).values.unsafe_ptr()),
+    )
+    var document = first.get(1)
+    document.value().vector[0] = 99.0
+    document.value().fields[0].name = "changed"
+    assert_equal(second.get(1).value().vector[0], Float32(2.0))
+    assert_equal(second.get(1).value().fields[0].name, "group")
+    first.close()
+    first.close()
+    assert_false(Bool(first._root))
+    assert_equal(second._root.value().count(), UInt64(2))
+    with assert_raises():
+        _ = first.search_dot_parallel([1.0], 1)
+    collection.close()
+    assert_equal(second._root.value().count(), UInt64(1))
+    assert_equal(second.search_dot([1.0], 1)[0].score, Float32(2.0))
+    assert_equal(second.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(3.0))
+    assert_equal(collection._pins[].active_count(), 1)
+    second.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+
+def test_shared_roots_isolate_replace_sparse_delete_and_reinsert() raises:
+    var path = String("/tmp/akasha-47-root-revisions")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    var fields = _fields("old", "original")
+    collection.upsert_document(-1, [1.0], fields^)
+    collection.upsert_sparse(-1, [SparseElement(7, 2.0)])
+    var original = collection.snapshot()
+    var sibling = collection.snapshot()
+    var replacement = _fields("new", "replacement")
+    collection.upsert_document(-1, [9.0], replacement^)
+    var replaced = collection.snapshot()
+    assert_equal(original.generation(), replaced.generation())
+    assert_true(original.last_sequence() < replaced.last_sequence())
+    assert_false(original._root.value() is replaced._root.value())
+    collection.upsert_sparse(-1, [SparseElement(7, 8.0)])
+    var sparse_updated = collection.snapshot()
+    assert_false(replaced._root.value() is sparse_updated._root.value())
+    collection.delete(-1)
+    var deleted = collection.snapshot()
+    collection.upsert(-1, [4.0])
+    var reinserted = collection.snapshot()
+    collection.close()
+    original.close()
+    assert_equal(sibling.get(-1).value().vector[0], Float32(1.0))
+    assert_equal(sibling.get(-1).value().get_field("chunk").value().as_string(), "original")
+    assert_equal(sibling.search_dot_where([1.0], 1, _old_group_expression())[0].id, -1)
+    assert_equal(sibling.search_hybrid_dot([1.0], [SparseElement(7, 1.0)], 1, 1)[0].id, -1)
+    assert_equal(replaced.get(-1).value().vector[0], Float32(9.0))
+    assert_equal(replaced.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(2.0))
+    assert_equal(sparse_updated.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(8.0))
+    assert_false(Bool(deleted.get(-1)))
+    assert_equal(len(deleted.search_sparse_dot([SparseElement(7, 1.0)], 1)), 0)
+    assert_equal(reinserted.get(-1).value().vector[0], Float32(4.0))
+    assert_equal(len(reinserted.get(-1).value().fields), 0)
+    assert_equal(len(reinserted.search_sparse_dot([SparseElement(7, 1.0)], 1)), 0)
+    sibling.close()
+    replaced.close()
+    sparse_updated.close()
+    deleted.close()
+    reinserted.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+
+def test_layout_publication_changes_root_without_changing_sequence() raises:
+    var path = String("/tmp/akasha-47-root-layout")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    var unflushed = collection.snapshot()
+    collection.flush()
+    var flushed = collection.snapshot()
+    assert_equal(unflushed.last_sequence(), flushed.last_sequence())
+    assert_true(unflushed.generation() < flushed.generation())
+    assert_false(unflushed._root.value() is flushed._root.value())
+    collection.flush()
+    var unchanged = collection.snapshot()
+    assert_true(flushed._root.value() is unchanged._root.value())
+    collection.upsert(2, [2.0])
+    collection.flush()
+    var before_compact = collection.snapshot()
+    collection.compact()
+    var after_compact = collection.snapshot()
+    assert_equal(before_compact.last_sequence(), after_compact.last_sequence())
+    assert_true(before_compact.generation() < after_compact.generation())
+    assert_false(before_compact._root.value() is after_compact._root.value())
+    assert_equal(len(before_compact.documents()), 2)
+    collection.close()
+    # Reopening creates an independent publisher even at equal G and S.
+    var reopened = PersistentCollection.open(path, 1)
+    var reopened_view = reopened.snapshot()
+    assert_equal(after_compact.generation(), reopened_view.generation())
+    assert_equal(after_compact.last_sequence(), reopened_view.last_sequence())
+    assert_false(after_compact._root.value() is reopened_view._root.value())
+    reopened.close()
+
+
+def _raii_sibling(collection: PersistentCollection, expected: ReadSnapshot) raises:
+    var transient = collection.snapshot()
+    assert_true(transient._root.value() is expected._root.value())
+    assert_equal(transient.get(1).value().vector[0], Float32(1.0))
+
+
+def test_shared_root_raii_and_failed_capture_do_not_leak_pins() raises:
+    var path = String("/tmp/akasha-47-root-raii")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [1.0])
+    var snapshot = collection.snapshot()
+    _raii_sibling(collection, snapshot)
+    assert_equal(snapshot._root.value().count(), UInt64(2))
+    collection.close()
+    snapshot.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+    var cache = ReadGenerationCache()
+    var pins = ArcPointer(GenerationPinRegistry())
+    var table = MemTable(1)
+    table.apply_upsert(1, 1, [1.0])
+    var sparse = SparseIndex()
+    var config = CollectionConfig.defaults(1)
+    var root = cache.acquire(config, 0, 1, table, sparse, pins)
+    with assert_raises():
+        _ = cache.acquire(CollectionConfig.defaults(2), 0, 2, table, sparse, pins)
+    with assert_raises():
+        _ = ReadSnapshot.capture(config, 0, 0, table, sparse, pins)
+    # Inject a malformed internal row to exercise failure during base copying,
+    # after the identity checks, without a runtime fault-injection interface.
+    table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(1)))
+    table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(2)))
+    with assert_raises():
+        _ = cache.acquire(config, 0, 2, table, sparse, pins)
+    assert_true(cache.root.value() is root)
+    assert_equal(cache.revision, UInt64(1))
+    assert_equal(pins[].active_count(), 1)
+    _ = root^
+    cache.invalidate()
+    assert_equal(pins[].active_count(), 0)
 
 
 def main() raises:

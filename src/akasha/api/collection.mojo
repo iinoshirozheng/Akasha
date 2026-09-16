@@ -26,6 +26,7 @@ from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.maintenance import (
@@ -184,6 +185,7 @@ struct PersistentCollection:
     var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
     var _gpu_read_snapshot: ArcPointer[_GpuReadSnapshot]
+    var _read_generations: ArcPointer[ReadGenerationCache]
     var _maintenance: MaintenanceController
     var _cache_generation: UInt64
     var _source_checksum: UInt32
@@ -247,12 +249,14 @@ struct PersistentCollection:
         self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
         self._gpu_read_snapshot = ArcPointer(_GpuReadSnapshot())
+        self._read_generations = ArcPointer(ReadGenerationCache())
         self._maintenance = MaintenanceController.start(
             path,
             config.dimension,
             self._writer_lock,
             self._pins,
             self._retired,
+            self._read_generations,
             maintenance_library_path,
         )
         self._cache_generation = cache_generation
@@ -553,6 +557,7 @@ struct PersistentCollection:
             if self._closed:
                 return
             self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
+            self._read_generations[].invalidate()
             self._hnsw.close()
             self._closed = True
         var maintenance_error = String()
@@ -712,14 +717,10 @@ struct PersistentCollection:
         var generation = UInt64(0)
         if path_exists(self._path + "/manifest.bin"):
             generation = load_manifest(self._path, self._config.dimension).generation
-        return ReadSnapshot.capture(
-            self._config,
-            generation,
-            self._last_sequence,
-            self._memtable,
-            self._sparse,
-            self._pins,
-        )
+        return ReadSnapshot(self._read_generations[].acquire(
+            self._config, generation, self._last_sequence,
+            self._memtable, self._sparse, self._pins,
+        ))
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
         with BlockingScopedLock(self._writer_lock[]):
@@ -1424,6 +1425,7 @@ struct PersistentCollection:
                                 hnsw_info.live_point_count,
                             )
                             publish_manifest(self._path, upgraded)
+                            self._read_generations[].invalidate()
                             self._hnsw_checkpoint_was_hit = True
                             wrote_hnsw = True
                 if not wrote_hnsw and previous_hnsw_name.byte_length() > 0:
@@ -1434,6 +1436,7 @@ struct PersistentCollection:
                         _clone_segment_descriptors(descriptors),
                     )
                     publish_manifest(self._path, downgraded)
+                    self._read_generations[].invalidate()
                     self._hnsw_checkpoint_was_hit = False
                     hnsw_to_cleanup = previous_hnsw_name.copy()
             rotate_wal(self._path)
@@ -1552,6 +1555,7 @@ struct PersistentCollection:
                 descriptors^,
             )
         publish_manifest(self._path, manifest)
+        self._read_generations[].invalidate()
         self._hnsw_checkpoint_was_hit = Bool(hnsw_info)
         rotate_wal(self._path)
         rotate_sparse_wal(self._path)
@@ -1659,6 +1663,7 @@ struct PersistentCollection:
                 descriptors^,
             )
         publish_manifest(self._path, compacted)
+        self._read_generations[].invalidate()
 
         self._publish_index_caches_best_effort()
 
@@ -2240,6 +2245,7 @@ struct PersistentCollection:
             return exact^
 
     def _invalidate_cache_hits(mut self):
+        self._read_generations[].invalidate()
         # Drop only the collection's lease. In-flight queries still own their
         # immutable snapshot and device buffers until readback completes.
         self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()

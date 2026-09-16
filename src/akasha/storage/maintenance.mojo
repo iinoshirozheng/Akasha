@@ -1,6 +1,7 @@
 from akasha.storage.committed_compaction import compact_committed_segments
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.native_worker import NativeWorker
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha.storage.retired_files import RetiredFileQueue
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock, BlockingSpinLock
@@ -15,6 +16,7 @@ struct _MaintenanceState(Movable):
     var writer_lock: ArcPointer[BlockingSpinLock]
     var pins: ArcPointer[GenerationPinRegistry]
     var retired: ArcPointer[RetiredFileQueue]
+    var read_generations: ArcPointer[ReadGenerationCache]
     var status_lock: BlockingSpinLock
     var error_message: String
     var run_count: Int
@@ -27,12 +29,14 @@ struct _MaintenanceState(Movable):
         var writer_lock: ArcPointer[BlockingSpinLock],
         var pins: ArcPointer[GenerationPinRegistry],
         var retired: ArcPointer[RetiredFileQueue],
+        var read_generations: ArcPointer[ReadGenerationCache],
     ):
         self.path = String(copy=path)
         self.dimension = dimension
         self.writer_lock = writer_lock^
         self.pins = pins^
         self.retired = retired^
+        self.read_generations = read_generations^
         self.status_lock = BlockingSpinLock()
         self.error_message = String()
         self.run_count = 0
@@ -67,6 +71,7 @@ def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
             )
             var did_compact = result.compacted
             if did_compact:
+                state[].read_generations[].invalidate()
                 state[].retired[].retire_or_reclaim(
                     state[].path,
                     result.previous_generation,
@@ -106,6 +111,7 @@ struct MaintenanceController(Movable):
         writer_lock: ArcPointer[BlockingSpinLock],
         pins: ArcPointer[GenerationPinRegistry],
         retired: ArcPointer[RetiredFileQueue],
+        read_generations: ArcPointer[ReadGenerationCache],
         library_path: String,
     ) -> MaintenanceController:
         var owned_writer_lock = writer_lock
@@ -118,6 +124,7 @@ struct MaintenanceController(Movable):
                 owned_writer_lock^,
                 owned_pins^,
                 owned_retired^,
+                read_generations,
             )
         )
         try:

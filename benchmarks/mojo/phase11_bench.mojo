@@ -2,6 +2,7 @@ from akasha import BatchMutation, CollectionConfig, DocumentField, PayloadValue,
 from akasha.index.sparse import SparseElement, SparseIndex
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha.storage.manifest import load_manifest
 from akasha.storage.memtable import MemTable, MemTableEntry
 from max.algorithm import parallelize
@@ -92,6 +93,7 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int) raises:
         _cost_upsert(table, sparse, id, UInt64(2 * id + 1), 0)
     var sequence = UInt64(2 * points)
     var pins = ArcPointer(GenerationPinRegistry())
+    var cache = ReadGenerationCache()
     var snapshots = List[ReadSnapshot](capacity=leases)
     var config = CollectionConfig.defaults(128)
     var baseline_rss = _rss_bytes()
@@ -100,14 +102,17 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int) raises:
         for id in range(delta):
             _cost_upsert(table, sparse, id, sequence + 1, capture + 1)
             sequence += 2  # one dense and one sparse accepted operation
+        var previous_revision = cache.revision
         var start = perf_counter_ns()
-        snapshots.append(ReadSnapshot.capture(config, 7, sequence, table, sparse, pins))
+        snapshots.append(ReadSnapshot(cache.acquire(config, 7, sequence, table, sparse, pins)))
         var duration = perf_counter_ns() - start
         elapsed += duration
-        # Count logical authoritative data actually retained in each owned
-        # snapshot; extra index copies, padding and allocator metadata excluded.
-        var logical_bytes = points * (128 * 4 + 256 + 2 * (8 + 4))
-        print("snapshot_capture delta=" + String(delta) + " leases=" + String(leases) + " capture=" + String(capture) + " generation=7 sequence=" + String(sequence) + " capture_ns=" + String(duration) + " authoritative_copy_bytes=" + String(logical_bytes))
+        # Same publisher used by PersistentCollection, excluding manifest I/O
+        # and lock acquisition. Count logical content only on a real base build;
+        # index copies, padding and allocator metadata remain excluded.
+        var built = cache.revision != previous_revision
+        var logical_bytes = points * (128 * 4 + 256 + 2 * (8 + 4)) if built else 0
+        print("snapshot_capture delta=" + String(delta) + " leases=" + String(leases) + " capture=" + String(capture) + " generation=7 sequence=" + String(sequence) + " capture_ns=" + String(duration) + " authoritative_copy_bytes=" + String(logical_bytes) + " root_revision=" + String(cache.revision) + " base_builds=" + String(Int(built)))
     var held_rss = _rss_bytes()
     for capture in range(leases):
         var expected = Float32(capture + 1 if delta > 0 else 0)
@@ -124,6 +129,7 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int) raises:
         snapshots[capture].close()
     var closed_rss = _rss_bytes()
     snapshots.clear()
+    cache.invalidate()
     if pins[].active_count() != 0:
         raise Error("snapshot cost pin leak")
     var dropped_rss = _rss_bytes()

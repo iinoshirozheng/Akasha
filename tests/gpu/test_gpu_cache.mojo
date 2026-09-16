@@ -228,5 +228,27 @@ def test_concurrent_queries_serialize_shared_snapshot_scratch() raises:
     collection.close()
 
 
+def test_shared_cpu_root_keeps_sibling_device_cache_after_close() raises:
+    var collection = _collection("/tmp/akasha-47-gpu-shared-root")
+    var first = collection.snapshot()
+    var second = collection.snapshot()
+    assert_true(first._root.value() is second._root.value())
+    assert_false(first._gpu_state is second._gpu_state)
+    var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
+    var initial = first.search_device_dot_batch[True](queries, 3, options)
+    var sibling = second.search_device_dot_batch[True](queries, 3, options)
+    assert_true(initial.used_gpu and sibling.used_gpu)
+    first.close()
+    collection.close()
+    var warm = second.search_device_dot_batch[True](queries, 3, options)
+    assert_true(warm.used_gpu and warm.timings.cache_hit)
+    assert_equal(warm.timings.vector_upload_bytes, UInt64(0))
+    assert_equal(warm.timings.buffer_allocations, 0)
+    assert_equal(warm.results[0][0].id, 40)
+    second.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

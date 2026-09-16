@@ -233,5 +233,38 @@ def test_ann_queries_serialize_with_flush_rebuild_and_release_lock() raises:
     collection.close()
 
 
+
+def test_concurrent_unchanged_captures_share_one_root_and_independent_handles() raises:
+    var path = String("/tmp/akasha-47-concurrent-shared-root")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    collection.upsert(1, [2.0])
+    var failures = Atomic[DType.int64](0)
+    var addresses = List[Int](length=16, fill=0)
+
+    def capture_and_close(task: Int) {mut collection, mut failures, mut addresses}:
+        try:
+            var first = collection.snapshot()
+            var second = collection.snapshot()
+            addresses[task] = Int(first._root.value().unsafe_ptr())
+            if not (first._root.value() is second._root.value()):
+                _ = failures.fetch_add(1)
+            first.close()
+            if second.search_dot([1.0], 1)[0].score != 2.0:
+                _ = failures.fetch_add(1)
+            second.close()
+        except:
+            _ = failures.fetch_add(1)
+
+    parallelize(capture_and_close, 16, 4)
+    assert_equal(failures.load(), 0)
+    for address in addresses:
+        assert_equal(address, addresses[0])
+    assert_equal(collection._read_generations[].revision, UInt64(1))
+    assert_equal(collection._pins[].active_count(), 1)
+    collection.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
