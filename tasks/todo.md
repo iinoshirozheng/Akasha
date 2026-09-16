@@ -191,18 +191,18 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（以下均未實作）
+## #46 定案後的實作隊列（#47 已完成；#48–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#47**；#59 的同 recall 對照同批提早建立。#47 的同 sequence
-共享只是第一片，直到 #48/#49 才能驗收少量 delta 不複製全庫。#60–#63 不阻擋這條主線。
+建議下一個引擎項目是 **#48**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+共享，直到 #48/#49 才能驗收少量 delta 不複製全庫。#60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
 
-- [ ] 將 snapshot owned data 與 handle/close 分離；同一 view revision 的 repeated capture
+- [x] 將 snapshot owned data 與 handle/close 分離；同一 view revision 的 repeated capture
   共享不可變 root，原本 exact/get/filter/sparse/hybrid 語意全保留。第一次建 base 的成本
   明列，不能把此片宣稱為 bounded delta 已完成。根資料結構直接採 ADR base/delta 邊界。
 - 相依：#46。主要檔：新 `src/akasha/storage/read_generation.mojo`、
@@ -211,6 +211,11 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - 驗收：0 delta 重複捕捉只增 owner；不同 sequence 不共用舊 root；舊 snapshot 經 replace/
   delete/reinsert/collection close 仍有效。close/RAII 不漏 pin，owned get 可自行修改。
   失敗 capture 不留下 pin；跑 snapshot/concurrency/batch tests 與成本 harness。無格式改動。
+- 完成：`dc858ab`（2026-09-17）。官方 ArcPointer root/base owner、collection-local cache、
+  manifest／background publication 失效與最後 owner 釋放 pin；GPU state 仍各 handle 獨立。
+  0 delta／8 snapshots 只建 1 次 base，後續 authoritative copied bytes = 0；16 delta 仍每次
+  全量重建。656 Mojo／66 Python／9 crash／10 實機 GPU、C ABI、build 與品質 gates 通過。
+  [實作與成本報告](../docs/benchmarks/2026-09-17-shared-snapshot.md)。
 
 ### #48 有界 head 與共享 dense fields
 

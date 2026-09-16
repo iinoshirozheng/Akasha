@@ -1,0 +1,875 @@
+{
+  "source": "dc858ab",
+  "capture_path": "ReadGenerationCache.acquire (shared with PersistentCollection; excludes manifest I/O and writer lock)",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "points": 4096,
+  "dimension": 128,
+  "payload_bytes_per_point": 256,
+  "sparse_elements_per_point": 2,
+  "cells": [
+    {
+      "delta_points_per_capture": 0,
+      "live_snapshots": 1,
+      "median": {
+        "capture_total_ns": 2865000,
+        "baseline_rss": 28573696,
+        "held_rss": 34291712,
+        "closed_rss": 34308096,
+        "dropped_rss": 34308096,
+        "first_capture_ns": 2865000,
+        "repeat_capture_ns": null,
+        "authoritative_copy_bytes": 3244032,
+        "base_builds": 1,
+        "held_rss_increase": 5718016
+      },
+      "runs": [
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2801000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 1,
+            "capture_total_ns": 2801000,
+            "baseline_rss": 28639232,
+            "held_rss": 34340864,
+            "closed_rss": 34357248,
+            "dropped_rss": 34357248
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2926000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 1,
+            "capture_total_ns": 2926000,
+            "baseline_rss": 28540928,
+            "held_rss": 34258944,
+            "closed_rss": 34275328,
+            "dropped_rss": 34275328
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2865000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 1,
+            "capture_total_ns": 2865000,
+            "baseline_rss": 28573696,
+            "held_rss": 34291712,
+            "closed_rss": 34308096,
+            "dropped_rss": 34308096
+          }
+        ]
+      ]
+    },
+    {
+      "delta_points_per_capture": 0,
+      "live_snapshots": 8,
+      "median": {
+        "capture_total_ns": 2808000,
+        "baseline_rss": 28508160,
+        "held_rss": 34226176,
+        "closed_rss": 34242560,
+        "dropped_rss": 34258944,
+        "first_capture_ns": 2807000,
+        "repeat_capture_ns": 0,
+        "authoritative_copy_bytes": 3244032,
+        "base_builds": 1,
+        "held_rss_increase": 5718016
+      },
+      "runs": [
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2907000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 8,
+            "capture_total_ns": 2907000,
+            "baseline_rss": 28508160,
+            "held_rss": 34226176,
+            "closed_rss": 34242560,
+            "dropped_rss": 34258944
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2807000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 1000,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 8,
+            "capture_total_ns": 2808000,
+            "baseline_rss": 28459008,
+            "held_rss": 34209792,
+            "closed_rss": 34226176,
+            "dropped_rss": 34226176
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 2696000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 1000,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 1000,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 0,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8192,
+            "capture_ns": 0,
+            "authoritative_copy_bytes": 0,
+            "root_revision": 1,
+            "base_builds": 0
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 0,
+            "leases": 8,
+            "capture_total_ns": 2698000,
+            "baseline_rss": 28524544,
+            "held_rss": 34242560,
+            "closed_rss": 34258944,
+            "dropped_rss": 34258944
+          }
+        ]
+      ]
+    },
+    {
+      "delta_points_per_capture": 16,
+      "live_snapshots": 1,
+      "median": {
+        "capture_total_ns": 2700000,
+        "baseline_rss": 28540928,
+        "held_rss": 34275328,
+        "closed_rss": 34291712,
+        "dropped_rss": 34291712,
+        "first_capture_ns": 2700000,
+        "repeat_capture_ns": null,
+        "authoritative_copy_bytes": 3244032,
+        "base_builds": 1,
+        "held_rss_increase": 5734400
+      },
+      "runs": [
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2776000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 1,
+            "capture_total_ns": 2776000,
+            "baseline_rss": 28704768,
+            "held_rss": 34439168,
+            "closed_rss": 34455552,
+            "dropped_rss": 34455552
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2700000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 1,
+            "capture_total_ns": 2700000,
+            "baseline_rss": 28540928,
+            "held_rss": 34275328,
+            "closed_rss": 34291712,
+            "dropped_rss": 34291712
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 1,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2624000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 1,
+            "capture_total_ns": 2624000,
+            "baseline_rss": 28442624,
+            "held_rss": 34177024,
+            "closed_rss": 34193408,
+            "dropped_rss": 34193408
+          }
+        ]
+      ]
+    },
+    {
+      "delta_points_per_capture": 16,
+      "live_snapshots": 8,
+      "median": {
+        "capture_total_ns": 20967000,
+        "baseline_rss": 28491776,
+        "held_rss": 69337088,
+        "closed_rss": 69353472,
+        "dropped_rss": 69353472,
+        "first_capture_ns": 2911000,
+        "repeat_capture_ns": 2534000,
+        "authoritative_copy_bytes": 25952256,
+        "base_builds": 8,
+        "held_rss_increase": 40812544
+      },
+      "runs": [
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2905000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8256,
+            "capture_ns": 2508000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 2,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8288,
+            "capture_ns": 2735000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 3,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8320,
+            "capture_ns": 2596000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 4,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8352,
+            "capture_ns": 2599000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 5,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8384,
+            "capture_ns": 2495000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 6,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8416,
+            "capture_ns": 2853000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 7,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8448,
+            "capture_ns": 2593000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 8,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 8,
+            "capture_total_ns": 21284000,
+            "baseline_rss": 28491776,
+            "held_rss": 69287936,
+            "closed_rss": 69304320,
+            "dropped_rss": 69304320
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2927000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8256,
+            "capture_ns": 2577000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 2,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8288,
+            "capture_ns": 2468000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 3,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8320,
+            "capture_ns": 2451000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 4,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8352,
+            "capture_ns": 2456000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 5,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8384,
+            "capture_ns": 2474000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 6,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8416,
+            "capture_ns": 2441000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 7,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8448,
+            "capture_ns": 2526000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 8,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 8,
+            "capture_total_ns": 20320000,
+            "baseline_rss": 28475392,
+            "held_rss": 69337088,
+            "closed_rss": 69353472,
+            "dropped_rss": 69353472
+          }
+        ],
+        [
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 0,
+            "generation": 7,
+            "sequence": 8224,
+            "capture_ns": 2911000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 1,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 1,
+            "generation": 7,
+            "sequence": 8256,
+            "capture_ns": 2534000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 2,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 2,
+            "generation": 7,
+            "sequence": 8288,
+            "capture_ns": 2717000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 3,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 3,
+            "generation": 7,
+            "sequence": 8320,
+            "capture_ns": 2788000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 4,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 4,
+            "generation": 7,
+            "sequence": 8352,
+            "capture_ns": 2549000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 5,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 5,
+            "generation": 7,
+            "sequence": 8384,
+            "capture_ns": 2668000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 6,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 6,
+            "generation": 7,
+            "sequence": 8416,
+            "capture_ns": 2406000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 7,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_capture",
+            "delta": 16,
+            "leases": 8,
+            "capture": 7,
+            "generation": 7,
+            "sequence": 8448,
+            "capture_ns": 2394000,
+            "authoritative_copy_bytes": 3244032,
+            "root_revision": 8,
+            "base_builds": 1
+          },
+          {
+            "kind": "snapshot_memory",
+            "delta": 16,
+            "leases": 8,
+            "capture_total_ns": 20967000,
+            "baseline_rss": 28540928,
+            "held_rss": 69353472,
+            "closed_rss": 69369856,
+            "dropped_rss": 69369856
+          }
+        ]
+      ]
+    }
+  ]
+}

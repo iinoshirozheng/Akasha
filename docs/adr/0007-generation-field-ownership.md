@@ -1,8 +1,12 @@
 # ADR 0007: Immutable read generations and independently owned fields
 
 Date: 2026-09-07. Status: **accepted design for the next implementation slices**.
-Engine baseline: `234547a`. This ADR does not make the current engine share snapshots.
-Current capture still clones MemTable/SparseIndex and rebuilds metadata.
+Design baseline: `234547a`. At acceptance, every capture cloned MemTable/SparseIndex
+and rebuilt metadata. **#47 is implemented in `dc858ab` (2026-09-17):** repeated
+captures share an immutable root owned through official `ArcPointer`; the first
+base at a changed view still clones/rebuilds all three structures. The rest of this
+ADR remains the design for #48 onward. See the
+[#47 implementation and measurements](../benchmarks/2026-09-17-shared-snapshot.md).
 
 ## Evidence and constraints
 

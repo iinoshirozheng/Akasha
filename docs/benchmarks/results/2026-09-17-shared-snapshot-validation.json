@@ -1,0 +1,160 @@
+{
+  "date": "2026-09-17",
+  "source": "dc858ab",
+  "hardware": "Apple M4 Pro",
+  "mojo": "1.0.0 (ed45d567)",
+  "max": "26.5.0",
+  "checks": [
+    {
+      "command": "pixi run test",
+      "exit_code": 0,
+      "mojo_files": 83,
+      "mojo_tests": 656,
+      "mojo_passed": 656,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/shared-snapshot-47/test.log",
+      "python_passed": 66,
+      "python_warnings": [
+        "Starlette/httpx deprecation",
+        "Collection missing __module__"
+      ]
+    },
+    {
+      "command": "pixi run test-crash",
+      "exit_code": 0,
+      "mojo_files": 5,
+      "mojo_tests": 9,
+      "mojo_passed": 9,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/shared-snapshot-47/test-crash.log"
+    },
+    {
+      "command": "pixi run test-gpu",
+      "exit_code": 0,
+      "mojo_files": 4,
+      "mojo_tests": 10,
+      "mojo_passed": 10,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/shared-snapshot-47/test-gpu.log"
+    },
+    {
+      "command": "pixi run test-c",
+      "exit_code": 0,
+      "log": ".build/shared-snapshot-47/test-c.log"
+    },
+    {
+      "command": "pixi run build-mojo",
+      "exit_code": 0,
+      "log": ".build/shared-snapshot-47/build-mojo.log"
+    },
+    {
+      "command": "pixi run check-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/shared-snapshot-47/hnsw-quality.log"
+    },
+    {
+      "command": "pixi run check-post-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/shared-snapshot-47/post-hnsw-quality.log"
+    },
+    {
+      "command": "pixi run python benchmarks/snapshot_cost.py --binary .build/shared-snapshot-47/phase11-bench --source dc858ab --output docs/benchmarks/results/2026-09-17-shared-snapshot-cost.json",
+      "exit_code": 0,
+      "log": ".build/shared-snapshot-47/snapshot-cost.log"
+    }
+  ],
+  "build_note": "Python shared library built and exercised by pixi run test; build-mojo builds all three examples without repeating that successful build.",
+  "hnsw_smoke": {
+    "cells": 6,
+    "min_recall": 1.0
+  },
+  "post_hnsw_smoke": [
+    {
+      "cell": "cell-000.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-001.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-002.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-003.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-004.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-005.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-006.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-007.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-008.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-009.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-010.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    }
+  ],
+  "readonly_base_negative_probe": {
+    "expected_exit_code": 1,
+    "observed_exit_code": 1,
+    "diagnostic": "invalid use of mutating method on rvalue of type 'MemTable'",
+    "source": "from akasha import CollectionConfig, ReadSnapshot\nfrom akasha.storage.memtable import MemTable\nfrom akasha.storage.generation_pins import GenerationPinRegistry\nfrom akasha.index.sparse import SparseIndex\nfrom std.memory import ArcPointer\n\ndef main() raises:\n    var table = MemTable(1)\n    var sparse = SparseIndex()\n    var pins = ArcPointer(GenerationPinRegistry())\n    var snapshot = ReadSnapshot.capture(CollectionConfig.defaults(1), 0, 0, table, sparse, pins)\n    ref base = snapshot._base()\n    base.memtable.apply_upsert(1, 1, [1.0])\n"
+  },
+  "durable_formats_changed": false
+}
