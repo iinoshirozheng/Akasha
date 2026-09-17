@@ -186,6 +186,16 @@ var device = snapshot.search_device_l2_batch[use_accelerator=True](
 )
 ```
 
+Repeated `PersistentCollection.snapshot()` calls now share one immutable
+read-generation root while collection state is unchanged. Writes and manifest
+publications invalidate the cache. Each handle keeps independent GPU state and a
+strong owner of the generation pin, so closing a sibling snapshot or the
+collection does not invalidate surviving readers. On the recorded Apple M4 Pro
+harness, eight unchanged captures built one base and copied 3.094 MiB of
+authoritative content total versus 24.750 MiB in the pre-sharing baseline;
+captures after a write still rebuild the full read base. See
+[`docs/benchmarks/2026-09-17-shared-snapshot.md`](docs/benchmarks/2026-09-17-shared-snapshot.md).
+
 SQ8 uses per-dimension affine byte codes. PQ uses deterministically trained
 subvector centroids. `rerank_k=0` returns approximate scores; a value at least
 `k` rescores those candidates against the snapshot's original Float32 vectors.
@@ -422,8 +432,10 @@ Implemented:
   L0 delta recovery for both dense and sparse state.
 - Threshold-triggered full-coverage compaction that publishes one new base,
   drops covered tombstones, and reclaims only files removed from the manifest.
-- Immutable read snapshots with owned dense, sparse, payload, and metadata
-  state; generation pins defer obsolete-file reclamation through compaction.
+- Immutable read snapshots with shared unchanged-generation roots for dense,
+  sparse, payload, and metadata state; strong root ownership keeps generation
+  pins alive through sibling close and compaction, while writes and manifest
+  publication invalidate the collection cache.
 - Atomic WAL v3 mutation batches with contiguous sequences and all-or-none
   crash recovery.
 - Deterministic scoped parallel batch query for all dense metrics and one
