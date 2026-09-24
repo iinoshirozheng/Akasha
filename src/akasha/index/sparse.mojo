@@ -89,6 +89,13 @@ struct SparseIndex:
             result.upsert(record.id, record.elements)
         return result^
 
+    def content_bytes(self) -> Int:
+        """Logical owned record bytes: one ID plus I64 term and F32 weight."""
+        var total = 0
+        for index in range(len(self._records)):
+            total += 8 + len(self._records[index].elements) * 12
+        return total
+
     def contains(self, id: Int) -> Bool:
         return id in self._record_slots
 

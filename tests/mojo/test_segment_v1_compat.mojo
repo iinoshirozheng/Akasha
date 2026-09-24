@@ -40,7 +40,7 @@ def test_v1_segment_recovers_vector_with_empty_payload() raises:
     assert_equal(snapshot.last_sequence, UInt64(7))
     assert_equal(len(snapshot.entries), 1)
     assert_equal(snapshot.entries[0].id, 42)
-    assert_equal(snapshot.entries[0].values[1], Float32(2.0))
+    assert_equal(snapshot.entries[0].values()[1], Float32(2.0))
     assert_equal(len(snapshot.entries[0].fields), 0)
 
 

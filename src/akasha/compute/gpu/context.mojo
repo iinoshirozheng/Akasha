@@ -1,8 +1,10 @@
 from akasha.compute.simd import prevalidated_simd_dot_product
 from akasha.storage.memtable import MemTable
+from akasha.storage.read_generation import ReadRun
 from max.gpu.host import DeviceBuffer, DeviceContext
 from std.time import perf_counter_ns
 from std.math import isfinite
+from std.memory import ArcPointer
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
@@ -160,10 +162,10 @@ struct GpuSnapshotCache(Movable):
                     ref entry = table.entry_ref_at(ordinals[position])
                     ids[position] = Int64(entry.id)
                     for column in range(self.dimension):
-                        var value = entry.values[column]
+                        var value = entry.values()[column]
                         vectors[position * self.dimension + column] = value
                     var norm = prevalidated_simd_dot_product(
-                        entry.values, entry.values
+                        entry.values(), entry.values()
                     )
                     if not isfinite(norm):
                         raise Error(
@@ -231,18 +233,23 @@ struct GpuSnapshotState(Movable):
 
     var lock: BlockingSpinLock
     var cache: Optional[GpuSnapshotCache]
+    # Flat visible-row table whose slots `cache.positions` index. It shares
+    # dense owners with the root and belongs to this handle only.
+    var table: Optional[ArcPointer[ReadRun]]
     var generation: UInt64
     var sequence: UInt64
 
     def __init__(out self, generation: UInt64 = 0, sequence: UInt64 = 0):
         self.lock = BlockingSpinLock()
         self.cache = Optional[GpuSnapshotCache]()
+        self.table = Optional[ArcPointer[ReadRun]]()
         self.generation = generation
         self.sequence = sequence
 
     def release(mut self):
         with BlockingScopedLock(self.lock):
             self.cache = Optional[GpuSnapshotCache]()
+            self.table = Optional[ArcPointer[ReadRun]]()
 
     def trim_to_budget(mut self, budget: UInt64):
         with BlockingScopedLock(self.lock):

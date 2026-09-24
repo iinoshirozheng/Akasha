@@ -1,3 +1,4 @@
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha.api.snapshot import ReadSnapshot
 from akasha.common.config import CollectionConfig
 from akasha.compute.gpu.flat_scan import DeviceBatchResult, execute_device_batch
@@ -111,8 +112,9 @@ def main() raises:
     var config = CollectionConfig.defaults(dimension)
     var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
-    var snapshot = ReadSnapshot.capture(
-        config, 1, table.last_sequence, table, sparse, pins
+    var cache = ReadGenerationCache()
+    var snapshot = ReadSnapshot(
+        cache.acquire(config, 1, table.last_sequence, table, sparse, pins)
     )
     var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var expected = execute_exact_batch(table, queries, 10, metric, 0)

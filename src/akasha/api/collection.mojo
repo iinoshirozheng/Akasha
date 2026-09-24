@@ -557,7 +557,7 @@ struct PersistentCollection:
             if self._closed:
                 return
             self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
-            self._read_generations[].invalidate()
+            self._read_generations[].reset()
             self._hnsw.close()
             self._closed = True
         var maintenance_error = String()
@@ -735,6 +735,7 @@ struct PersistentCollection:
         var record = WalRecord.upsert(sequence, id, wal_values^)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
+        self._read_generations[].record(self._memtable, [id])
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
@@ -769,6 +770,7 @@ struct PersistentCollection:
         )
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
+        self._read_generations[].record(self._memtable, [id])
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._extend_hnsw_id_lookup(metadata_slots)
@@ -848,10 +850,17 @@ struct PersistentCollection:
         var metadata_slots = self._metadata.slot_count()
         self._memtable = staged_memtable^
         self._metadata = staged_metadata^
+        # One envelope: every final state enters the publisher before any
+        # capture can run, so readers see all of the batch or none of it.
+        var batch_ids = List[Int](capacity=len(mutations))
+        for index in range(len(mutations)):
+            batch_ids.append(mutations[index].id)
+        self._read_generations[].record(self._memtable, batch_ids)
         self._extend_hnsw_id_lookup(metadata_slots)
         for index in range(len(mutations)):
             if mutations[index].is_delete:
                 self._sparse.delete(mutations[index].id)
+                self._read_generations[].record_sparse()
         var last_sequence = first_sequence + UInt64(len(mutations) - 1)
         self._last_sequence = last_sequence
         var final_mutation_by_id = Dict[Int, Int]()
@@ -903,6 +912,7 @@ struct PersistentCollection:
         var record = SparseWalRecord.upsert(sequence, id, wal_elements^)
         append_sparse_wal(self._sparse_wal_path, record)
         self._sparse.upsert(id, elements)
+        self._read_generations[].record_sparse()
         self._sparse_pending.append(record.clone())
         self._last_sequence = sequence
         self._invalidate_cache_hits()
@@ -923,8 +933,10 @@ struct PersistentCollection:
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_delete(id, sequence)
+        self._read_generations[].record(self._memtable, [id])
         self._metadata.delete(id)
         self._sparse.delete(id)
+        self._read_generations[].record_sparse()
         self._last_sequence = sequence
         self._extend_hnsw_id_lookup(metadata_slots)
         self._update_hnsw_after_delete(id, was_live)
@@ -1970,7 +1982,7 @@ struct PersistentCollection:
         for ordinal in ordinals:
             ref entry = self._memtable.entry_ref_at(ordinal)
             var score = authoritative_f32_score(
-                metric, query, entry.values
+                metric, query, entry.values()
             )
             topk.offer(entry.id, score)
 
@@ -2096,7 +2108,7 @@ struct PersistentCollection:
             ):
                 raise Error("HNSW upsert source is not authoritative and current")
             ref authoritative = self._memtable.entry_ref_at(ordinal)
-            self._hnsw.upsert(id, authoritative.values)
+            self._hnsw.upsert(id, authoritative.values())
             self._record_hnsw_mutation()
         except:
             self._mark_hnsw_unavailable("mutation_failed")
@@ -2416,7 +2428,7 @@ def _build_hnsw(
             or entry.id != order[order_index].id
         ):
             raise Error("HNSW rebuild source changed during staging")
-        index.add(entry.id, entry.values)
+        index.add(entry.id, entry.values())
     index.validate_structure()
     return index^
 

@@ -26,7 +26,6 @@ from akasha.index.sparse import (
     SparseRecord,
     validate_sparse,
 )
-from akasha.query.executor import candidate_ordinals
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
@@ -37,13 +36,12 @@ from akasha.query.batch_executor import (
     BATCH_DOT_METRIC,
     BATCH_L2_METRIC,
     execute_exact_candidate_batch,
-    execute_exact_batch,
+    execute_exact_ordinal_batch,
 )
-from akasha.storage.memtable import MemTable
-from akasha.storage.generation_pins import GenerationPinRegistry
-from akasha.storage.read_generation import ReadBase, ReadGeneration
+from akasha.storage.read_generation import ReadGeneration, ReadRun
 from std.math import isfinite
 from std.memory import ArcPointer
+from std.utils import BlockingScopedLock
 
 
 comptime _DOT_METRIC = 0
@@ -71,19 +69,6 @@ struct ReadSnapshot(Movable):
         self._gpu_state = ArcPointer(GpuSnapshotState(self._generation, self._sequence))
         self._root = Optional(root^)
 
-    @staticmethod
-    def capture(
-        config: CollectionConfig,
-        generation: UInt64,
-        sequence: UInt64,
-        memtable: MemTable,
-        sparse: SparseIndex,
-        pins: ArcPointer[GenerationPinRegistry],
-    ) raises -> ReadSnapshot:
-        return ReadSnapshot(
-            ReadGeneration.capture(config, generation, sequence, 1, memtable, sparse, pins)
-        )
-
     def close(mut self):
         """Drop this handle's data owner and device state; idempotent."""
         if not self._root:
@@ -91,11 +76,13 @@ struct ReadSnapshot(Movable):
         self._gpu_state[].release()
         self._root = Optional[ArcPointer[ReadGeneration]]()
 
-    def _base(self) raises -> ref[origin_of(self._root.value()[]._base[], self)] ReadBase:
+    def _view(
+        self,
+    ) raises -> ref[origin_of(self._root.value()[], self)] ReadGeneration:
         # Union with immutable self makes the returned borrow readonly despite
         # ArcPointer's mutable dereference. No borrowed buffer escapes the API.
         self._ensure_open()
-        return self._root.value()[]._base[]
+        return self._root.value()[]
 
     def generation(self) -> UInt64:
         return self._generation
@@ -110,43 +97,46 @@ struct ReadSnapshot(Movable):
         return self._config.fingerprint()
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
-        self._ensure_open()
-        return self._base().memtable.get(id)
+        var location = self._view().find(id)
+        if location[0] < 0:
+            return Optional[DocumentRecord]()
+        return Optional(self._record_at(location))
 
     def get_projected(
         self, id: Int, projection: FieldProjection
     ) raises -> Optional[DocumentRecord]:
-        self._ensure_open()
-        var document = self._base().memtable.get(id)
+        var document = self.get(id)
         if not Bool(document):
             return Optional[DocumentRecord]()
         return Optional(project_document(document.value(), projection))
 
     def documents(self) raises -> List[DocumentRecord]:
         """Return owned live records for logical export."""
-        self._ensure_open()
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
-        var records = List[DocumentRecord](capacity=len(ordinals))
-        for ordinal in ordinals:
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            records.append(
-                DocumentRecord(
-                    entry.id,
-                    entry.sequence,
-                    entry.values.copy(),
-                    clone_fields(entry.fields),
-                )
-            )
+        var locations = self._view().id_ordered_locations()
+        var records = List[DocumentRecord](capacity=len(locations))
+        for location in locations:
+            records.append(self._record_at(location))
         return records^
 
     def sparse_records(self) raises -> List[SparseRecord]:
         """Return an owned sparse snapshot for logical export."""
-        self._ensure_open()
-        var source = self._base().sparse.records()
+        var source = self._view().sparse[].records()
         var records = List[SparseRecord](capacity=len(source))
         for index in range(len(source)):
             records.append(source[index].clone())
         return records^
+
+    def _record_at(self, location: Tuple[Int, Int]) raises -> DocumentRecord:
+        """Materialize an owned record; later mutation cannot reach the run."""
+        ref entry = self._view().run(location[0]).memtable.entry_ref_at(
+            location[1]
+        )
+        return DocumentRecord(
+            entry.id,
+            entry.sequence,
+            entry.values().copy(),
+            clone_fields(entry.fields),
+        )
 
     def search_dot(
         self, query: List[Float32], k: Int
@@ -185,14 +175,14 @@ struct ReadSnapshot(Movable):
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _DOT_METRIC, num_workers, self._base().memtable.live_ordinals()
+            query, k, _DOT_METRIC, num_workers, self._visible_layers()
         )
 
     def search_l2_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
         return self._search_parallel(
-            query, k, _L2_METRIC, num_workers, self._base().memtable.live_ordinals()
+            query, k, _L2_METRIC, num_workers, self._visible_layers()
         )
 
     def search_cosine_parallel(
@@ -203,7 +193,7 @@ struct ReadSnapshot(Movable):
             k,
             _COSINE_METRIC,
             num_workers,
-            self._base().memtable.live_ordinals(),
+            self._visible_layers(),
         )
 
     def search_sq8_dot(
@@ -289,10 +279,7 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_DOT_METRIC, num_workers
-        )
+        return self._search_batch(queries, k, BATCH_DOT_METRIC, num_workers)
 
     def search_l2_batch(
         self,
@@ -301,10 +288,7 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_L2_METRIC, num_workers
-        )
+        return self._search_batch(queries, k, BATCH_L2_METRIC, num_workers)
 
     def search_cosine_batch(
         self,
@@ -313,10 +297,7 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_COSINE_METRIC, num_workers
-        )
+        return self._search_batch(queries, k, BATCH_COSINE_METRIC, num_workers)
 
     def search_device_dot_batch[use_accelerator: Bool](
         self,
@@ -504,8 +485,7 @@ struct ReadSnapshot(Movable):
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
     ) raises -> List[SearchResult]:
-        self._ensure_open()
-        return self._base().sparse.search_dot(query, k)
+        return self._view().sparse[].search_dot(query, k)
 
     def search_sparse_dot_where(
         self,
@@ -518,14 +498,21 @@ struct ReadSnapshot(Movable):
         if k <= 0:
             raise Error("k must be positive")
         expression.validate()
-        var matched = evaluate_expression(self._base().metadata, expression)
-        var count = self._base().sparse.point_count()
+        ref view = self._view()
+        var matched = List[Bitmap](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            matched.append(
+                evaluate_expression(view.run(layer).metadata, expression)
+            )
+        var count = view.sparse[].point_count()
         if count == 0:
             return List[SearchResult]()
-        var candidates = self._base().sparse.search_dot(query, count)
+        var candidates = view.sparse[].search_dot(query, count)
         var result = List[SearchResult]()
         for candidate in candidates:
-            if self._base().metadata.contains_id(matched, candidate.id):
+            # The newest point state decides the filter, in its own run.
+            var location = view.find(candidate.id)
+            if location[0] >= 0 and matched[location[0]].contains(location[1]):
                 result.append(candidate)
                 if len(result) == k:
                     break
@@ -649,8 +636,12 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         for index in range(len(conditions)):
             conditions[index].validate()
-        var candidates = evaluate_all(self._base().metadata, conditions)
-        return self._search_candidates(query, k, metric, candidates)
+        ref view = self._view()
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            var bitmap = evaluate_all(view.run(layer).metadata, conditions)
+            layers.append(view.candidate_ordinals(layer, bitmap))
+        return self._scan(query, k, metric, layers)
 
     def _search_sq8(
         self, query: List[Float32], k: Int, rerank_k: Int, metric: Int
@@ -658,15 +649,12 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
+        var ordinals = self._view().id_ordered_locations()
         if len(ordinals) == 0:
             return List[SearchResult]()
         var ids = List[Int](capacity=len(ordinals))
         var vectors = List[List[Float32]](capacity=len(ordinals))
-        for index in range(len(ordinals)):
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            ids.append(entry.id)
-            vectors.append(entry.values.copy())
+        self._gather(ordinals, ids, vectors)
         var sq8 = Sq8Index.build(ids, vectors)
         var candidate_count = k if rerank_k == 0 else rerank_k
         candidate_count = min(candidate_count, len(ordinals))
@@ -695,15 +683,12 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("PQ rerank candidate count must be zero or at least k")
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
+        var ordinals = self._view().id_ordered_locations()
         if len(ordinals) == 0:
             return List[SearchResult]()
         var ids = List[Int](capacity=len(ordinals))
         var vectors = List[List[Float32]](capacity=len(ordinals))
-        for index in range(len(ordinals)):
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            ids.append(entry.id)
-            vectors.append(entry.values.copy())
+        self._gather(ordinals, ids, vectors)
         var pq = PqIndex.build(
             ids,
             vectors,
@@ -737,18 +722,13 @@ struct ReadSnapshot(Movable):
             smaller_is_better=metric == _L2_METRIC,
         )
         for candidate in candidates:
-            var ordinal = self._base().memtable.ordinal_for(candidate.id)
-            if ordinal < 0 or not self._base().memtable.is_live_at(ordinal):
+            var location = self._view().find(candidate.id)
+            if location[0] < 0:
                 raise Error("quantized candidate is absent from snapshot")
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
+            ref entry = self._view().run(location[0]).memtable.entry_ref_at(
+                location[1]
+            )
+            topk.offer(entry.id, _score(metric, query, entry.values()))
         var retained = topk.sorted_entries()
         var output = List[SearchResult](capacity=len(retained))
         for entry in retained:
@@ -764,8 +744,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         expression.validate()
-        var candidates = evaluate_expression(self._base().metadata, expression)
-        return self._search_candidates(query, k, metric, candidates)
+        return self._scan(query, k, metric, self._where_layers(expression))
 
     def _search_controlled(
         self,
@@ -775,25 +754,24 @@ struct ReadSnapshot(Movable):
         control: QueryControl,
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
-        var ordinals = self._base().memtable.live_ordinals()
-        control.validate_candidate_count(len(ordinals))
+        ref view = self._view()
+        var layers = self._visible_layers()
+        var total = _total(layers)
+        control.validate_candidate_count(total)
         control.checkpoint(0)
-        if len(ordinals) == 0:
+        if total == 0:
             return List[SearchResult]()
         var topk = BoundedTopK(
-            min(k, len(ordinals)), smaller_is_better=metric == _L2_METRIC
+            min(k, total), smaller_is_better=metric == _L2_METRIC
         )
-        for index in range(len(ordinals)):
-            control.checkpoint(index)
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
+        var index = 0
+        for layer in range(len(layers)):
+            ref table = view.run(layer).memtable
+            for ordinal in layers[layer]:
+                control.checkpoint(index)
+                index += 1
+                ref entry = table.entry_ref_at(ordinal)
+                topk.offer(entry.id, _score(metric, query, entry.values()))
         control.checkpoint(0)
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
@@ -807,17 +785,22 @@ struct ReadSnapshot(Movable):
         k: Int,
         metric: Int,
         num_workers: Int,
-        var ordinals: List[Int],
+        layers: List[List[Int]],
     ) raises -> List[SearchResult]:
-        self._ensure_open()
-        var batch_metric = BATCH_DOT_METRIC
-        if metric == _L2_METRIC:
-            batch_metric = BATCH_L2_METRIC
-        elif metric == _COSINE_METRIC:
-            batch_metric = BATCH_COSINE_METRIC
-        return execute_parallel_scan(
-            self._base().memtable, ordinals, query, k, batch_metric, num_workers
-        )
+        ref view = self._view()
+        var parts = List[List[SearchResult]](capacity=len(layers))
+        for layer in range(len(layers)):
+            parts.append(
+                execute_parallel_scan(
+                    view.run(layer).memtable,
+                    layers[layer],
+                    query,
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge(parts, k, metric)
 
     def _search_where_parallel(
         self,
@@ -829,9 +812,31 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._ensure_open()
         expression.validate()
-        var bitmap = evaluate_expression(self._base().metadata, expression)
-        var ordinals = candidate_ordinals(self._base().memtable, bitmap)
-        return self._search_parallel(query, k, metric, num_workers, ordinals^)
+        return self._search_parallel(
+            query, k, metric, num_workers, self._where_layers(expression)
+        )
+
+    def _search_batch(
+        self,
+        queries: List[List[Float32]],
+        k: Int,
+        metric: Int,
+        num_workers: Int,
+    ) raises -> List[List[SearchResult]]:
+        ref view = self._view()
+        var parts = List[List[List[SearchResult]]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            parts.append(
+                execute_exact_ordinal_batch(
+                    view.run(layer).memtable,
+                    queries,
+                    view.visible_ordinals(layer),
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge_batch(parts, len(queries), k, metric)
 
     def _search_where_batch(
         self,
@@ -841,22 +846,38 @@ struct ReadSnapshot(Movable):
         metric: Int,
         num_workers: Int,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
+        ref view = self._view()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
-        var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
-        return execute_exact_candidate_batch(
-            self._base().memtable,
-            queries,
-            candidates,
-            k,
-            metric,
-            num_workers,
-        )
+        var parts = List[List[List[SearchResult]]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            var candidates = List[List[Int]](capacity=len(queries))
+            for index in range(len(expressions)):
+                var bitmap = evaluate_expression(
+                    view.run(layer).metadata, expressions[index]
+                )
+                candidates.append(view.candidate_ordinals(layer, bitmap))
+            parts.append(
+                execute_exact_candidate_batch(
+                    view.run(layer).memtable,
+                    queries,
+                    candidates,
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge_batch(parts, len(queries), k, metric)
+
+    def _device_run(self) raises -> ArcPointer[ReadRun]:
+        """Build this handle's flat device table once, under its GPU lock."""
+        ref view = self._view()
+        with BlockingScopedLock(self._gpu_state[].lock):
+            if not self._gpu_state[].table:
+                self._gpu_state[].table = Optional(view.dense_run())
+            return self._gpu_state[].table.value()
 
     def _search_device_batch[use_accelerator: Bool](
         self,
@@ -865,10 +886,16 @@ struct ReadSnapshot(Movable):
         metric: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        self._ensure_open()
+        var table = self._device_run()
         var candidates = List[List[Int]]()
         return execute_snapshot_device_batch[use_accelerator](
-            self._base().memtable, queries, candidates, False, k, metric, options,
+            table[].memtable,
+            queries,
+            candidates,
+            False,
+            k,
+            metric,
+            options,
             self._gpu_state[],
         )
 
@@ -880,44 +907,86 @@ struct ReadSnapshot(Movable):
         metric: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        self._ensure_open()
+        ref view = self._view()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
+        var table = self._device_run()
         var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
+            var selected = List[Int]()
+            for layer in range(view.layer_count()):
+                ref source = view.run(layer).memtable
+                var bitmap = evaluate_expression(
+                    view.run(layer).metadata, expressions[index]
+                )
+                # Visible rows map by public ID into the flat table's slots.
+                for ordinal in view.candidate_ordinals(layer, bitmap):
+                    selected.append(
+                        table[].memtable.ordinal_for(source.id_at(ordinal))
+                    )
+            sort(Span(selected))
+            candidates.append(selected^)
         return execute_snapshot_device_batch[use_accelerator](
-            self._base().memtable, queries, candidates, True, k, metric, options,
+            table[].memtable,
+            queries,
+            candidates,
+            True,
+            k,
+            metric,
+            options,
             self._gpu_state[],
         )
 
-    def _search_candidates(
+    def _visible_layers(self) raises -> List[List[Int]]:
+        ref view = self._view()
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            layers.append(view.visible_ordinals(layer))
+        return layers^
+
+    def _where_layers(
+        self, expression: FilterExpression
+    ) raises -> List[List[Int]]:
+        """Evaluate a filter per run, then drop shadowed rows before Top-K."""
+        ref view = self._view()
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            var bitmap = evaluate_expression(view.run(layer).metadata, expression)
+            layers.append(view.candidate_ordinals(layer, bitmap))
+        return layers^
+
+    def _gather(
+        self,
+        locations: List[Tuple[Int, Int]],
+        mut ids: List[Int],
+        mut vectors: List[List[Float32]],
+    ) raises:
+        ref view = self._view()
+        for location in locations:
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+            ids.append(entry.id)
+            vectors.append(entry.values().copy())
+
+    def _scan(
         self,
         query: List[Float32],
         k: Int,
         metric: Int,
-        candidates: Bitmap,
+        layers: List[List[Int]],
     ) raises -> List[SearchResult]:
-        if candidates.count() == 0:
+        var total = _total(layers)
+        if total == 0:
             return List[SearchResult]()
-        var result_count = min(k, candidates.count())
+        ref view = self._view()
         var topk = BoundedTopK(
-            result_count, smaller_is_better=metric == _L2_METRIC
+            min(k, total), smaller_is_better=metric == _L2_METRIC
         )
-        var ordinals = candidate_ordinals(self._base().memtable, candidates)
-        for ordinal in ordinals:
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
-
+        for layer in range(len(layers)):
+            ref table = view.run(layer).memtable
+            for ordinal in layers[layer]:
+                ref entry = table.entry_ref_at(ordinal)
+                topk.offer(entry.id, _score(metric, query, entry.values()))
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
         for entry in retained:
@@ -965,7 +1034,7 @@ struct ReadSnapshot(Movable):
         var dense = self._search_filtered(
             dense_query, fetch_k, metric, conditions
         )
-        var sparse = self._base().sparse.search_dot(sparse_query, fetch_k)
+        var sparse = self._view().sparse[].search_dot(sparse_query, fetch_k)
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _search_hybrid_where(
@@ -993,3 +1062,55 @@ struct ReadSnapshot(Movable):
     def _ensure_open(self) raises:
         if not self._root:
             raise Error("snapshot is closed")
+
+
+def _score(
+    metric: Int, query: List[Float32], values: List[Float32]
+) raises -> Float32:
+    if metric == _DOT_METRIC:
+        return simd_dot_product(query, values)
+    if metric == _L2_METRIC:
+        return simd_l2_squared_distance(query, values)
+    return simd_cosine_similarity(query, values)
+
+
+def _total(layers: List[List[Int]]) -> Int:
+    var total = 0
+    for layer in layers:
+        total += len(layer)
+    return total
+
+
+def _merge(
+    parts: List[List[SearchResult]], k: Int, metric: Int
+) raises -> List[SearchResult]:
+    """Merge per-run exact Top-K lists; the heap's total order keeps it exact.
+    """
+    var total = 0
+    for part in parts:
+        total += len(part)
+    if total == 0:
+        return List[SearchResult]()
+    var topk = BoundedTopK(min(k, total), smaller_is_better=metric == _L2_METRIC)
+    for part in parts:
+        for result in part:
+            topk.offer(result.id, result.score)
+    var retained = topk.sorted_entries()
+    var results = List[SearchResult](capacity=len(retained))
+    for entry in retained:
+        results.append(SearchResult(entry.id, entry.score))
+    return results^
+
+
+def _merge_batch(
+    parts: List[List[List[SearchResult]]], queries: Int, k: Int, metric: Int
+) raises -> List[List[SearchResult]]:
+    var output = List[List[SearchResult]](capacity=queries)
+    if len(parts) == 0 or len(parts[0]) != queries:
+        return output^
+    for query in range(queries):
+        var per_query = List[List[SearchResult]](capacity=len(parts))
+        for layer in range(len(parts)):
+            per_query.append(parts[layer][query].copy())
+        output.append(_merge(per_query, k, metric))
+    return output^

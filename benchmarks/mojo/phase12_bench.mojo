@@ -1,3 +1,5 @@
+from akasha.common.config import CollectionConfig
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha import PersistentCollection, ReadSnapshot
 from akasha.index.flat import FlatIndex, SearchResult
 from akasha.index.quantization import PqIndex, Sq8Index
@@ -122,8 +124,9 @@ def _parallel_and_rerank_gate() raises:
     memtable.apply_recovered_entries(entries)
     var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
-    var snapshot = ReadSnapshot.capture(
-        _DIMENSION, 0, UInt64(256), memtable, sparse, pins
+    var cache = ReadGenerationCache()
+    var snapshot = ReadSnapshot(
+        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(256), memtable, sparse, pins)
     )
     var query = _vector(50_000)
     var scalar_start = perf_counter_ns()

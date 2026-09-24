@@ -324,8 +324,8 @@ def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     assert_equal(collection._read_generations[].revision, UInt64(1))
     assert_equal(collection._pins[].active_count(), 1)
     assert_equal(
-        Int(first._base().memtable.entry_ref_at(0).values.unsafe_ptr()),
-        Int(second._base().memtable.entry_ref_at(0).values.unsafe_ptr()),
+        first._view().run(0).memtable.entry_ref_at(0).dense_address(),
+        second._view().run(0).memtable.entry_ref_at(0).dense_address(),
     )
     var document = first.get(1)
     document.value().vector[0] = 99.0
@@ -452,15 +452,18 @@ def test_shared_root_raii_and_failed_capture_do_not_leak_pins() raises:
     with assert_raises():
         _ = cache.acquire(CollectionConfig.defaults(2), 0, 2, table, sparse, pins)
     with assert_raises():
-        _ = ReadSnapshot.capture(config, 0, 0, table, sparse, pins)
+        _ = cache.acquire(config, 0, 0, table, sparse, pins)
+    assert_true(cache.root.value() is root)
+    assert_equal(cache.revision, UInt64(1))
     # Inject a malformed internal row to exercise failure during base copying,
     # after the identity checks, without a runtime fault-injection interface.
     table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(1)))
     table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(2)))
+    var failing = ReadGenerationCache()
     with assert_raises():
-        _ = cache.acquire(config, 0, 2, table, sparse, pins)
-    assert_true(cache.root.value() is root)
-    assert_equal(cache.revision, UInt64(1))
+        _ = failing.acquire(config, 0, 2, table, sparse, pins)
+    assert_false(Bool(failing.root))
+    assert_equal(failing.revision, UInt64(0))
     assert_equal(pins[].active_count(), 1)
     _ = root^
     cache.invalidate()

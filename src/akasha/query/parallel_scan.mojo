@@ -94,11 +94,11 @@ def execute_parallel_scan(
     for entry_index in range(len(ordinals)):
         if not memtable.is_live_at(ordinals[entry_index]):
             raise Error("parallel scan candidate slot is not live")
-        if len(entries[ordinals[entry_index]].values) != dimension:
+        if len(entries[ordinals[entry_index]].values()) != dimension:
             raise Error("parallel scan candidate dimension mismatch")
         if metric == BATCH_COSINE_METRIC:
             var candidate_norm: Float32 = 0.0
-            for value in entries[ordinals[entry_index]].values:
+            for value in entries[ordinals[entry_index]].values():
                 candidate_norm += value * value
             if candidate_norm == 0.0:
                 raise Error("cosine similarity requires non-zero vectors")
@@ -133,15 +133,15 @@ def execute_parallel_scan(
             var score: Float32
             if metric == BATCH_DOT_METRIC:
                 score = prevalidated_simd_dot_product(
-                    query, entries[ordinals[entry_index]].values
+                    query, entries[ordinals[entry_index]].values()
                 )
             elif metric == BATCH_L2_METRIC:
                 score = prevalidated_simd_l2_squared_distance(
-                    query, entries[ordinals[entry_index]].values
+                    query, entries[ordinals[entry_index]].values()
                 )
             else:
                 score = prevalidated_simd_cosine_similarity(
-                    query, entries[ordinals[entry_index]].values
+                    query, entries[ordinals[entry_index]].values()
                 )
             heaps[range_index].offer(entries[ordinals[entry_index]].id, score)
 

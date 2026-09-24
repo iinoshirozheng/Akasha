@@ -955,7 +955,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1017,7 +1017,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1050,7 +1050,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1089,7 +1089,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1

@@ -178,7 +178,7 @@ def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
         writer.write_u8(UInt8(1) if entry.tombstone else UInt8(0))
         writer.write_u8(UInt8(0))
         writer.write_u16(UInt16(0))
-        for value in entry.values:
+        for value in entry.values():
             writer.write_f32(value)
         var fields = encode_payload(entry.fields)
         writer.write_u32(UInt32(len(fields)))

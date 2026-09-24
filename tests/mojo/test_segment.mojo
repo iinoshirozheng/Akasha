@@ -39,7 +39,7 @@ def test_segment_round_trip_preserves_sorted_live_snapshot() raises:
     assert_equal(snapshot.entries[0].id, 10)
     assert_equal(snapshot.entries[1].id, 20)
     assert_equal(snapshot.entries[1].sequence, UInt64(3))
-    assert_equal(snapshot.entries[1].values[0], Float32(2.0))
+    assert_equal(snapshot.entries[1].values()[0], Float32(2.0))
     assert_equal(snapshot.entries[1].fields[0].value.as_string(), "twenty")
     assert_equal(len(snapshot.entries[0].fields), 0)
 
@@ -99,7 +99,7 @@ def test_segment_v3_delta_round_trips_upsert_and_tombstone() raises:
     assert_equal(snapshot.entries[0].fields[0].value.as_string(), "delta")
     assert_equal(snapshot.entries[1].id, 20)
     assert_equal(snapshot.entries[1].tombstone, True)
-    assert_equal(len(snapshot.entries[1].values), 0)
+    assert_equal(len(snapshot.entries[1].values()), 0)
     remove_file_if_exists(path)
 
 

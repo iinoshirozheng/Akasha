@@ -5,15 +5,20 @@ from akasha.document.record import (
     validate_fields,
 )
 from std.collections import Dict
+from std.memory import ArcPointer
 
 
 struct MemTableEntry(Movable):
-    """The newest known state for one point ID."""
+    """The newest known state for one point ID.
+
+    The dense row is an immutable owner shared by every descriptor copy. A new
+    write installs a new owner; published rows are never mutated in place.
+    """
 
     var id: Int
     var sequence: UInt64
     var tombstone: Bool
-    var values: List[Float32]
+    var _dense: ArcPointer[List[Float32]]
     var fields: List[DocumentField]
 
     def __init__(
@@ -26,7 +31,7 @@ struct MemTableEntry(Movable):
         self.id = id
         self.sequence = sequence
         self.tombstone = tombstone
-        self.values = values^
+        self._dense = ArcPointer(values^)
         self.fields = List[DocumentField]()
 
     @staticmethod
@@ -42,16 +47,31 @@ struct MemTableEntry(Movable):
         entry.fields = fields^
         return entry^
 
+    def values(self) -> ref[origin_of(self._dense[], self)] List[Float32]:
+        """Borrow the immutable dense row; union with self keeps it readonly."""
+        return self._dense[]
+
+    def dense_bytes(self) -> Int:
+        return len(self._dense[]) * 4
+
+    def dense_address(self) -> Int:
+        """Allocation identity of the dense owner, for copy auditing."""
+        return Int(self._dense.unsafe_ptr())
+
     def clone(self) raises -> MemTableEntry:
-        var values = self.values.copy()
-        var fields = clone_fields(self.fields)
-        return MemTableEntry.with_fields(
-            self.id,
-            self.sequence,
-            self.tombstone,
-            values^,
-            fields^,
+        """Copy the point-state descriptor and payload; share the dense owner.
+        """
+        var entry = self.dense_descriptor()
+        entry.fields = clone_fields(self.fields)
+        return entry^
+
+    def dense_descriptor(self) -> MemTableEntry:
+        """Copy ID/sequence/tombstone and share dense; payload is omitted."""
+        var entry = MemTableEntry(
+            self.id, self.sequence, self.tombstone, List[Float32]()
         )
+        entry._dense = self._dense.copy()
+        return entry^
 
 
 struct MemTable:
@@ -167,7 +187,7 @@ struct MemTable:
                 self._live_count += 1
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = False
-            self._entries[index].values = values^
+            self._entries[index]._dense = ArcPointer(values^)
             self._entries[index].fields = fields^
             return
 
@@ -176,6 +196,21 @@ struct MemTable:
         )
         self._id_ordinals[id] = len(self._entries) - 1
         self._live_count += 1
+
+    def put(mut self, var entry: MemTableEntry):
+        """Install one already-accepted point state, replacing its ID's slot."""
+        if entry.sequence > self.last_sequence:
+            self.last_sequence = entry.sequence
+        var index = self.ordinal_for(entry.id)
+        if index < 0:
+            if not entry.tombstone:
+                self._live_count += 1
+            self._id_ordinals[entry.id] = len(self._entries)
+            self._entries.append(entry^)
+            return
+        if self._entries[index].tombstone != entry.tombstone:
+            self._live_count += -1 if entry.tombstone else 1
+        self._entries[index] = entry^
 
     def apply_delete(mut self, id: Int, sequence: UInt64) raises:
         if sequence == 0:
@@ -190,7 +225,7 @@ struct MemTable:
                 self._live_count -= 1
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = True
-            self._entries[index].values = List[Float32]()
+            self._entries[index]._dense = ArcPointer(List[Float32]())
             self._entries[index].fields = List[DocumentField]()
             return
 
@@ -201,7 +236,7 @@ struct MemTable:
         var index = self.ordinal_for(id)
         if index < 0 or self._entries[index].tombstone:
             return Optional[DocumentRecord]()
-        var vector = self._entries[index].values.copy()
+        var vector = self._entries[index].values().copy()
         var fields = clone_fields(self._entries[index].fields)
         var record = DocumentRecord(
             id,
@@ -249,9 +284,9 @@ struct MemTable:
             if entries[index].sequence == 0:
                 raise Error("recovered sequence must be positive")
             if entries[index].tombstone:
-                if len(entries[index].values) != 0:
+                if len(entries[index].values()) != 0:
                     raise Error("recovered tombstone cannot contain a vector")
-            elif len(entries[index].values) != self.dimension:
+            elif len(entries[index].values()) != self.dimension:
                 raise Error(
                     "recovered vector dimension does not match memtable"
                 )

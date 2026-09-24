@@ -1,3 +1,5 @@
+from akasha.common.config import CollectionConfig
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha import ReadSnapshot
 from akasha.index.sparse import SparseIndex
 from akasha.storage.generation_pins import GenerationPinRegistry
@@ -34,8 +36,9 @@ def _snapshot() raises -> ReadSnapshot:
     table.apply_recovered_entries(entries)
     var pins = ArcPointer(GenerationPinRegistry())
     var sparse = SparseIndex()
-    return ReadSnapshot.capture(
-        _DIMENSION, 0, UInt64(_POINT_COUNT), table, sparse, pins
+    var cache = ReadGenerationCache()
+    return ReadSnapshot(
+        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(_POINT_COUNT), table, sparse, pins)
     )
 
 
