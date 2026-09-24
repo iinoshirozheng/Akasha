@@ -4,9 +4,14 @@ Date: 2026-09-07. Status: **accepted design for the next implementation slices**
 Design baseline: `234547a`. At acceptance, every capture cloned MemTable/SparseIndex
 and rebuilt metadata. **#47 is implemented in `dc858ab` (2026-09-17):** repeated
 captures share an immutable root owned through official `ArcPointer`; the first
-base at a changed view still clones/rebuilds all three structures. The rest of this
-ADR remains the design for #48 onward. See the
+base at a changed view still clones/rebuilds all three structures. See the
 [#47 implementation and measurements](../benchmarks/2026-09-17-shared-snapshot.md).
+**#48 is implemented in `8351235` (2026-09-24):** immutable dense owners, a bounded
+head, sealed runs, a shadowing resolver and foreground consolidation; captures copy
+no dense bytes. Payload and sparse are still copied per descriptor and per capture
+respectively (#49). See the
+[#48 implementation and measurements](../benchmarks/2026-09-24-bounded-head.md).
+The rest of this ADR remains the design for #49 onward.
 
 ## Evidence and constraints
 
@@ -83,6 +88,14 @@ Shadowing applies to the whole point state so dense/payload/sparse cannot come f
 different logical rows. An updated field can still reference an older immutable
 field buffer through the new point state. Never take base Top-K and only then remove
 shadowed hits, which could lose the actual winners.
+
+#48 implementation notes: the publisher records each committed point state after the
+WAL and MemTable apply, and a dense batch is recorded only after its whole staged swap.
+Frozen heads build a small metadata index at capture instead of evaluating fields
+directly; that cost is bounded by the head limits. Sealed-run shadowing lists are
+shared owners replaced at rollover, never mutated. The root's visible count comes from
+the writer table, whose sequence the publisher checks. GPU preparation derives its flat
+table from the root resolver once per snapshot handle; per-root device keying is #50.
 
 Metadata/sparse indexes belong to each immutable run and its ordinal layout. The
 small captured head can evaluate fields/sparse values directly until rollover builds

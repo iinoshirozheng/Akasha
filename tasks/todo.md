@@ -191,14 +191,15 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47 已完成；#48–#63 待實作）
+## #46 定案後的實作隊列（#47–#48 已完成；#49–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#48**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
-共享，直到 #48/#49 才能驗收少量 delta 不複製全庫。#60–#63 不阻擋這條主線。
+建議下一個引擎項目是 **#49**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+共享，#48 已讓少量 delta 的 capture 不複製 dense bytes；payload／sparse 仍待 #49。
+#60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
 
@@ -219,7 +220,7 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #48 有界 head 與共享 dense fields
 
-- [ ] 接受寫入時建立不可變 dense field owner，head 只改 latest-state descriptors；新 root
+- [x] 接受寫入時建立不可變 dense field owner，head 只改 latest-state descriptors；新 root
   複製有界 descriptors，base/sealed run 共享。rollover 移交 owner，atomic batch 一次發布。
   改 exact/get 的全點 visibility resolver，舊 row 在 Top-K 前被 shadow/tombstone 遮蔽。
 - 相依：#47。主要檔：`read_generation.mojo`、`storage/memtable.mojo`、
@@ -229,6 +230,15 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
   呼叫的有界 in-memory consolidation，讓 sealed chain 不無限增長；#52 才把同一建置
   primitive 接入 worker/backpressure，明列此片仍可能有 consolidation writer stall。
   發布前失敗保留舊 root；重跑 batch torn-write crash。此片未改 durable schema。
+- 完成：`8351235`（引擎與測試）、`09fe0ff`（成本 harness），2026-09-24。ArcPointer dense
+  owner、1,024 點／4 MiB head、sealed runs、8 段後 foreground consolidation；各 layer 先遮蔽
+  再 filter／Top-K，再以 BoundedTopK 合併。0/16/1,024 delta 以 owner identity 稽核 dense
+  copied bytes = 0；16 delta × 8 snapshots 的 capture 中位數 dense-only 0.007 ms、dense+sparse
+  0.691 ms（幾乎全為 sparse 全量 clone，屬 #49）。仍有 consolidation writer stall（4,096 點約
+  2.0 ms，#52）；GPU flat table 仍各 handle 建立（#50）；`apply_batch` staging 仍 clone 全表
+  descriptors／payload 並重建 metadata（writer 路徑，未列任務）。664 Mojo／66 Python／9 crash／
+  10 實機 GPU、C ABI、build 與品質 gates 通過。
+  [實作與成本報告](../docs/benchmarks/2026-09-24-bounded-head.md)。
 
 ### #49 Payload／sparse 與完整 point state 一致
 
