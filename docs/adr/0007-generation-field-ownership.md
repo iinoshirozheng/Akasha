@@ -14,7 +14,11 @@ no dense bytes. See the
 next to the dense owner; base and sealed runs index their own slots and the frozen
 head is evaluated directly, so captures copy no field bytes. See the
 [#49 implementation and measurements](../benchmarks/2026-09-25-field-owners.md).
-The rest of this ADR remains the design for #50 onward.
+**#50 is implemented (2026-09-25):** every snapshot or collection query acquires its
+own root owner; close drops only the handle's owner, and device state lives on the
+root. See the
+[#50 implementation and measurements](../benchmarks/2026-09-25-operation-owners.md).
+The rest of this ADR remains the design for #51 onward.
 
 ## Evidence and constraints
 
@@ -97,7 +101,7 @@ WAL and MemTable apply, and a dense batch is recorded only after its whole stage
 Sealed-run shadowing lists are
 shared owners replaced at rollover, never mutated. The root's visible count comes from
 the writer table, whose sequence the publisher checks. GPU preparation derives its flat
-table from the root resolver once per snapshot handle; per-root device keying is #50.
+table from the root resolver once per root (#50; it was once per handle in #48).
 
 Metadata/sparse indexes belong to each immutable run and its ordinal layout. The
 small captured head can evaluate fields/sparse values directly until rollover builds
@@ -185,6 +189,16 @@ same release. Last owner releases mappings/device buffers; last relevant file le
 allows unlink. Expose pin/retired/cache bytes and oldest retained sequence, with no
 automatic TTL that silently invalidates a user's view.
 
+#50 implementation notes: a snapshot handle keeps its root in a lock-guarded slot on
+the heap. Each query copies the root owner under that lock, releases the lock and
+reads only through its own owner. A slot stored inline in the handle raced: a
+concurrent close freed a run that a query was still reading. Close takes the owner
+out under the lock and drops it after releasing it. Collection queries
+without a writer lock (exact, filtered, where, sparse, hybrid and device) validate,
+then run on a snapshot operation. They no longer read the writer's live tables.
+Collection close takes the cached root out under the writer lock and drops it after,
+so a last owner frees rows and device state outside the lock.
+
 ## Build, publish and retirement
 
 Lifecycle: `active inputs → pinned build inputs → building output → validated ready
@@ -238,6 +252,13 @@ Scratch is mutable per operation or synchronized cache; authoritative buffers ar
 immutable. Dropping one snapshot must not destroy another operation's GPU state.
 No new GPU ANN or cross-vendor claim follows from this CPU ownership work.
 
+#50 implementation: `ReadGeneration.device` holds one `GpuSnapshotState` per root.
+A root fixes the layout and config and has one dense field. The process has one
+default device context, so a key per root covers root, layout, field, config and
+device. A second device would need one state per device on the root. Handles and
+operations on one root share the table and the cache. The collection keeps no
+device snapshot of its own, and a newer sequence always gets a new root and state.
+
 ## Rejected alternatives and validation mapping
 
 | Alternative | Reason rejected |
@@ -254,12 +275,12 @@ No new GPU ANN or cross-vendor claim follows from this CPU ownership work.
 |---|---|---|
 | Full-point visibility and owned get | `test_snapshot.mojo`, `test_concurrency.mojo` batch boundaries | #47–#49: equal G/different S, tombstone/reinsert, pointer-sharing and sparse/payload-only updates |
 | Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point, merge backpressure; capture does not clone base bytes |
-| Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50/#58: close during acquired operation, exported arrays after all parent handles close |
+| Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
 | Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51/#52: lock-free build with concurrent writes/flush, last release, cancellation and worker failure |
 | Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51/#53: output fsync/manifest/root-publication/cleanup crash boundaries and stale build |
 | Backup exact captured generation | `test_storage_operations.mojo` | #53: concurrent source flush/compact, bounded RSS, independent restore and corrupt source |
 | Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
-| GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50: rerun affected real-device close/budget/freshness tests when GPU ownership is changed |
+| GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |
 | Typed buffer bounds and ownership | #45 real Python/Mojo Arrow tests | #57/#58: output pointer/release/slice, filtered gather copied-byte accounting |
 
 Execution dependencies and file-sized work packages are in [tasks/todo.md](../../tasks/todo.md).

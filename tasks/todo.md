@@ -191,14 +191,15 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#48 已完成；#49–#63 待實作）
+## #46 定案後的實作隊列（#47–#50 已完成；#51–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#49**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
-共享，#48 已讓少量 delta 的 capture 不複製 dense bytes；payload／sparse 仍待 #49。
+建議下一個引擎項目是 **#51**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
+獨立 root owner。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -264,13 +265,24 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #50 Operation lease、close 與 GPU cache owner
 
-- [ ] Query 取得獨立 operation owner，close 停止新操作、鎖外 drain，drop 該 handle owner；
+- [x] Query 取得獨立 operation owner，close 停止新操作、鎖外 drain，drop 該 handle owner；
   既有 snapshot 不失效。GPU cache 綁 root/layout/field/config/device，保留既有 budget／scratch。
 - 相依：#49。主要檔：`api/collection.mojo`、`api/snapshot.mojo`、`compute/gpu/context.mojo`、
   新 `tests/mojo/test_generation_close.mojo`、相關 `tests/gpu/` lifecycle test。
 - 驗收：已取得 operation 與 close 交錯、重複 close、worker error、最後 owner/pin 釋放，
   相同 G/不同 S cache freshness。GPU ownership 有改動才執行對應實機 gate；不可用 CPU
   fallback 作實機證據。無新格式，不以 Span origin 代替 operation owner。
+- 完成（2026-09-25）：snapshot 每個 query 在 handle 鎖內複製 root owner、鎖外只經該 owner
+  讀；root slot 與鎖放在 heap（inline 版本在 close 競爭下讀到已釋放 run）。close 冪等，
+  鎖內取出、鎖外 drop；collection close 同樣把 cached root 移到 writer 鎖外釋放。collection
+  無鎖 query（exact／filtered／where／sparse／hybrid／device）改為驗證後走 snapshot
+  operation，不再無鎖讀 writer live 表。GPU state 改掛 `ReadGeneration.device`（每 root
+  一份，同 root handle 共用，同 G 新 S 必為新 state），移除 collection `_GpuReadSnapshot`。
+  代價：collection query 每次 capture 約 15 µs，其中 14.2 µs 是讀 manifest 取 generation
+  （可改為 publish 時記在記憶體，觸及所有 manifest 發布路徑，未做）；layered root 上
+  collection where 215 → 330 µs、sparse 3 → 25 µs（#49 resolver 成本外露）；寫後查 +13%。
+  snapshot query 成本不變。673 Mojo／66 Python／9 crash／12 實機 GPU、C ABI、build 通過。
+  [實作與成本報告](../docs/benchmarks/2026-09-25-operation-owners.md)。
 
 ### #51 Compaction 分離鎖外 build 與 conditional publish
 
