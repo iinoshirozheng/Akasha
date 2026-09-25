@@ -55,9 +55,9 @@ def ensure_durable_directory(path: String) raises -> Bool:
     return _ensure_durable_directory_with_ops(path, parent, ops)
 
 
-def _ensure_durable_directory_with_ops[Ops: _DurableDirectoryOps](
-    path: String, parent: String, mut ops: Ops
-) raises -> Bool:
+def _ensure_durable_directory_with_ops[
+    Ops: _DurableDirectoryOps
+](path: String, parent: String, mut ops: Ops) raises -> Bool:
     if ops.exists(path):
         ops.sync(path)
         if parent != path:

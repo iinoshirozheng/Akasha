@@ -20,9 +20,7 @@ def _reset(path: String) raises:
     remove_file_if_exists(path + "/sparse.wal.tmp")
 
 
-def _assert_same(
-    lhs: List[SearchResult], rhs: List[SearchResult]
-) raises:
+def _assert_same(lhs: List[SearchResult], rhs: List[SearchResult]) raises:
     assert_equal(len(lhs), len(rhs))
     for index in range(len(lhs)):
         assert_equal(lhs[index].id, rhs[index].id)
@@ -58,9 +56,7 @@ def test_parallel_scan_matches_scalar_for_workers_metrics_tails_and_ties() raise
         )
         _assert_same(
             snapshot.search_cosine(query, 12),
-            snapshot.search_cosine_parallel(
-                query, 12, num_workers=workers
-            ),
+            snapshot.search_cosine_parallel(query, 12, num_workers=workers),
         )
     _assert_same(
         snapshot.search_dot(query, 12),

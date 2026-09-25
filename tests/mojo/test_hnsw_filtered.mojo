@@ -268,20 +268,14 @@ def test_search_allowed_tiny_graph_caps_large_ef_before_heap_reserve() raises:
     _set_neighbors(index, 3, n3^)
     var ordinals = _ordinal_map(ids)
     var full = Bitmap.full(4)
-    var allowed = HnswEligibility(
-        full^, HnswIdOrdinalLookup(ordinals^, 4)
-    )
+    var allowed = HnswEligibility(full^, HnswIdOrdinalLookup(ordinals^, 4))
     var query = _vector(0.0)
-    var results = index.search_allowed(
-        query, 10, 4_294_967_295, allowed
-    )
+    var results = index.search_allowed(query, 10, 4_294_967_295, allowed)
 
     assert_equal(len(results), 4)
     assert_equal(index.last_search_effective_ef(), 4)
     assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
-    assert_equal(
-        index.scratch.filtered_result_reserved_capacity() <= 4, True
-    )
+    assert_equal(index.scratch.filtered_result_reserved_capacity() <= 4, True)
 
 
 def main() raises:

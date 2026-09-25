@@ -266,9 +266,7 @@ def recover_wal(path: String, dimension: Int) raises -> List[WalRecord]:
 def preflight_wal(path: String, dimension: Int) raises -> WalReplayState:
     """Decode once without modifying a missing file or accepted torn tail."""
     if not path_exists(path):
-        return WalReplayState(
-            List[WalRecord](), List[UInt8](), 0, 0
-        )
+        return WalReplayState(List[WalRecord](), List[UInt8](), 0, 0)
     var bytes = read_file_bytes(path)
     var decode_copy = _copy_range(bytes, 0, len(bytes))
     var records = decode_wal_bytes(decode_copy^, dimension)
@@ -276,9 +274,7 @@ def preflight_wal(path: String, dimension: Int) raises -> WalReplayState:
     var valid_prefix = List[UInt8]()
     if valid_length < len(bytes):
         valid_prefix = _copy_range(bytes, 0, valid_length)
-    return WalReplayState(
-        records^, valid_prefix^, valid_length, len(bytes)
-    )
+    return WalReplayState(records^, valid_prefix^, valid_length, len(bytes))
 
 
 def repair_wal_tail(path: String, replay: WalReplayState) raises:

@@ -53,9 +53,7 @@ struct CacheArtifact(Movable):
 
 
 def encode_cache(artifact: CacheArtifact) raises -> List[UInt8]:
-    _validate_header(
-        artifact.kind, artifact.dimension, len(artifact.payload)
-    )
+    _validate_header(artifact.kind, artifact.dimension, len(artifact.payload))
     var writer = BinaryWriter()
     writer.write_u8(UInt8(0x41))  # A
     writer.write_u8(UInt8(0x4B))  # K

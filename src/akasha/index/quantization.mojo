@@ -216,9 +216,7 @@ struct Sq8Index(Movable):
             return score / (sqrt(query_norm) * sqrt(candidate_norm))
         return score
 
-    def _validate_query(
-        self, query: List[Float32], k: Int, metric: Int
-    ) raises:
+    def _validate_query(self, query: List[Float32], k: Int, metric: Int) raises:
         if len(query) != self.dimension():
             raise Error("query dimension does not match SQ8 index")
         if k <= 0:
@@ -309,12 +307,8 @@ struct PqCodebook(Movable):
                     ] = vectors[source][subquantizer * subdimension + offset]
 
         for _ in range(iterations):
-            var sums = List[Float32](
-                length=len(values), fill=Float32(0.0)
-            )
-            var counts = List[Int](
-                length=subquantizers * centroids, fill=0
-            )
+            var sums = List[Float32](length=len(values), fill=Float32(0.0))
+            var counts = List[Int](length=subquantizers * centroids, fill=0)
             for row in range(len(vectors)):
                 for subquantizer in range(subquantizers):
                     var nearest = _nearest_pq_centroid(
@@ -334,9 +328,7 @@ struct PqCodebook(Movable):
                                 centroids,
                                 subdimension,
                             )
-                        ] += vectors[row][
-                            subquantizer * subdimension + offset
-                        ]
+                        ] += vectors[row][subquantizer * subdimension + offset]
             for subquantizer in range(subquantizers):
                 for centroid in range(centroids):
                     var count = counts[subquantizer * centroids + centroid]
@@ -351,9 +343,7 @@ struct PqCodebook(Movable):
                             subdimension,
                         )
                         values[index] = sums[index] / Float32(count)
-        return PqCodebook(
-            dimension, subquantizers, centroids, values^
-        )
+        return PqCodebook(dimension, subquantizers, centroids, values^)
 
     def version(self) -> UInt32:
         return _PQ_VERSION
@@ -474,9 +464,7 @@ struct PqIndex(Movable):
         return (
             len(self._codes)
             + len(self._ids) * 8
-            + self._codebook.dimension()
-            * self._codebook.centroid_count()
-            * 4
+            + self._codebook.dimension() * self._codebook.centroid_count() * 4
         )
 
     def search_dot(
@@ -521,9 +509,7 @@ struct PqIndex(Movable):
         var subdimension = self._codebook.subdimension()
         var subquantizers = self._codebook.subquantizer_count()
         for subquantizer in range(subquantizers):
-            var centroid = Int(
-                self._codes[row * subquantizers + subquantizer]
-            )
+            var centroid = Int(self._codes[row * subquantizers + subquantizer])
             for offset in range(subdimension):
                 var column = subquantizer * subdimension + offset
                 var candidate = self._codebook.value(
@@ -543,9 +529,7 @@ struct PqIndex(Movable):
             return score / (sqrt(query_norm) * sqrt(candidate_norm))
         return score
 
-    def _validate_query(
-        self, query: List[Float32], k: Int, metric: Int
-    ) raises:
+    def _validate_query(self, query: List[Float32], k: Int, metric: Int) raises:
         if len(query) != self._codebook.dimension():
             raise Error("query dimension does not match PQ index")
         if k <= 0:
@@ -566,9 +550,7 @@ def _pq_offset(
     centroids: Int,
     subdimension: Int,
 ) -> Int:
-    return (
-        (subquantizer * centroids + centroid) * subdimension + offset
-    )
+    return (subquantizer * centroids + centroid) * subdimension + offset
 
 
 def _nearest_pq_centroid(
@@ -583,15 +565,18 @@ def _nearest_pq_centroid(
     for centroid in range(centroids):
         var distance: Float32 = 0.0
         for offset in range(subdimension):
-            var delta = vector[subquantizer * subdimension + offset] - values[
-                _pq_offset(
-                    subquantizer,
-                    centroid,
-                    offset,
-                    centroids,
-                    subdimension,
-                )
-            ]
+            var delta = (
+                vector[subquantizer * subdimension + offset]
+                - values[
+                    _pq_offset(
+                        subquantizer,
+                        centroid,
+                        offset,
+                        centroids,
+                        subdimension,
+                    )
+                ]
+            )
             distance += delta * delta
         if centroid == 0 or distance < nearest_distance:
             nearest = centroid

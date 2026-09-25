@@ -93,9 +93,7 @@ def test_empty_vector_clones_preserve_identity_and_ownership() raises:
     assert_equal(len(copied.fields()), 0)
     # Accepted dense owners are immutable and shared by clones.
     assert_equal(copied.dense_address(), tombstone.dense_address())
-    assert_equal(
-        copied.dense_address(), table.entry_ref_at(0).dense_address()
-    )
+    assert_equal(copied.dense_address(), table.entry_ref_at(0).dense_address())
 
     # Metadata-only projections legitimately carry an empty owned vector.
     var projected = DocumentRecord(

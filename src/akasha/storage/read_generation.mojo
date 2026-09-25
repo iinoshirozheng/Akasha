@@ -33,7 +33,9 @@ struct RunIndex(Movable):
     var metadata: MetadataIndex
     var sparse: SparseIndex
 
-    def __init__(out self, var metadata: MetadataIndex, var sparse: SparseIndex):
+    def __init__(
+        out self, var metadata: MetadataIndex, var sparse: SparseIndex
+    ):
         self.metadata = metadata^
         self.sparse = sparse^
 
@@ -61,7 +63,9 @@ struct ReadRun(Movable):
     var memtable: MemTable
     var index: Optional[RunIndex]
 
-    def __init__(out self, var memtable: MemTable, var index: Optional[RunIndex]):
+    def __init__(
+        out self, var memtable: MemTable, var index: Optional[RunIndex]
+    ):
         self.memtable = memtable^
         self.index = index^
 
@@ -109,12 +113,18 @@ struct ReadLayer(Copyable, Movable):
                 and self.sealed_hidden[][sealed] < ordinal
             ):
                 sealed += 1
-            while head < len(self.head_hidden) and self.head_hidden[head] < ordinal:
+            while (
+                head < len(self.head_hidden)
+                and self.head_hidden[head] < ordinal
+            ):
                 head += 1
             if (
                 sealed < len(self.sealed_hidden[])
                 and self.sealed_hidden[][sealed] == ordinal
-            ) or (head < len(self.head_hidden) and self.head_hidden[head] == ordinal):
+            ) or (
+                head < len(self.head_hidden)
+                and self.head_hidden[head] == ordinal
+            ):
                 continue
             result.append(ordinal)
         return result^
@@ -160,7 +170,9 @@ struct ReadGeneration(Movable):
     def layer_count(self) -> Int:
         return len(self.layers)
 
-    def run(self, layer: Int) -> ref[origin_of(self.layers[layer].run[], self)] ReadRun:
+    def run(
+        self, layer: Int
+    ) -> ref[origin_of(self.layers[layer].run[], self)] ReadRun:
         """Borrow one run readonly; union with self blocks mutation."""
         return self.layers[layer].run[]
 
@@ -184,8 +196,11 @@ struct ReadGeneration(Movable):
             return item.run[].memtable.live_ordinals()
         return item.visible(item.run[].memtable.live_ordinals())
 
-    def candidate_ordinals(self, layer: Int, candidates: Bitmap) raises -> List[Int]:
-        """Return visible slots of one run selected by its own metadata bitmap."""
+    def candidate_ordinals(
+        self, layer: Int, candidates: Bitmap
+    ) raises -> List[Int]:
+        """Return visible slots of one run selected by its own metadata bitmap.
+        """
         ref item = self.layers[layer]
         if candidates.size() != item.run[].memtable.slot_count():
             raise Error("candidate bitmap does not align with run slots")
@@ -201,7 +216,8 @@ struct ReadGeneration(Movable):
         ref run = self.layers[layer].run[]
         if run.index:
             return self.candidate_ordinals(
-                layer, evaluate_expression(run.index.value().metadata, expression)
+                layer,
+                evaluate_expression(run.index.value().metadata, expression),
             )
         var result = List[Int]()
         for ordinal in self.visible_ordinals(layer):
@@ -491,7 +507,10 @@ struct ReadGenerationCache(Movable):
         var others = self.head_count() - (1 if existing >= 0 else 0)
         # A record that would overflow a non-empty head starts a new one, so a
         # legal oversized record gets its own run instead of a rejection.
-        if others > 0 and self._head_bytes - replaced + incoming > HEAD_MAX_BYTES:
+        if (
+            others > 0
+            and self._head_bytes - replaced + incoming > HEAD_MAX_BYTES
+        ):
             self._seal()
             replaced = 0
         # The frozen copy belongs to published roots; the next capture needs
@@ -536,11 +555,15 @@ struct ReadGenerationCache(Movable):
                     unique.append(ordinal)
             # Replace the shared list; roots already published keep the old one.
             self._layers[layer].sealed_hidden = ArcPointer(unique^)
-        self._layers.append(ReadLayer(run^, ArcPointer(List[Int]()), List[Int]()))
+        self._layers.append(
+            ReadLayer(run^, ArcPointer(List[Int]()), List[Int]())
+        )
         self.stats.rollovers += 1
 
 
-def _indexed_run(var table: MemTable, mut stats: ReadPublisherStats) raises -> ReadRun:
+def _indexed_run(
+    var table: MemTable, mut stats: ReadPublisherStats
+) raises -> ReadRun:
     """Index one run's slots; field owners stay shared, not copied."""
     var metadata = MetadataIndex()
     var sparse = SparseIndex()

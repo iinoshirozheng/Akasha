@@ -70,9 +70,7 @@ def _reset(directory: String) raises:
         remove_file_if_exists(
             directory + "/sparse-delta-" + String(sequence) + ".bin"
         )
-        remove_file_if_exists(
-            directory + "/hnsw-" + String(sequence) + ".bin"
-        )
+        remove_file_if_exists(directory + "/hnsw-" + String(sequence) + ".bin")
         remove_file_if_exists(
             directory + "/hnsw-" + String(sequence) + ".bin.tmp"
         )
@@ -139,9 +137,7 @@ def test_large_collection_updates_hnsw_incrementally_after_reopen() raises:
     var updated = reopened.search_l2_approx([80.0], 2, 80)
     assert_equal(updated[0].id, 78)
     assert_equal(updated[1].id, 77)
-    assert_equal(
-        reopened.hnsw_build_distance_evaluations(), build_distances
-    )
+    assert_equal(reopened.hnsw_build_distance_evaluations(), build_distances)
     assert_equal(reopened.last_dense_plan_reason(), "ann")
 
 
@@ -174,9 +170,7 @@ def test_highly_selective_filter_records_selectivity_exact_plan() raises:
     var collection = PersistentCollection.open_with_config(path, config)
     for id in range(1, 81):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id <= 5))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id <= 5)))
         collection.upsert_document(id, [Float32(id)], fields^)
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
@@ -233,9 +227,7 @@ def test_hnsw_filter_candidate_shortfall_falls_back_to_exact_bitmap() raises:
     var result = collection.search_dot_approx_where([1.0], 2, 8, expression)
     assert_equal(result[0].id, 40)
     assert_equal(result[1].id, 39)
-    assert_equal(
-        collection.last_dense_plan_reason(), "filtered_ann_exhausted"
-    )
+    assert_equal(collection.last_dense_plan_reason(), "filtered_ann_exhausted")
     assert_equal(collection.hnsw_available(), True)
 
 
@@ -265,9 +257,7 @@ def test_flush_commits_v3_hnsw_and_reopen_uses_mapped_sidecar() raises:
     assert_true(Bool(manifest.hnsw_name))
     assert_equal(manifest.hnsw_name.value(), "hnsw-80.bin")
     assert_true(path_exists(path + "/" + manifest.hnsw_name.value()))
-    assert_equal(
-        manifest.hnsw_config_fingerprint.value(), config.fingerprint()
-    )
+    assert_equal(manifest.hnsw_config_fingerprint.value(), config.fingerprint())
     assert_equal(manifest.hnsw_point_count.value(), UInt64(80))
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())

@@ -111,9 +111,7 @@ struct QueryPlanner:
                     normalized_max,
                     String("selectivity"),
                 )
-        return HnswPlan(
-            True, initial_ef, normalized_max, String("ann")
-        )
+        return HnswPlan(True, initial_ef, normalized_max, String("ann"))
 
     @staticmethod
     def use_hnsw(

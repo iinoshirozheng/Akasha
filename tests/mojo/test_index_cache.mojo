@@ -13,7 +13,13 @@ from akasha.storage.index_cache import (
     load_cache_payload,
     publish_cache,
 )
-from std.testing import assert_equal, assert_false, assert_raises, assert_true, TestSuite
+from std.testing import (
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+    TestSuite,
+)
 
 
 def test_cache_envelope_round_trips_header_and_payload() raises:

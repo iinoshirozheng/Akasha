@@ -48,7 +48,8 @@ struct BoundCollection(Movable, Writable):
         self = BoundCollection()
         if len(args) != 2 and len(args) != 3:
             raise Error(
-                "Collection(path, dimension, config=None) requires two or three arguments"
+                "Collection(path, dimension, config=None) requires two or three"
+                " arguments"
             )
         var keyword_count = 0
         # PythonTypeBuilder passes a null kwargs pointer when no keywords are
@@ -56,9 +57,7 @@ struct BoundCollection(Movable, Writable):
         if kwargs._obj_ptr:
             keyword_count = len(kwargs)
             for raw_name in kwargs:
-                var name = _exact_python_string(
-                    raw_name, "Collection keyword"
-                )
+                var name = _exact_python_string(raw_name, "Collection keyword")
                 if name != "config":
                     raise Error("unknown Collection keyword: " + name)
         if len(args) == 3 and keyword_count != 0:
@@ -73,9 +72,7 @@ struct BoundCollection(Movable, Writable):
         if _is_python_none(config_value):
             self.inner = Optional(PersistentCollection.open(path, dimension))
         else:
-            var config = _collection_config_from_python(
-                dimension, config_value
-            )
+            var config = _collection_config_from_python(dimension, config_value)
             config.validate()
             self.inner = Optional(
                 PersistentCollection.open_with_config(path, config)
@@ -327,8 +324,13 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         return _apply_arrow_buffers(
-            self[].inner.value(), descriptor, descriptor["ids"], descriptor["vectors"],
-            descriptor["sparse_offsets"], descriptor["sparse_terms"], descriptor["sparse_weights"],
+            self[].inner.value(),
+            descriptor,
+            descriptor["ids"],
+            descriptor["vectors"],
+            descriptor["sparse_offsets"],
+            descriptor["sparse_terms"],
+            descriptor["sparse_weights"],
         )
 
     @staticmethod
@@ -782,7 +784,9 @@ def _exact_python_string(value: PythonObject, name: String) raises -> String:
     return String(py=value)
 
 
-def _collection_config_to_python(config: CollectionConfig) raises -> PythonObject:
+def _collection_config_to_python(
+    config: CollectionConfig,
+) raises -> PythonObject:
     return Python.dict(
         dimension=PythonObject(config.dimension),
         ann_metric=PythonObject(config.metric_name()),
@@ -793,9 +797,7 @@ def _collection_config_to_python(config: CollectionConfig) raises -> PythonObjec
         default_ef_search=PythonObject(config.default_ef_search),
         max_ef_search=PythonObject(config.max_ef_search),
         max_level=PythonObject(config.max_level),
-        rebuild_inactive_percent=PythonObject(
-            config.rebuild_inactive_percent
-        ),
+        rebuild_inactive_percent=PythonObject(config.rebuild_inactive_percent),
         delta_max_points=PythonObject(config.delta_max_points),
         level_seed=PythonObject(config.level_seed),
         fingerprint=PythonObject(config.fingerprint()),
@@ -940,7 +942,7 @@ def _field_to_python(field: DocumentField) raises -> PythonObject:
 
 
 def _document_to_python(
-    record: Optional[DocumentRecord]
+    record: Optional[DocumentRecord],
 ) raises -> PythonObject:
     if not Bool(record):
         return Python.none()
@@ -990,7 +992,9 @@ def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
     )
 
 
-def inspect_storage_py(path: PythonObject, dimension: PythonObject) raises -> PythonObject:
+def inspect_storage_py(
+    path: PythonObject, dimension: PythonObject
+) raises -> PythonObject:
     return _storage_report_to_python(
         inspect_storage(String(py=path), Int(py=dimension))
     )
@@ -1013,12 +1017,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_py_init[BoundCollection.py_init]()
             .def_method[BoundCollection.close]("close")
             .def_method[BoundCollection.last_sequence]("last_sequence")
-            .def_method[BoundCollection.collection_config](
-                "collection_config"
-            )
-            .def_method[BoundCollection.last_search_stats](
-                "last_search_stats"
-            )
+            .def_method[BoundCollection.collection_config]("collection_config")
+            .def_method[BoundCollection.last_search_stats]("last_search_stats")
             .def_method[BoundCollection.upsert]("upsert")
             .def_method[BoundCollection.upsert_document]("upsert_document")
             .def_method[BoundCollection.apply_batch]("apply_batch")
@@ -1104,9 +1104,7 @@ def _apply_arrow_buffers(
                 )
             )
         mutations.append(
-            BatchMutation.document_upsert(
-                Int(ids[row]), vector^, fields^
-            )
+            BatchMutation.document_upsert(Int(ids[row]), vector^, fields^)
         )
 
         var sparse = List[SparseElement]()
@@ -1135,7 +1133,5 @@ def _apply_arrow_buffers(
     if has_sparse:
         for row in range(row_count):
             if len(sparse_rows[row]) != 0:
-                collection.upsert_sparse(
-                    Int(ids[row]), sparse_rows[row]
-                )
+                collection.upsert_sparse(Int(ids[row]), sparse_rows[row])
     return PythonObject(row_count)

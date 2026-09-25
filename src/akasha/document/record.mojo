@@ -119,7 +119,8 @@ def clone_fields(fields: List[DocumentField]) raises -> List[DocumentField]:
 
 
 def field_content_bytes(fields: List[DocumentField]) -> Int:
-    """Logical owned payload bytes: names plus string bytes or 8-byte scalars."""
+    """Logical owned payload bytes: names plus string bytes or 8-byte scalars.
+    """
     var total = 0
     for index in range(len(fields)):
         total += fields[index].name.byte_length()

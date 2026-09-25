@@ -196,11 +196,7 @@ def test_empty_live_graph_returns_empty_with_inactive_entry() raises:
     var all_metadata = Bitmap.full(4)
     var allowed = HnswEligibility(all_metadata^, lookup)
     assert_equal(
-        len(
-            index.search_allowed(
-                _vector(0.0, 0.0), 4, 1_024, allowed
-            )
-        ),
+        len(index.search_allowed(_vector(0.0, 0.0), 4, 1_024, allowed)),
         0,
     )
     assert_equal(index.last_search_stats.effective_ef, 0)
@@ -225,9 +221,7 @@ def test_empty_live_graph_returns_empty_with_inactive_entry() raises:
     )
     assert_equal(len(repeated_fallback), 0)
     assert_equal(index.last_search_stats.base_visited, first_base_visited)
-    assert_equal(
-        index.last_search_stats.distance_evaluations, first_distances
-    )
+    assert_equal(index.last_search_stats.distance_evaluations, first_distances)
     assert_equal(index.last_search_stats.effective_ef, first_effective_ef)
     assert_equal(
         index.last_search_stats.fallback_reason,

@@ -19,14 +19,15 @@ def _vector(seed: Int) -> List[Float32]:
     var vector = List[Float32](capacity=_DIMENSION)
     for column in range(_DIMENSION):
         vector.append(
-            Float32((seed * 37 + column * 19 + seed * column * 3) % 251)
-            / 37.0
+            Float32((seed * 37 + column * 19 + seed * column * 3) % 251) / 37.0
             + 0.01
         )
     return vector^
 
 
-def _recall(exact: List[SearchResult], approximate: List[SearchResult]) -> Float64:
+def _recall(
+    exact: List[SearchResult], approximate: List[SearchResult]
+) -> Float64:
     var matches = 0
     for expected in exact:
         for actual in approximate:
@@ -124,7 +125,13 @@ def _parallel_and_rerank_gate() raises:
     var pins = ArcPointer(GenerationPinRegistry())
     var cache = ReadGenerationCache()
     var snapshot = ReadSnapshot(
-        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(256), memtable, pins)
+        cache.acquire(
+            CollectionConfig.defaults(_DIMENSION),
+            0,
+            UInt64(256),
+            memtable,
+            pins,
+        )
     )
     var query = _vector(50_000)
     var scalar_start = perf_counter_ns()

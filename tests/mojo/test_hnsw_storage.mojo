@@ -142,12 +142,8 @@ def test_replacement_and_delete_hide_stale_slots_but_keep_history() raises:
 
 
 def test_flat_storage_distance_access_does_not_materialize_vectors() raises:
-    var dot_graph = HnswStorage(
-        3, 2, 4, metric_kind=MetricKind.dot()
-    )
-    var l2_graph = HnswStorage(
-        3, 2, 4, metric_kind=MetricKind.l2()
-    )
+    var dot_graph = HnswStorage(3, 2, 4, metric_kind=MetricKind.dot())
+    var l2_graph = HnswStorage(3, 2, 4, metric_kind=MetricKind.l2())
     var x = _vector(1.0, 2.0, 3.0)
     var y = _vector(4.0, 5.0, 6.0)
     _ = dot_graph.append(1, x.copy(), 0)
@@ -161,9 +157,7 @@ def test_flat_storage_distance_access_does_not_materialize_vectors() raises:
     assert_equal(
         dot_graph.distance_to_slot(dot, query, UInt32(1)), Float32(-15.0)
     )
-    assert_equal(
-        l2_graph.distance_to_slot(l2, query, UInt32(1)), Float32(50.0)
-    )
+    assert_equal(l2_graph.distance_to_slot(l2, query, UInt32(1)), Float32(50.0))
     assert_equal(
         dot_graph.distance_between(dot, UInt32(0), UInt32(1)), Float32(-32.0)
     )
@@ -231,9 +225,7 @@ def test_compact_storage_requires_matching_dispatcher_identity() raises:
     )
     with assert_raises():
         _ = graph.distance_to_slot(wrong_scalar, query.copy(), UInt32(0))
-    var wrong_metric = MetricDispatcher(
-        MetricKind.dot(), ScalarKind.bf16(), 3
-    )
+    var wrong_metric = MetricDispatcher(MetricKind.dot(), ScalarKind.bf16(), 3)
     with assert_raises():
         _ = graph.distance_between(wrong_metric, UInt32(0), UInt32(0))
 
@@ -247,9 +239,7 @@ def test_compact_storage_requires_matching_dispatcher_identity() raises:
     with assert_raises():
         _ = i8_cosine.append(1, [127.0, 0.0, 0.0, 0.5], 0)
     with assert_raises():
-        _ = i8_cosine.append(
-            1, [0.0, 0.0, 0.0, Float32(1.0 / 127.0)], 0
-        )
+        _ = i8_cosine.append(1, [0.0, 0.0, 0.0, Float32(1.0 / 127.0)], 0)
 
     var i8_dot = HnswStorage(
         3,

@@ -63,9 +63,7 @@ def test_filtered_search_widens_by_doubling_and_reruns_with_scratch() raises:
     var allowed = _allow_tail_two()
     var query = _vector(0.0)
     var starting_epoch = index.scratch.epoch
-    var results = index.search_allowed_with_widening(
-        query, 2, 2, 4, 2, allowed
-    )
+    var results = index.search_allowed_with_widening(query, 2, 2, 4, 2, allowed)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
@@ -85,9 +83,7 @@ def test_filtered_search_exact_fallback_preserves_final_ann_stats() raises:
     var index = _chain_index()
     var allowed = _allow_tail_two()
     var query = _vector(0.0)
-    var results = index.search_allowed_with_widening(
-        query, 2, 2, 2, 2, allowed
-    )
+    var results = index.search_allowed_with_widening(query, 2, 2, 2, 2, allowed)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
@@ -116,9 +112,7 @@ def test_matched_count_below_k_does_not_widen_after_target_is_filled() raises:
     var allowed = HnswEligibility(bitmap^, lookup)
     var query = _vector(0.0)
     var starting_epoch = index.scratch.epoch
-    var results = index.search_allowed_with_widening(
-        query, 2, 2, 4, 1, allowed
-    )
+    var results = index.search_allowed_with_widening(query, 2, 2, 4, 1, allowed)
 
     assert_equal(len(results), 1)
     assert_equal(results[0].id, 12)
@@ -132,9 +126,7 @@ def test_actual_eligibility_is_the_widening_target_and_count_source() raises:
     var allowed = _allow_tail_two()
     assert_equal(allowed.eligible_count(), 2)
     var query = _vector(0.0)
-    var results = index.search_allowed_with_widening(
-        query, 2, 2, 4, allowed
-    )
+    var results = index.search_allowed_with_widening(query, 2, 2, 4, allowed)
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
     assert_equal(results[1].id, 13)
@@ -157,9 +149,7 @@ def test_declared_match_count_mismatch_rejects_before_query_state() raises:
         )
     var over_declared = _allow_tail_two()
     with assert_raises():
-        _ = index.search_allowed_with_widening(
-            query, 2, 2, 4, 3, over_declared
-        )
+        _ = index.search_allowed_with_widening(query, 2, 2, 4, 3, over_declared)
 
     assert_equal(index.scratch.epoch, old_epoch)
     assert_equal(index.last_search_stats.base_visited, old_visited)
@@ -215,9 +205,7 @@ def test_exact_fallback_uses_only_storage_current_slot_for_replaced_id() raises:
     index.build_stats.slot_count = 5
     var allowed = _allow_tail_two()
     var query = _vector(0.0)
-    var results = index.search_allowed_with_widening(
-        query, 2, 2, 2, allowed
-    )
+    var results = index.search_allowed_with_widening(query, 2, 2, 2, allowed)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 13)

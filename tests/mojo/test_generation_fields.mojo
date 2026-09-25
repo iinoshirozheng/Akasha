@@ -138,11 +138,15 @@ struct _Model(Copyable, Movable):
                 scored.append(SearchResult(slot - SPAN, score.value()))
         return _ranked(scored^, k)
 
-    def dense_top(self, query: Float32, k: Int, filter: Int) -> List[SearchResult]:
+    def dense_top(
+        self, query: Float32, k: Int, filter: Int
+    ) -> List[SearchResult]:
         var scored = List[SearchResult]()
         for slot in range(2 * SPAN):
             if self.live[slot] and self.matches(slot, filter):
-                scored.append(SearchResult(slot - SPAN, query * self.vector[slot]))
+                scored.append(
+                    SearchResult(slot - SPAN, query * self.vector[slot])
+                )
         return _ranked(scored^, k)
 
 
@@ -195,7 +199,10 @@ def _check(snapshot: ReadSnapshot, model: _Model) raises:
         snapshot.search_sparse_dot_where(query, 25, _not_red()),
         model.sparse_top(query, 25, 2),
     )
-    _same(snapshot.search_dot_where(dense, 25, _red()), model.dense_top(1.0, 25, 1))
+    _same(
+        snapshot.search_dot_where(dense, 25, _red()),
+        model.dense_top(1.0, 25, 1),
+    )
     _same(
         snapshot.search_dot_where(dense, 25, _not_red()),
         model.dense_top(1.0, 25, 2),
@@ -224,9 +231,7 @@ def _check(snapshot: ReadSnapshot, model: _Model) raises:
         if not model.live[slot] or len(model.sparse[slot]) == 0:
             continue
         assert_equal(records[position].id, slot - SPAN)
-        assert_equal(
-            len(records[position].elements), len(model.sparse[slot])
-        )
+        assert_equal(len(records[position].elements), len(model.sparse[slot]))
         for index in range(len(model.sparse[slot])):
             assert_equal(
                 records[position].elements[index].weight,
@@ -295,11 +300,28 @@ def test_field_owners_are_replaced_independently() raises:
 
     # Every root keeps its own point state.
     var query: List[SparseElement] = [SparseElement(2, 1.0)]
-    assert_equal(ReadSnapshot(original).search_sparse_dot(query, 1)[0].score, 1.0)
-    assert_equal(ReadSnapshot(sparse_only).search_sparse_dot(query, 1)[0].score, 5.0)
-    assert_equal(len(ReadSnapshot(payload_only).search_sparse_dot_where(query, 1, _red())), 0)
-    assert_equal(len(ReadSnapshot(sparse_only).search_sparse_dot_where(query, 1, _red())), 1)
-    assert_equal(ReadSnapshot(full).search_sparse_dot_where(query, 1, _red())[0].score, 5.0)
+    assert_equal(
+        ReadSnapshot(original).search_sparse_dot(query, 1)[0].score, 1.0
+    )
+    assert_equal(
+        ReadSnapshot(sparse_only).search_sparse_dot(query, 1)[0].score, 5.0
+    )
+    assert_equal(
+        len(
+            ReadSnapshot(payload_only).search_sparse_dot_where(query, 1, _red())
+        ),
+        0,
+    )
+    assert_equal(
+        len(
+            ReadSnapshot(sparse_only).search_sparse_dot_where(query, 1, _red())
+        ),
+        1,
+    )
+    assert_equal(
+        ReadSnapshot(full).search_sparse_dot_where(query, 1, _red())[0].score,
+        5.0,
+    )
     assert_equal(len(ReadSnapshot(reinserted).search_sparse_dot(query, 1)), 0)
 
 
@@ -314,7 +336,9 @@ def test_layered_fields_match_owned_oracle_across_roots_and_reopen() raises:
             collection.upsert(id, [value])
             model.upsert(id, value, -1)
         else:
-            collection.upsert_document(id, [value], _color_fields(_modulo(id, 3)))
+            collection.upsert_document(
+                id, [value], _color_fields(_modulo(id, 3))
+            )
             model.upsert(id, value, _modulo(id, 3))
         if _modulo(id, 2) == 0:
             # Few distinct weights: many exact score ties across IDs.
@@ -398,7 +422,9 @@ def test_failed_sparse_write_does_not_publish_a_root() raises:
     with assert_raises():
         collection.upsert_sparse(-1, List[SparseElement]())
     with assert_raises():
-        collection.upsert_sparse(-1, [SparseElement(4, 1.0), SparseElement(3, 1.0)])
+        collection.upsert_sparse(
+            -1, [SparseElement(4, 1.0), SparseElement(3, 1.0)]
+        )
     assert_equal(collection.last_sequence(), sequence)
     var after = collection.snapshot()
     assert_true(after._slot[].root.value() is before._slot[].root.value())

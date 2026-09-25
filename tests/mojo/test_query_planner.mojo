@@ -3,9 +3,7 @@ from std.testing import assert_equal, TestSuite
 
 
 def test_planner_uses_exact_for_small_collections() raises:
-    var plan = QueryPlanner.plan_dense(
-        63, 63, 10, 16, 128, False, True, True
-    )
+    var plan = QueryPlanner.plan_dense(63, 63, 10, 16, 128, False, True, True)
     assert_equal(plan.use_hnsw, False)
     assert_equal(plan.initial_ef, 16)
     assert_equal(plan.max_ef, 128)
@@ -29,9 +27,7 @@ def test_planner_rejects_unavailable_graph() raises:
 
 
 def test_planner_uses_exact_when_filter_matches_at_most_twice_k() raises:
-    var plan = QueryPlanner.plan_dense(
-        1_000, 20, 10, 16, 128, True, True, True
-    )
+    var plan = QueryPlanner.plan_dense(1_000, 20, 10, 16, 128, True, True, True)
     assert_equal(plan.use_hnsw, False)
     assert_equal(plan.reason, "filtered_match_count")
 

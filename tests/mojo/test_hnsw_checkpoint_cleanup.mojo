@@ -54,9 +54,7 @@ def _reset(path: String) raises:
 
 def _remove_empty_directory(path: String) raises:
     var owned_path = String(copy=path)
-    var result = external_call["rmdir", c_int](
-        owned_path.as_c_string_slice()
-    )
+    var result = external_call["rmdir", c_int](owned_path.as_c_string_slice())
     if result != 0:
         raise Error("test fault directory cleanup failed")
 
@@ -141,9 +139,7 @@ def test_same_sequence_v3_downgrade_cleans_exact_sidecar_after_wals() raises:
     var before = load_manifest(path, 1)
     var old_sidecar = before.hnsw_name.value().copy()
     write_file_sync(path + "/hnsw-user.bin", [UInt8(9)])
-    append_wal(
-        path + "/wal.bin", 1, WalRecord.upsert(80, 80, [80.0])
-    )
+    append_wal(path + "/wal.bin", 1, WalRecord.upsert(80, 80, [80.0]))
     append_sparse_wal(
         path + "/sparse.wal",
         SparseWalRecord.upsert(80, 80, [SparseElement(80, 1.0)]),
@@ -164,8 +160,7 @@ def test_same_sequence_v3_downgrade_cleans_exact_sidecar_after_wals() raises:
     collection.close()
 
 
-def test_same_sequence_downgrade_keeps_old_sidecar_until_sparse_wal_rotates(
-) raises:
+def test_same_sequence_downgrade_keeps_old_sidecar_until_sparse_wal_rotates() raises:
     var path = String("/tmp/akasha-task22-same-sequence-order")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
@@ -174,9 +169,7 @@ def test_same_sequence_downgrade_keeps_old_sidecar_until_sparse_wal_rotates(
     collection.flush()
     var before = load_manifest(path, 1)
     var old_sidecar = before.hnsw_name.value().copy()
-    append_wal(
-        path + "/wal.bin", 1, WalRecord.upsert(80, 80, [80.0])
-    )
+    append_wal(path + "/wal.bin", 1, WalRecord.upsert(80, 80, [80.0]))
     collection._hnsw_checkpoint_was_hit = False
     collection._hnsw_sidecar_max_bytes_for_test = UInt64(160)
     remove_file_if_exists(path + "/sparse.wal")

@@ -88,9 +88,7 @@ def _prepare(path: String) raises -> _CheckpointFixture:
     var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 81):
         collection.upsert(id, [Float32(id)])
-        collection.upsert_sparse(
-            id, [SparseElement(id, Float32(id))]
-        )
+        collection.upsert_sparse(id, [SparseElement(id, Float32(id))])
     collection.flush()
     var old_committed = load_manifest(path, 1)
     var old_hnsw_name = old_committed.hnsw_name.value().copy()
@@ -138,9 +136,7 @@ def _assert_acknowledged_records(path: String) raises:
         var record = recovered.get(id)
         assert_true(Bool(record))
         assert_equal(record.value().vector[0], Float32(id))
-        var sparse = recovered.search_sparse_dot(
-            [SparseElement(id, 1.0)], 1
-        )
+        var sparse = recovered.search_sparse_dot([SparseElement(id, 1.0)], 1)
         assert_equal(len(sparse), 1)
         assert_equal(sparse[0].id, id)
     assert_true(recovered.hnsw_available())
@@ -158,9 +154,7 @@ def test_old_manifest_ignores_unreferenced_data_temporaries() raises:
     remove_file_if_exists(path + "/" + fixture.new_dense_name)
     remove_file_if_exists(path + "/" + fixture.new_sparse_name)
     remove_file_if_exists(path + "/" + fixture.new_hnsw_name)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     write_file_sync(
         path + "/" + fixture.new_dense_name + ".tmp", fixture.new_dense
     )
@@ -179,9 +173,7 @@ def test_old_manifest_ignores_renamed_unreferenced_data_files() raises:
     write_file_sync(path + "/manifest.bin", fixture.old_manifest)
     write_file_sync(path + "/wal.bin", fixture.retained_wal)
     write_file_sync(path + "/sparse.wal", fixture.retained_sparse_wal)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 
@@ -191,9 +183,7 @@ def test_new_manifest_with_old_wal_recovers_once() raises:
     write_file_sync(path + "/manifest.bin", fixture.new_manifest)
     write_file_sync(path + "/wal.bin", fixture.retained_wal)
     write_file_sync(path + "/sparse.wal", fixture.retained_sparse_wal)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 
@@ -201,9 +191,7 @@ def test_rotated_wal_with_old_sidecar_present_uses_new_commit() raises:
     var path = String("/tmp/akasha-task22-crash-window-4")
     var fixture = _prepare(path)
     write_file_sync(path + "/manifest.bin", fixture.new_manifest)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 

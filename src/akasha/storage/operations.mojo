@@ -82,9 +82,7 @@ def inspect_storage(
             or dense.last_sequence != descriptor.max_sequence
         ):
             raise Error("manifest and dense segment metadata mismatch")
-        if (
-            descriptor.level == 0 and dense.kind != SEGMENT_KIND_DELTA
-        ) or (
+        if (descriptor.level == 0 and dense.kind != SEGMENT_KIND_DELTA) or (
             descriptor.level > 0 and dense.kind != SEGMENT_KIND_BASE
         ):
             raise Error("manifest and dense segment level mismatch")
@@ -105,8 +103,7 @@ def inspect_storage(
                 descriptor.level == 0
                 and sparse.kind != SPARSE_SEGMENT_KIND_DELTA
             ) or (
-                descriptor.level > 0
-                and sparse.kind != SPARSE_SEGMENT_KIND_BASE
+                descriptor.level > 0 and sparse.kind != SPARSE_SEGMENT_KIND_BASE
             ):
                 raise Error("manifest and sparse segment level mismatch")
             sparse_names.append(descriptor.sparse_name)
@@ -144,9 +141,7 @@ def backup_storage(
     var target_lock = CollectionLock.acquire(target + "/collection.lock")
     if path_exists(target + "/manifest.bin"):
         raise Error("backup target already contains a committed manifest")
-    if path_exists(target + "/wal.bin") or path_exists(
-        target + "/sparse.wal"
-    ):
+    if path_exists(target + "/wal.bin") or path_exists(target + "/sparse.wal"):
         raise Error("backup target already contains authoritative WAL state")
     var report = inspect_storage(source, expected_dimension)
     var manifest = load_manifest(source, expected_dimension)

@@ -11,9 +11,10 @@ comptime _DATASET_SEED = 1_729
 
 
 def _component(point_id: Int, salt: Int) -> Float32:
-    return Float32(
-        ((_DATASET_SEED + point_id + 1) * (salt * 17 + 11)) % 97 + 1
-    ) / 97.0
+    return (
+        Float32(((_DATASET_SEED + point_id + 1) * (salt * 17 + 11)) % 97 + 1)
+        / 97.0
+    )
 
 
 def _vector(point_id: Int) -> List[Float32]:

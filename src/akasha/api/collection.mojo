@@ -112,9 +112,7 @@ struct _ResolvedCollectionConfig(Movable):
     var config: CollectionConfig
     var needs_publication: Bool
 
-    def __init__(
-        out self, config: CollectionConfig, needs_publication: Bool
-    ):
+    def __init__(out self, config: CollectionConfig, needs_publication: Bool):
         self.config = config.copy()
         self.needs_publication = needs_publication
 
@@ -217,8 +215,8 @@ struct PersistentCollection:
         self._hnsw_id_lookup_dirty = metadata.slot_count() > 0
         self._hnsw_id_lookup_builds = 0
         self._hnsw_available = hnsw_available
-        self._hnsw_unavailable_reason = (
-            "" if hnsw_available else String(copy=hnsw_unavailable_reason)
+        self._hnsw_unavailable_reason = "" if hnsw_available else String(
+            copy=hnsw_unavailable_reason
         )
         self._hnsw_mutations_since_rebuild = 0
         self._last_dense_plan_reason = ""
@@ -726,10 +724,15 @@ struct PersistentCollection:
     def _snapshot_unlocked(self) raises -> ReadSnapshot:
         self._ensure_open()
         var generation = self._read_generations[].generation
-        return ReadSnapshot(self._read_generations[].acquire(
-            self._config, generation, self._last_sequence,
-            self._memtable, self._pins,
-        ))
+        return ReadSnapshot(
+            self._read_generations[].acquire(
+                self._config,
+                generation,
+                self._last_sequence,
+                self._memtable,
+                self._pins,
+            )
+        )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
         with BlockingScopedLock(self._writer_lock[]):
@@ -822,8 +825,8 @@ struct PersistentCollection:
             if id in prior_live_by_id:
                 continue
             var ordinal = self._metadata.ordinal_for(id)
-            prior_live_by_id[id] = (
-                ordinal >= 0 and self._metadata.is_live_at(ordinal)
+            prior_live_by_id[id] = ordinal >= 0 and self._metadata.is_live_at(
+                ordinal
             )
 
         var first_sequence = self._last_sequence + 1
@@ -940,9 +943,8 @@ struct PersistentCollection:
         self._ensure_open()
         var metadata_slots = self._metadata.slot_count()
         var metadata_ordinal = self._metadata.ordinal_for(id)
-        var was_live = (
-            metadata_ordinal >= 0
-            and self._metadata.is_live_at(metadata_ordinal)
+        var was_live = metadata_ordinal >= 0 and self._metadata.is_live_at(
+            metadata_ordinal
         )
         var sequence = self._next_sequence()
         var record = WalRecord.delete(sequence, id)
@@ -1016,7 +1018,9 @@ struct PersistentCollection:
         var snapshot = self.snapshot()
         return snapshot.search_cosine_batch(queries, k, num_workers=num_workers)
 
-    def search_device_dot_batch[use_accelerator: Bool](
+    def search_device_dot_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -1027,7 +1031,9 @@ struct PersistentCollection:
             queries, k, options
         )
 
-    def search_device_l2_batch[use_accelerator: Bool](
+    def search_device_l2_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -1038,7 +1044,9 @@ struct PersistentCollection:
             queries, k, options
         )
 
-    def search_device_cosine_batch[use_accelerator: Bool](
+    def search_device_cosine_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -1088,7 +1096,9 @@ struct PersistentCollection:
             queries, expressions, k, num_workers=num_workers
         )
 
-    def search_device_dot_where_batch[use_accelerator: Bool](
+    def search_device_dot_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -1100,7 +1110,9 @@ struct PersistentCollection:
             queries, expressions, k, options
         )
 
-    def search_device_l2_where_batch[use_accelerator: Bool](
+    def search_device_l2_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -1112,7 +1124,9 @@ struct PersistentCollection:
             queries, expressions, k, options
         )
 
-    def search_device_cosine_where_batch[use_accelerator: Bool](
+    def search_device_cosine_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -1136,9 +1150,7 @@ struct PersistentCollection:
         mut self, query: List[Float32], k: Int, ef_search: Int
     ) raises -> List[SearchResult]:
         with BlockingScopedLock(self._writer_lock[]):
-            return self._search_approx_unlocked(
-                query, k, ef_search, _L2_METRIC
-            )
+            return self._search_approx_unlocked(query, k, ef_search, _L2_METRIC)
 
     def search_cosine_approx(
         mut self, query: List[Float32], k: Int, ef_search: Int
@@ -1378,7 +1390,9 @@ struct PersistentCollection:
             var manifest = load_manifest(self._path, self._config.dimension)
             self._pins[].pin(manifest.generation)
             try:
-                var report = backup_storage(self._path, target, self._config.dimension)
+                var report = backup_storage(
+                    self._path, target, self._config.dimension
+                )
                 self._pins[].unpin(manifest.generation)
                 return report^
             except error:
@@ -1395,20 +1409,20 @@ struct PersistentCollection:
         var previous_hnsw_metadata_matches = False
         var descriptors = List[SegmentDescriptor]()
         if path_exists(self._path + "/manifest.bin"):
-            var previous_manifest = load_manifest(self._path, self._config.dimension)
+            var previous_manifest = load_manifest(
+                self._path, self._config.dimension
+            )
             previous_sequence = previous_manifest.last_sequence
             has_previous_manifest = True
             if Bool(previous_manifest.hnsw_name):
                 previous_hnsw_name = previous_manifest.hnsw_name.value().copy()
                 previous_hnsw_metadata_matches = (
-                    self._hnsw_checkpoint_was_hit and
-                    previous_manifest.hnsw_config_fingerprint.value()
+                    self._hnsw_checkpoint_was_hit
+                    and previous_manifest.hnsw_config_fingerprint.value()
                     == self._config.fingerprint()
                     and previous_manifest.hnsw_point_count.value()
                     == UInt64(self._hnsw.current_point_count())
-                    and path_exists(
-                        self._path + "/" + previous_hnsw_name
-                    )
+                    and path_exists(self._path + "/" + previous_hnsw_name)
                 )
             if self._last_sequence < previous_sequence:
                 raise Error("collection sequence precedes checkpoint")
@@ -1431,10 +1445,7 @@ struct PersistentCollection:
                 var wrote_hnsw = False
                 if self._hnsw_available:
                     self._ensure_owned_hnsw_checkpoint()
-                    if (
-                        self._hnsw_available
-                        and self._hnsw.checkpoint_ready()
-                    ):
+                    if self._hnsw_available and self._hnsw.checkpoint_ready():
                         var eligibility = hnsw_snapshot_eligibility(
                             self._hnsw.checkpoint_base(),
                             self._hnsw_sidecar_max_bytes_for_test,
@@ -1468,7 +1479,9 @@ struct PersistentCollection:
                                 hnsw_info.live_point_count,
                             )
                             publish_manifest(self._path, upgraded)
-                            self._read_generations[].publish(upgraded.generation)
+                            self._read_generations[].publish(
+                                upgraded.generation
+                            )
                             self._hnsw_checkpoint_was_hit = True
                             wrote_hnsw = True
                 if not wrote_hnsw and previous_hnsw_name.byte_length() > 0:
@@ -1796,7 +1809,12 @@ struct PersistentCollection:
             var conditions = List[FilterCondition]()
             var exact = self._search_filtered(query, k, metric, conditions)
             self._record_exact_fallback_stats(
-                metric, ef_search, plan.initial_ef, count, len(exact), plan.reason
+                metric,
+                ef_search,
+                plan.initial_ef,
+                count,
+                len(exact),
+                plan.reason,
             )
             return exact^
         if not self._ensure_hnsw_id_lookup():
@@ -2012,9 +2030,7 @@ struct PersistentCollection:
         var ordinals = candidate_ordinals(self._memtable, candidates)
         for ordinal in ordinals:
             ref entry = self._memtable.entry_ref_at(ordinal)
-            var score = authoritative_f32_score(
-                metric, query, entry.values()
-            )
+            var score = authoritative_f32_score(metric, query, entry.values())
             topk.offer(entry.id, score)
 
         var retained = topk.sorted_entries()
@@ -2078,7 +2094,9 @@ struct PersistentCollection:
                 or not self._memtable.is_live_at(ordinal)
                 or self._memtable.id_at(ordinal) != id
             ):
-                raise Error("HNSW upsert source is not authoritative and current")
+                raise Error(
+                    "HNSW upsert source is not authoritative and current"
+                )
             ref authoritative = self._memtable.entry_ref_at(ordinal)
             self._hnsw.upsert(id, authoritative.values())
             self._record_hnsw_mutation()
@@ -2201,9 +2219,7 @@ struct PersistentCollection:
         allowed: Optional[Bitmap],
     ) raises -> List[SearchResult]:
         var segmented_stats = self._hnsw.last_search_stats()
-        self._last_hnsw_rerank_candidates = (
-            segmented_stats.reranked_candidates
-        )
+        self._last_hnsw_rerank_candidates = segmented_stats.reranked_candidates
         self._last_hnsw_rerank_ordinal_lookups = (
             self._hnsw.last_rerank_ordinal_lookups()
         )
@@ -2213,7 +2229,9 @@ struct PersistentCollection:
         self._last_hnsw_rerank_payload_clones = 0
         try:
             if expected_count < 0 or len(candidates) != expected_count:
-                raise Error("HNSW candidate count does not satisfy query contract")
+                raise Error(
+                    "HNSW candidate count does not satisfy query contract"
+                )
             return candidates^
         except:
             var exact_candidates: Bitmap
@@ -2342,13 +2360,8 @@ def _require_matching_config(
         _raise_config_mismatch("max_ef_search", existing, requested)
     if existing.max_level != requested.max_level:
         _raise_config_mismatch("max_level", existing, requested)
-    if (
-        existing.rebuild_inactive_percent
-        != requested.rebuild_inactive_percent
-    ):
-        _raise_config_mismatch(
-            "rebuild_inactive_percent", existing, requested
-        )
+    if existing.rebuild_inactive_percent != requested.rebuild_inactive_percent:
+        _raise_config_mismatch("rebuild_inactive_percent", existing, requested)
     if existing.delta_max_points != requested.delta_max_points:
         _raise_config_mismatch("delta_max_points", existing, requested)
     if existing.level_seed != requested.level_seed:
@@ -2415,7 +2428,7 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
 
 
 def _build_hnsw_id_lookup(
-    metadata: MetadataIndex
+    metadata: MetadataIndex,
 ) raises -> HnswIdOrdinalLookup:
     var ordinals = Dict[Int, Int]()
     for ordinal in range(metadata.slot_count()):
@@ -2552,8 +2565,7 @@ def _load_or_rebuild_hnsw(
         var manifest = load_manifest(path, config.dimension)
         if Bool(manifest.hnsw_name):
             var metadata_matches = (
-                manifest.hnsw_config_fingerprint.value()
-                == config.fingerprint()
+                manifest.hnsw_config_fingerprint.value() == config.fingerprint()
                 and manifest.hnsw_point_count.value()
                 == UInt64(len(checkpoint_live_ids))
             )
@@ -2628,9 +2640,7 @@ def _rebuild_hnsw_for_recovery(
     try:
         var rebuilt = _build_hnsw(memtable, config)
         var segmented = SegmentedHnsw.from_owned(rebuilt^)
-        return _HnswRecoveryLoad(
-            segmented^, False, False, 0, True, ""
-        )
+        return _HnswRecoveryLoad(segmented^, False, False, 0, True, "")
     except:
         # Authoritative records remain queryable through exact plans when the
         # configured graph backend cannot represent this scalar/layout.
@@ -2640,9 +2650,7 @@ def _rebuild_hnsw_for_recovery(
         )
 
 
-def _hnsw_matches_ids(
-    index: SegmentedHnsw, ids: Dict[Int, Bool]
-) -> Bool:
+def _hnsw_matches_ids(index: SegmentedHnsw, ids: Dict[Int, Bool]) -> Bool:
     if index.current_point_count() != len(ids):
         return False
     for id in ids:
@@ -2674,9 +2682,7 @@ def _replay_hnsw_wal(
         if records[record_index].is_delete:
             _ = index.delete(records[record_index].id)
         else:
-            index.upsert(
-                records[record_index].id, records[record_index].values
-            )
+            index.upsert(records[record_index].id, records[record_index].values)
         if replayed < config.delta_max_points:
             replayed += 1
     return replayed

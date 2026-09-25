@@ -98,9 +98,7 @@ def test_replace_and_delete_update_graph_without_query_rebuild() raises:
     var results = collection.search_l2_approx([79.0], 2, 80)
     assert_equal(results[0].id, 77)
     assert_equal(results[1].id, 76)
-    assert_equal(
-        collection._hnsw.build_distance_evaluations(), build_distances
-    )
+    assert_equal(collection._hnsw.build_distance_evaluations(), build_distances)
     assert_equal(collection.last_dense_plan_reason(), "ann")
 
 
@@ -198,26 +196,16 @@ def test_filtered_ann_uses_bitmap_admission_and_authoritative_rerank() raises:
     var collection = PersistentCollection.open(path, 2)
     for id in range(96):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField(
-                "keep", PayloadValue.boolean(id % 3 != 0)
-            )
-        )
-        collection.upsert_document(
-            id, [Float32(id), Float32(95 - id)], fields^
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 3 != 0)))
+        collection.upsert_document(id, [Float32(id), Float32(95 - id)], fields^)
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
     )
     var query: List[Float32] = [70.0, 25.0]
     var exact = collection.search_l2_where(query, 5, expression)
-    var approximate = collection.search_l2_approx_where(
-        query, 5, 8, expression
-    )
+    var approximate = collection.search_l2_approx_where(query, 5, 8, expression)
     assert_equal(collection.last_dense_plan_reason(), "ann")
-    assert_true(
-        collection._hnsw.last_search_stats().filtered_rejections > 0
-    )
+    assert_true(collection._hnsw.last_search_stats().filtered_rejections > 0)
     # The final result remains Top-5, but authoritative rerank receives the
     # complete max(k, ef) candidate pool from the active source.
     assert_equal(collection.last_hnsw_rerank_candidate_count(), 8)
@@ -325,9 +313,7 @@ def test_unfiltered_and_filtered_queries_share_one_lazy_id_lookup() raises:
     var filtered = PersistentCollection.open(filtered_path, 1)
     for id in range(80):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
         filtered.upsert_document(id, [Float32(id)], fields^)
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
@@ -398,9 +384,7 @@ def test_exact_and_ann_rerank_share_authoritative_f32_scores() raises:
     var exact = collection.search_cosine(query, 80)
     var approximate = collection.search_cosine_approx(query, 80, 80)
 
-    assert_equal(
-        collection.last_dense_plan_reason(), "segmented_ann_exhausted"
-    )
+    assert_equal(collection.last_dense_plan_reason(), "segmented_ann_exhausted")
     assert_equal(len(approximate), len(exact))
     for index in range(len(exact)):
         assert_equal(approximate[index].id, exact[index].id)
@@ -409,9 +393,7 @@ def test_exact_and_ann_rerank_share_authoritative_f32_scores() raises:
 
     var boundary_query: List[Float32] = [1.0, 0.0, 0.0]
     var boundary_exact = collection.search_cosine(boundary_query, 80)
-    var boundary_ann = collection.search_cosine_approx(
-        boundary_query, 80, 80
-    )
+    var boundary_ann = collection.search_cosine_approx(boundary_query, 80, 80)
     var saw_positive_boundary = False
     var saw_negative_boundary = False
     for index in range(len(boundary_exact)):
@@ -481,9 +463,7 @@ def test_unfiltered_global_completion_reports_segmented_exhaustion() raises:
     # full ANN target from its entry point, forcing segmented exact completion.
     for slot_index in range(collection._hnsw._delta.graph.slot_count()):
         var slot = UInt32(slot_index)
-        for level in range(
-            collection._hnsw._delta.graph.level(slot) + 1
-        ):
+        for level in range(collection._hnsw._delta.graph.level(slot) + 1):
             collection._hnsw._delta.graph.set_neighbors(
                 slot, level, List[UInt32]()
             )
@@ -496,9 +476,7 @@ def test_unfiltered_global_completion_reports_segmented_exhaustion() raises:
         assert_equal(result[index].score, exact[index].score)
     assert_true(collection.hnsw_available())
     assert_equal(collection.hnsw_unavailable_reason(), "")
-    assert_equal(
-        collection.last_dense_plan_reason(), "segmented_ann_exhausted"
-    )
+    assert_equal(collection.last_dense_plan_reason(), "segmented_ann_exhausted")
 
 
 def main() raises:

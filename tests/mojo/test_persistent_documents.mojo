@@ -102,7 +102,9 @@ def test_batch_input_get_clone_and_snapshot_keep_independent_values() raises:
     var mutations = List[BatchMutation]()
     var fields = List[DocumentField]()
     fields.append(DocumentField("payload", PayloadValue.string("x" * 256)))
-    mutations.append(BatchMutation.document_upsert(-7, [1.0, -2.0, 3.0], fields^))
+    mutations.append(
+        BatchMutation.document_upsert(-7, [1.0, -2.0, 3.0], fields^)
+    )
     mutations.append(BatchMutation.upsert(99, [4.0, 5.0, 6.0]))
     _ = collection.apply_batch(mutations)
     mutations[0].values[0] = 99.0
@@ -117,7 +119,9 @@ def test_batch_input_get_clone_and_snapshot_keep_independent_values() raises:
     cloned.vector[1] = 99.0
     cloned.fields[0].value = PayloadValue.string("clone-change")
     assert_equal(record.value().vector[1], Float32(-2.0))
-    assert_equal(record.value().get_field("payload").value().as_string(), "x" * 256)
+    assert_equal(
+        record.value().get_field("payload").value().as_string(), "x" * 256
+    )
     record.value().vector[0] = 88.0
     record.value().fields[0].name = "result-change"
 
@@ -127,7 +131,9 @@ def test_batch_input_get_clone_and_snapshot_keep_independent_values() raises:
     var frozen = snapshot.get(-7)
     assert_equal(frozen.value().sequence, UInt64(1))
     assert_equal(frozen.value().vector[0], Float32(1.0))
-    assert_equal(frozen.value().get_field("payload").value().as_string(), "x" * 256)
+    assert_equal(
+        frozen.value().get_field("payload").value().as_string(), "x" * 256
+    )
     snapshot.close()
 
     var reopened = PersistentCollection.open(path, 3)

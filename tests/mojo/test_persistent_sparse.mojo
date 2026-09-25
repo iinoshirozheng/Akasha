@@ -192,7 +192,9 @@ def test_reinsert_does_not_inherit_sparse_after_reopen() raises:
         reopened.flush()
         reopened.close()
         var again = PersistentCollection.open(path, 1)
-        assert_equal(len(again.search_sparse_dot([SparseElement(1, 1.0)], 1)), 0)
+        assert_equal(
+            len(again.search_sparse_dot([SparseElement(1, 1.0)], 1)), 0
+        )
 
 
 def main() raises:

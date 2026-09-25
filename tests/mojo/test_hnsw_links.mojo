@@ -44,9 +44,7 @@ def _connect(
     var selected: List[UInt32],
     mut stats: HnswBuildStats,
 ) raises:
-    connect_bidirectional(
-        graph, metric, endpoint, level, selected^, stats
-    )
+    connect_bidirectional(graph, metric, endpoint, level, selected^, stats)
 
 
 def _assert_symmetric_and_bounded(graph: HnswStorage) raises:
@@ -263,9 +261,7 @@ def test_failed_touched_level_validation_marks_graph_invalid() raises:
     var query = metric.prepare_query(raw_query^)
     var search_stats = HnswSearchStats()
     with assert_raises():
-        _ = greedy_descent(
-            graph, metric, query, source, 0, search_stats
-        )
+        _ = greedy_descent(graph, metric, query, source, 0, search_stats)
     assert_equal(search_stats.distance_evaluations, 0)
 
 

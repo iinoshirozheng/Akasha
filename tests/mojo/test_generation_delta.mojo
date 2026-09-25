@@ -53,9 +53,13 @@ def _vector(id: Int, revision: Int) -> List[Float32]:
 def _fields(id: Int, revision: Int) raises -> List[DocumentField]:
     var fields = List[DocumentField]()
     fields.append(
-        DocumentField("group", PayloadValue.string("even" if id % 2 == 0 else "odd"))
+        DocumentField(
+            "group", PayloadValue.string("even" if id % 2 == 0 else "odd")
+        )
     )
-    fields.append(DocumentField("revision", PayloadValue.integer(Int64(revision))))
+    fields.append(
+        DocumentField("revision", PayloadValue.integer(Int64(revision)))
+    )
     return fields^
 
 
@@ -190,9 +194,13 @@ def _assert_equivalent(layered: ReadSnapshot, flat: ReadSnapshot) raises:
 
 def _dense_address(snapshot: ReadSnapshot, id: Int) raises -> Int:
     var location = snapshot._slot[].root.value()[].find(id)
-    return snapshot._slot[].root.value()[].run(location[0]).memtable.entry_ref_at(
-        location[1]
-    ).dense_address()
+    return (
+        snapshot._slot[]
+        .root.value()[]
+        .run(location[0])
+        .memtable.entry_ref_at(location[1])
+        .dense_address()
+    )
 
 
 def _copied_dense_bytes(
@@ -201,8 +209,11 @@ def _copied_dense_bytes(
     """Audit by owner identity: bytes of visible rows not shared with writer."""
     var copied = 0
     for location in snapshot._slot[].root.value()[].id_ordered_locations():
-        ref entry = snapshot._slot[].root.value()[].run(location[0]).memtable.entry_ref_at(
-            location[1]
+        ref entry = (
+            snapshot._slot[]
+            .root.value()[]
+            .run(location[0])
+            .memtable.entry_ref_at(location[1])
         )
         ref live = collection._memtable.entry_ref_at(
             collection._memtable.ordinal_for(entry.id)
@@ -233,14 +244,17 @@ def test_capture_copies_no_base_dense_bytes() raises:
         var head = collection._read_generations[].head_count()
         var snapshot = collection.snapshot()
         if delta == 0:
-            assert_true(snapshot._slot[].root.value() is first._slot[].root.value())
+            assert_true(
+                snapshot._slot[].root.value() is first._slot[].root.value()
+            )
         # Capture copies only the head's descriptors; fields stay shared.
         assert_equal(stats.descriptor_copies - copies, head)
         assert_true(head <= delta)
         assert_equal(stats.payload_bytes, payload)
         assert_equal(stats.base_builds, 1)
         assert_true(
-            snapshot._slot[].root.value()[].layers[0].run is first._slot[].root.value()[].layers[0].run
+            snapshot._slot[].root.value()[].layers[0].run
+            is first._slot[].root.value()[].layers[0].run
         )
         assert_equal(_copied_dense_bytes(snapshot, collection), 0)
         for id in range(delta, 4096, 61):
@@ -307,7 +321,10 @@ def test_rollover_oversized_record_and_consolidation() raises:
     for check in [0, 100, 101, 1500]:
         var location = merged[].find(check)
         assert_equal(
-            merged[].run(location[0]).memtable.entry_ref_at(location[1]).dense_address(),
+            merged[]
+            .run(location[0])
+            .memtable.entry_ref_at(location[1])
+            .dense_address(),
             table.entry_ref_at(table.ordinal_for(check)).dense_address(),
         )
     # Old roots keep their chains after rollover and consolidation.
@@ -315,7 +332,12 @@ def test_rollover_oversized_record_and_consolidation() raises:
     assert_equal(original[].find(100)[0], -1)
     assert_equal(sealed[].visible_count, 12)
     assert_equal(
-        sealed[].run(2).memtable.entry_ref_at(0).fields()[0].value.as_string().byte_length(),
+        sealed[]
+        .run(2)
+        .memtable.entry_ref_at(0)
+        .fields()[0]
+        .value.as_string()
+        .byte_length(),
         HEAD_MAX_BYTES + 1024,
     )
     _ = original^
@@ -358,10 +380,15 @@ def test_old_snapshot_survives_mutation_rollover_consolidation_and_close() raise
     assert_equal(len(documents), 64)
     assert_equal(old.get(1).value().vector[0], _vector(1, 0)[0])
     assert_equal(old.get(2).value().vector[0], _vector(2, 0)[0])
-    assert_equal(old.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(3.0))
+    assert_equal(
+        old.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(3.0)
+    )
     assert_false(Bool(deleted.get(2)))
     assert_equal(deleted.get(1).value().vector[0], _vector(1, 9)[0])
-    assert_equal(deleted.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(5.0))
+    assert_equal(
+        deleted.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(5.0),
+    )
     assert_equal(latest.get(2).value().vector[0], _vector(2, 7)[0])
     assert_equal(len(latest.get(2).value().fields), 0)
     assert_equal(len(latest.documents()), 64 + (MAX_SEALED_RUNS + 1) * 1024)
@@ -390,7 +417,10 @@ def test_sparse_only_update_shares_dense_and_owned_get_is_independent() raises:
     var layers = dense._slot[].root.value()[].layer_count()
     assert_equal(layers, sparse._slot[].root.value()[].layer_count())
     for layer in range(layers - 1):
-        assert_true(dense._slot[].root.value()[].layers[layer].run is sparse._slot[].root.value()[].layers[layer].run)
+        assert_true(
+            dense._slot[].root.value()[].layers[layer].run
+            is sparse._slot[].root.value()[].layers[layer].run
+        )
     # One descriptor recorded into the head, then the head's copy at freeze.
     var head = collection._read_generations[].head_count()
     assert_equal(stats.descriptor_copies - copies, 1 + head)
@@ -403,8 +433,14 @@ def test_sparse_only_update_shares_dense_and_owned_get_is_independent() raises:
     assert_equal(old_entry.payload_address(), new_entry.payload_address())
     assert_true(old_entry.sparse_address() != new_entry.sparse_address())
     assert_equal(_copied_dense_bytes(sparse, collection), 0)
-    assert_equal(dense.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(1.0))
-    assert_equal(sparse.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(2.0))
+    assert_equal(
+        dense.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(1.0),
+    )
+    assert_equal(
+        sparse.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(2.0),
+    )
 
     var owned = sparse.get(3)
     owned.value().vector[0] = 999.0
@@ -530,7 +566,9 @@ def test_shadowing_precedes_filters_topk_and_device_layout() raises:
     var query: List[Float32] = [1.0, 1.0, 1.0, 1.0]
     assert_equal(base.search_dot(query, 1)[0].id, 8)
     assert_equal(base.search_dot_where(query, 1, _even())[0].id, 8)
-    collection.upsert_document(8, [-100.0, -100.0, -100.0, -100.0], _fields(9, 0))
+    collection.upsert_document(
+        8, [-100.0, -100.0, -100.0, -100.0], _fields(9, 0)
+    )
     collection.delete(10)
     var shadowed = collection.snapshot()
     assert_equal(shadowed._slot[].root.value()[].layer_count(), 2)
@@ -545,8 +583,12 @@ def test_shadowing_precedes_filters_topk_and_device_layout() raises:
     var queries = List[List[Float32]]()
     queries.append(query.copy())
     var options = GpuExecutionOptions(enabled=True, min_work_items=1)
-    var old_device = base.search_device_dot_batch[use_accelerator=False](queries, 1, options)
-    var new_device = shadowed.search_device_dot_batch[use_accelerator=False](queries, 1, options)
+    var old_device = base.search_device_dot_batch[use_accelerator=False](
+        queries, 1, options
+    )
+    var new_device = shadowed.search_device_dot_batch[use_accelerator=False](
+        queries, 1, options
+    )
     assert_equal(old_device.results[0][0].id, 8)
     assert_true(new_device.results[0][0].id != 8)
     ref base_root = base._slot[].root.value()[]

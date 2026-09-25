@@ -25,9 +25,7 @@ def test_splitmix64_matches_golden_vectors() raises:
 
 def test_uniform_mapping_is_strictly_inside_open_interval() raises:
     var from_zero = _uniform_open01_from_hash(UInt64(0))
-    var from_maximum = _uniform_open01_from_hash(
-        UInt64(0xFFFFFFFFFFFFFFFF)
-    )
+    var from_maximum = _uniform_open01_from_hash(UInt64(0xFFFFFFFFFFFFFFFF))
     assert_true(from_zero > 0.0)
     assert_true(from_zero < 1.0)
     assert_true(from_maximum > 0.0)
@@ -39,15 +37,11 @@ def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
     var last_level_one_bucket = (UInt64(1) << UInt64(49)) - UInt64(1)
     var first_level_zero_bucket = UInt64(1) << UInt64(49)
     assert_equal(
-        _sample_level_from_hash(
-            last_level_one_bucket << UInt64(11), 16, 8
-        ),
+        _sample_level_from_hash(last_level_one_bucket << UInt64(11), 16, 8),
         1,
     )
     assert_equal(
-        _sample_level_from_hash(
-            first_level_zero_bucket << UInt64(11), 16, 8
-        ),
+        _sample_level_from_hash(first_level_zero_bucket << UInt64(11), 16, 8),
         0,
     )
 
@@ -55,22 +49,16 @@ def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
     var last_level_two_bucket = (UInt64(1) << UInt64(45)) - UInt64(1)
     var first_level_one_bucket = UInt64(1) << UInt64(45)
     assert_equal(
-        _sample_level_from_hash(
-            last_level_two_bucket << UInt64(11), 16, 8
-        ),
+        _sample_level_from_hash(last_level_two_bucket << UInt64(11), 16, 8),
         2,
     )
     assert_equal(
-        _sample_level_from_hash(
-            first_level_one_bucket << UInt64(11), 16, 8
-        ),
+        _sample_level_from_hash(first_level_one_bucket << UInt64(11), 16, 8),
         1,
     )
     assert_equal(_sample_level_from_hash(UInt64(0), 16, 8), 8)
     assert_equal(_sample_level_from_hash(UInt64(0), 65_535, 63), 3)
-    assert_equal(
-        _sample_level_from_hash(UInt64(0), Int.MAX, Int.MAX), 0
-    )
+    assert_equal(_sample_level_from_hash(UInt64(0), Int.MAX, Int.MAX), 0)
 
 
 def test_sample_level_matches_full_pipeline_golden_vectors() raises:

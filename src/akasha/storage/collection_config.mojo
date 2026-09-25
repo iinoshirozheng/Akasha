@@ -27,14 +27,10 @@ trait _CollectionConfigPublishOps:
     def remove_temp(mut self, path: String) raises:
         ...
 
-    def write_temp(
-        mut self, path: String, bytes: List[UInt8]
-    ) raises:
+    def write_temp(mut self, path: String, bytes: List[UInt8]) raises:
         ...
 
-    def replace_temp(
-        mut self, source: String, destination: String
-    ) raises:
+    def replace_temp(mut self, source: String, destination: String) raises:
         ...
 
     def sync_parent(mut self, directory: String) raises:
@@ -48,14 +44,10 @@ struct _FilesystemPublishOps(_CollectionConfigPublishOps):
     def remove_temp(mut self, path: String) raises:
         remove_file_if_exists(path)
 
-    def write_temp(
-        mut self, path: String, bytes: List[UInt8]
-    ) raises:
+    def write_temp(mut self, path: String, bytes: List[UInt8]) raises:
         write_file_sync(path, bytes)
 
-    def replace_temp(
-        mut self, source: String, destination: String
-    ) raises:
+    def replace_temp(mut self, source: String, destination: String) raises:
         atomic_replace(source, destination)
 
     def sync_parent(mut self, directory: String) raises:

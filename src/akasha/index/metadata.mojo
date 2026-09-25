@@ -132,9 +132,7 @@ struct MetadataIndex:
         return writer.take_bytes()
 
     @staticmethod
-    def decode_cache_payload(
-        var payload: List[UInt8]
-    ) raises -> MetadataIndex:
+    def decode_cache_payload(var payload: List[UInt8]) raises -> MetadataIndex:
         var reader = BinaryReader(payload^)
         var slot_count = Int(reader.read_u32())
         if slot_count > 10_000_000:

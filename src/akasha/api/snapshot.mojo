@@ -150,9 +150,7 @@ struct ReadSnapshot(Movable):
         self, view: ReadGeneration, location: Tuple[Int, Int]
     ) raises -> DocumentRecord:
         """Materialize an owned record; later mutation cannot reach the run."""
-        ref entry = view.run(location[0]).memtable.entry_ref_at(
-            location[1]
-        )
+        ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
         return DocumentRecord(
             entry.id,
             entry.sequence,
@@ -240,7 +238,8 @@ struct ReadSnapshot(Movable):
     def search_sq8_dot(
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
     ) raises -> List[SearchResult]:
-        """Search an immutable SQ8 view and optionally exact-rerank candidates."""
+        """Search an immutable SQ8 view and optionally exact-rerank candidates.
+        """
         var root = self._acquire()
         ref view = root[]
         return self._search_sq8(view, query, k, rerank_k, _DOT_METRIC)
@@ -367,7 +366,9 @@ struct ReadSnapshot(Movable):
             view, queries, k, BATCH_COSINE_METRIC, num_workers
         )
 
-    def search_device_dot_batch[use_accelerator: Bool](
+    def search_device_dot_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -379,7 +380,9 @@ struct ReadSnapshot(Movable):
             view, queries, k, BATCH_DOT_METRIC, options
         )
 
-    def search_device_l2_batch[use_accelerator: Bool](
+    def search_device_l2_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -391,7 +394,9 @@ struct ReadSnapshot(Movable):
             view, queries, k, BATCH_L2_METRIC, options
         )
 
-    def search_device_cosine_batch[use_accelerator: Bool](
+    def search_device_cosine_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
@@ -445,7 +450,9 @@ struct ReadSnapshot(Movable):
             view, queries, expressions, k, BATCH_COSINE_METRIC, num_workers
         )
 
-    def search_device_dot_where_batch[use_accelerator: Bool](
+    def search_device_dot_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -458,7 +465,9 @@ struct ReadSnapshot(Movable):
             view, queries, expressions, k, BATCH_DOT_METRIC, options
         )
 
-    def search_device_l2_where_batch[use_accelerator: Bool](
+    def search_device_l2_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -471,7 +480,9 @@ struct ReadSnapshot(Movable):
             view, queries, expressions, k, BATCH_L2_METRIC, options
         )
 
-    def search_device_cosine_where_batch[use_accelerator: Bool](
+    def search_device_cosine_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
@@ -860,7 +871,6 @@ struct ReadSnapshot(Movable):
         metric: Int,
         candidates: List[SearchResult],
     ) raises -> List[SearchResult]:
-
         var topk = BoundedTopK(
             min(k, len(candidates)),
             smaller_is_better=metric == _L2_METRIC,
@@ -869,9 +879,7 @@ struct ReadSnapshot(Movable):
             var location = view.find(candidate.id)
             if location[0] < 0:
                 raise Error("quantized candidate is absent from snapshot")
-            ref entry = view.run(location[0]).memtable.entry_ref_at(
-                location[1]
-            )
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
             topk.offer(entry.id, _score(metric, query, entry.values()))
         var retained = topk.sorted_entries()
         var output = List[SearchResult](capacity=len(retained))
@@ -965,8 +973,7 @@ struct ReadSnapshot(Movable):
             k,
             metric,
             num_workers,
-            self._where_layers(view,
-            expression),
+            self._where_layers(view, expression),
         )
 
     def _search_batch(
@@ -1030,7 +1037,9 @@ struct ReadSnapshot(Movable):
                 view.device[].table = Optional(view.dense_run())
             return view.device[].table.value()
 
-    def _search_device_batch[use_accelerator: Bool](
+    def _search_device_batch[
+        use_accelerator: Bool
+    ](
         self,
         view: ReadGeneration,
         queries: List[List[Float32]],
@@ -1051,7 +1060,9 @@ struct ReadSnapshot(Movable):
             view.device[],
         )
 
-    def _search_device_where_batch[use_accelerator: Bool](
+    def _search_device_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         view: ReadGeneration,
         queries: List[List[Float32]],
@@ -1241,7 +1252,9 @@ def _merge(
         total += len(part)
     if total == 0:
         return List[SearchResult]()
-    var topk = BoundedTopK(min(k, total), smaller_is_better=metric == _L2_METRIC)
+    var topk = BoundedTopK(
+        min(k, total), smaller_is_better=metric == _L2_METRIC
+    )
     for part in parts:
         for result in part:
             topk.offer(result.id, result.score)

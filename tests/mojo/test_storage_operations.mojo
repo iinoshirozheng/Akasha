@@ -14,8 +14,18 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
     write_file_sync,
 )
-from akasha.storage.operations import backup_storage, inspect_storage, restore_storage
-from std.testing import assert_equal, assert_false, assert_raises, assert_true, TestSuite
+from akasha.storage.operations import (
+    backup_storage,
+    inspect_storage,
+    restore_storage,
+)
+from std.testing import (
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+    TestSuite,
+)
 
 
 def _reset(path: String) raises:
@@ -67,7 +77,9 @@ def test_inspection_backup_and_restore_validate_committed_generation() raises:
         reopened.get(1).value().get_field("chunk").value().as_string(),
         "backup",
     )
-    assert_equal(reopened.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].id, 1)
+    assert_equal(
+        reopened.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].id, 1
+    )
     reopened.close()
 
 

@@ -90,12 +90,8 @@ def test_root_package_preserves_two_argument_collection_open() raises:
     remove_file_if_exists(path + "/sparse.wal")
     remove_file_if_exists(path + "/sparse.wal.tmp")
     for sequence in range(3):
-        remove_file_if_exists(
-            path + "/segment-" + String(sequence) + ".bin"
-        )
-        remove_file_if_exists(
-            path + "/sparse-" + String(sequence) + ".bin"
-        )
+        remove_file_if_exists(path + "/segment-" + String(sequence) + ".bin")
+        remove_file_if_exists(path + "/sparse-" + String(sequence) + ".bin")
     var collection = PersistentCollection.open(path, 3)
 
     assert_equal(collection.dimension, 3)

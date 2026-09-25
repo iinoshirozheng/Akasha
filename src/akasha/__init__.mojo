@@ -17,7 +17,12 @@ from .compute import (
     simd_dot_product,
     simd_l2_squared_distance,
 )
-from .document import DocumentField, DocumentRecord, FieldProjection, PayloadValue
+from .document import (
+    DocumentField,
+    DocumentRecord,
+    FieldProjection,
+    PayloadValue,
+)
 from .index import (
     Bitmap,
     FlatIndex,
@@ -32,4 +37,9 @@ from .index import (
     SparseIndex,
     SparseRecord,
 )
-from .query import CancellationToken, FilterCondition, FilterExpression, QueryControl
+from .query import (
+    CancellationToken,
+    FilterCondition,
+    FilterExpression,
+    QueryControl,
+)

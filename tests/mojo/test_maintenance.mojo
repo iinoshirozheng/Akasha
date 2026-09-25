@@ -139,7 +139,6 @@ def test_background_compaction_respects_snapshot_generation_pins() raises:
     collection.close()
 
 
-
 def test_background_publication_drops_cached_root_before_retiring_files() raises:
     var path = String("/tmp/akasha-47-background-root-cache")
     _reset(path)

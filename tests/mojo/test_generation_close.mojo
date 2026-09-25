@@ -203,7 +203,9 @@ def test_device_cache_is_root_owned_and_fresh_per_sequence() raises:
     var queries: List[List[Float32]] = [[1.0, 0.0]]
     var options = GpuExecutionOptions(enabled=True)
     assert_equal(
-        first.search_device_dot_batch[False](queries, 1, options).results[0][0].id,
+        first.search_device_dot_batch[False](queries, 1, options)
+        .results[0][0]
+        .id,
         15,
     )
     # Handles of one root share its device state; closing one keeps it.
@@ -212,7 +214,9 @@ def test_device_cache_is_root_owned_and_fresh_per_sequence() raises:
     assert_true(Bool(root[].device[].table))
     first.close()
     assert_equal(
-        collection.search_device_dot_batch[False](queries, 1, options).results[0][0].id,
+        collection.search_device_dot_batch[False](queries, 1, options)
+        .results[0][0]
+        .id,
         15,
     )
     assert_true(collection.snapshot()._acquire()[].device is root[].device)
@@ -223,14 +227,18 @@ def test_device_cache_is_root_owned_and_fresh_per_sequence() raises:
     assert_equal(latest.generation(), second.generation())
     assert_true(latest.last_sequence() > second.last_sequence())
     assert_equal(
-        collection.search_device_dot_batch[False](queries, 1, options).results[0][0].id,
+        collection.search_device_dot_batch[False](queries, 1, options)
+        .results[0][0]
+        .id,
         99,
     )
     var fresh = latest._acquire()
     assert_false(fresh[].device is root[].device)
     assert_equal(fresh[].device[].table.value()[].memtable.live_count(), 17)
     assert_equal(
-        second.search_device_dot_batch[False](queries, 1, options).results[0][0].id,
+        second.search_device_dot_batch[False](queries, 1, options)
+        .results[0][0]
+        .id,
         15,
     )
     _ = root^

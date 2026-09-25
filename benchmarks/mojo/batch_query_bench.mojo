@@ -36,7 +36,13 @@ def _snapshot() raises -> ReadSnapshot:
     var pins = ArcPointer(GenerationPinRegistry())
     var cache = ReadGenerationCache()
     return ReadSnapshot(
-        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(_POINT_COUNT), table, pins)
+        cache.acquire(
+            CollectionConfig.defaults(_DIMENSION),
+            0,
+            UInt64(_POINT_COUNT),
+            table,
+            pins,
+        )
     )
 
 

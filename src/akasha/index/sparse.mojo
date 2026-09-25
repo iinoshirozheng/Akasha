@@ -132,7 +132,9 @@ struct SparseIndex:
                 self._terms.swap_elements(term_index, len(self._terms) - 1)
                 _ = self._terms.pop()
                 if term_index < len(self._terms):
-                    self._term_slots[self._terms[term_index].term_id] = term_index
+                    self._term_slots[
+                        self._terms[term_index].term_id
+                    ] = term_index
 
     def records(self) -> List[SparseRecord]:
         var result = List[SparseRecord](capacity=len(self._records))

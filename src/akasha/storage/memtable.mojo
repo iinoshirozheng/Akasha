@@ -57,7 +57,9 @@ struct MemTableEntry(Movable):
         """Borrow the immutable dense row; union with self keeps it readonly."""
         return self._dense[]
 
-    def fields(self) -> ref[origin_of(self._payload[], self)] List[DocumentField]:
+    def fields(
+        self,
+    ) -> ref[origin_of(self._payload[], self)] List[DocumentField]:
         """Borrow the immutable payload; union with self keeps it readonly."""
         return self._payload[]
 
@@ -66,7 +68,9 @@ struct MemTableEntry(Movable):
 
     def sparse(
         self,
-    ) raises -> ref[origin_of(self._sparse.value()[], self)] List[SparseElement]:
+    ) raises -> ref[origin_of(self._sparse.value()[], self)] List[
+        SparseElement
+    ]:
         """Borrow the immutable sparse field; raises when the point has none."""
         if not self._sparse:
             raise Error("point has no sparse field")
@@ -79,7 +83,8 @@ struct MemTableEntry(Movable):
         return field_content_bytes(self._payload[])
 
     def sparse_bytes(self) -> Int:
-        """Logical I64 term plus F32 weight bytes, as SparseIndex counts them."""
+        """Logical I64 term plus F32 weight bytes, as SparseIndex counts them.
+        """
         return len(self._sparse.value()[]) * 12 if self._sparse else 0
 
     def payload_address(self) -> Int:

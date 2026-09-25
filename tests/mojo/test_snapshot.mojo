@@ -308,7 +308,6 @@ def test_snapshot_freezes_sparse_hybrid_and_filtered_results() raises:
     collection.close()
 
 
-
 def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     var path = String("/tmp/akasha-47-shared-root")
     _reset(path)
@@ -323,8 +322,16 @@ def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     assert_equal(collection._read_generations[].revision, UInt64(1))
     assert_equal(collection._pins[].active_count(), 1)
     assert_equal(
-        first._slot[].root.value()[].run(0).memtable.entry_ref_at(0).dense_address(),
-        second._slot[].root.value()[].run(0).memtable.entry_ref_at(0).dense_address(),
+        first._slot[]
+        .root.value()[]
+        .run(0)
+        .memtable.entry_ref_at(0)
+        .dense_address(),
+        second._slot[]
+        .root.value()[]
+        .run(0)
+        .memtable.entry_ref_at(0)
+        .dense_address(),
     )
     var document = first.get(1)
     document.value().vector[0] = 99.0
@@ -340,7 +347,10 @@ def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     collection.close()
     assert_equal(second._slot[].root.value().count(), UInt64(1))
     assert_equal(second.search_dot([1.0], 1)[0].score, Float32(2.0))
-    assert_equal(second.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(3.0))
+    assert_equal(
+        second.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(3.0),
+    )
     assert_equal(collection._pins[].active_count(), 1)
     second.close()
     assert_equal(collection._pins[].active_count(), 0)
@@ -363,7 +373,9 @@ def test_shared_roots_isolate_replace_sparse_delete_and_reinsert() raises:
     assert_false(original._slot[].root.value() is replaced._slot[].root.value())
     collection.upsert_sparse(-1, [SparseElement(7, 8.0)])
     var sparse_updated = collection.snapshot()
-    assert_false(replaced._slot[].root.value() is sparse_updated._slot[].root.value())
+    assert_false(
+        replaced._slot[].root.value() is sparse_updated._slot[].root.value()
+    )
     collection.delete(-1)
     var deleted = collection.snapshot()
     collection.upsert(-1, [4.0])
@@ -371,17 +383,33 @@ def test_shared_roots_isolate_replace_sparse_delete_and_reinsert() raises:
     collection.close()
     original.close()
     assert_equal(sibling.get(-1).value().vector[0], Float32(1.0))
-    assert_equal(sibling.get(-1).value().get_field("chunk").value().as_string(), "original")
-    assert_equal(sibling.search_dot_where([1.0], 1, _old_group_expression())[0].id, -1)
-    assert_equal(sibling.search_hybrid_dot([1.0], [SparseElement(7, 1.0)], 1, 1)[0].id, -1)
+    assert_equal(
+        sibling.get(-1).value().get_field("chunk").value().as_string(),
+        "original",
+    )
+    assert_equal(
+        sibling.search_dot_where([1.0], 1, _old_group_expression())[0].id, -1
+    )
+    assert_equal(
+        sibling.search_hybrid_dot([1.0], [SparseElement(7, 1.0)], 1, 1)[0].id,
+        -1,
+    )
     assert_equal(replaced.get(-1).value().vector[0], Float32(9.0))
-    assert_equal(replaced.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(2.0))
-    assert_equal(sparse_updated.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(8.0))
+    assert_equal(
+        replaced.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(2.0),
+    )
+    assert_equal(
+        sparse_updated.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
+        Float32(8.0),
+    )
     assert_false(Bool(deleted.get(-1)))
     assert_equal(len(deleted.search_sparse_dot([SparseElement(7, 1.0)], 1)), 0)
     assert_equal(reinserted.get(-1).value().vector[0], Float32(4.0))
     assert_equal(len(reinserted.get(-1).value().fields), 0)
-    assert_equal(len(reinserted.search_sparse_dot([SparseElement(7, 1.0)], 1)), 0)
+    assert_equal(
+        len(reinserted.search_sparse_dot([SparseElement(7, 1.0)], 1)), 0
+    )
     sibling.close()
     replaced.close()
     sparse_updated.close()
@@ -411,7 +439,10 @@ def test_layout_publication_changes_root_without_changing_sequence() raises:
     var after_compact = collection.snapshot()
     assert_equal(before_compact.last_sequence(), after_compact.last_sequence())
     assert_true(before_compact.generation() < after_compact.generation())
-    assert_false(before_compact._slot[].root.value() is after_compact._slot[].root.value())
+    assert_false(
+        before_compact._slot[].root.value()
+        is after_compact._slot[].root.value()
+    )
     assert_equal(len(before_compact.documents()), 2)
     collection.close()
     # Reopening creates an independent publisher even at equal G and S.
@@ -419,11 +450,15 @@ def test_layout_publication_changes_root_without_changing_sequence() raises:
     var reopened_view = reopened.snapshot()
     assert_equal(after_compact.generation(), reopened_view.generation())
     assert_equal(after_compact.last_sequence(), reopened_view.last_sequence())
-    assert_false(after_compact._slot[].root.value() is reopened_view._slot[].root.value())
+    assert_false(
+        after_compact._slot[].root.value() is reopened_view._slot[].root.value()
+    )
     reopened.close()
 
 
-def _raii_sibling(collection: PersistentCollection, expected: ReadSnapshot) raises:
+def _raii_sibling(
+    collection: PersistentCollection, expected: ReadSnapshot
+) raises:
     var transient = collection.snapshot()
     assert_true(transient._slot[].root.value() is expected._slot[].root.value())
     assert_equal(transient.get(1).value().vector[0], Float32(1.0))

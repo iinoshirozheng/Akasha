@@ -17,9 +17,7 @@ struct _RecordingDirectoryOps(_DurableDirectoryOps):
     var sync_attempts: Int
     var fail_sync_at: Int
 
-    def __init__(
-        out self, existing: Bool = False, fail_sync_at: Int = 0
-    ):
+    def __init__(out self, existing: Bool = False, fail_sync_at: Int = 0):
         self.existing = existing
         self.made = False
         self.sync_attempts = 0
@@ -86,9 +84,7 @@ def test_parent_sync_failure_propagates_after_creation() raises:
 def test_existing_root_syncs_once_without_parent_recursion() raises:
     var ops = _RecordingDirectoryOps(existing=True)
 
-    assert_equal(
-        _ensure_durable_directory_with_ops("/", "/", ops), False
-    )
+    assert_equal(_ensure_durable_directory_with_ops("/", "/", ops), False)
     assert_equal(ops.sync_attempts, 1)
 
 
