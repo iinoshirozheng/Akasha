@@ -1,5 +1,5 @@
 from akasha import BatchMutation, CollectionConfig, DocumentField, PayloadValue, PersistentCollection, ReadSnapshot
-from akasha.index.sparse import SparseElement, SparseIndex
+from akasha.index.sparse import SparseElement
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.read_generation import ReadGenerationCache
@@ -34,12 +34,11 @@ def _snapshot_benchmark() raises:
     var table = MemTable(_DIMENSION)
     table.apply_recovered_entries(entries)
     var pins = ArcPointer(GenerationPinRegistry())
-    var sparse = SparseIndex()
 
     var capture_start = perf_counter_ns()
     var cache = ReadGenerationCache()
     var snapshot = ReadSnapshot(
-        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(_POINT_COUNT), table, sparse, pins,)
+        cache.acquire(CollectionConfig.defaults(_DIMENSION), 0, UInt64(_POINT_COUNT), table, pins,)
     )
     var capture_elapsed = perf_counter_ns() - capture_start
     var query = _vector(100_000)
@@ -70,13 +69,17 @@ def _rss_bytes() raises -> Int:
     return Int(py=Python.import_module("builtins").int(output)) * 1024
 
 
-def _cost_upsert(mut table: MemTable, mut sparse: SparseIndex, id: Int, sequence: UInt64, revision: Int, write_sparse: Bool = True) raises:
+def _cost_upsert(mut table: MemTable, id: Int, sequence: UInt64, revision: Int, write_sparse: Bool = True) raises:
     var values = List[Float32](length=128, fill=Float32(revision))
     var fields = List[DocumentField]()
     fields.append(DocumentField("text", PayloadValue.string("p" * 255 + String(revision))))
     table.apply_document_upsert(id, sequence, values^, fields^)
     if write_sparse:
-        sparse.upsert(id, [SparseElement(0, Float32(revision + 1)), SparseElement(id + 1, Float32(revision + 1))])
+        _cost_sparse(table, id, revision)
+
+
+def _cost_sparse(mut table: MemTable, id: Int, revision: Int) raises:
+    table.set_sparse(id, [SparseElement(0, Float32(revision + 1)), SparseElement(id + 1, Float32(revision + 1))])
 
 
 def _snapshot_cost_benchmark(delta: Int, leases: Int, write_sparse: Bool) raises:
@@ -85,10 +88,11 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int, write_sparse: Bool) raises
         raise Error("invalid snapshot cost dimensions")
     _ = _rss_bytes()
     var table = MemTable(128)
-    var sparse = SparseIndex()
     for id in range(points):
-        _cost_upsert(table, sparse, id, UInt64(2 * id + 1), 0)
+        _cost_upsert(table, id, UInt64(2 * id + 1), 0)
     var sequence = UInt64(2 * points)
+    # One dense and one optional sparse operation per changed point.
+    var step = UInt64(2 if write_sparse else 1)
     var pins = ArcPointer(GenerationPinRegistry())
     var cache = ReadGenerationCache()
     var snapshots = List[ReadSnapshot](capacity=leases)
@@ -104,47 +108,46 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int, write_sparse: Bool) raises
         var consolidation_ns = 0
         var written = cache.stats.copy()
         for id in range(delta):
-            _cost_upsert(table, sparse, id, sequence + 1, capture + 1, write_sparse)
-            sequence += 2  # one dense and one (optional) sparse operation
-            var before = cache.stats.copy()
-            var record_start = perf_counter_ns()
-            cache.record(table, [id])
-            if write_sparse:
-                cache.record_sparse()
-            var record_duration = Int(perf_counter_ns() - record_start)
-            record_ns += record_duration
-            max_record_ns = max(max_record_ns, record_duration)
-            if cache.stats.consolidations != before.consolidations:
-                consolidation_ns += record_duration
-            elif cache.stats.rollovers != before.rollovers:
-                rollover_ns += record_duration
-        print("publisher_write delta=" + String(delta) + " leases=" + String(leases) + " sparse_writes=" + String(Int(write_sparse)) + " capture=" + String(capture) + " record_total_ns=" + String(record_ns) + " max_record_ns=" + String(max_record_ns) + " rollovers=" + String(cache.stats.rollovers - written.rollovers) + " rollover_ns=" + String(rollover_ns) + " consolidations=" + String(cache.stats.consolidations - written.consolidations) + " consolidation_ns=" + String(consolidation_ns) + " sealed_runs=" + String(cache.sealed_count()) + " head_points=" + String(cache.head_count()) + " descriptor_copies=" + String(cache.stats.descriptor_copies - written.descriptor_copies) + " payload_copy_bytes=" + String(cache.stats.payload_bytes - written.payload_bytes) + " base_builds=" + String(cache.stats.base_builds - written.base_builds))
+            # Each operation is recorded on its own, as the collection does.
+            for operation in range(Int(step)):
+                if operation == 0:
+                    _cost_upsert(table, id, sequence + 1, capture + 1, False)
+                else:
+                    _cost_sparse(table, id, capture + 1)
+                sequence += 1
+                var before = cache.stats.copy()
+                var record_start = perf_counter_ns()
+                cache.record(table, [id], sequence)
+                var record_duration = Int(perf_counter_ns() - record_start)
+                record_ns += record_duration
+                max_record_ns = max(max_record_ns, record_duration)
+                if cache.stats.consolidations != before.consolidations:
+                    consolidation_ns += record_duration
+                elif cache.stats.rollovers != before.rollovers:
+                    rollover_ns += record_duration
+        print("publisher_write delta=" + String(delta) + " leases=" + String(leases) + " sparse_writes=" + String(Int(write_sparse)) + " capture=" + String(capture) + " record_total_ns=" + String(record_ns) + " max_record_ns=" + String(max_record_ns) + " rollovers=" + String(cache.stats.rollovers - written.rollovers) + " rollover_ns=" + String(rollover_ns) + " consolidations=" + String(cache.stats.consolidations - written.consolidations) + " consolidation_ns=" + String(consolidation_ns) + " sealed_runs=" + String(cache.sealed_count()) + " head_points=" + String(cache.head_count()) + " descriptor_copies=" + String(cache.stats.descriptor_copies - written.descriptor_copies) + " payload_copy_bytes=" + String(cache.stats.payload_bytes - written.payload_bytes) + " sparse_copy_bytes=" + String(cache.stats.sparse_bytes - written.sparse_bytes) + " base_builds=" + String(cache.stats.base_builds - written.base_builds))
         var before = cache.stats.copy()
         var start = perf_counter_ns()
-        var root = cache.acquire(config, 7, sequence, table, sparse, pins)
+        var root = cache.acquire(config, 7, sequence, table, pins)
         var duration = Int(perf_counter_ns() - start)
         elapsed += duration
         # Same publisher used by PersistentCollection, excluding manifest I/O
         # and lock acquisition. Dense bytes are audited by owner identity:
         # a visible row whose Float32 buffer is not the writer's accepted
-        # owner would be a copy. Payload and sparse bytes are logical content
-        # the publisher cloned; index structure, padding and allocator
-        # metadata remain excluded.
-        # Attribute the sparse share of capture time: the publisher clones
-        # the whole SparseIndex once per capture after any sparse write (#49).
-        var sparse_clone_ns = 0
-        if cache.stats.sparse_bytes != before.sparse_bytes:
-            var sparse_start = perf_counter_ns()
-            var sparse_copy = sparse.clone()
-            sparse_clone_ns = Int(perf_counter_ns() - sparse_start)
-            _ = sparse_copy^
+        # owner would be a copy; payload and sparse owners are audited the
+        # same way. Payload and sparse bytes are logical content copied into
+        # run indexes; index structure, padding and allocator metadata remain
+        # excluded.
         var dense_copy_bytes = 0
+        var field_owner_copies = 0
         for location in root[].id_ordered_locations():
             ref entry = root[].run(location[0]).memtable.entry_ref_at(location[1])
             ref live = table.entry_ref_at(table.ordinal_for(entry.id))
             if entry.dense_address() != live.dense_address():
                 dense_copy_bytes += entry.dense_bytes()
-        print("snapshot_capture delta=" + String(delta) + " leases=" + String(leases) + " sparse_writes=" + String(Int(write_sparse)) + " capture=" + String(capture) + " generation=7 sequence=" + String(sequence) + " capture_ns=" + String(duration) + " sparse_clone_ns=" + String(sparse_clone_ns) + " base_builds=" + String(cache.stats.base_builds - before.base_builds) + " dense_copy_bytes=" + String(dense_copy_bytes) + " descriptor_copies=" + String(cache.stats.descriptor_copies - before.descriptor_copies) + " payload_copy_bytes=" + String(cache.stats.payload_bytes - before.payload_bytes) + " sparse_copy_bytes=" + String(cache.stats.sparse_bytes - before.sparse_bytes) + " layers=" + String(root[].layer_count()) + " root_revision=" + String(cache.revision))
+            if entry.payload_address() != live.payload_address() or entry.sparse_address() != live.sparse_address():
+                field_owner_copies += 1
+        print("snapshot_capture delta=" + String(delta) + " leases=" + String(leases) + " sparse_writes=" + String(Int(write_sparse)) + " capture=" + String(capture) + " generation=7 sequence=" + String(sequence) + " capture_ns=" + String(duration) + " base_builds=" + String(cache.stats.base_builds - before.base_builds) + " dense_copy_bytes=" + String(dense_copy_bytes) + " field_owner_copies=" + String(field_owner_copies) + " descriptor_copies=" + String(cache.stats.descriptor_copies - before.descriptor_copies) + " payload_copy_bytes=" + String(cache.stats.payload_bytes - before.payload_bytes) + " sparse_copy_bytes=" + String(cache.stats.sparse_bytes - before.sparse_bytes) + " layers=" + String(root[].layer_count()) + " root_revision=" + String(cache.revision))
         snapshots.append(ReadSnapshot(root^))
     var held_rss = _rss_bytes()
     for capture in range(leases):
@@ -152,7 +155,7 @@ def _snapshot_cost_benchmark(delta: Int, leases: Int, write_sparse: Bool) raises
         var document = snapshots[capture].get(0)
         if snapshots[capture].generation() != 7 or document.value().vector[0] != expected:
             raise Error("snapshot cost visibility mismatch")
-        if snapshots[capture].last_sequence() != UInt64(2 * points + 2 * delta * (capture + 1)):
+        if snapshots[capture].last_sequence() != UInt64(2 * points) + step * UInt64(delta * (capture + 1)):
             raise Error("snapshot cost sequence mismatch")
         if document.value().get_field("text").value().as_string() != "p" * 255 + String(Int(expected)):
             raise Error("snapshot cost payload mismatch")

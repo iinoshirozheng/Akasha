@@ -13,7 +13,7 @@ CELLS = [(mode, delta, leases)
          for mode in ["dense-sparse", "dense-only"]
          for delta, leases in [(0, 1), (0, 8), (16, 1), (16, 8), (1024, 1), (1024, 8), (1024, 10)]]
 
-COPY_KEYS = ["dense_copy_bytes", "descriptor_copies", "payload_copy_bytes", "sparse_copy_bytes"]
+COPY_KEYS = ["dense_copy_bytes", "field_owner_copies", "descriptor_copies", "payload_copy_bytes", "sparse_copy_bytes"]
 
 
 def _parse(output):
@@ -32,14 +32,12 @@ def _summarize(runs):
     memories = [run[-1] for run in runs]
     summary = {
         "first_base": {"capture_ns": median(run[0]["capture_ns"] for run in captures),
-                       "sparse_clone_ns": median(run[0]["sparse_clone_ns"] for run in captures),
                        **{key: median(run[0][key] for run in captures) for key in COPY_KEYS}},
     }
     repeats = [row for run in captures for row in run[1:]]
     summary["capture"] = None if not repeats else {
         "median_ns": median(row["capture_ns"] for row in repeats),
         "max_ns": max(row["capture_ns"] for row in repeats),
-        "median_sparse_clone_ns": median(row["sparse_clone_ns"] for row in repeats),
         "max_layers": max(row["layers"] for row in repeats),
         "per_capture": {key: median(row[key] for row in repeats) for key in COPY_KEYS},
     }
@@ -54,6 +52,7 @@ def _summarize(runs):
         "consolidation_ns": median(sum(row["consolidation_ns"] for row in run) for run in later),
         "descriptor_copies": median(sum(row["descriptor_copies"] for row in run) for run in later),
         "payload_copy_bytes": median(sum(row["payload_copy_bytes"] for row in run) for run in later),
+        "sparse_copy_bytes": median(sum(row["sparse_copy_bytes"] for row in run) for run in later),
     }
     summary["memory"] = {key: median(run[key] for run in memories)
                          for key in ["capture_total_ns", "baseline_rss", "held_rss", "closed_rss", "dropped_rss"]}
@@ -80,6 +79,7 @@ def main():
         "source": args.source,
         "capture_path": "ReadGenerationCache.record/acquire (shared with PersistentCollection; excludes WAL, manifest I/O and writer lock)",
         "dense_copy_audit": "visible rows whose Float32 owner address differs from the writer table's accepted owner",
+        "field_owner_audit": "visible rows whose payload or sparse owner address differs from the writer table's",
         "platform": platform.platform(), "points": 4096, "dimension": 128,
         "payload_bytes_per_point": 256, "sparse_elements_per_point": 2,
         "head_max_points": 1024, "head_max_bytes": 4 * 1024 * 1024, "max_sealed_runs": 8,

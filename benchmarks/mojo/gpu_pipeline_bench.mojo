@@ -4,7 +4,6 @@ from akasha.common.config import CollectionConfig
 from akasha.compute.gpu.flat_scan import DeviceBatchResult, execute_device_batch
 from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.index.flat import SearchResult
-from akasha.index.sparse import SparseIndex
 from akasha.query.batch_executor import execute_exact_batch
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable
@@ -110,11 +109,10 @@ def main() raises:
     for _ in range(batch):
         queries.append(_uniform_vector(rng, dimension))
     var config = CollectionConfig.defaults(dimension)
-    var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
     var cache = ReadGenerationCache()
     var snapshot = ReadSnapshot(
-        cache.acquire(config, 1, table.last_sequence, table, sparse, pins)
+        cache.acquire(config, 1, table.last_sequence, table, pins)
     )
     var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var expected = execute_exact_batch(table, queries, 10, metric, 0)
