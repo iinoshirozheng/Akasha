@@ -8,10 +8,13 @@ base at a changed view still clones/rebuilds all three structures. See the
 [#47 implementation and measurements](../benchmarks/2026-09-17-shared-snapshot.md).
 **#48 is implemented in `8351235` (2026-09-24):** immutable dense owners, a bounded
 head, sealed runs, a shadowing resolver and foreground consolidation; captures copy
-no dense bytes. Payload and sparse are still copied per descriptor and per capture
-respectively (#49). See the
+no dense bytes. See the
 [#48 implementation and measurements](../benchmarks/2026-09-24-bounded-head.md).
-The rest of this ADR remains the design for #49 onward.
+**#49 is implemented (2026-09-25):** payload and sparse are per-point shared owners
+next to the dense owner; base and sealed runs index their own slots and the frozen
+head is evaluated directly, so captures copy no field bytes. See the
+[#49 implementation and measurements](../benchmarks/2026-09-25-field-owners.md).
+The rest of this ADR remains the design for #50 onward.
 
 ## Evidence and constraints
 
@@ -91,8 +94,7 @@ shadowed hits, which could lose the actual winners.
 
 #48 implementation notes: the publisher records each committed point state after the
 WAL and MemTable apply, and a dense batch is recorded only after its whole staged swap.
-Frozen heads build a small metadata index at capture instead of evaluating fields
-directly; that cost is bounded by the head limits. Sealed-run shadowing lists are
+Sealed-run shadowing lists are
 shared owners replaced at rollover, never mutated. The root's visible count comes from
 the writer table, whose sequence the publisher checks. GPU preparation derives its flat
 table from the root resolver once per snapshot handle; per-root device keying is #50.
@@ -103,6 +105,22 @@ its indexes. This avoids rebuilding full metadata or sparse indexes at capture.
 Sparse products accumulate in ascending query-term order, retaining current Float32
 behavior and ID ties. CPU exact/filtered/sparse/hybrid and GPU preparation must use
 the same root visibility resolver; no independent live-table lookup inside a query.
+
+#49 implementation notes: `ReadGeneration.filtered_ordinals`, `conditioned_ordinals`
+and `sparse_hits` are that resolver for fields. An indexed run evaluates its metadata
+or sparse index and then drops non-visible slots; the head scans its visible slots
+with the linear evaluator and a term merge, summing in the same query-term order so
+a row scores bit-identically in any run. Per-run sparse hits merge into one Top-K.
+The publisher records every accepted operation, sparse-only writes included, with the
+collection's accepted sequence, and refuses to publish if it missed one. A failed
+sparse write is rejected before the WAL and records nothing.
+
+A dense delete also removes the sparse field. The dense WAL stays the durable record
+of that delete: recovery merges dense deletes into sparse WAL replay by sequence, and
+the runtime queues a sparse delete record for the next sparse checkpoint. Neither WAL
+format changed. The writer still keeps its own `SparseIndex` next to the entry owners
+for sparse checkpoints; that duplicate is writer-side, not a capture cost. There is
+no public payload-only write; payload owner independence is tested at the publisher.
 
 ## Field boundary and vector types
 

@@ -242,7 +242,7 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #49 Payload／sparse 與完整 point state 一致
 
-- [ ] Payload/sparse 各自 field owner；partial field 更新沿用其他 owner，delete 清除整點，
+- [x] Payload/sparse 各自 field owner；partial field 更新沿用其他 owner，delete 清除整點，
   reinsert 不繼承舊 sparse。Immutable-run metadata/sparse index 與小 head 的直接求值
   共用同一 visibility resolver；避免每次 snapshot 重建全量 metadata/sparse。
 - 相依：#48。主要檔：`read_generation.mojo`、`api/snapshot.mojo`、`api/collection.mojo`、
@@ -250,6 +250,17 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - 驗收：payload-only/sparse-only/full replacement、filters/NOT/hybrid、負 ID 與 Float32
   accumulation/ties 對照 owned oracle；更新後多 root 共存、flush/reopen 一致。失敗 sparse
   不發布新 root；沿用 dense/sparse 各自 WAL 合約與 sparse checkpoint crash gate。
+- 完成（2026-09-25）：entry 持 dense／payload／sparse 三個共享 owner；base／sealed run
+  各建 metadata＋sparse index，frozen head 直接求值，`filtered_ordinals`／
+  `conditioned_ordinals`／`sparse_hits` 為唯一欄位 resolver。publisher 以 accepted sequence
+  記錄每個操作（含 sparse-only），不再持有全域 SparseIndex。順帶修正 delete→reinsert 後
+  reopen 復活舊 sparse（WAL tail 與 sparse checkpoint 兩路）：recovery 依 sequence 併入
+  dense WAL delete，runtime 補 sparse pending delete；WAL 格式不變。16 delta × 8 snapshots
+  dense+sparse capture 0.691 → 0.003 ms、held RSS 11.5 → 3.4 MiB，capture 0 payload／sparse
+  copy。代價：rollover／consolidation 多建 sparse index（#52）；writer 仍另持一份
+  SparseIndex 供 sparse checkpoint；無公開 payload-only 寫入（owner 獨立性在 publisher 層測）。
+  668 Mojo／66 Python／9 crash／10 實機 GPU、C ABI、build 通過。
+  [實作與成本報告](../docs/benchmarks/2026-09-25-field-owners.md)。
 
 ### #50 Operation lease、close 與 GPU cache owner
 
