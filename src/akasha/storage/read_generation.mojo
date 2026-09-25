@@ -318,6 +318,8 @@ struct ReadGenerationCache(Movable):
     """
 
     var root: Optional[ArcPointer[ReadGeneration]]
+    var generation: UInt64
+    """Generation of the last published manifest; 0 before the first."""
     var revision: UInt64
     var stats: ReadPublisherStats
     var _layers: List[ReadLayer]
@@ -328,6 +330,7 @@ struct ReadGenerationCache(Movable):
 
     def __init__(out self):
         self.root = Optional[ArcPointer[ReadGeneration]]()
+        self.generation = 0
         self.revision = 0
         self.stats = ReadPublisherStats()
         self._layers = List[ReadLayer]()
@@ -339,6 +342,11 @@ struct ReadGenerationCache(Movable):
     def invalidate(mut self):
         """Drop the cached root after a publication; runs stay valid."""
         self.root = Optional[ArcPointer[ReadGeneration]]()
+
+    def publish(mut self, generation: UInt64):
+        """Record a durable manifest publication and drop the cached root."""
+        self.generation = generation
+        self.invalidate()
 
     def reset(mut self):
         """Drop all derived state; the next capture builds a new base."""

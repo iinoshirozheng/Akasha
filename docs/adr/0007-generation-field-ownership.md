@@ -16,7 +16,9 @@ head is evaluated directly, so captures copy no field bytes. See the
 [#49 implementation and measurements](../benchmarks/2026-09-25-field-owners.md).
 **#50 is implemented (2026-09-25):** every snapshot or collection query acquires its
 own root owner; close drops only the handle's owner, and device state lives on the
-root. See the
+root. A capture takes the manifest generation from memory: the collection's read
+publisher records it at open and at every manifest publish, including background
+maintenance. See the
 [#50 implementation and measurements](../benchmarks/2026-09-25-operation-owners.md).
 The rest of this ADR remains the design for #51 onward.
 

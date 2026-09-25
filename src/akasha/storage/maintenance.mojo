@@ -71,7 +71,7 @@ def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
             )
             var did_compact = result.compacted
             if did_compact:
-                state[].read_generations[].invalidate()
+                state[].read_generations[].publish(result.generation)
                 state[].retired[].retire_or_reclaim(
                     state[].path,
                     result.previous_generation,

@@ -30,21 +30,25 @@ from akasha.storage.sparse_store import (
 struct CommittedCompactionResult(Movable):
     var compacted: Bool
     var previous_generation: UInt64
+    var generation: UInt64
+    """Generation of the published manifest when `compacted`."""
     var removed_files: List[String]
 
     def __init__(
         out self,
         compacted: Bool,
         previous_generation: UInt64,
+        generation: UInt64,
         var removed_files: List[String],
     ):
         self.compacted = compacted
         self.previous_generation = previous_generation
+        self.generation = generation
         self.removed_files = removed_files^
 
     @staticmethod
     def no_change() -> CommittedCompactionResult:
-        return CommittedCompactionResult(False, 0, List[String]())
+        return CommittedCompactionResult(False, 0, 0, List[String]())
 
 
 def compact_committed_segments(
@@ -142,7 +146,9 @@ def compact_committed_segments(
             removed.append(
                 directory + "/" + previous.segments[index].sparse_name
             )
-    return CommittedCompactionResult(True, previous.generation, removed^)
+    return CommittedCompactionResult(
+        True, previous.generation, compacted.generation, removed^
+    )
 
 
 def _load_dense(

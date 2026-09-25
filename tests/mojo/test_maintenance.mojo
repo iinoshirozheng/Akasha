@@ -39,6 +39,17 @@ def _reset(directory: String) raises:
         )
 
 
+def _assert_captures_manifest_generation(
+    mut collection: PersistentCollection, path: String
+) raises:
+    """Capture uses the in-memory generation of the last manifest publish."""
+    var published = load_manifest(path, 1).generation
+    assert_equal(collection._read_generations[].generation, published)
+    var snapshot = collection.snapshot()
+    assert_equal(snapshot.generation(), published)
+    snapshot.close()
+
+
 def _write_five_checkpoints(mut collection: PersistentCollection) raises:
     collection.upsert(1, [1.0])
     collection.flush()
@@ -52,15 +63,20 @@ def test_background_worker_compacts_threshold_and_close_joins() raises:
     _reset(path)
     var collection = PersistentCollection.open(path, 1)
     assert_true(collection.background_maintenance_enabled())
+    var empty = collection.snapshot()
+    assert_equal(empty.generation(), UInt64(0))
+    empty.close()
     _write_five_checkpoints(collection)
     assert_true(collection.wait_for_maintenance())
     var manifest = load_manifest(path, 1)
     assert_equal(len(manifest.segments), 1)
     assert_equal(manifest.last_sequence, UInt64(5))
+    _assert_captures_manifest_generation(collection, path)
     collection.close()
 
     var reopened = PersistentCollection.open(path, 1)
     assert_equal(len(reopened.search_dot([1.0], 10)), 5)
+    _assert_captures_manifest_generation(reopened, path)
     reopened.close()
 
 

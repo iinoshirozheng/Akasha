@@ -42,10 +42,6 @@ Platform: Apple M4 Pro, macOS arm64; Mojo 1.0.0 (`ed45d567`), MAX 26.5.0.
 - **Device key**: the key is the root, which fixes layout, config and the single
   dense field. It covers the device only because the process has one default
   device context. A second device would need one state per device on the root.
-- **Capture per collection query**: each collection query now captures the root, and
-  a capture reads `manifest.bin` to learn the generation. See the table below.
-  Keeping the generation in memory at every manifest publish would remove that read.
-  It touches every publish path, so it is left out of this slice.
 - **Layered read cost**: on a root with sealed runs and a head, a collection where
   or sparse query now pays the #49 resolver cost that snapshot queries already
   paid. #49 did not benchmark this.
@@ -105,6 +101,51 @@ pixi run mojo build -I src benchmarks/mojo/operation_owner_bench.mojo -o .build/
 
 For the baseline, build the same source against a checkout of `e530f69` (`-I <checkout>/src`).
 
+## In-memory manifest generation
+
+In the table above, each collection query paid about 15 µs for capture, and
+14.2 µs of that was reading `manifest.bin` for the generation. The follow-up keeps
+the generation in memory instead:
+
+- `ReadGenerationCache.generation` holds the generation of the last published
+  manifest, or 0 before the first. Open sets it from the loaded manifest.
+- `ReadGenerationCache.publish(generation)` records a publication and drops the
+  cached root. Every `publish_manifest` into the collection's directory calls it:
+  the flush publish, the HNSW upgrade and downgrade publishes, foreground
+  compaction, and background maintenance. All of them run under the writer lock.
+- For background maintenance, `CommittedCompactionResult.generation` carries the
+  generation it published, so the worker does not recompute it.
+- `_snapshot_unlocked` and `_publish_index_caches_best_effort` read the field. They
+  no longer read the manifest.
+
+The same bench against `d757945` + this change (median of three processes, with
+the range in brackets; the #50 column is copied from the table above):
+
+| Case | Root | #50 µs | Memory generation µs |
+|---|---|---:|---:|
+| `collection.snapshot()` + close | base | 14.6 | 0.22 [0.22–0.22] |
+| `collection.search_dot` | base | 425.0 | 417.5 [415.5–426.6] |
+| `collection.search_dot_where` | base | 234.3 | 220.8 [220.0–225.9] |
+| `collection.search_sparse_dot` | base | 18.6 | 4.6 [4.5–4.6] |
+| `snapshot.search_sparse_dot` | base | 4.3 | 4.3 [4.1–4.5] |
+| upsert, then `collection.search_dot` | — | 970.9 | 953.6 [926.9–1,039.5] |
+| `collection.search_dot_where` | layered | 330.0 | 318.1 [306.7–322.2] |
+| `collection.search_sparse_dot` | layered | 25.2 | 9.2 [9.1–9.4] |
+| `snapshot.search_dot_where` | layered | 319.0 | 319.7 [306.8–320.4] |
+| `snapshot.search_sparse_dot` | layered | 9.2 | 9.4 [8.9–9.4] |
+
+A collection query now costs the same as the matching snapshot query. On a layered
+root, a collection where or sparse query still pays the #49 resolver cost. The
+upsert-then-query pair still captures a new root per write; its median fell by
+about the removed read, within the run-to-run range.
+
+Tests: `tests/mojo/test_hnsw_checkpoint_cleanup.mojo` checks, after the HNSW
+upgrade flush, the downgrade flush and foreground compaction, that the in-memory
+generation and a new snapshot's generation equal the manifest on disk.
+`tests/mojo/test_maintenance.mojo` checks the same after background compaction
+and after reopening, and checks that a collection with no manifest captures
+generation 0.
+
 ## Validation
 
 | Gate | Result |
@@ -114,6 +155,11 @@ For the baseline, build the same source against a checkout of `e530f69` (`-I <ch
 | `pixi run test-c` | The C ABI build and C executable pass. |
 | `pixi run build-mojo` | Passes. |
 | `pixi run test-gpu` | 12 tests in 4 files pass on Apple M4 Pro, including the three #50 lifecycle tests below. |
+
+After the in-memory generation change, `pixi run test` (673 Mojo, 66 Python),
+`test-crash`, `test-c` and `build-mojo` pass again. `test-gpu` was not rerun,
+because device ownership did not change: only where capture gets the generation
+number changed.
 
 New `tests/mojo/test_generation_close.mojo` (5 tests):
 

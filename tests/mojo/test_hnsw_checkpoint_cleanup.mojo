@@ -61,6 +61,17 @@ def _remove_empty_directory(path: String) raises:
         raise Error("test fault directory cleanup failed")
 
 
+def _assert_captures_manifest_generation(
+    mut collection: PersistentCollection, path: String
+) raises:
+    """Capture uses the in-memory generation of the last manifest publish."""
+    var published = load_manifest(path, 1).generation
+    assert_equal(collection._read_generations[].generation, published)
+    var snapshot = collection.snapshot()
+    assert_equal(snapshot.generation(), published)
+    snapshot.close()
+
+
 def test_flush_removes_only_prior_manifest_named_hnsw_sidecar() raises:
     var path = String("/tmp/akasha-task22-checkpoint-cleanup")
     _reset(path)
@@ -88,6 +99,7 @@ def test_flush_removes_only_prior_manifest_named_hnsw_sidecar() raises:
     assert_true(path_exists(path + "/hnsw-999.bin"))
     assert_true(path_exists(path + "/hnsw-80.bin.user"))
     assert_equal(current.generation, prior.generation + UInt64(1))
+    _assert_captures_manifest_generation(collection, path)
     collection.close()
 
 
@@ -115,6 +127,7 @@ def test_compaction_preserves_v3_sidecar_and_advances_generation() raises:
     assert_equal(after.hnsw_name.value(), sidecar_name)
     assert_equal(len(after.segments), 1)
     assert_true(path_exists(path + "/" + sidecar_name))
+    _assert_captures_manifest_generation(collection, path)
     collection.close()
 
 
@@ -147,6 +160,7 @@ def test_same_sequence_v3_downgrade_cleans_exact_sidecar_after_wals() raises:
     assert_equal(len(read_file_bytes(path + "/sparse.wal")), 0)
     assert_false(path_exists(path + "/" + old_sidecar))
     assert_true(path_exists(path + "/hnsw-user.bin"))
+    _assert_captures_manifest_generation(collection, path)
     collection.close()
 
 

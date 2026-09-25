@@ -278,9 +278,11 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
   無鎖 query（exact／filtered／where／sparse／hybrid／device）改為驗證後走 snapshot
   operation，不再無鎖讀 writer live 表。GPU state 改掛 `ReadGeneration.device`（每 root
   一份，同 root handle 共用，同 G 新 S 必為新 state），移除 collection `_GpuReadSnapshot`。
-  代價：collection query 每次 capture 約 15 µs，其中 14.2 µs 是讀 manifest 取 generation
-  （可改為 publish 時記在記憶體，觸及所有 manifest 發布路徑，未做）；layered root 上
-  collection where 215 → 330 µs、sparse 3 → 25 µs（#49 resolver 成本外露）；寫後查 +13%。
+  代價：collection query 每次 capture 原本約 15 µs，其中 14.2 µs 是讀 manifest 取
+  generation；後續改由 `ReadGenerationCache.generation` 在每個 manifest publish（flush、
+  HNSW 升降級、compact、背景 maintenance）與 open 時記錄，capture 降到 0.22 µs，
+  collection query 與 snapshot query 同價（layered where 約 318 µs、sparse 約 9 µs，
+  即 #49 resolver 成本）；寫後查 +13% → 約 +10%。
   snapshot query 成本不變。673 Mojo／66 Python／9 crash／12 實機 GPU、C ABI、build 通過。
   [實作與成本報告](../docs/benchmarks/2026-09-25-operation-owners.md)。
 
