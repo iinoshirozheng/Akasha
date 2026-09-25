@@ -189,8 +189,8 @@ def _assert_equivalent(layered: ReadSnapshot, flat: ReadSnapshot) raises:
 
 
 def _dense_address(snapshot: ReadSnapshot, id: Int) raises -> Int:
-    var location = snapshot._view().find(id)
-    return snapshot._view().run(location[0]).memtable.entry_ref_at(
+    var location = snapshot._slot[].root.value()[].find(id)
+    return snapshot._slot[].root.value()[].run(location[0]).memtable.entry_ref_at(
         location[1]
     ).dense_address()
 
@@ -200,8 +200,8 @@ def _copied_dense_bytes(
 ) raises -> Int:
     """Audit by owner identity: bytes of visible rows not shared with writer."""
     var copied = 0
-    for location in snapshot._view().id_ordered_locations():
-        ref entry = snapshot._view().run(location[0]).memtable.entry_ref_at(
+    for location in snapshot._slot[].root.value()[].id_ordered_locations():
+        ref entry = snapshot._slot[].root.value()[].run(location[0]).memtable.entry_ref_at(
             location[1]
         )
         ref live = collection._memtable.entry_ref_at(
@@ -233,21 +233,21 @@ def test_capture_copies_no_base_dense_bytes() raises:
         var head = collection._read_generations[].head_count()
         var snapshot = collection.snapshot()
         if delta == 0:
-            assert_true(snapshot._root.value() is first._root.value())
+            assert_true(snapshot._slot[].root.value() is first._slot[].root.value())
         # Capture copies only the head's descriptors; fields stay shared.
         assert_equal(stats.descriptor_copies - copies, head)
         assert_true(head <= delta)
         assert_equal(stats.payload_bytes, payload)
         assert_equal(stats.base_builds, 1)
         assert_true(
-            snapshot._view().layers[0].run is first._view().layers[0].run
+            snapshot._slot[].root.value()[].layers[0].run is first._slot[].root.value()[].layers[0].run
         )
         assert_equal(_copied_dense_bytes(snapshot, collection), 0)
         for id in range(delta, 4096, 61):
             assert_equal(
                 _dense_address(snapshot, id), _dense_address(first, id)
             )
-        assert_equal(snapshot._view().visible_count, 4096)
+        assert_equal(snapshot._slot[].root.value()[].visible_count, 4096)
         _assert_equivalent(snapshot, _flat(snapshot, collection))
     assert_equal(stats.rollovers, 1)
     assert_equal(first.get(0).value().vector[0], Float32(0.0))
@@ -385,18 +385,18 @@ def test_sparse_only_update_shares_dense_and_owned_get_is_independent() raises:
     var freezes = stats.head_freezes
     collection.upsert_sparse(3, [SparseElement(7, 2.0)])
     var sparse = collection.snapshot()
-    assert_false(dense._root.value() is sparse._root.value())
+    assert_false(dense._slot[].root.value() is sparse._slot[].root.value())
     # A sparse-only update refreezes only the head; older runs are shared.
-    var layers = dense._view().layer_count()
-    assert_equal(layers, sparse._view().layer_count())
+    var layers = dense._slot[].root.value()[].layer_count()
+    assert_equal(layers, sparse._slot[].root.value()[].layer_count())
     for layer in range(layers - 1):
-        assert_true(dense._view().layers[layer].run is sparse._view().layers[layer].run)
+        assert_true(dense._slot[].root.value()[].layers[layer].run is sparse._slot[].root.value()[].layers[layer].run)
     # One descriptor recorded into the head, then the head's copy at freeze.
     var head = collection._read_generations[].head_count()
     assert_equal(stats.descriptor_copies - copies, 1 + head)
     assert_equal(stats.head_freezes, freezes + 1)
-    ref before = dense._view().run(layers - 1).memtable
-    ref after = sparse._view().run(layers - 1).memtable
+    ref before = dense._slot[].root.value()[].run(layers - 1).memtable
+    ref after = sparse._slot[].root.value()[].run(layers - 1).memtable
     ref old_entry = before.entry_ref_at(before.ordinal_for(3))
     ref new_entry = after.entry_ref_at(after.ordinal_for(3))
     assert_equal(old_entry.dense_address(), new_entry.dense_address())
@@ -461,7 +461,7 @@ def test_failure_before_publication_keeps_old_root() raises:
     with assert_raises():
         collection.upsert(60, [1.0])
     var after = collection.snapshot()
-    assert_true(after._root.value() is snapshot._root.value())
+    assert_true(after._slot[].root.value() is snapshot._slot[].root.value())
     assert_equal(collection._read_generations[].revision, revision)
     assert_equal(collection._read_generations[].stats.descriptor_copies, copies)
     assert_false(Bool(after.get(50)))
@@ -493,7 +493,7 @@ def test_failure_before_publication_keeps_old_root() raises:
 
 def _scoped_capture(mut collection: PersistentCollection) raises:
     var scoped = collection.snapshot()
-    assert_equal(scoped._view().layer_count(), 3)
+    assert_equal(scoped._slot[].root.value()[].layer_count(), 3)
 
 
 def test_close_and_raii_release_layered_pins() raises:
@@ -506,7 +506,7 @@ def test_close_and_raii_release_layered_pins() raises:
     collection.upsert(3, _vector(3, 5))
     var layered = collection.snapshot()
     var sibling = collection.snapshot()
-    assert_equal(layered._view().layer_count(), 3)
+    assert_equal(layered._slot[].root.value()[].layer_count(), 3)
     _scoped_capture(collection)
     sibling.close()
     assert_equal(layered.get(3).value().vector[0], _vector(3, 5)[0])
@@ -533,7 +533,7 @@ def test_shadowing_precedes_filters_topk_and_device_layout() raises:
     collection.upsert_document(8, [-100.0, -100.0, -100.0, -100.0], _fields(9, 0))
     collection.delete(10)
     var shadowed = collection.snapshot()
-    assert_equal(shadowed._view().layer_count(), 2)
+    assert_equal(shadowed._slot[].root.value()[].layer_count(), 2)
     var top = shadowed.search_dot(query, 3)
     for result in top:
         assert_true(result.id != 8)
@@ -541,7 +541,7 @@ def test_shadowing_precedes_filters_topk_and_device_layout() raises:
         assert_true(result.id != 8 and result.id != 10)
     _assert_equivalent(shadowed, _flat(shadowed, collection))
 
-    # Device tables belong to one handle's layout; siblings never share them.
+    # Device tables belong to one root's layout; roots never share them.
     var queries = List[List[Float32]]()
     queries.append(query.copy())
     var options = GpuExecutionOptions(enabled=True, min_work_items=1)
@@ -549,22 +549,24 @@ def test_shadowing_precedes_filters_topk_and_device_layout() raises:
     var new_device = shadowed.search_device_dot_batch[use_accelerator=False](queries, 1, options)
     assert_equal(old_device.results[0][0].id, 8)
     assert_true(new_device.results[0][0].id != 8)
-    assert_true(base._gpu_state[].table.value() is base._view().layers[0].run)
+    ref base_root = base._slot[].root.value()[]
+    ref shadowed_root = shadowed._slot[].root.value()[]
+    assert_true(base_root.device[].table.value() is base_root.layers[0].run)
     assert_false(
-        shadowed._gpu_state[].table.value() is base._gpu_state[].table.value()
+        shadowed_root.device[].table.value() is base_root.device[].table.value()
     )
     assert_equal(
-        shadowed._gpu_state[].table.value()[].memtable.live_count(),
-        shadowed._view().visible_count,
+        shadowed_root.device[].table.value()[].memtable.live_count(),
+        shadowed_root.visible_count,
     )
     shadowed.close()
-    assert_false(Bool(shadowed._gpu_state[].table))
-    assert_true(Bool(base._gpu_state[].table))
+    assert_false(Bool(shadowed._slot[].root))
+    assert_true(Bool(base._slot[].root.value()[].device[].table))
 
     _write(collection, 1000, HEAD_MAX_POINTS + 3, 2)
     collection.upsert_document(1001, [50.0, 50.0, 50.0, 50.0], _fields(1001, 0))
     var chained = collection.snapshot()
-    assert_equal(chained._view().layer_count(), 3)
+    assert_equal(chained._slot[].root.value()[].layer_count(), 3)
     assert_equal(chained.search_dot(query, 1)[0].id, 1001)
     _assert_equivalent(chained, _flat(chained, collection))
     base.close()

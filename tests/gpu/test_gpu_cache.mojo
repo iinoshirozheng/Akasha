@@ -180,7 +180,7 @@ def test_cache_respects_lower_budget_and_discards_failed_stream() raises:
         ),
     )
     assert_false(constrained.used_gpu)
-    assert_false(Bool(snapshot._gpu_state[].cache))
+    assert_false(Bool(snapshot._slot[].root.value()[].device[].cache))
     var failed = snapshot.search_device_dot_batch[True](
         queries,
         3,
@@ -228,17 +228,20 @@ def test_concurrent_queries_serialize_shared_snapshot_scratch() raises:
     collection.close()
 
 
-def test_shared_cpu_root_keeps_sibling_device_cache_after_close() raises:
+def test_sibling_handles_share_root_device_cache_across_close() raises:
     var collection = _collection("/tmp/akasha-47-gpu-shared-root")
     var first = collection.snapshot()
     var second = collection.snapshot()
-    assert_true(first._root.value() is second._root.value())
-    assert_false(first._gpu_state is second._gpu_state)
+    ref root = second._slot[].root.value()
+    assert_true(first._slot[].root.value() is root)
+    assert_true(first._slot[].root.value()[].device is root[].device)
     var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
     var options = GpuExecutionOptions(enabled=True, min_work_items=1)
     var initial = first.search_device_dot_batch[True](queries, 3, options)
     var sibling = second.search_device_dot_batch[True](queries, 3, options)
     assert_true(initial.used_gpu and sibling.used_gpu)
+    assert_true(sibling.timings.cache_hit)
+    assert_equal(sibling.timings.vector_upload_bytes, UInt64(0))
     first.close()
     collection.close()
     var warm = second.search_device_dot_batch[True](queries, 3, options)
@@ -247,6 +250,62 @@ def test_shared_cpu_root_keeps_sibling_device_cache_after_close() raises:
     assert_equal(warm.timings.buffer_allocations, 0)
     assert_equal(warm.results[0][0].id, 40)
     second.close()
+    assert_equal(collection._pins[].active_count(), 0)
+
+
+def test_handle_close_during_device_queries_keeps_operation_buffers() raises:
+    var collection = _collection("/tmp/akasha-50-gpu-close")
+    var snapshot = collection.snapshot()
+    collection.close()
+    var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
+    var failures = List[Int](length=8, fill=0)
+
+    def run_query(
+        index: Int,
+    ) {mut snapshot, imm queries, imm options, mut failures}:
+        if index == 0:
+            snapshot.close()
+            return
+        for _ in range(8):
+            try:
+                var actual = snapshot.search_device_dot_batch[True](
+                    queries, 3, options
+                )
+                if not actual.used_gpu or actual.results[0][0].id != 40:
+                    failures[index] += 1
+            except error:
+                if String(error) != "snapshot is closed":
+                    failures[index] += 1
+
+    parallelize(run_query, 8, 4)
+    for failure in failures:
+        assert_equal(failure, 0)
+    assert_equal(collection._pins[].active_count(), 0)
+
+
+def test_device_cache_is_fresh_for_newer_sequence_of_same_generation() raises:
+    var collection = _collection("/tmp/akasha-50-gpu-fresh")
+    var queries: List[List[Float32]] = [[1.0, 0.0, 0.0]]
+    var options = GpuExecutionOptions(enabled=True, min_work_items=1)
+    var old = collection.snapshot()
+    var cold = collection.search_device_dot_batch[True](queries, 3, options)
+    var warm = collection.search_device_dot_batch[True](queries, 3, options)
+    assert_true(cold.used_gpu and not cold.timings.cache_hit)
+    assert_true(warm.timings.cache_hit)
+    collection.upsert_document(99, [100.0, 0.0, 0.0], List[DocumentField]())
+    var latest = collection.snapshot()
+    assert_equal(latest.generation(), old.generation())
+    assert_true(latest.last_sequence() > old.last_sequence())
+    var fresh = collection.search_device_dot_batch[True](queries, 3, options)
+    assert_true(fresh.used_gpu and not fresh.timings.cache_hit)
+    assert_equal(fresh.results[0][0].id, 99)
+    var stale = old.search_device_dot_batch[True](queries, 3, options)
+    assert_true(stale.timings.cache_hit)
+    assert_equal(stale.results[0][0].id, 40)
+    old.close()
+    latest.close()
+    collection.close()
     assert_equal(collection._pins[].active_count(), 0)
 
 

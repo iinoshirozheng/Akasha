@@ -246,8 +246,8 @@ def test_concurrent_unchanged_captures_share_one_root_and_independent_handles() 
         try:
             var first = collection.snapshot()
             var second = collection.snapshot()
-            addresses[task] = Int(first._root.value().unsafe_ptr())
-            if not (first._root.value() is second._root.value()):
+            addresses[task] = Int(first._slot[].root.value().unsafe_ptr())
+            if not (first._slot[].root.value() is second._slot[].root.value()):
                 _ = failures.fetch_add(1)
             first.close()
             if second.search_dot([1.0], 1)[0].score != 2.0:

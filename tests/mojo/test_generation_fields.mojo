@@ -364,7 +364,7 @@ def test_layered_fields_match_owned_oracle_across_roots_and_reopen() raises:
     assert_true(writes > 2 * HEAD_MAX_POINTS)
     var latest = collection.snapshot()
     # Base, sealed runs and a frozen head all take part in the latest root.
-    assert_true(latest._view().layer_count() >= 3)
+    assert_true(latest._slot[].root.value()[].layer_count() >= 3)
     assert_true(len(roots) >= 2)
 
     _check(base, base_model)
@@ -401,7 +401,7 @@ def test_failed_sparse_write_does_not_publish_a_root() raises:
         collection.upsert_sparse(-1, [SparseElement(4, 1.0), SparseElement(3, 1.0)])
     assert_equal(collection.last_sequence(), sequence)
     var after = collection.snapshot()
-    assert_true(after._root.value() is before._root.value())
+    assert_true(after._slot[].root.value() is before._slot[].root.value())
     assert_equal(collection._read_generations[].revision, revision)
     assert_equal(
         after.search_sparse_dot([SparseElement(3, 1.0)], 1)[0].score, 1.0

@@ -22,11 +22,10 @@ from akasha.index.metadata import MetadataIndex
 from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_ordinals
 from akasha.query.filter_ast import FilterCondition, FilterExpression
-from akasha.query.fusion import reciprocal_rank_fusion
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
-from akasha.storage.read_generation import ReadGenerationCache
+from akasha.storage.read_generation import ReadGeneration, ReadGenerationCache
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.maintenance import (
@@ -140,15 +139,6 @@ struct _HnswRebuildOrdinal(Comparable, Copyable, Movable):
         return self.ordinal < other.ordinal
 
 
-struct _GpuReadSnapshot(Movable):
-    """Writer-lock protected owner; active GPU queries retain their own lease."""
-
-    var snapshot: Optional[ArcPointer[ReadSnapshot]]
-
-    def __init__(out self):
-        self.snapshot = Optional[ArcPointer[ReadSnapshot]]()
-
-
 struct PersistentCollection:
     """A durable, single-writer exact vector collection."""
 
@@ -184,7 +174,6 @@ struct PersistentCollection:
     var _pins: ArcPointer[GenerationPinRegistry]
     var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
-    var _gpu_read_snapshot: ArcPointer[_GpuReadSnapshot]
     var _read_generations: ArcPointer[ReadGenerationCache]
     var _maintenance: MaintenanceController
     var _cache_generation: UInt64
@@ -248,7 +237,6 @@ struct PersistentCollection:
         self._pins = ArcPointer(GenerationPinRegistry())
         self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
-        self._gpu_read_snapshot = ArcPointer(_GpuReadSnapshot())
         self._read_generations = ArcPointer(ReadGenerationCache())
         self._maintenance = MaintenanceController.start(
             path,
@@ -583,14 +571,21 @@ struct PersistentCollection:
         return self._config.ann_metric.copy()
 
     def close(mut self) raises:
-        """Release this collection's single-writer ownership."""
+        """Release this collection's single-writer ownership.
+
+        New operations fail with "collection is closed"; acquired operations
+        own their root and finish. The cached root is released outside the
+        writer lock, so a last owner frees rows and device state there."""
+        var released = Optional[ArcPointer[ReadGeneration]]()
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
-            self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
+            if self._read_generations[].root:
+                released = Optional(self._read_generations[].root.take())
             self._read_generations[].reset()
             self._hnsw.close()
             self._closed = True
+        _ = released^
         var maintenance_error = String()
         try:
             self._maintenance.close()
@@ -726,22 +721,6 @@ struct PersistentCollection:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
             return self._snapshot_unlocked()
-
-    def _snapshot_for_gpu(self) raises -> ArcPointer[ReadSnapshot]:
-        with BlockingScopedLock(self._writer_lock[]):
-            self._ensure_open()
-            var generation = UInt64(0)
-            if path_exists(self._path + "/manifest.bin"):
-                generation = load_manifest(self._path, self._config.dimension).generation
-            if self._gpu_read_snapshot[].snapshot:
-                ref cached = self._gpu_read_snapshot[].snapshot.value()[]
-                if cached.generation() != generation or cached.last_sequence() != self._last_sequence:
-                    self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
-            if not self._gpu_read_snapshot[].snapshot:
-                self._gpu_read_snapshot[].snapshot = Optional(
-                    ArcPointer(self._snapshot_unlocked())
-                )
-            return self._gpu_read_snapshot[].snapshot.value()
 
     def _snapshot_unlocked(self) raises -> ReadSnapshot:
         self._ensure_open()
@@ -993,20 +972,20 @@ struct PersistentCollection:
     def search_dot(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _DOT_METRIC, conditions)
+        self._validate_query(query, k)
+        return self.snapshot().search_dot(query, k)
 
     def search_l2(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _L2_METRIC, conditions)
+        self._validate_query(query, k)
+        return self.snapshot().search_l2(query, k)
 
     def search_cosine(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
-        var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+        self._validate_query(query, k)
+        return self.snapshot().search_cosine(query, k)
 
     def search_dot_batch(
         self,
@@ -1044,8 +1023,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_dot_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_dot_batch[use_accelerator](
             queries, k, options
         )
 
@@ -1055,8 +1034,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_l2_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_l2_batch[use_accelerator](
             queries, k, options
         )
 
@@ -1066,8 +1045,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_cosine_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_cosine_batch[use_accelerator](
             queries, k, options
         )
 
@@ -1117,8 +1096,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_dot_where_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_dot_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1129,8 +1108,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_l2_where_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_l2_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1141,8 +1120,8 @@ struct PersistentCollection:
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        var snapshot = self._snapshot_for_gpu()
-        return snapshot[].search_device_cosine_where_batch[use_accelerator](
+        var snapshot = self.snapshot()
+        return snapshot.search_device_cosine_where_batch[use_accelerator](
             queries, expressions, k, options
         )
 
@@ -1176,7 +1155,10 @@ struct PersistentCollection:
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _DOT_METRIC, conditions)
+        self._validate_query(query, k)
+        for index in range(len(conditions)):
+            conditions[index].validate()
+        return self.snapshot().search_dot_filtered(query, k, conditions)
 
     def search_l2_filtered(
         self,
@@ -1184,7 +1166,10 @@ struct PersistentCollection:
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _L2_METRIC, conditions)
+        self._validate_query(query, k)
+        for index in range(len(conditions)):
+            conditions[index].validate()
+        return self.snapshot().search_l2_filtered(query, k, conditions)
 
     def search_cosine_filtered(
         self,
@@ -1192,7 +1177,10 @@ struct PersistentCollection:
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+        self._validate_query(query, k)
+        for index in range(len(conditions)):
+            conditions[index].validate()
+        return self.snapshot().search_cosine_filtered(query, k, conditions)
 
     def search_dot_where(
         self,
@@ -1200,7 +1188,9 @@ struct PersistentCollection:
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _DOT_METRIC, expression)
+        self._validate_query(query, k)
+        expression.validate()
+        return self.snapshot().search_dot_where(query, k, expression)
 
     def search_l2_where(
         self,
@@ -1208,7 +1198,9 @@ struct PersistentCollection:
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _L2_METRIC, expression)
+        self._validate_query(query, k)
+        expression.validate()
+        return self.snapshot().search_l2_where(query, k, expression)
 
     def search_cosine_where(
         self,
@@ -1216,7 +1208,9 @@ struct PersistentCollection:
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _COSINE_METRIC, expression)
+        self._validate_query(query, k)
+        expression.validate()
+        return self.snapshot().search_cosine_where(query, k, expression)
 
     def search_dot_approx_where(
         mut self,
@@ -1257,8 +1251,7 @@ struct PersistentCollection:
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
     ) raises -> List[SearchResult]:
-        self._ensure_open()
-        return self._sparse.search_dot(query, k)
+        return self.snapshot().search_sparse_dot(query, k)
 
     def search_sparse_dot_where(
         self,
@@ -1266,7 +1259,11 @@ struct PersistentCollection:
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_sparse_where(query, k, expression)
+        validate_sparse(query)
+        if k <= 0:
+            raise Error("k must be positive")
+        expression.validate()
+        return self.snapshot().search_sparse_dot_where(query, k, expression)
 
     def search_hybrid_dot(
         self,
@@ -1276,13 +1273,11 @@ struct PersistentCollection:
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _DOT_METRIC,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        return self.snapshot().search_hybrid_dot(
+            dense_query, sparse_query, k, fetch_k, rank_constant
         )
 
     def search_hybrid_l2(
@@ -1293,13 +1288,11 @@ struct PersistentCollection:
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _L2_METRIC,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        return self.snapshot().search_hybrid_l2(
+            dense_query, sparse_query, k, fetch_k, rank_constant
         )
 
     def search_hybrid_cosine(
@@ -1310,13 +1303,11 @@ struct PersistentCollection:
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _COSINE_METRIC,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        return self.snapshot().search_hybrid_cosine(
+            dense_query, sparse_query, k, fetch_k, rank_constant
         )
 
     def search_hybrid_dot_where(
@@ -1328,14 +1319,12 @@ struct PersistentCollection:
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid_where(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _DOT_METRIC,
-            expression,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        expression.validate()
+        return self.snapshot().search_hybrid_dot_where(
+            dense_query, sparse_query, k, fetch_k, rank_constant, expression
         )
 
     def search_hybrid_l2_where(
@@ -1347,14 +1336,12 @@ struct PersistentCollection:
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid_where(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _L2_METRIC,
-            expression,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        expression.validate()
+        return self.snapshot().search_hybrid_l2_where(
+            dense_query, sparse_query, k, fetch_k, rank_constant, expression
         )
 
     def search_hybrid_cosine_where(
@@ -1366,14 +1353,12 @@ struct PersistentCollection:
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_hybrid_where(
-            dense_query,
-            sparse_query,
-            k,
-            fetch_k,
-            rank_constant,
-            _COSINE_METRIC,
-            expression,
+        self._validate_hybrid(
+            dense_query, sparse_query, k, fetch_k, rank_constant
+        )
+        expression.validate()
+        return self.snapshot().search_hybrid_cosine_where(
+            dense_query, sparse_query, k, fetch_k, rank_constant, expression
         )
 
     def flush(mut self) raises:
@@ -1403,7 +1388,6 @@ struct PersistentCollection:
 
     def _flush_unlocked(mut self) raises:
         self._ensure_open()
-        self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
         self._reclaim_retired()
         var previous_sequence = UInt64(0)
         var generation = UInt64(1)
@@ -2040,69 +2024,6 @@ struct PersistentCollection:
             results.append(SearchResult(entry.id, entry.score))
         return results^
 
-    def _search_sparse_where(
-        self,
-        query: List[SparseElement],
-        k: Int,
-        expression: FilterExpression,
-    ) raises -> List[SearchResult]:
-        self._ensure_open()
-        validate_sparse(query)
-        if k <= 0:
-            raise Error("k must be positive")
-        expression.validate()
-        var matched = evaluate_expression(self._metadata, expression)
-        var count = self._sparse.point_count()
-        if count == 0:
-            return List[SearchResult]()
-        var candidates = self._sparse.search_dot(query, count)
-        var result = List[SearchResult]()
-        for candidate in candidates:
-            if self._metadata.contains_id(matched, candidate.id):
-                result.append(candidate)
-                if len(result) == k:
-                    break
-        return result^
-
-    def _search_hybrid(
-        self,
-        dense_query: List[Float32],
-        sparse_query: List[SparseElement],
-        k: Int,
-        fetch_k: Int,
-        rank_constant: Int,
-        metric: Int,
-    ) raises -> List[SearchResult]:
-        self._validate_hybrid(
-            dense_query, sparse_query, k, fetch_k, rank_constant
-        )
-        var conditions = List[FilterCondition]()
-        var dense = self._search_filtered(
-            dense_query, fetch_k, metric, conditions
-        )
-        var sparse = self._sparse.search_dot(sparse_query, fetch_k)
-        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
-
-    def _search_hybrid_where(
-        self,
-        dense_query: List[Float32],
-        sparse_query: List[SparseElement],
-        k: Int,
-        fetch_k: Int,
-        rank_constant: Int,
-        metric: Int,
-        expression: FilterExpression,
-    ) raises -> List[SearchResult]:
-        self._validate_hybrid(
-            dense_query, sparse_query, k, fetch_k, rank_constant
-        )
-        expression.validate()
-        var dense = self._search_where(dense_query, fetch_k, metric, expression)
-        var sparse = self._search_sparse_where(
-            sparse_query, fetch_k, expression
-        )
-        return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
-
     def _validate_hybrid(
         self,
         dense_query: List[Float32],
@@ -2111,13 +2032,17 @@ struct PersistentCollection:
         fetch_k: Int,
         rank_constant: Int,
     ) raises:
-        self._ensure_open()
         self._validate_vector(dense_query)
         validate_sparse(sparse_query)
         if k <= 0 or fetch_k < k:
             raise Error("hybrid fetch_k must be at least positive k")
         if rank_constant <= 0:
             raise Error("RRF rank constant must be positive")
+
+    def _validate_query(self, query: List[Float32], k: Int) raises:
+        self._validate_vector(query)
+        if k <= 0:
+            raise Error("k must be positive")
 
     def _validate_vector(self, values: List[Float32]) raises:
         if len(values) != self._config.dimension:
@@ -2306,9 +2231,6 @@ struct PersistentCollection:
 
     def _invalidate_cache_hits(mut self):
         self._read_generations[].invalidate()
-        # Drop only the collection's lease. In-flight queries still own their
-        # immutable snapshot and device buffers until readback completes.
-        self._gpu_read_snapshot[].snapshot = Optional[ArcPointer[ReadSnapshot]]()
         self._hnsw_cache_was_hit = False
         self._metadata_cache_was_hit = False
 

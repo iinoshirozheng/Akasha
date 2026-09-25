@@ -9,6 +9,7 @@ over their own slots; the small frozen head is evaluated directly.
 """
 
 from akasha.common.config import CollectionConfig
+from akasha.compute.gpu.context import GpuSnapshotState
 from akasha.document.record import clone_fields
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
@@ -128,6 +129,9 @@ struct ReadGeneration(Movable):
     var revision: UInt64
     var layers: List[ReadLayer]
     var visible_count: Int
+    # Device table and cache derived from this root; shared by every handle
+    # and operation that owns the root, released with it.
+    var device: ArcPointer[GpuSnapshotState]
     var _pins: ArcPointer[GenerationPinRegistry]
 
     def __init__(
@@ -146,6 +150,7 @@ struct ReadGeneration(Movable):
         self.revision = revision
         self.layers = layers^
         self.visible_count = visible_count
+        self.device = ArcPointer(GpuSnapshotState(generation, sequence))
         self._pins = pins^
         self._pins[].pin(generation)
 

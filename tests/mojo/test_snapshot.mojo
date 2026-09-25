@@ -318,13 +318,13 @@ def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     collection.upsert_sparse(1, [SparseElement(7, 3.0)])
     var first = collection.snapshot()
     var second = collection.snapshot()
-    assert_true(first._root.value() is second._root.value())
-    assert_equal(first._root.value().count(), UInt64(3))
+    assert_true(first._slot[].root.value() is second._slot[].root.value())
+    assert_equal(first._slot[].root.value().count(), UInt64(3))
     assert_equal(collection._read_generations[].revision, UInt64(1))
     assert_equal(collection._pins[].active_count(), 1)
     assert_equal(
-        first._view().run(0).memtable.entry_ref_at(0).dense_address(),
-        second._view().run(0).memtable.entry_ref_at(0).dense_address(),
+        first._slot[].root.value()[].run(0).memtable.entry_ref_at(0).dense_address(),
+        second._slot[].root.value()[].run(0).memtable.entry_ref_at(0).dense_address(),
     )
     var document = first.get(1)
     document.value().vector[0] = 99.0
@@ -333,12 +333,12 @@ def test_same_view_shares_root_and_close_releases_only_its_owner() raises:
     assert_equal(second.get(1).value().fields[0].name, "group")
     first.close()
     first.close()
-    assert_false(Bool(first._root))
-    assert_equal(second._root.value().count(), UInt64(2))
+    assert_false(Bool(first._slot[].root))
+    assert_equal(second._slot[].root.value().count(), UInt64(2))
     with assert_raises():
         _ = first.search_dot_parallel([1.0], 1)
     collection.close()
-    assert_equal(second._root.value().count(), UInt64(1))
+    assert_equal(second._slot[].root.value().count(), UInt64(1))
     assert_equal(second.search_dot([1.0], 1)[0].score, Float32(2.0))
     assert_equal(second.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(3.0))
     assert_equal(collection._pins[].active_count(), 1)
@@ -360,10 +360,10 @@ def test_shared_roots_isolate_replace_sparse_delete_and_reinsert() raises:
     var replaced = collection.snapshot()
     assert_equal(original.generation(), replaced.generation())
     assert_true(original.last_sequence() < replaced.last_sequence())
-    assert_false(original._root.value() is replaced._root.value())
+    assert_false(original._slot[].root.value() is replaced._slot[].root.value())
     collection.upsert_sparse(-1, [SparseElement(7, 8.0)])
     var sparse_updated = collection.snapshot()
-    assert_false(replaced._root.value() is sparse_updated._root.value())
+    assert_false(replaced._slot[].root.value() is sparse_updated._slot[].root.value())
     collection.delete(-1)
     var deleted = collection.snapshot()
     collection.upsert(-1, [4.0])
@@ -400,10 +400,10 @@ def test_layout_publication_changes_root_without_changing_sequence() raises:
     var flushed = collection.snapshot()
     assert_equal(unflushed.last_sequence(), flushed.last_sequence())
     assert_true(unflushed.generation() < flushed.generation())
-    assert_false(unflushed._root.value() is flushed._root.value())
+    assert_false(unflushed._slot[].root.value() is flushed._slot[].root.value())
     collection.flush()
     var unchanged = collection.snapshot()
-    assert_true(flushed._root.value() is unchanged._root.value())
+    assert_true(flushed._slot[].root.value() is unchanged._slot[].root.value())
     collection.upsert(2, [2.0])
     collection.flush()
     var before_compact = collection.snapshot()
@@ -411,7 +411,7 @@ def test_layout_publication_changes_root_without_changing_sequence() raises:
     var after_compact = collection.snapshot()
     assert_equal(before_compact.last_sequence(), after_compact.last_sequence())
     assert_true(before_compact.generation() < after_compact.generation())
-    assert_false(before_compact._root.value() is after_compact._root.value())
+    assert_false(before_compact._slot[].root.value() is after_compact._slot[].root.value())
     assert_equal(len(before_compact.documents()), 2)
     collection.close()
     # Reopening creates an independent publisher even at equal G and S.
@@ -419,13 +419,13 @@ def test_layout_publication_changes_root_without_changing_sequence() raises:
     var reopened_view = reopened.snapshot()
     assert_equal(after_compact.generation(), reopened_view.generation())
     assert_equal(after_compact.last_sequence(), reopened_view.last_sequence())
-    assert_false(after_compact._root.value() is reopened_view._root.value())
+    assert_false(after_compact._slot[].root.value() is reopened_view._slot[].root.value())
     reopened.close()
 
 
 def _raii_sibling(collection: PersistentCollection, expected: ReadSnapshot) raises:
     var transient = collection.snapshot()
-    assert_true(transient._root.value() is expected._root.value())
+    assert_true(transient._slot[].root.value() is expected._slot[].root.value())
     assert_equal(transient.get(1).value().vector[0], Float32(1.0))
 
 
@@ -436,7 +436,7 @@ def test_shared_root_raii_and_failed_capture_do_not_leak_pins() raises:
     collection.upsert(1, [1.0])
     var snapshot = collection.snapshot()
     _raii_sibling(collection, snapshot)
-    assert_equal(snapshot._root.value().count(), UInt64(2))
+    assert_equal(snapshot._slot[].root.value().count(), UInt64(2))
     collection.close()
     snapshot.close()
     assert_equal(collection._pins[].active_count(), 0)

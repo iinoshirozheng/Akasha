@@ -228,13 +228,17 @@ struct GpuSnapshotCache(Movable):
 
 
 struct GpuSnapshotState(Movable):
-    """Snapshot-owned cache and lock; a query holds the lock through readback.
+    """Root-owned device cache and lock; a query holds the lock through readback.
+
+    One state per read root keys the cache by root layout and config, the
+    single dense field and the default device. It lives exactly as long as
+    its root, so any operation owning the root keeps it valid.
     """
 
     var lock: BlockingSpinLock
     var cache: Optional[GpuSnapshotCache]
     # Flat visible-row table whose slots `cache.positions` index. It shares
-    # dense owners with the root and belongs to this handle only.
+    # dense owners with the root and omits payload.
     var table: Optional[ArcPointer[ReadRun]]
     var generation: UInt64
     var sequence: UInt64
@@ -245,11 +249,6 @@ struct GpuSnapshotState(Movable):
         self.table = Optional[ArcPointer[ReadRun]]()
         self.generation = generation
         self.sequence = sequence
-
-    def release(mut self):
-        with BlockingScopedLock(self.lock):
-            self.cache = Optional[GpuSnapshotCache]()
-            self.table = Optional[ArcPointer[ReadRun]]()
 
     def trim_to_budget(mut self, budget: UInt64):
         with BlockingScopedLock(self.lock):
