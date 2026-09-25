@@ -2,8 +2,10 @@ from akasha.document.record import (
     clone_fields,
     DocumentField,
     DocumentRecord,
+    field_content_bytes,
     validate_fields,
 )
+from akasha.index.sparse import SparseElement, validate_sparse
 from std.collections import Dict
 from std.memory import ArcPointer
 
@@ -11,15 +13,18 @@ from std.memory import ArcPointer
 struct MemTableEntry(Movable):
     """The newest known state for one point ID.
 
-    The dense row is an immutable owner shared by every descriptor copy. A new
-    write installs a new owner; published rows are never mutated in place.
+    Dense, payload and sparse fields are independent immutable owners shared
+    by every descriptor copy. A write installs a new owner for each field it
+    changes; published fields are never mutated in place. A tombstone owns no
+    fields, so a reinsert cannot inherit any from before the delete.
     """
 
     var id: Int
     var sequence: UInt64
     var tombstone: Bool
     var _dense: ArcPointer[List[Float32]]
-    var fields: List[DocumentField]
+    var _payload: ArcPointer[List[DocumentField]]
+    var _sparse: Optional[ArcPointer[List[SparseElement]]]
 
     def __init__(
         out self,
@@ -32,7 +37,8 @@ struct MemTableEntry(Movable):
         self.sequence = sequence
         self.tombstone = tombstone
         self._dense = ArcPointer(values^)
-        self.fields = List[DocumentField]()
+        self._payload = ArcPointer(List[DocumentField]())
+        self._sparse = Optional[ArcPointer[List[SparseElement]]]()
 
     @staticmethod
     def with_fields(
@@ -44,29 +50,59 @@ struct MemTableEntry(Movable):
     ) raises -> MemTableEntry:
         validate_fields(fields)
         var entry = MemTableEntry(id, sequence, tombstone, values^)
-        entry.fields = fields^
+        entry._payload = ArcPointer(fields^)
         return entry^
 
     def values(self) -> ref[origin_of(self._dense[], self)] List[Float32]:
         """Borrow the immutable dense row; union with self keeps it readonly."""
         return self._dense[]
 
+    def fields(self) -> ref[origin_of(self._payload[], self)] List[DocumentField]:
+        """Borrow the immutable payload; union with self keeps it readonly."""
+        return self._payload[]
+
+    def has_sparse(self) -> Bool:
+        return Bool(self._sparse)
+
+    def sparse(
+        self,
+    ) raises -> ref[origin_of(self._sparse.value()[], self)] List[SparseElement]:
+        """Borrow the immutable sparse field; raises when the point has none."""
+        if not self._sparse:
+            raise Error("point has no sparse field")
+        return self._sparse.value()[]
+
     def dense_bytes(self) -> Int:
         return len(self._dense[]) * 4
+
+    def payload_bytes(self) -> Int:
+        return field_content_bytes(self._payload[])
+
+    def sparse_bytes(self) -> Int:
+        """Logical I64 term plus F32 weight bytes, as SparseIndex counts them."""
+        return len(self._sparse.value()[]) * 12 if self._sparse else 0
+
+    def payload_address(self) -> Int:
+        """Allocation identity of the payload owner, for copy auditing."""
+        return Int(self._payload.unsafe_ptr())
+
+    def sparse_address(self) -> Int:
+        """Allocation identity of the sparse owner, or 0 without one."""
+        return Int(self._sparse.value().unsafe_ptr()) if self._sparse else 0
 
     def dense_address(self) -> Int:
         """Allocation identity of the dense owner, for copy auditing."""
         return Int(self._dense.unsafe_ptr())
 
-    def clone(self) raises -> MemTableEntry:
-        """Copy the point-state descriptor and payload; share the dense owner.
-        """
+    def clone(self) -> MemTableEntry:
+        """Copy the point-state descriptor; share every field owner."""
         var entry = self.dense_descriptor()
-        entry.fields = clone_fields(self.fields)
+        entry._payload = self._payload.copy()
+        entry._sparse = self._sparse.copy()
         return entry^
 
     def dense_descriptor(self) -> MemTableEntry:
-        """Copy ID/sequence/tombstone and share dense; payload is omitted."""
+        """Copy ID/sequence/tombstone and share dense; other fields omitted."""
         var entry = MemTableEntry(
             self.id, self.sequence, self.tombstone, List[Float32]()
         )
@@ -187,8 +223,9 @@ struct MemTable:
                 self._live_count += 1
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = False
+            # Replacing dense and payload keeps a live point's sparse field.
             self._entries[index]._dense = ArcPointer(values^)
-            self._entries[index].fields = fields^
+            self._entries[index]._payload = ArcPointer(fields^)
             return
 
         self._entries.append(
@@ -212,6 +249,14 @@ struct MemTable:
             self._live_count += -1 if entry.tombstone else 1
         self._entries[index] = entry^
 
+    def set_sparse(mut self, id: Int, var elements: List[SparseElement]) raises:
+        """Install a new sparse owner on a live point; dense/payload stay."""
+        validate_sparse(elements)
+        var index = self.ordinal_for(id)
+        if index < 0 or self._entries[index].tombstone:
+            raise Error("sparse vectors require an existing live point")
+        self._entries[index]._sparse = Optional(ArcPointer(elements^))
+
     def apply_delete(mut self, id: Int, sequence: UInt64) raises:
         if sequence == 0:
             raise Error("memtable sequence must be positive")
@@ -226,7 +271,10 @@ struct MemTable:
             self._entries[index].sequence = sequence
             self._entries[index].tombstone = True
             self._entries[index]._dense = ArcPointer(List[Float32]())
-            self._entries[index].fields = List[DocumentField]()
+            self._entries[index]._payload = ArcPointer(List[DocumentField]())
+            self._entries[index]._sparse = Optional[
+                ArcPointer[List[SparseElement]]
+            ]()
             return
 
         self._entries.append(MemTableEntry(id, sequence, True, List[Float32]()))
@@ -237,7 +285,7 @@ struct MemTable:
         if index < 0 or self._entries[index].tombstone:
             return Optional[DocumentRecord]()
         var vector = self._entries[index].values().copy()
-        var fields = clone_fields(self._entries[index].fields)
+        var fields = clone_fields(self._entries[index].fields())
         var record = DocumentRecord(
             id,
             self._entries[index].sequence,

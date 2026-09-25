@@ -297,7 +297,7 @@ def _validate_entries(
                 raise Error("base segment cannot contain tombstones")
             if (
                 len(entries[index].values()) != 0
-                or len(entries[index].fields) != 0
+                or len(entries[index].fields()) != 0
             ):
                 raise Error("segment tombstone must not contain a value")
         elif len(entries[index].values()) != dimension:
@@ -324,7 +324,7 @@ def _write_prefix(
 def _write_live_body(mut writer: BinaryWriter, entry: MemTableEntry) raises:
     for value in entry.values():
         writer.write_f32(value)
-    var payload = encode_payload(entry.fields)
+    var payload = encode_payload(entry.fields())
     writer.write_u32(UInt32(len(payload)))
     writer.write_bytes(payload)
 

@@ -180,7 +180,7 @@ def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
         writer.write_u16(UInt16(0))
         for value in entry.values():
             writer.write_f32(value)
-        var fields = encode_payload(entry.fields)
+        var fields = encode_payload(entry.fields())
         writer.write_u32(UInt32(len(fields)))
         writer.write_bytes(fields)
     return crc32(writer.take_bytes())

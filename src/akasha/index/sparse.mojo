@@ -43,15 +43,6 @@ struct _PostingList(Movable):
         self.postings = List[_Posting]()
 
 
-struct _SparseScore(TrivialRegisterPassable, Writable):
-    var id: Int
-    var score: Float32
-
-    def __init__(out self, id: Int, score: Float32):
-        self.id = id
-        self.score = score
-
-
 def validate_sparse(elements: List[SparseElement]) raises:
     if len(elements) == 0:
         raise Error("sparse vectors cannot be empty")
@@ -149,15 +140,14 @@ struct SparseIndex:
             result.append(self._records[index].clone())
         return result^
 
-    def search_dot(
-        self, query: List[SparseElement], k: Int
-    ) raises -> List[SearchResult]:
+    def scores(self, query: List[SparseElement]) raises -> List[SearchResult]:
+        """Score every point sharing a term with the query, unordered.
+
+        Each point's Float32 sum accumulates in ascending query-term order,
+        independent of posting or dictionary storage order.
+        """
         validate_sparse(query)
-        if k <= 0:
-            raise Error("k must be positive")
-        var scores = List[_SparseScore]()
-        # Keep first-encounter and Float32 accumulation order independent of
-        # the dictionary's storage/iteration order.
+        var scores = List[SearchResult]()
         var score_slots = Dict[Int, Int]()
         for query_element in query:
             var term_index = self._term_slots.get(query_element.term_id, -1)
@@ -168,15 +158,21 @@ struct SparseIndex:
                 var contribution = query_element.weight * posting.weight
                 if score_index < 0:
                     score_slots[posting.id] = len(scores)
-                    scores.append(_SparseScore(posting.id, contribution))
+                    scores.append(SearchResult(posting.id, contribution))
                 else:
                     scores[score_index].score += contribution
+        return scores^
+
+    def search_dot(
+        self, query: List[SparseElement], k: Int
+    ) raises -> List[SearchResult]:
+        if k <= 0:
+            validate_sparse(query)
+            raise Error("k must be positive")
+        var scores = self.scores(query)
         if len(scores) == 0:
             return List[SearchResult]()
-        var capacity = k
-        if capacity > len(scores):
-            capacity = len(scores)
-        var topk = BoundedTopK(capacity, smaller_is_better=False)
+        var topk = BoundedTopK(min(k, len(scores)), smaller_is_better=False)
         for score in scores:
             topk.offer(score.id, score.score)
         var retained = topk.sorted_entries()

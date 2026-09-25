@@ -465,7 +465,31 @@ struct PersistentCollection:
                             )
         var sparse_pending = List[SparseWalRecord]()
         var sparse_wal = preflight_sparse_wal(path + "/sparse.wal")
-        for index in range(len(sparse_wal.records)):
+        # A dense delete removes the whole point, so replay the dense WAL's
+        # deletes in sequence order with the sparse WAL: a later reinsert must
+        # not inherit an older sparse field.
+        var dense_index = 0
+        for index in range(len(sparse_wal.records) + 1):
+            var bound = UInt64.MAX
+            if index < len(sparse_wal.records):
+                bound = sparse_wal.records[index].sequence
+            while (
+                dense_index < len(dense_wal.records)
+                and dense_wal.records[dense_index].sequence < bound
+            ):
+                ref dense = dense_wal.records[dense_index]
+                dense_index += 1
+                if (
+                    dense.sequence > snapshot_sequence
+                    and dense.is_delete
+                    and sparse.contains(dense.id)
+                ):
+                    sparse.delete(dense.id)
+                    sparse_pending.append(
+                        SparseWalRecord.delete(dense.sequence, dense.id)
+                    )
+            if index == len(sparse_wal.records):
+                break
             if sparse_wal.records[index].sequence <= snapshot_sequence:
                 continue
             if sparse_wal.records[index].is_delete:
@@ -480,8 +504,15 @@ struct PersistentCollection:
                 last_sequence = sparse_wal.records[index].sequence
         var recovered_sparse = sparse.records()
         for index in range(len(recovered_sparse)):
-            if not Bool(memtable.get(recovered_sparse[index].id)):
+            var ordinal = memtable.ordinal_for(recovered_sparse[index].id)
+            if ordinal < 0 or not memtable.is_live_at(ordinal):
                 sparse.delete(recovered_sparse[index].id)
+                continue
+            # The point state owns its sparse field, like dense and payload.
+            memtable.set_sparse(
+                recovered_sparse[index].id,
+                recovered_sparse[index].elements.copy(),
+            )
 
         var source_checksum = authoritative_index_checksum(memtable)
         var hnsw_load = _load_or_rebuild_hnsw(
@@ -719,7 +750,7 @@ struct PersistentCollection:
             generation = load_manifest(self._path, self._config.dimension).generation
         return ReadSnapshot(self._read_generations[].acquire(
             self._config, generation, self._last_sequence,
-            self._memtable, self._sparse, self._pins,
+            self._memtable, self._pins,
         ))
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
@@ -735,7 +766,7 @@ struct PersistentCollection:
         var record = WalRecord.upsert(sequence, id, wal_values^)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
-        self._read_generations[].record(self._memtable, [id])
+        self._read_generations[].record(self._memtable, [id], sequence)
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
@@ -770,7 +801,7 @@ struct PersistentCollection:
         )
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
-        self._read_generations[].record(self._memtable, [id])
+        self._read_generations[].record(self._memtable, [id], sequence)
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._extend_hnsw_id_lookup(metadata_slots)
@@ -855,12 +886,17 @@ struct PersistentCollection:
         var batch_ids = List[Int](capacity=len(mutations))
         for index in range(len(mutations)):
             batch_ids.append(mutations[index].id)
-        self._read_generations[].record(self._memtable, batch_ids)
+        self._read_generations[].record(
+            self._memtable,
+            batch_ids,
+            first_sequence + UInt64(len(mutations) - 1),
+        )
         self._extend_hnsw_id_lookup(metadata_slots)
         for index in range(len(mutations)):
             if mutations[index].is_delete:
-                self._sparse.delete(mutations[index].id)
-                self._read_generations[].record_sparse()
+                self._delete_sparse_field(
+                    mutations[index].id, first_sequence + UInt64(index)
+                )
         var last_sequence = first_sequence + UInt64(len(mutations) - 1)
         self._last_sequence = last_sequence
         var final_mutation_by_id = Dict[Int, Int]()
@@ -912,9 +948,10 @@ struct PersistentCollection:
         var record = SparseWalRecord.upsert(sequence, id, wal_elements^)
         append_sparse_wal(self._sparse_wal_path, record)
         self._sparse.upsert(id, elements)
-        self._read_generations[].record_sparse()
+        self._memtable.set_sparse(id, elements.copy())
         self._sparse_pending.append(record.clone())
         self._last_sequence = sequence
+        self._read_generations[].record(self._memtable, [id], sequence)
         self._invalidate_cache_hits()
 
     def delete(mut self, id: Int) raises:
@@ -933,14 +970,25 @@ struct PersistentCollection:
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_delete(id, sequence)
-        self._read_generations[].record(self._memtable, [id])
+        self._read_generations[].record(self._memtable, [id], sequence)
         self._metadata.delete(id)
-        self._sparse.delete(id)
-        self._read_generations[].record_sparse()
+        self._delete_sparse_field(id, sequence)
         self._last_sequence = sequence
         self._extend_hnsw_id_lookup(metadata_slots)
         self._update_hnsw_after_delete(id, was_live)
         self._invalidate_cache_hits()
+
+    def _delete_sparse_field(mut self, id: Int, sequence: UInt64):
+        """Drop a deleted point's sparse field.
+
+        The dense WAL delete is its durable record; recovery replays it with
+        the sparse WAL. Pending it makes the next sparse delta segment carry
+        the delete, so a later reinsert cannot resurrect the older field.
+        """
+        if not self._sparse.contains(id):
+            return
+        self._sparse.delete(id)
+        self._sparse_pending.append(SparseWalRecord.delete(sequence, id))
 
     def search_dot(
         self, query: List[Float32], k: Int
@@ -2441,7 +2489,7 @@ def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
         if entry.tombstone:
             index.delete(entry.id)
         else:
-            var fields = clone_fields(entry.fields)
+            var fields = clone_fields(entry.fields())
             index.upsert(entry.id, fields^)
     index.finish_bulk()
     if index.slot_count() != memtable.slot_count():

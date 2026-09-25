@@ -11,7 +11,6 @@ from akasha import (
 from akasha.common.config import CollectionConfig
 from akasha.compute.gpu.planner import GpuExecutionOptions
 from akasha.index.flat import SearchResult
-from akasha.index.sparse import SparseIndex
 from akasha.query.control import CancellationToken, QueryControl
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
@@ -91,7 +90,6 @@ def _flat(
             snapshot.generation(),
             snapshot.last_sequence(),
             collection._memtable,
-            collection._sparse,
             collection._pins,
         )
     )
@@ -236,11 +234,10 @@ def test_capture_copies_no_base_dense_bytes() raises:
         var snapshot = collection.snapshot()
         if delta == 0:
             assert_true(snapshot._root.value() is first._root.value())
-        # Capture copies only the head's descriptors and payload.
+        # Capture copies only the head's descriptors; fields stay shared.
         assert_equal(stats.descriptor_copies - copies, head)
         assert_true(head <= delta)
-        if head == 0:
-            assert_equal(stats.payload_bytes, payload)
+        assert_equal(stats.payload_bytes, payload)
         assert_equal(stats.base_builds, 1)
         assert_true(
             snapshot._view().layers[0].run is first._view().layers[0].run
@@ -259,7 +256,6 @@ def test_capture_copies_no_base_dense_bytes() raises:
 
 def test_rollover_oversized_record_and_consolidation() raises:
     var table = MemTable(4)
-    var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
     var config = CollectionConfig.defaults(4)
     var cache = ReadGenerationCache()
@@ -267,12 +263,12 @@ def test_rollover_oversized_record_and_consolidation() raises:
     for id in range(10):
         sequence += 1
         table.apply_upsert(id, sequence, _vector(id, 0))
-    var original = cache.acquire(config, 0, sequence, table, sparse, pins)
+    var original = cache.acquire(config, 0, sequence, table, pins)
     var original_base = original[].layers[0].run.copy()
 
     sequence += 1
     table.apply_upsert(100, sequence, _vector(100, 0))
-    cache.record(table, [100])
+    cache.record(table, [100], sequence)
     var blob = List[DocumentField]()
     blob.append(
         DocumentField(
@@ -281,12 +277,12 @@ def test_rollover_oversized_record_and_consolidation() raises:
     )
     sequence += 1
     table.apply_document_upsert(101, sequence, _vector(101, 0), blob^)
-    cache.record(table, [101])
+    cache.record(table, [101], sequence)
     # The legal oversized record seals the small head first, then itself.
     assert_equal(cache.stats.rollovers, 2)
     assert_equal(cache.sealed_count(), 2)
     assert_equal(cache.head_count(), 0)
-    var sealed = cache.acquire(config, 0, sequence, table, sparse, pins)
+    var sealed = cache.acquire(config, 0, sequence, table, pins)
     assert_equal(sealed[].layer_count(), 3)
     assert_equal(sealed[].run(1).memtable.slot_count(), 1)
     assert_equal(sealed[].run(1).memtable.id_at(0), 100)
@@ -298,13 +294,13 @@ def test_rollover_oversized_record_and_consolidation() raises:
     while cache.stats.consolidations == 0:
         sequence += 1
         table.apply_upsert(id % 3000, sequence, _vector(id, 1))
-        cache.record(table, [id % 3000])
+        cache.record(table, [id % 3000], sequence)
         assert_true(cache.sealed_count() < MAX_SEALED_RUNS)
         assert_true(cache.head_count() < HEAD_MAX_POINTS)
         id += 1
     assert_equal(cache.sealed_count(), 0)
     assert_equal(cache.stats.base_builds, 2)
-    var merged = cache.acquire(config, 0, sequence, table, sparse, pins)
+    var merged = cache.acquire(config, 0, sequence, table, pins)
     assert_false(merged[].layers[0].run is original_base)
     assert_equal(merged[].visible_count, table.live_count())
     # Consolidation shares dense owners with the writer table.
@@ -319,7 +315,7 @@ def test_rollover_oversized_record_and_consolidation() raises:
     assert_equal(original[].find(100)[0], -1)
     assert_equal(sealed[].visible_count, 12)
     assert_equal(
-        sealed[].run(2).memtable.entry_ref_at(0).fields[0].value.as_string().byte_length(),
+        sealed[].run(2).memtable.entry_ref_at(0).fields()[0].value.as_string().byte_length(),
         HEAD_MAX_BYTES + 1024,
     )
     _ = original^
@@ -390,12 +386,22 @@ def test_sparse_only_update_shares_dense_and_owned_get_is_independent() raises:
     collection.upsert_sparse(3, [SparseElement(7, 2.0)])
     var sparse = collection.snapshot()
     assert_false(dense._root.value() is sparse._root.value())
-    assert_false(dense._view().sparse is sparse._view().sparse)
-    assert_equal(dense._view().layer_count(), sparse._view().layer_count())
-    for layer in range(dense._view().layer_count()):
+    # A sparse-only update refreezes only the head; older runs are shared.
+    var layers = dense._view().layer_count()
+    assert_equal(layers, sparse._view().layer_count())
+    for layer in range(layers - 1):
         assert_true(dense._view().layers[layer].run is sparse._view().layers[layer].run)
-    assert_equal(stats.descriptor_copies, copies)
-    assert_equal(stats.head_freezes, freezes)
+    # One descriptor recorded into the head, then the head's copy at freeze.
+    var head = collection._read_generations[].head_count()
+    assert_equal(stats.descriptor_copies - copies, 1 + head)
+    assert_equal(stats.head_freezes, freezes + 1)
+    ref before = dense._view().run(layers - 1).memtable
+    ref after = sparse._view().run(layers - 1).memtable
+    ref old_entry = before.entry_ref_at(before.ordinal_for(3))
+    ref new_entry = after.entry_ref_at(after.ordinal_for(3))
+    assert_equal(old_entry.dense_address(), new_entry.dense_address())
+    assert_equal(old_entry.payload_address(), new_entry.payload_address())
+    assert_true(old_entry.sparse_address() != new_entry.sparse_address())
     assert_equal(_copied_dense_bytes(sparse, collection), 0)
     assert_equal(dense.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(1.0))
     assert_equal(sparse.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score, Float32(2.0))
@@ -466,24 +472,23 @@ def test_failure_before_publication_keeps_old_root() raises:
     # A post-commit publisher fault cannot reject the write; it drops derived
     # state and the next capture rebuilds from the writer table.
     var table = MemTable(4)
-    var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
     var config = CollectionConfig.defaults(4)
     var cache = ReadGenerationCache()
     table.apply_upsert(1, 1, _vector(1, 0))
-    var old = cache.acquire(config, 0, 1, table, sparse, pins)
+    var old = cache.acquire(config, 0, 1, table, pins)
     table.apply_upsert(2, 2, _vector(2, 0))
-    cache.record(table, [999])
+    cache.record(table, [999], 2)
     assert_false(Bool(cache.root))
     assert_equal(cache.sealed_count(), 0)
-    var rebuilt = cache.acquire(config, 0, 2, table, sparse, pins)
+    var rebuilt = cache.acquire(config, 0, 2, table, pins)
     assert_equal(cache.stats.base_builds, 2)
     assert_equal(rebuilt[].visible_count, 2)
     assert_equal(old[].visible_count, 1)
     # A publisher that silently missed a write refuses to publish stale data.
     table.apply_upsert(3, 3, _vector(3, 0))
     with assert_raises():
-        _ = cache.acquire(config, 0, 3, table, sparse, pins)
+        _ = cache.acquire(config, 0, 3, table, pins)
 
 
 def _scoped_capture(mut collection: PersistentCollection) raises:

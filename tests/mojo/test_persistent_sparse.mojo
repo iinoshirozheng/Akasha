@@ -166,5 +166,34 @@ def test_full_compaction_rewrites_sparse_state_and_reclaims_inputs() raises:
     assert_equal(results[0].id, 1)
 
 
+def test_reinsert_does_not_inherit_sparse_after_reopen() raises:
+    # A delete removes the whole point; a later reinsert starts without the
+    # old sparse field, both from the WAL tail and across a checkpoint.
+    for checkpoint in range(2):
+        var path = String("/tmp/akasha-phase7-sparse-reinsert-") + String(
+            checkpoint
+        )
+        _reset(path)
+        var collection = PersistentCollection.open(path, 1)
+        collection.upsert(1, [1.0])
+        collection.upsert_sparse(1, [SparseElement(1, 1.0)])
+        if checkpoint == 1:
+            collection.flush()
+        collection.delete(1)
+        collection.upsert(1, [2.0])
+        assert_equal(
+            len(collection.search_sparse_dot([SparseElement(1, 1.0)], 1)), 0
+        )
+        collection.close()
+        var reopened = PersistentCollection.open(path, 1)
+        assert_equal(
+            len(reopened.search_sparse_dot([SparseElement(1, 1.0)], 1)), 0
+        )
+        reopened.flush()
+        reopened.close()
+        var again = PersistentCollection.open(path, 1)
+        assert_equal(len(again.search_sparse_dot([SparseElement(1, 1.0)], 1)), 0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -17,7 +17,6 @@ from akasha.storage.filesystem import (
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable
 from akasha.storage.read_generation import ReadGenerationCache
-from akasha.index.sparse import SparseIndex
 from std.memory import ArcPointer
 from std.testing import (
     assert_almost_equal,
@@ -446,22 +445,23 @@ def test_shared_root_raii_and_failed_capture_do_not_leak_pins() raises:
     var pins = ArcPointer(GenerationPinRegistry())
     var table = MemTable(1)
     table.apply_upsert(1, 1, [1.0])
-    var sparse = SparseIndex()
     var config = CollectionConfig.defaults(1)
-    var root = cache.acquire(config, 0, 1, table, sparse, pins)
+    var root = cache.acquire(config, 0, 1, table, pins)
     with assert_raises():
-        _ = cache.acquire(CollectionConfig.defaults(2), 0, 2, table, sparse, pins)
+        _ = cache.acquire(CollectionConfig.defaults(2), 0, 2, table, pins)
     with assert_raises():
-        _ = cache.acquire(config, 0, 0, table, sparse, pins)
+        _ = cache.acquire(config, 0, 0, table, pins)
     assert_true(cache.root.value() is root)
     assert_equal(cache.revision, UInt64(1))
     # Inject a malformed internal row to exercise failure during base copying,
     # after the identity checks, without a runtime fault-injection interface.
-    table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(1)))
-    table._entries[0].fields.append(DocumentField("x", PayloadValue.integer(2)))
+    var malformed = List[DocumentField]()
+    malformed.append(DocumentField("x", PayloadValue.integer(1)))
+    malformed.append(DocumentField("x", PayloadValue.integer(2)))
+    table._entries[0]._payload = ArcPointer(malformed^)
     var failing = ReadGenerationCache()
     with assert_raises():
-        _ = failing.acquire(config, 0, 2, table, sparse, pins)
+        _ = failing.acquire(config, 0, 2, table, pins)
     assert_false(Bool(failing.root))
     assert_equal(failing.revision, UInt64(0))
     assert_equal(pins[].active_count(), 1)

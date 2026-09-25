@@ -17,19 +17,12 @@ from akasha.document.record import (
     FieldProjection,
     project_document,
 )
-from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.quantization import PqIndex, Sq8Index
-from akasha.index.sparse import (
-    SparseElement,
-    SparseIndex,
-    SparseRecord,
-    validate_sparse,
-)
+from akasha.index.sparse import SparseElement, SparseRecord, validate_sparse
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
-from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.parallel_scan import execute_parallel_scan
 from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
@@ -38,7 +31,11 @@ from akasha.query.batch_executor import (
     execute_exact_candidate_batch,
     execute_exact_ordinal_batch,
 )
-from akasha.storage.read_generation import ReadGeneration, ReadRun
+from akasha.storage.read_generation import (
+    contains_sorted,
+    ReadGeneration,
+    ReadRun,
+)
 from std.math import isfinite
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock
@@ -120,10 +117,12 @@ struct ReadSnapshot(Movable):
 
     def sparse_records(self) raises -> List[SparseRecord]:
         """Return an owned sparse snapshot for logical export."""
-        var source = self._view().sparse[].records()
-        var records = List[SparseRecord](capacity=len(source))
-        for index in range(len(source)):
-            records.append(source[index].clone())
+        ref view = self._view()
+        var records = List[SparseRecord]()
+        for location in view.id_ordered_locations():
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+            if entry.has_sparse():
+                records.append(SparseRecord(entry.id, entry.sparse().copy()))
         return records^
 
     def _record_at(self, location: Tuple[Int, Int]) raises -> DocumentRecord:
@@ -135,7 +134,7 @@ struct ReadSnapshot(Movable):
             entry.id,
             entry.sequence,
             entry.values().copy(),
-            clone_fields(entry.fields),
+            clone_fields(entry.fields()),
         )
 
     def search_dot(
@@ -485,7 +484,7 @@ struct ReadSnapshot(Movable):
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
     ) raises -> List[SearchResult]:
-        return self._view().sparse[].search_dot(query, k)
+        return self._search_sparse(query, k, Optional[List[List[Int]]]())
 
     def search_sparse_dot_where(
         self,
@@ -495,28 +494,42 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._ensure_open()
         validate_sparse(query)
+        expression.validate()
+        return self._search_sparse(
+            query, k, Optional(self._where_layers(expression))
+        )
+
+    def _search_sparse(
+        self,
+        query: List[SparseElement],
+        k: Int,
+        matched: Optional[List[List[Int]]],
+    ) raises -> List[SearchResult]:
+        """Score each run's visible rows, then merge into one Top-K.
+
+        `matched` holds each run's ascending filter matches, when filtered.
+        """
+        self._ensure_open()
+        validate_sparse(query)
         if k <= 0:
             raise Error("k must be positive")
-        expression.validate()
         ref view = self._view()
-        var matched = List[Bitmap](capacity=view.layer_count())
+        var hits = List[SearchResult]()
         for layer in range(view.layer_count()):
-            matched.append(
-                evaluate_expression(view.run(layer).metadata, expression)
-            )
-        var count = view.sparse[].point_count()
-        if count == 0:
-            return List[SearchResult]()
-        var candidates = view.sparse[].search_dot(query, count)
-        var result = List[SearchResult]()
-        for candidate in candidates:
-            # The newest point state decides the filter, in its own run.
-            var location = view.find(candidate.id)
-            if location[0] >= 0 and matched[location[0]].contains(location[1]):
-                result.append(candidate)
-                if len(result) == k:
-                    break
-        return result^
+            for hit in view.sparse_hits(layer, query):
+                if not matched or contains_sorted(
+                    matched.value()[layer], hit.ordinal
+                ):
+                    hits.append(SearchResult(hit.id, hit.score))
+        if len(hits) == 0:
+            return hits^
+        var topk = BoundedTopK(min(k, len(hits)), smaller_is_better=False)
+        for hit in hits:
+            topk.offer(hit.id, hit.score)
+        var results = List[SearchResult]()
+        for entry in topk.sorted_entries():
+            results.append(SearchResult(entry.id, entry.score))
+        return results^
 
     def search_hybrid_dot(
         self,
@@ -639,8 +652,7 @@ struct ReadSnapshot(Movable):
         ref view = self._view()
         var layers = List[List[Int]](capacity=view.layer_count())
         for layer in range(view.layer_count()):
-            var bitmap = evaluate_all(view.run(layer).metadata, conditions)
-            layers.append(view.candidate_ordinals(layer, bitmap))
+            layers.append(view.conditioned_ordinals(layer, conditions))
         return self._scan(query, k, metric, layers)
 
     def _search_sq8(
@@ -855,10 +867,9 @@ struct ReadSnapshot(Movable):
         for layer in range(view.layer_count()):
             var candidates = List[List[Int]](capacity=len(queries))
             for index in range(len(expressions)):
-                var bitmap = evaluate_expression(
-                    view.run(layer).metadata, expressions[index]
+                candidates.append(
+                    view.filtered_ordinals(layer, expressions[index])
                 )
-                candidates.append(view.candidate_ordinals(layer, bitmap))
             parts.append(
                 execute_exact_candidate_batch(
                     view.run(layer).memtable,
@@ -917,11 +928,10 @@ struct ReadSnapshot(Movable):
             var selected = List[Int]()
             for layer in range(view.layer_count()):
                 ref source = view.run(layer).memtable
-                var bitmap = evaluate_expression(
-                    view.run(layer).metadata, expressions[index]
-                )
                 # Visible rows map by public ID into the flat table's slots.
-                for ordinal in view.candidate_ordinals(layer, bitmap):
+                for ordinal in view.filtered_ordinals(
+                    layer, expressions[index]
+                ):
                     selected.append(
                         table[].memtable.ordinal_for(source.id_at(ordinal))
                     )
@@ -952,8 +962,7 @@ struct ReadSnapshot(Movable):
         ref view = self._view()
         var layers = List[List[Int]](capacity=view.layer_count())
         for layer in range(view.layer_count()):
-            var bitmap = evaluate_expression(view.run(layer).metadata, expression)
-            layers.append(view.candidate_ordinals(layer, bitmap))
+            layers.append(view.filtered_ordinals(layer, expression))
         return layers^
 
     def _gather(
@@ -1034,7 +1043,7 @@ struct ReadSnapshot(Movable):
         var dense = self._search_filtered(
             dense_query, fetch_k, metric, conditions
         )
-        var sparse = self._view().sparse[].search_dot(sparse_query, fetch_k)
+        var sparse = self.search_sparse_dot(sparse_query, fetch_k)
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _search_hybrid_where(

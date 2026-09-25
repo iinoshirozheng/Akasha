@@ -90,7 +90,7 @@ def test_empty_vector_clones_preserve_identity_and_ownership() raises:
     assert_equal(copied.sequence, UInt64(11))
     assert_true(copied.tombstone)
     assert_equal(len(copied.values()), 0)
-    assert_equal(len(copied.fields), 0)
+    assert_equal(len(copied.fields()), 0)
     # Accepted dense owners are immutable and shared by clones.
     assert_equal(copied.dense_address(), tombstone.dense_address())
     assert_equal(

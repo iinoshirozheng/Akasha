@@ -1,18 +1,23 @@
 """Immutable read owners, separate from mutable collection and snapshot handles.
 
 A published root is a chain of immutable runs, oldest first: one base, up to
-eight sealed deltas and at most one frozen head copy. Runs share dense owners
-with the collection's MemTable. A row is visible only when it is live in its
-run and no newer run holds any state (including a tombstone) for its ID.
+eight sealed deltas and at most one frozen head copy. Runs share dense, payload
+and sparse field owners with the collection's MemTable. A row is visible only
+when it is live in its run and no newer run holds any state (including a
+tombstone) for its ID. Base and sealed runs carry metadata and sparse indexes
+over their own slots; the small frozen head is evaluated directly.
 """
 
 from akasha.common.config import CollectionConfig
-from akasha.document.record import clone_fields, field_content_bytes
+from akasha.document.record import clone_fields
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
-from akasha.index.sparse import SparseIndex
+from akasha.index.sparse import SparseElement, SparseIndex
+from akasha.query.evaluator import matches_all, matches_expression
+from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.storage.generation_pins import GenerationPinRegistry
-from akasha.storage.memtable import MemTable
+from akasha.storage.memtable import MemTable, MemTableEntry
 from std.memory import ArcPointer
 
 
@@ -21,19 +26,43 @@ comptime HEAD_MAX_BYTES = 4 * 1024 * 1024
 comptime MAX_SEALED_RUNS = 8
 
 
-struct ReadRun(Movable):
-    """One immutable run with a slot-aligned metadata index.
+struct RunIndex(Movable):
+    """Derived indexes of one run: metadata by slot, sparse by live ID."""
 
-    Only construction mutates a run. Its dense rows are shared owners; its
-    descriptors and payloads belong to this run alone.
+    var metadata: MetadataIndex
+    var sparse: SparseIndex
+
+    def __init__(out self, var metadata: MetadataIndex, var sparse: SparseIndex):
+        self.metadata = metadata^
+        self.sparse = sparse^
+
+
+struct SparseHit(TrivialRegisterPassable):
+    """A visible row's sparse dot product, located in its run."""
+
+    var ordinal: Int
+    var id: Int
+    var score: Float32
+
+    def __init__(out self, ordinal: Int, id: Int, score: Float32):
+        self.ordinal = ordinal
+        self.id = id
+        self.score = score
+
+
+struct ReadRun(Movable):
+    """One immutable run; only construction mutates it.
+
+    Field owners are shared; its descriptors belong to this run alone. A run
+    without an index (the frozen head) is evaluated field by field.
     """
 
     var memtable: MemTable
-    var metadata: MetadataIndex
+    var index: Optional[RunIndex]
 
-    def __init__(out self, var memtable: MemTable, var metadata: MetadataIndex):
+    def __init__(out self, var memtable: MemTable, var index: Optional[RunIndex]):
         self.memtable = memtable^
-        self.metadata = metadata^
+        self.index = index^
 
 
 struct ReadLayer(Copyable, Movable):
@@ -57,6 +86,14 @@ struct ReadLayer(Copyable, Movable):
 
     def is_shadowed(self) -> Bool:
         return len(self.sealed_hidden[]) > 0 or len(self.head_hidden) > 0
+
+    def is_visible(self, ordinal: Int) raises -> Bool:
+        """Check one slot: live in its run and not shadowed by a newer run."""
+        return (
+            self.run[].memtable.is_live_at(ordinal)
+            and not contains_sorted(self.sealed_hidden[], ordinal)
+            and not contains_sorted(self.head_hidden, ordinal)
+        )
 
     def visible(self, ordinals: List[Int]) raises -> List[Int]:
         """Drop tombstones and shadowed slots from ascending run slots."""
@@ -90,7 +127,6 @@ struct ReadGeneration(Movable):
     var sequence: UInt64
     var revision: UInt64
     var layers: List[ReadLayer]
-    var sparse: ArcPointer[SparseIndex]
     var visible_count: Int
     var _pins: ArcPointer[GenerationPinRegistry]
 
@@ -101,7 +137,6 @@ struct ReadGeneration(Movable):
         sequence: UInt64,
         revision: UInt64,
         var layers: List[ReadLayer],
-        var sparse: ArcPointer[SparseIndex],
         visible_count: Int,
         var pins: ArcPointer[GenerationPinRegistry],
     ):
@@ -110,7 +145,6 @@ struct ReadGeneration(Movable):
         self.sequence = sequence
         self.revision = revision
         self.layers = layers^
-        self.sparse = sparse^
         self.visible_count = visible_count
         self._pins = pins^
         self._pins[].pin(generation)
@@ -155,6 +189,67 @@ struct ReadGeneration(Movable):
             selected.append(ordinal)
         return item.visible(selected)
 
+    def filtered_ordinals(
+        self, layer: Int, expression: FilterExpression
+    ) raises -> List[Int]:
+        """Return ascending visible slots of one run matching a filter."""
+        ref run = self.layers[layer].run[]
+        if run.index:
+            return self.candidate_ordinals(
+                layer, evaluate_expression(run.index.value().metadata, expression)
+            )
+        var result = List[Int]()
+        for ordinal in self.visible_ordinals(layer):
+            if matches_expression(
+                run.memtable.entry_ref_at(ordinal).fields(), expression
+            ):
+                result.append(ordinal)
+        return result^
+
+    def conditioned_ordinals(
+        self, layer: Int, conditions: List[FilterCondition]
+    ) raises -> List[Int]:
+        """Return ascending visible slots of one run matching every condition.
+        """
+        ref run = self.layers[layer].run[]
+        if run.index:
+            return self.candidate_ordinals(
+                layer, evaluate_all(run.index.value().metadata, conditions)
+            )
+        var result = List[Int]()
+        for ordinal in self.visible_ordinals(layer):
+            if matches_all(
+                run.memtable.entry_ref_at(ordinal).fields(), conditions
+            ):
+                result.append(ordinal)
+        return result^
+
+    def sparse_hits(
+        self, layer: Int, query: List[SparseElement]
+    ) raises -> List[SparseHit]:
+        """Score visible rows of one run sharing a term with a valid query.
+
+        Indexed and direct scoring both sum in ascending query-term order, so
+        a row scores bit-identically in any run.
+        """
+        ref item = self.layers[layer]
+        ref table = item.run[].memtable
+        var hits = List[SparseHit]()
+        if item.run[].index:
+            for scored in item.run[].index.value().sparse.scores(query):
+                var ordinal = table.ordinal_for(scored.id)
+                if ordinal >= 0 and item.is_visible(ordinal):
+                    hits.append(SparseHit(ordinal, scored.id, scored.score))
+            return hits^
+        for ordinal in self.visible_ordinals(layer):
+            ref entry = table.entry_ref_at(ordinal)
+            if not entry.has_sparse():
+                continue
+            var score = _sparse_dot(query, entry.sparse())
+            if score:
+                hits.append(SparseHit(ordinal, entry.id, score.value()))
+        return hits^
+
     def id_ordered_locations(self) raises -> List[Tuple[Int, Int]]:
         """Return (layer, slot) of every visible row in ascending ID order."""
         var ids = List[Int](capacity=self.visible_count)
@@ -181,11 +276,14 @@ struct ReadGeneration(Movable):
             for ordinal in self.visible_ordinals(layer):
                 table.put(source.entry_ref_at(ordinal).dense_descriptor())
         table.last_sequence = self.sequence
-        return ArcPointer(ReadRun(table^, MetadataIndex()))
+        return ArcPointer(ReadRun(table^, Optional[RunIndex]()))
 
 
 struct ReadPublisherStats(Copyable, Movable):
-    """Cumulative publisher work; dense bytes are audited by owner identity."""
+    """Cumulative publisher work; field owners are audited by identity.
+
+    Payload and sparse bytes count only copies into derived run indexes.
+    """
 
     var base_builds: Int
     var rollovers: Int
@@ -209,8 +307,9 @@ struct ReadGenerationCache(Movable):
     """Collection-local publisher, accessed only under the collection writer lock.
 
     It owns the base and sealed runs, the bounded mutable head and the cached
-    root. Each committed dense write is recorded into the head; capture freezes
-    a copy of only the head. Existing read handles keep old roots alive.
+    root. Each committed write is recorded into the head as a point state;
+    capture freezes a copy of only the head's descriptors. Existing read
+    handles keep old roots alive.
     """
 
     var root: Optional[ArcPointer[ReadGeneration]]
@@ -220,8 +319,7 @@ struct ReadGenerationCache(Movable):
     var _head: Optional[MemTable]
     var _head_bytes: Int
     var _frozen_head: Optional[ArcPointer[ReadRun]]
-    var _sparse: Optional[ArcPointer[SparseIndex]]
-    var _dense_sequence: UInt64
+    var _sequence: UInt64
 
     def __init__(out self):
         self.root = Optional[ArcPointer[ReadGeneration]]()
@@ -231,8 +329,7 @@ struct ReadGenerationCache(Movable):
         self._head = Optional[MemTable]()
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        self._sparse = Optional[ArcPointer[SparseIndex]]()
-        self._dense_sequence = 0
+        self._sequence = 0
 
     def invalidate(mut self):
         """Drop the cached root after a publication; runs stay valid."""
@@ -245,7 +342,6 @@ struct ReadGenerationCache(Movable):
         self._head = Optional[MemTable]()
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        self._sparse = Optional[ArcPointer[SparseIndex]]()
 
     def sealed_count(self) -> Int:
         return max(0, len(self._layers) - 1)
@@ -253,13 +349,10 @@ struct ReadGenerationCache(Movable):
     def head_count(self) -> Int:
         return self._head.value().slot_count() if self._head else 0
 
-    def record_sparse(mut self):
-        """A sparse write replaces only the sparse owner at the next capture."""
-        self.invalidate()
-        self._sparse = Optional[ArcPointer[SparseIndex]]()
+    def record(mut self, memtable: MemTable, ids: List[Int], sequence: UInt64):
+        """Record committed point states for IDs, after WAL and MemTable apply.
 
-    def record(mut self, memtable: MemTable, ids: List[Int]):
-        """Record committed latest states for IDs, after WAL and MemTable apply.
+        `sequence` is the collection's accepted sequence after this write.
 
         Rollover and foreground consolidation happen here. A failure after the
         commit cannot reject the write, so it drops derived state instead.
@@ -270,7 +363,7 @@ struct ReadGenerationCache(Movable):
         try:
             for id in ids:
                 self._record_one(memtable, id)
-            self._dense_sequence = memtable.last_sequence
+            self._sequence = sequence
         except:
             self.reset()
 
@@ -278,7 +371,7 @@ struct ReadGenerationCache(Movable):
         """Merge the chain into a new base from the writer's latest state.
 
         Foreground in #48: the caller holds the writer lock for its duration.
-        Dense owners are shared; descriptors, payload and metadata are rebuilt.
+        Field owners are shared; descriptors and run indexes are rebuilt.
         """
         if len(self._layers) == 0:
             return
@@ -287,7 +380,7 @@ struct ReadGenerationCache(Movable):
         self._head = Optional[MemTable]()
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        self._build_base(memtable)
+        self._build_base(memtable, self._sequence)
         self.stats.consolidations += 1
 
     def acquire(
@@ -296,7 +389,6 @@ struct ReadGenerationCache(Movable):
         generation: UInt64,
         sequence: UInt64,
         memtable: MemTable,
-        sparse: SparseIndex,
         pins: ArcPointer[GenerationPinRegistry],
     ) raises -> ArcPointer[ReadGeneration]:
         if self.root:
@@ -315,19 +407,19 @@ struct ReadGenerationCache(Movable):
         if memtable.last_sequence > sequence:
             raise Error("snapshot sequence precedes memtable")
         if len(self._layers) == 0:
-            self._build_base(memtable)
-        elif self._dense_sequence != memtable.last_sequence:
-            raise Error("read publisher missed a committed dense write")
-        if not self._sparse:
-            self._sparse = Optional(ArcPointer(sparse.clone()))
-            self.stats.sparse_bytes += sparse.content_bytes()
+            self._build_base(memtable, sequence)
+        elif self._sequence != sequence:
+            raise Error("read publisher missed a committed write")
         var layers = List[ReadLayer](capacity=len(self._layers) + 1)
         for layer in self._layers:
             layers.append(layer.copy())
         if self.head_count() > 0:
             if not self._frozen_head:
+                # Descriptors only; the head is evaluated without indexes.
+                var table = self._head.value().clone()
+                self.stats.descriptor_copies += table.slot_count()
                 self._frozen_head = Optional(
-                    ArcPointer(_frozen_run(self._head.value(), self.stats))
+                    ArcPointer(ReadRun(table^, Optional[RunIndex]()))
                 )
                 self.stats.head_freezes += 1
             var frozen = self._frozen_head.value()
@@ -351,7 +443,6 @@ struct ReadGenerationCache(Movable):
                 sequence,
                 self.revision + 1,
                 layers^,
-                self._sparse.value(),
                 visible,
                 pins,
             )
@@ -360,8 +451,10 @@ struct ReadGenerationCache(Movable):
         self.revision += 1
         return root^
 
-    def _build_base(mut self, memtable: MemTable) raises:
-        var run = _frozen_run(memtable, self.stats)
+    def _build_base(mut self, memtable: MemTable, sequence: UInt64) raises:
+        var table = memtable.clone()
+        self.stats.descriptor_copies += table.slot_count()
+        var run = _indexed_run(table^, self.stats)
         self._layers = List[ReadLayer]()
         self._layers.append(
             ReadLayer(ArcPointer(run^), ArcPointer(List[Int]()), List[Int]())
@@ -369,7 +462,7 @@ struct ReadGenerationCache(Movable):
         self._head = Optional(MemTable(memtable.dimension))
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        self._dense_sequence = memtable.last_sequence
+        self._sequence = sequence
         self.stats.base_builds += 1
 
     def _record_one(mut self, memtable: MemTable, id: Int) raises:
@@ -377,14 +470,11 @@ struct ReadGenerationCache(Movable):
         if ordinal < 0:
             raise Error("recorded ID is absent from the writer table")
         ref entry = memtable.entry_ref_at(ordinal)
-        var incoming = entry.dense_bytes() + field_content_bytes(entry.fields)
+        var incoming = _field_bytes(entry)
         var replaced = 0
         var existing = self._head.value().ordinal_for(id)
         if existing >= 0:
-            ref previous = self._head.value().entry_ref_at(existing)
-            replaced = previous.dense_bytes() + field_content_bytes(
-                previous.fields
-            )
+            replaced = _field_bytes(self._head.value().entry_ref_at(existing))
         var others = self.head_count() - (1 if existing >= 0 else 0)
         # A record that would overflow a non-empty head starts a new one, so a
         # legal oversized record gets its own run instead of a rejection.
@@ -397,7 +487,6 @@ struct ReadGenerationCache(Movable):
         self._head.value().put(entry.clone())
         self._head_bytes += incoming - replaced
         self.stats.descriptor_copies += 1
-        self.stats.payload_bytes += field_content_bytes(entry.fields)
         if (
             self.head_count() >= HEAD_MAX_POINTS
             or self._head_bytes >= HEAD_MAX_BYTES
@@ -409,13 +498,12 @@ struct ReadGenerationCache(Movable):
             self.consolidate(memtable)
 
     def _seal(mut self) raises:
-        """Move the head into a sealed run; only its metadata is built."""
+        """Move the head into a sealed run; only its indexes are built."""
         var table = self._head.take()
         self._head = Optional(MemTable(table.dimension))
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        var metadata = _build_metadata(table, self.stats)
-        var run = ArcPointer(ReadRun(table^, metadata^))
+        var run = ArcPointer(_indexed_run(table^, self.stats))
         ref sealed = run[].memtable
         for layer in range(len(self._layers)):
             ref older = self._layers[layer].run[].memtable
@@ -439,32 +527,63 @@ struct ReadGenerationCache(Movable):
         self.stats.rollovers += 1
 
 
-def _frozen_run(source: MemTable, mut stats: ReadPublisherStats) raises -> ReadRun:
-    """Copy descriptors and payload, share dense owners, index metadata."""
-    var table = source.clone()
-    stats.descriptor_copies += table.slot_count()
-    for slot in range(table.slot_count()):
-        stats.payload_bytes += field_content_bytes(
-            table.entry_ref_at(slot).fields
-        )
-    var metadata = _build_metadata(table, stats)
-    return ReadRun(table^, metadata^)
-
-
-def _build_metadata(
-    table: MemTable, mut stats: ReadPublisherStats
-) raises -> MetadataIndex:
-    var index = MetadataIndex()
-    index.begin_bulk()
+def _indexed_run(var table: MemTable, mut stats: ReadPublisherStats) raises -> ReadRun:
+    """Index one run's slots; field owners stay shared, not copied."""
+    var metadata = MetadataIndex()
+    var sparse = SparseIndex()
+    metadata.begin_bulk()
     for ordinal in range(table.slot_count()):
         ref entry = table.entry_ref_at(ordinal)
         if entry.tombstone:
-            index.delete(entry.id)
-        else:
-            stats.payload_bytes += field_content_bytes(entry.fields)
-            var fields = clone_fields(entry.fields)
-            index.upsert(entry.id, fields^)
-    index.finish_bulk()
-    if index.slot_count() != table.slot_count():
+            metadata.delete(entry.id)
+            continue
+        stats.payload_bytes += entry.payload_bytes()
+        var fields = clone_fields(entry.fields())
+        metadata.upsert(entry.id, fields^)
+        if entry.has_sparse():
+            stats.sparse_bytes += entry.sparse_bytes()
+            sparse.upsert(entry.id, entry.sparse())
+    metadata.finish_bulk()
+    if metadata.slot_count() != table.slot_count():
         raise Error("snapshot metadata slot alignment failed")
-    return index^
+    return ReadRun(table^, Optional(RunIndex(metadata^, sparse^)))
+
+
+def _field_bytes(entry: MemTableEntry) -> Int:
+    return entry.dense_bytes() + entry.payload_bytes() + entry.sparse_bytes()
+
+
+def _sparse_dot(
+    query: List[SparseElement], elements: List[SparseElement]
+) -> Optional[Float32]:
+    """Merge two ascending term lists; None when no term is shared."""
+    var score = Optional[Float32]()
+    var position = 0
+    for query_element in query:
+        while (
+            position < len(elements)
+            and elements[position].term_id < query_element.term_id
+        ):
+            position += 1
+        if position == len(elements):
+            break
+        if elements[position].term_id != query_element.term_id:
+            continue
+        var contribution = query_element.weight * elements[position].weight
+        if score:
+            score = Optional(score.value() + contribution)
+        else:
+            score = Optional(contribution)
+    return score
+
+
+def contains_sorted(values: List[Int], value: Int) -> Bool:
+    var low = 0
+    var high = len(values)
+    while low < high:
+        var middle = (low + high) // 2
+        if values[middle] < value:
+            low = middle + 1
+        else:
+            high = middle
+    return low < len(values) and values[low] == value
