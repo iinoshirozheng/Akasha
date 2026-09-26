@@ -9,10 +9,12 @@ from akasha.storage.manifest import (
     load_manifest,
     Manifest,
     publish_manifest,
-    read_manifest_bytes,
     SegmentDescriptor,
 )
+from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable
+from akasha.storage.read_generation import ReadGenerationCache
+from akasha.storage.retired_files import RetiredFileQueue
 from akasha.storage.segment import (
     read_segment,
     SEGMENT_KIND_BASE,
@@ -27,6 +29,7 @@ from akasha.storage.sparse_store import (
     SparseWalRecord,
     write_sparse_segment,
 )
+from std.memory import ArcPointer
 from std.os import listdir, remove
 
 # Job outputs are named <prefix><target generation>-<claim>.bin. The target
@@ -37,18 +40,17 @@ comptime _OUTPUT_SUFFIX = ".bin"
 comptime _MAX_OUTPUT_CLAIMS = 1024
 
 
+comptime COMPACTION_ATTEMPTS = 4
+"""Captures one foreground or background compaction job may lose in a row."""
+
+
 struct CompactionInputs(Movable):
     """The committed state one compaction job captured under the writer lock."""
 
     var manifest: Manifest
-    var manifest_bytes: List[UInt8]
-    """Exact published bytes; publish requires them to be unchanged."""
 
-    def __init__(
-        out self, var manifest: Manifest, var manifest_bytes: List[UInt8]
-    ):
+    def __init__(out self, var manifest: Manifest):
         self.manifest = manifest^
-        self.manifest_bytes = manifest_bytes^
 
 
 struct CompactionOutput(Movable):
@@ -72,50 +74,71 @@ struct CompactionOutput(Movable):
         self.sparse_checksum = sparse_checksum
 
 
-struct CommittedCompactionResult(Movable):
-    var compacted: Bool
-    var previous_generation: UInt64
-    var generation: UInt64
-    """Generation of the published manifest when `compacted`."""
-    var removed_files: List[String]
+def begin_compaction(
+    directory: String,
+    dimension: Int,
+    pins: ArcPointer[GenerationPinRegistry],
+) raises -> Optional[CompactionInputs]:
+    """Capture the committed inputs and pin them; None when nothing to merge.
 
-    def __init__(
-        out self,
-        compacted: Bool,
-        previous_generation: UInt64,
-        generation: UInt64,
-        var removed_files: List[String],
-    ):
-        self.compacted = compacted
-        self.previous_generation = previous_generation
-        self.generation = generation
-        self.removed_files = removed_files^
-
-    @staticmethod
-    def no_change() -> CommittedCompactionResult:
-        return CommittedCompactionResult(False, 0, 0, List[String]())
-
-
-def compact_committed_segments(
-    directory: String, dimension: Int
-) raises -> CommittedCompactionResult:
-    """Capture, build and publish in one step under the caller's writer lock."""
+    The caller holds the writer lock. The pin keeps the inputs readable until
+    `finish_compaction` or a failed `build_compaction` releases it.
+    """
     var inputs = capture_compaction_inputs(directory, dimension)
-    if not inputs:
-        return CommittedCompactionResult.no_change()
-    var output = build_compaction_output(directory, dimension, inputs.value())
-    if not publish_compaction_output(
-        directory, dimension, inputs.value(), output
-    ):
+    if inputs:
+        pins[].pin(inputs.value().manifest.generation)
+    return inputs^
+
+
+def build_compaction(
+    directory: String,
+    dimension: Int,
+    inputs: CompactionInputs,
+    pins: ArcPointer[GenerationPinRegistry],
+) raises -> CompactionOutput:
+    """Merge the pinned inputs without the writer lock; unpin on failure."""
+    try:
+        return build_compaction_output(directory, dimension, inputs)
+    except error:
+        pins[].unpin(inputs.manifest.generation)
+        raise error^
+
+
+def finish_compaction(
+    directory: String,
+    dimension: Int,
+    inputs: CompactionInputs,
+    output: CompactionOutput,
+    cancelled: Bool,
+    pins: ArcPointer[GenerationPinRegistry],
+    retired: ArcPointer[RetiredFileQueue],
+    read_generations: ArcPointer[ReadGenerationCache],
+) raises -> Bool:
+    """Publish a built job and retire its inputs; False when discarded.
+
+    The caller holds the writer lock. A cancelled job or replaced inputs
+    discard the output. A publish error keeps the files: the manifest rename
+    may already be durable, and open() removes an unpublished output.
+    """
+    # Release the job's lease first so retirement sees reader pins only.
+    pins[].unpin(inputs.manifest.generation)
+    if cancelled:
         discard_compaction_output(directory, output)
-        raise Error("manifest changed under the writer lock")
-    var previous = inputs.value().manifest.generation
-    return CommittedCompactionResult(
-        True,
-        previous,
-        previous + 1,
-        compaction_input_paths(directory, inputs.value().manifest),
+        return False
+    var replaced = publish_compaction_output(
+        directory, dimension, inputs, output
     )
+    if not replaced:
+        discard_compaction_output(directory, output)
+        return False
+    read_generations[].publish(replaced.value() + 1)
+    retired[].retire_or_reclaim(
+        directory,
+        replaced.value(),
+        compaction_input_paths(directory, inputs.manifest),
+        pins,
+    )
+    return True
 
 
 def capture_compaction_inputs(
@@ -129,7 +152,7 @@ def capture_compaction_inputs(
         return None
     if manifest.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
-    return CompactionInputs(manifest^, read_manifest_bytes(directory))
+    return CompactionInputs(manifest^)
 
 
 def build_compaction_output(
@@ -202,48 +225,62 @@ def publish_compaction_output(
     dimension: Int,
     inputs: CompactionInputs,
     output: CompactionOutput,
-) raises -> Bool:
-    """Publish generation G + 1 only if the manifest is still the captured one.
+) raises -> Optional[UInt64]:
+    """Rebase the output onto the current manifest and publish it.
 
-    The caller holds the writer lock. False means another publish won; the
-    newer manifest is left untouched.
+    The caller holds the writer lock. Like RocksDB's version edit, the output
+    replaces its inputs in the current manifest: segments committed after the
+    capture are kept behind it, and the current last sequence and HNSW
+    reference carry over because the live set is unchanged. Returns the
+    replaced generation, or None when the inputs are no longer the leading
+    run of the current manifest; that manifest is left untouched.
     """
-    if read_manifest_bytes(directory) != inputs.manifest_bytes:
-        return False
-    ref previous = inputs.manifest
+    ref captured = inputs.manifest
+    var current = load_manifest(directory, dimension)
+    if len(current.segments) < len(captured.segments):
+        return None
+    for index in range(len(captured.segments)):
+        if not _same_segment(captured.segments[index], current.segments[index]):
+            return None
+    if current.generation == UInt64.MAX:
+        raise Error("manifest generation exhausted")
     var descriptors = List[SegmentDescriptor]()
     descriptors.append(
         SegmentDescriptor.with_sparse(
             1,
             0,
-            previous.last_sequence,
+            captured.last_sequence,
             output.checksum,
             output.segment_name,
             output.sparse_checksum,
             output.sparse_name,
         )
     )
+    for index in range(len(captured.segments), len(current.segments)):
+        if current.segments[index].min_sequence <= captured.last_sequence:
+            raise Error("appended segment overlaps the compaction output")
+        descriptors.append(current.segments[index].clone())
     var compacted: Manifest
-    if Bool(previous.hnsw_name):
+    if Bool(current.hnsw_name):
         compacted = Manifest.with_hnsw(
             dimension,
-            previous.generation + 1,
-            previous.last_sequence,
+            current.generation + 1,
+            current.last_sequence,
             descriptors^,
-            previous.hnsw_name.value(),
-            previous.hnsw_checksum.value(),
-            previous.hnsw_config_fingerprint.value(),
-            previous.hnsw_point_count.value(),
+            current.hnsw_name.value(),
+            current.hnsw_checksum.value(),
+            current.hnsw_config_fingerprint.value(),
+            current.hnsw_point_count.value(),
         )
     else:
         compacted = Manifest.with_segments(
             dimension,
-            previous.generation + 1,
-            previous.last_sequence,
+            current.generation + 1,
+            current.last_sequence,
             descriptors^,
         )
     publish_manifest(directory, compacted)
-    return True
+    return current.generation
 
 
 def compaction_input_paths(
@@ -274,6 +311,20 @@ def remove_unpublished_compaction_outputs(
             removed = True
     if removed:
         sync_directory(directory)
+
+
+def _same_segment(
+    captured: SegmentDescriptor, current: SegmentDescriptor
+) -> Bool:
+    return (
+        captured.level == current.level
+        and captured.min_sequence == current.min_sequence
+        and captured.max_sequence == current.max_sequence
+        and captured.checksum == current.checksum
+        and captured.name == current.name
+        and captured.sparse_checksum == current.sparse_checksum
+        and captured.sparse_name == current.sparse_name
+    )
 
 
 def _claim_output(

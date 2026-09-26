@@ -305,15 +305,19 @@ def test_rollover_oversized_record_and_consolidation() raises:
     assert_true(sealed[].layers[0].run is original_base)
 
     var id = 1000
-    while cache.stats.consolidations == 0:
+    while not cache.merge_due():
         sequence += 1
         table.apply_upsert(id % 3000, sequence, _vector(id, 1))
         cache.record(table, [id % 3000], sequence)
-        assert_true(cache.sealed_count() < MAX_SEALED_RUNS)
         assert_true(cache.head_count() < HEAD_MAX_POINTS)
         id += 1
+    # Recording only rolls over; merging is the caller's step.
+    assert_equal(cache.sealed_count(), MAX_SEALED_RUNS)
+    assert_equal(cache.stats.consolidations, 0)
+    cache.merge_sealed_runs()
     assert_equal(cache.sealed_count(), 0)
-    assert_equal(cache.stats.base_builds, 2)
+    assert_equal(cache.stats.consolidations, 1)
+    assert_equal(cache.stats.base_builds, 1)
     var merged = cache.acquire(config, 0, sequence, table, pins)
     assert_false(merged[].layers[0].run is original_base)
     assert_equal(merged[].visible_count, table.live_count())
@@ -366,6 +370,7 @@ def test_old_snapshot_survives_mutation_rollover_consolidation_and_close() raise
     collection.upsert(2, _vector(2, 7))
     for chunk in range(MAX_SEALED_RUNS + 1):
         _write(collection, 1000 + chunk * 1024, 1024, chunk)
+    assert_true(collection.wait_for_maintenance())
     ref stats = collection._read_generations[].stats
     assert_true(stats.rollovers >= MAX_SEALED_RUNS)
     assert_equal(stats.consolidations, 1)

@@ -1,7 +1,8 @@
 """Immutable read owners, separate from mutable collection and snapshot handles.
 
-A published root is a chain of immutable runs, oldest first: one base, up to
-eight sealed deltas and at most one frozen head copy. Runs share dense, payload
+A published root is a chain of immutable runs, oldest first: one base, sealed
+deltas and at most one frozen head copy. From the eighth sealed run a merge of
+the run prefix into a new base is due; writers wait at sixteen. Runs share dense, payload
 and sparse field owners with the collection's MemTable. A row is visible only
 when it is live in its run and no newer run holds any state (including a
 tombstone) for its ID. Base and sealed runs carry metadata and sparse indexes
@@ -20,11 +21,15 @@ from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
 from std.memory import ArcPointer
+from std.time import sleep
 
 
 comptime HEAD_MAX_POINTS = 1024
 comptime HEAD_MAX_BYTES = 4 * 1024 * 1024
 comptime MAX_SEALED_RUNS = 8
+"""Sealed runs at which a merge of the run prefix is due."""
+comptime SEALED_RUN_LIMIT = 2 * MAX_SEALED_RUNS
+"""Sealed runs at which writers wait for the merge before the next write."""
 
 
 struct RunIndex(Movable):
@@ -324,6 +329,48 @@ struct ReadPublisherStats(Copyable, Movable):
         self.sparse_bytes = 0
 
 
+struct SealedMerge(Movable):
+    """A captured run prefix and the base merged from it.
+
+    Capture and publish run under the writer lock; `build` does not. Runs are
+    immutable once sealed, so the build reads them while writers continue.
+    """
+
+    var runs: List[ArcPointer[ReadRun]]
+    """The base and sealed runs at capture, oldest first."""
+    var base: Optional[ArcPointer[ReadRun]]
+    var stats: ReadPublisherStats
+    var delay_for_test: Float64
+    var fail_for_test: Bool
+
+    def __init__(
+        out self,
+        var runs: List[ArcPointer[ReadRun]],
+        delay_for_test: Float64,
+        fail_for_test: Bool,
+    ):
+        self.runs = runs^
+        self.base = Optional[ArcPointer[ReadRun]]()
+        self.stats = ReadPublisherStats()
+        self.delay_for_test = delay_for_test
+        self.fail_for_test = fail_for_test
+
+    def build(mut self) raises:
+        """Fold the runs, newest state winning, into one indexed base."""
+        if self.delay_for_test > 0:
+            sleep(self.delay_for_test)
+        if self.fail_for_test:
+            raise Error("sealed run merge failed for test")
+        var table = self.runs[0][].memtable.clone()
+        self.stats.descriptor_copies += table.slot_count()
+        for index in range(1, len(self.runs)):
+            ref source = self.runs[index][].memtable
+            for slot in range(source.slot_count()):
+                table.put(source.entry_ref_at(slot).clone())
+            self.stats.descriptor_copies += source.slot_count()
+        self.base = Optional(ArcPointer(_indexed_run(table^, self.stats)))
+
+
 struct ReadGenerationCache(Movable):
     """Collection-local publisher, accessed only under the collection writer lock.
 
@@ -343,6 +390,8 @@ struct ReadGenerationCache(Movable):
     var _head_bytes: Int
     var _frozen_head: Optional[ArcPointer[ReadRun]]
     var _sequence: UInt64
+    var merge_delay_for_test: Float64
+    var merge_failure_for_test: Bool
 
     def __init__(out self):
         self.root = Optional[ArcPointer[ReadGeneration]]()
@@ -354,6 +403,8 @@ struct ReadGenerationCache(Movable):
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
         self._sequence = 0
+        self.merge_delay_for_test = 0
+        self.merge_failure_for_test = False
 
     def invalidate(mut self):
         """Drop the cached root after a publication; runs stay valid."""
@@ -383,8 +434,9 @@ struct ReadGenerationCache(Movable):
 
         `sequence` is the collection's accepted sequence after this write.
 
-        Rollover and foreground consolidation happen here. A failure after the
-        commit cannot reject the write, so it drops derived state instead.
+        Rollover happens here; merging the runs is the caller's job once
+        `merge_due`. A failure after the commit cannot reject the write, so it
+        drops derived state instead.
         """
         self.invalidate()
         if len(self._layers) == 0:
@@ -396,21 +448,57 @@ struct ReadGenerationCache(Movable):
         except:
             self.reset()
 
-    def consolidate(mut self, memtable: MemTable) raises:
-        """Merge the chain into a new base from the writer's latest state.
+    def merge_due(self) -> Bool:
+        return self.sealed_count() >= MAX_SEALED_RUNS
 
-        Foreground in #48: the caller holds the writer lock for its duration.
-        Field owners are shared; descriptors and run indexes are rebuilt.
+    def capture_merge(self) -> SealedMerge:
+        """Capture the base and every sealed run; the head stays mutable."""
+        var runs = List[ArcPointer[ReadRun]](capacity=len(self._layers))
+        for layer in self._layers:
+            runs.append(layer.run)
+        return SealedMerge(
+            runs^, self.merge_delay_for_test, self.merge_failure_for_test
+        )
+
+    def publish_merge(mut self, var merge: SealedMerge) raises -> Bool:
+        """Replace the merged prefix; later runs and the head are kept.
+
+        False when the capture is stale: the publisher reset or rebuilt its
+        base after the capture. Roots already published keep their chains.
         """
-        if len(self._layers) == 0:
-            return
+        var merged = len(merge.runs)
+        if merged > len(self._layers) or not merge.base:
+            return False
+        for index in range(merged):
+            if not (self._layers[index].run is merge.runs[index]):
+                return False
+        var base = merge.base.take()
+        var hidden = List[Int]()
+        for layer in range(merged, len(self._layers)):
+            hidden.extend(
+                _hidden_ordinals(base[].memtable, self._layers[layer].run[])
+            )
+        var layers = List[ReadLayer](capacity=len(self._layers) - merged + 1)
+        layers.append(
+            ReadLayer(
+                base^, ArcPointer(_union(List[Int](), hidden^)), List[Int]()
+            )
+        )
+        for layer in range(merged, len(self._layers)):
+            layers.append(self._layers[layer].copy())
         self.invalidate()
-        self._layers = List[ReadLayer]()
-        self._head = Optional[MemTable]()
-        self._head_bytes = 0
-        self._frozen_head = Optional[ArcPointer[ReadRun]]()
-        self._build_base(memtable, self._sequence)
+        self._layers = layers^
+        self.stats.descriptor_copies += merge.stats.descriptor_copies
+        self.stats.payload_bytes += merge.stats.payload_bytes
+        self.stats.sparse_bytes += merge.stats.sparse_bytes
         self.stats.consolidations += 1
+        return True
+
+    def merge_sealed_runs(mut self) raises:
+        """Capture, build and publish in one step under the caller's lock."""
+        var merge = self.capture_merge()
+        merge.build()
+        _ = self.publish_merge(merge^)
 
     def acquire(
         mut self,
@@ -524,10 +612,6 @@ struct ReadGenerationCache(Movable):
             or self._head_bytes >= HEAD_MAX_BYTES
         ):
             self._seal()
-        if self.sealed_count() >= MAX_SEALED_RUNS:
-            # The writer table already holds the whole accepted envelope, so
-            # later IDs of the same batch only re-record identical states.
-            self.consolidate(memtable)
 
     def _seal(mut self) raises:
         """Move the head into a sealed run; only its indexes are built."""
@@ -536,25 +620,16 @@ struct ReadGenerationCache(Movable):
         self._head_bytes = 0
         self._frozen_head = Optional[ArcPointer[ReadRun]]()
         var run = ArcPointer(_indexed_run(table^, self.stats))
-        ref sealed = run[].memtable
         for layer in range(len(self._layers)):
-            ref older = self._layers[layer].run[].memtable
-            var added = List[Int]()
-            for slot in range(sealed.slot_count()):
-                var ordinal = older.ordinal_for(sealed.id_at(slot))
-                if ordinal >= 0:
-                    added.append(ordinal)
+            var added = _hidden_ordinals(
+                self._layers[layer].run[].memtable, run[]
+            )
             if len(added) == 0:
                 continue
-            var merged = self._layers[layer].sealed_hidden[].copy()
-            merged.extend(added^)
-            sort(Span(merged))
-            var unique = List[Int](capacity=len(merged))
-            for ordinal in merged:
-                if len(unique) == 0 or unique[len(unique) - 1] != ordinal:
-                    unique.append(ordinal)
             # Replace the shared list; roots already published keep the old one.
-            self._layers[layer].sealed_hidden = ArcPointer(unique^)
+            self._layers[layer].sealed_hidden = ArcPointer(
+                _union(self._layers[layer].sealed_hidden[], added^)
+            )
         self._layers.append(
             ReadLayer(run^, ArcPointer(List[Int]()), List[Int]())
         )
@@ -583,6 +658,28 @@ def _indexed_run(
     if metadata.slot_count() != table.slot_count():
         raise Error("snapshot metadata slot alignment failed")
     return ReadRun(table^, Optional(RunIndex(metadata^, sparse^)))
+
+
+def _hidden_ordinals(older: MemTable, newer: ReadRun) raises -> List[Int]:
+    """Ordinals of `older` whose IDs have a state in the newer run."""
+    ref table = newer.memtable
+    var hidden = List[Int]()
+    for slot in range(table.slot_count()):
+        var ordinal = older.ordinal_for(table.id_at(slot))
+        if ordinal >= 0:
+            hidden.append(ordinal)
+    return hidden^
+
+
+def _union(existing: List[Int], var added: List[Int]) -> List[Int]:
+    """Sorted, duplicate-free union of two ordinal lists."""
+    added.extend(existing.copy())
+    sort(Span(added))
+    var unique = List[Int](capacity=len(added))
+    for ordinal in added:
+        if len(unique) == 0 or unique[len(unique) - 1] != ordinal:
+            unique.append(ordinal)
+    return unique^
 
 
 def _field_bytes(entry: MemTableEntry) -> Int:

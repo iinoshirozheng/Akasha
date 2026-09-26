@@ -154,10 +154,13 @@ def _snapshot_cost_benchmark(
                 var record_duration = Int(perf_counter_ns() - record_start)
                 record_ns += record_duration
                 max_record_ns = max(max_record_ns, record_duration)
-                if cache.stats.consolidations != before.consolidations:
-                    consolidation_ns += record_duration
-                elif cache.stats.rollovers != before.rollovers:
+                if cache.stats.rollovers != before.rollovers:
                     rollover_ns += record_duration
+                if cache.merge_due():
+                    # The collection's worker merges off the writer path.
+                    var merge_start = perf_counter_ns()
+                    cache.merge_sealed_runs()
+                    consolidation_ns += Int(perf_counter_ns() - merge_start)
         print(
             "publisher_write delta="
             + String(delta)
@@ -400,5 +403,5 @@ def main() raises:
         for delta in [0, 16, 1024]:
             for leases in [1, 8]:
                 _snapshot_cost_benchmark(delta, leases, write_sparse)
-        # Nine 1,024-point captures reach MAX_SEALED_RUNS and consolidate.
+        # Nine 1,024-point captures reach MAX_SEALED_RUNS and merge.
         _snapshot_cost_benchmark(1024, 10, write_sparse)

@@ -102,9 +102,10 @@ append only the latest changed states as paired L0 deltas. Recovery validates
 and applies descriptors in manifest order, then ignores WAL sequence numbers
 already covered by the committed generation. Four L0 generations trigger a
 bounded engine-owned maintenance request. A small portable pthread shim invokes
-a Mojo callback; the callback acquires the same writer lock, reconstructs only
-manifest-committed dense and sparse state, and atomically publishes one L1
-base. It never modifies or rotates a newer WAL. At most one callback waits
+a Mojo callback; the callback pins the committed manifest under the same writer
+lock, merges its dense and sparse segments without the lock, and atomically
+publishes one L1 base under a short lock, keeping segments flushed during the
+merge after it. It never modifies or rotates a newer WAL. At most one callback waits
 behind the active callback. Failure is stored and surfaced by the next public
 data operation, explicit wait, later scheduling, or close. If the shared
 library cannot load, flush uses the same synchronous compaction path.

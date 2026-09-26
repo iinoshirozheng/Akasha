@@ -1,4 +1,5 @@
 from akasha import PersistentCollection, SparseElement
+from akasha.common.config import CollectionConfig
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -45,10 +46,12 @@ def _set_mode(path: String, mode: Int) raises:
         raise Error("chmod failed")
 
 
-def _two_segment_collection(path: String) raises -> PersistentCollection:
+def _two_segment_collection(
+    path: String, config: CollectionConfig = CollectionConfig.defaults(1)
+) raises -> PersistentCollection:
     """Commit a base and a delta; id 1 is deleted by the delta."""
     _reset(path)
-    var collection = PersistentCollection.open(path, 1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 21):
         collection.upsert(id, [Float32(id)])
         collection.upsert_sparse(id, [SparseElement(id, Float32(id))])
@@ -180,39 +183,55 @@ def test_writers_proceed_while_compactions_build() raises:
     reopened.close()
 
 
-def test_concurrent_flush_conflict_keeps_newer_manifest() raises:
-    var path = String("/tmp/akasha-51-compaction-conflict")
-    var collection = _two_segment_collection(path)
+def test_flush_during_build_rebases_onto_newer_manifest() raises:
+    var path = String("/tmp/akasha-52-compaction-rebase")
+    # Every flush rebuilds the graph and commits an eligible sidecar.
+    var config = CollectionConfig.defaults(1)
+    config.m0 = config.m
+    config.delta_max_points = 1
+    var collection = _two_segment_collection(path, config)
     var captured = load_manifest(path, 1)
     var inputs = collection._begin_compaction()
     var output = collection._build_compaction(inputs.value())
-    assert_true(path_exists(path + "/" + output.segment_name))
-    assert_true(path_exists(path + "/" + output.sparse_name))
 
+    # A checkpoint appends a segment above the captured prefix.
     collection.upsert(41, [41.0])
     collection.flush()
-    var newer = read_file_bytes(path + "/manifest.bin")
+    var newer = load_manifest(path, 1)
+    assert_equal(len(newer.segments), 3)
+    assert_true(newer.hnsw_name.value() != captured.hnsw_name.value())
 
-    assert_false(collection._finish_compaction(inputs.value(), output))
-    assert_true(read_file_bytes(path + "/manifest.bin") == newer)
-    assert_false(path_exists(path + "/" + output.segment_name))
-    assert_false(path_exists(path + "/" + output.sparse_name))
+    assert_true(collection._finish_compaction(inputs.value(), output))
+    var rebased = load_manifest(path, 1)
+    assert_equal(rebased.generation, newer.generation + 1)
+    assert_equal(rebased.last_sequence, newer.last_sequence)
+    assert_equal(len(rebased.segments), 2)
+    assert_equal(rebased.segments[0].name, output.segment_name)
+    assert_equal(rebased.segments[0].max_sequence, captured.last_sequence)
+    assert_equal(rebased.segments[1].name, newer.segments[2].name)
+    # The current graph covers the appended segment; the captured one does not.
+    assert_equal(rebased.hnsw_name.value(), newer.hnsw_name.value())
+    assert_equal(rebased.hnsw_checksum.value(), newer.hnsw_checksum.value())
     for index in range(len(captured.segments)):
-        assert_true(path_exists(path + "/" + captured.segments[index].name))
-    assert_equal(collection.compaction_conflicts(), 1)
+        assert_false(path_exists(path + "/" + captured.segments[index].name))
+    assert_equal(collection.compaction_attempts(), 1)
+    assert_equal(collection.compaction_conflicts(), 0)
     _assert_disk_generation(collection, path)
-
-    # A fresh attempt captures the newer manifest and publishes.
-    collection.compact()
-    assert_equal(len(load_manifest(path, 1).segments), 1)
-    assert_equal(collection.compaction_attempts(), 2)
-    assert_equal(collection.compaction_conflicts(), 1)
-    _assert_disk_generation(collection, path)
+    _assert_committed_records(collection)
     assert_equal(collection.get(41).value().vector[0], 41.0)
     collection.close()
 
+    var reopened = PersistentCollection.open_with_config(path, config.copy())
+    assert_equal(reopened.last_sequence(), newer.last_sequence)
+    assert_true(reopened.hnsw_available())
+    assert_equal(reopened.hnsw_build_distance_evaluations(), 0)
+    _assert_committed_records(reopened)
+    assert_equal(reopened.get(41).value().vector[0], 41.0)
+    assert_equal(reopened.search_l2_approx([41.0], 1, 40)[0].id, 41)
+    reopened.close()
 
-def test_retries_stay_bounded_while_flushes_race() raises:
+
+def test_racing_flushes_rebase_without_conflicts() raises:
     var path = String("/tmp/akasha-51-compaction-flush-race")
     var collection = _two_segment_collection(path)
     var failures = Atomic[DType.int64](0)
@@ -242,11 +261,10 @@ def test_retries_stay_bounded_while_flushes_race() raises:
     parallelize(flush_or_compact, 2, 2)
 
     assert_equal(failures.load(), 0)
-    var attempts = collection.compaction_attempts()
-    var conflicts = collection.compaction_conflicts()
-    assert_true(attempts <= 8 * 4)
-    assert_true(conflicts >= Int(exhausted.load()) * 4)
-    assert_true(attempts - conflicts <= 8 - Int(exhausted.load()))
+    # Appended checkpoints never replace the inputs, so nothing retries.
+    assert_equal(exhausted.load(), 0)
+    assert_equal(collection.compaction_conflicts(), 0)
+    assert_true(collection.compaction_attempts() <= 8)
     _assert_disk_generation(collection, path)
     var expected = collection.last_sequence()
     collection.close()

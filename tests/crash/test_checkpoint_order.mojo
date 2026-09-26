@@ -1,4 +1,5 @@
 from akasha import PersistentCollection, SparseElement
+from akasha.common.config import CollectionConfig
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -83,12 +84,28 @@ struct _CompactionFixture(Movable):
                 write_file_sync(cache, self.old_caches[index])
 
 
-def _prepare_compaction(path: String) raises -> _CompactionFixture:
-    """Run one compaction whose build overlaps WAL-only writes 81..83."""
+def _sidecar_config() -> CollectionConfig:
+    """Every flush rebuilds the graph and commits an eligible sidecar."""
+    var config = CollectionConfig.defaults(1)
+    config.m0 = config.m
+    config.delta_max_points = 1
+    return config^
+
+
+def _prepare_compaction(
+    path: String,
+    config: CollectionConfig = CollectionConfig.defaults(1),
+    flush_during_build: Bool = False,
+) raises -> _CompactionFixture:
+    """Run one compaction whose build overlaps writes 81..83.
+
+    With `flush_during_build`, 81..82 are checkpointed into a segment above
+    the captured prefix, so the publish rebases; 83 stays WAL-only.
+    """
     ensure_directory(path)
     for name in listdir(path):
         remove_file_if_exists(path + "/" + name)
-    var collection = PersistentCollection.open(path, 1)
+    var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 21):
         collection.upsert(id, [Float32(id)])
         collection.upsert_sparse(id, [SparseElement(id, Float32(id))])
@@ -107,18 +124,21 @@ def _prepare_compaction(path: String) raises -> _CompactionFixture:
         input_names.append(committed.segments[index].sparse_name.copy())
     for name in input_names:
         inputs.append(read_file_bytes(path + "/" + name))
+
+    var job = collection._begin_compaction()
+    collection.upsert(41, [41.0])
+    collection.upsert_sparse(41, [SparseElement(41, 41.0)])
+    if flush_during_build:
+        collection.flush()
+    var output = collection._build_compaction(job.value())
+    collection.delete(1)
+    # Caches as the crash would find them: the last checkpoint's.
     var old_caches = List[List[UInt8]]()
     for name in _cache_names():
         if path_exists(path + "/" + name):
             old_caches.append(read_file_bytes(path + "/" + name))
         else:
             old_caches.append(List[UInt8]())
-
-    var job = collection._begin_compaction()
-    collection.upsert(41, [41.0])
-    collection.upsert_sparse(41, [SparseElement(41, 41.0)])
-    var output = collection._build_compaction(job.value())
-    collection.delete(1)
     assert_true(collection._finish_compaction(job.value(), output))
     var new_manifest = read_file_bytes(path + "/manifest.bin")
     collection.close()
@@ -134,9 +154,17 @@ def _prepare_compaction(path: String) raises -> _CompactionFixture:
     )
 
 
-def _assert_compaction_recovered(path: String, generation: UInt64) raises:
-    var recovered = PersistentCollection.open(path, 1)
+def _assert_compaction_recovered(
+    path: String,
+    generation: UInt64,
+    config: CollectionConfig = CollectionConfig.defaults(1),
+    mapped_graph: Bool = False,
+) raises:
+    var recovered = PersistentCollection.open_with_config(path, config.copy())
     assert_equal(recovered.last_sequence(), UInt64(83))
+    if mapped_graph:
+        assert_true(recovered.hnsw_available())
+        assert_equal(recovered.hnsw_build_distance_evaluations(), 0)
     assert_equal(load_manifest(path, 1).generation, generation)
     var snapshot = recovered.snapshot()
     assert_equal(snapshot.generation(), generation)
@@ -201,6 +229,30 @@ def test_compaction_cleanup_boundary_recovers_new_generation() raises:
     # Retirement unlinked only part of the replaced input set.
     fixture.restore_inputs(path, 1)
     _assert_compaction_recovered(path, fixture.old_generation + 1)
+
+
+def test_compaction_rebase_publish_boundary_recovers_new_generation() raises:
+    var path = String("/tmp/akasha-52-crash-rebase-publish")
+    var config = _sidecar_config()
+    var fixture = _prepare_compaction(path, config, flush_during_build=True)
+    # Durable rebased manifest before the root swap and cache publication.
+    fixture.restore_inputs(path, len(fixture.input_names))
+    fixture.restore_old_caches(path)
+    var rebased = load_manifest(path, 1)
+    # The checkpoint during the build took old + 1; the rebase took old + 2.
+    assert_equal(rebased.generation, fixture.old_generation + 2)
+    assert_equal(rebased.last_sequence, UInt64(82))
+    assert_equal(len(rebased.segments), 2)
+    assert_equal(rebased.segments[0].name, fixture.output_names[0])
+    assert_equal(rebased.segments[0].max_sequence, UInt64(80))
+    assert_equal(rebased.segments[1].min_sequence, UInt64(81))
+    assert_equal(rebased.hnsw_name.value(), "hnsw-82.bin")
+    assert_true(path_exists(path + "/" + rebased.hnsw_name.value()))
+    _assert_compaction_recovered(
+        path, fixture.old_generation + 2, config, mapped_graph=True
+    )
+    for name in fixture.output_names:
+        assert_true(path_exists(path + "/" + name))
 
 
 def main() raises:

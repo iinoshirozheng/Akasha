@@ -25,20 +25,24 @@ from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
-from akasha.storage.read_generation import ReadGeneration, ReadGenerationCache
+from akasha.storage.read_generation import (
+    ReadGeneration,
+    ReadGenerationCache,
+    SEALED_RUN_LIMIT,
+)
 from akasha.storage.committed_compaction import (
-    build_compaction_output,
-    capture_compaction_inputs,
-    compaction_input_paths,
+    begin_compaction,
+    build_compaction,
+    COMPACTION_ATTEMPTS,
     CompactionInputs,
     CompactionOutput,
-    discard_compaction_output,
-    publish_compaction_output,
+    finish_compaction,
     remove_unpublished_compaction_outputs,
 )
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.maintenance import (
+    CompactionCounts,
     DEFAULT_MAINTENANCE_LIBRARY,
     MaintenanceController,
 )
@@ -110,13 +114,15 @@ from akasha.storage.wal import (
 from std.math import isfinite
 from std.collections import Dict
 from std.memory import ArcPointer
+from std.time import sleep
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
+comptime _BACKPRESSURE_SLEEP_SECONDS = 0.001
+"""Poll period of a write waiting for a sealed-run merge."""
 comptime _DOT_METRIC = 0
 comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
-comptime _COMPACTION_ATTEMPTS = 4
 
 
 struct _ResolvedCollectionConfig(Movable):
@@ -193,6 +199,8 @@ struct PersistentCollection:
     var _metadata_cache_was_hit: Bool
     var _compaction_attempts: Int
     var _compaction_conflicts: Int
+    var _backpressure_waits: Int
+    """Writes that waited for a sealed-run merge before admission."""
 
     def __init__(
         out self,
@@ -267,6 +275,7 @@ struct PersistentCollection:
         self._metadata_cache_was_hit = metadata_cache_hit
         self._compaction_attempts = 0
         self._compaction_conflicts = 0
+        self._backpressure_waits = 0
 
     @staticmethod
     def open(
@@ -599,6 +608,7 @@ struct PersistentCollection:
                 released = Optional(self._read_generations[].root.take())
             self._read_generations[].reset()
             self._hnsw.close()
+            self._maintenance.cancel()
             self._closed = True
         _ = released^
         var maintenance_error = String()
@@ -617,7 +627,7 @@ struct PersistentCollection:
     def schedule_maintenance(mut self) raises -> Bool:
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
-            return self._maintenance.request()
+            return self._maintenance.request_compaction()
 
     def wait_for_maintenance(mut self) raises -> Bool:
         with BlockingScopedLock(self._writer_lock[]):
@@ -751,8 +761,14 @@ struct PersistentCollection:
         )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
-        with BlockingScopedLock(self._writer_lock[]):
-            self._upsert_unlocked(id, values^)
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    self._upsert_unlocked(id, values^)
+                    return
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
 
     def _upsert_unlocked(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()
@@ -763,7 +779,7 @@ struct PersistentCollection:
         var record = WalRecord.upsert(sequence, id, wal_values^)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_upsert(id, sequence, values^)
-        self._read_generations[].record(self._memtable, [id], sequence)
+        self._record_read_state([id], sequence)
         var metadata_fields = List[DocumentField]()
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
@@ -777,8 +793,14 @@ struct PersistentCollection:
         var values: List[Float32],
         var fields: List[DocumentField],
     ) raises:
-        with BlockingScopedLock(self._writer_lock[]):
-            self._upsert_document_unlocked(id, values^, fields^)
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    self._upsert_document_unlocked(id, values^, fields^)
+                    return
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
 
     def _upsert_document_unlocked(
         mut self,
@@ -798,7 +820,7 @@ struct PersistentCollection:
         )
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_document_upsert(id, sequence, values^, fields^)
-        self._read_generations[].record(self._memtable, [id], sequence)
+        self._record_read_state([id], sequence)
         self._metadata.upsert(id, metadata_fields^)
         self._last_sequence = sequence
         self._extend_hnsw_id_lookup(metadata_slots)
@@ -810,8 +832,13 @@ struct PersistentCollection:
     ) raises -> BatchWriteResult:
         """Validate and durably apply one all-or-nothing dense mutation batch.
         """
-        with BlockingScopedLock(self._writer_lock[]):
-            return self._apply_batch_unlocked(mutations)
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    return self._apply_batch_unlocked(mutations)
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
 
     def _apply_batch_unlocked(
         mut self, mutations: List[BatchMutation]
@@ -883,10 +910,8 @@ struct PersistentCollection:
         var batch_ids = List[Int](capacity=len(mutations))
         for index in range(len(mutations)):
             batch_ids.append(mutations[index].id)
-        self._read_generations[].record(
-            self._memtable,
-            batch_ids,
-            first_sequence + UInt64(len(mutations) - 1),
+        self._record_read_state(
+            batch_ids, first_sequence + UInt64(len(mutations) - 1)
         )
         self._extend_hnsw_id_lookup(metadata_slots)
         for index in range(len(mutations)):
@@ -930,8 +955,14 @@ struct PersistentCollection:
             return Optional(project_document(document.value(), projection))
 
     def upsert_sparse(mut self, id: Int, elements: List[SparseElement]) raises:
-        with BlockingScopedLock(self._writer_lock[]):
-            self._upsert_sparse_unlocked(id, elements)
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    self._upsert_sparse_unlocked(id, elements)
+                    return
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
 
     def _upsert_sparse_unlocked(
         mut self, id: Int, elements: List[SparseElement]
@@ -948,12 +979,52 @@ struct PersistentCollection:
         self._memtable.set_sparse(id, elements.copy())
         self._sparse_pending.append(record.clone())
         self._last_sequence = sequence
-        self._read_generations[].record(self._memtable, [id], sequence)
+        self._record_read_state([id], sequence)
         self._invalidate_cache_hits()
 
     def delete(mut self, id: Int) raises:
-        with BlockingScopedLock(self._writer_lock[]):
-            self._delete_unlocked(id)
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    self._delete_unlocked(id)
+                    return
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
+
+    def _write_admitted(mut self, waited: Bool) raises -> Bool:
+        """Admit a write unless sealed runs reached the limit.
+
+        The caller holds the writer lock. Like a RocksDB write stall, a held
+        write sleeps without the lock until the background merge publishes;
+        close or a maintenance failure ends the wait through `_ensure_open`.
+        One admitted batch may still seal up to 64 runs past the limit.
+        """
+        self._ensure_open()
+        if self._read_generations[].sealed_count() < SEALED_RUN_LIMIT:
+            return True
+        if not waited:
+            self._backpressure_waits += 1
+        self._maintenance.request_merge()
+        return False
+
+    def _record_read_state(mut self, ids: List[Int], sequence: UInt64):
+        """Record committed states for readers; start a due run merge.
+
+        The worker merges outside the writer lock. Without one the merge runs
+        here; it cannot reject the committed write, so a failure drops the
+        derived state instead.
+        """
+        self._read_generations[].record(self._memtable, ids, sequence)
+        if not self._read_generations[].merge_due():
+            return
+        if self._maintenance.enabled():
+            self._maintenance.request_merge()
+            return
+        try:
+            self._read_generations[].merge_sealed_runs()
+        except:
+            self._read_generations[].reset()
 
     def _delete_unlocked(mut self, id: Int) raises:
         self._ensure_open()
@@ -966,7 +1037,7 @@ struct PersistentCollection:
         var record = WalRecord.delete(sequence, id)
         append_wal(self._wal_path, self._config.dimension, record)
         self._memtable.apply_delete(id, sequence)
-        self._read_generations[].record(self._memtable, [id], sequence)
+        self._record_read_state([id], sequence)
         self._metadata.delete(id)
         self._delete_sparse_field(id, sequence)
         self._last_sequence = sequence
@@ -1419,7 +1490,7 @@ struct PersistentCollection:
         var published = self._checkpoint_unlocked()
         if published and CompactionPolicy(4).should_compact(published.value()):
             if self._maintenance.enabled():
-                _ = self._maintenance.request()
+                _ = self._maintenance.request_compaction()
             else:
                 self._compact_committed(published.take())
 
@@ -1654,11 +1725,12 @@ struct PersistentCollection:
     def compact(mut self) raises:
         """Replace the committed segment set with one complete live base.
 
-        The merge runs without the writer lock; writes continue meanwhile and
-        stay in the WAL tail. A publish that loses to a newer manifest is
-        discarded and retried from the new state, a bounded number of times.
+        The merge runs without the writer lock; writes and flushes continue
+        meanwhile. The publish rebases onto segments flushed during the build;
+        a job whose inputs another publish replaced is discarded and retried
+        from the new state, a bounded number of times.
         """
-        for _ in range(_COMPACTION_ATTEMPTS):
+        for _ in range(COMPACTION_ATTEMPTS):
             var inputs = self._begin_compaction()
             if not inputs:
                 return
@@ -1671,11 +1743,10 @@ struct PersistentCollection:
         """Checkpoint, then capture and pin the committed inputs."""
         with BlockingScopedLock(self._writer_lock[]):
             _ = self._checkpoint_unlocked()
-            var inputs = capture_compaction_inputs(
-                self._path, self._config.dimension
+            var inputs = begin_compaction(
+                self._path, self._config.dimension, self._pins
             )
             if inputs:
-                self._pins[].pin(inputs.value().manifest.generation)
                 self._compaction_attempts += 1
             return inputs^
 
@@ -1683,39 +1754,42 @@ struct PersistentCollection:
         self, inputs: CompactionInputs
     ) raises -> CompactionOutput:
         """Merge the pinned inputs into new files without the writer lock."""
-        try:
-            return build_compaction_output(
-                self._path, self._config.dimension, inputs
-            )
-        except error:
-            self._pins[].unpin(inputs.manifest.generation)
-            raise error^
+        return build_compaction(
+            self._path, self._config.dimension, inputs, self._pins
+        )
 
     def _finish_compaction(
         mut self, inputs: CompactionInputs, output: CompactionOutput
     ) raises -> Bool:
-        """Publish if the manifest is unchanged; False after a lost race."""
+        """Rebase and publish; False when the inputs were replaced."""
         with BlockingScopedLock(self._writer_lock[]):
-            # Release the job's lease first so retirement sees reader pins only.
-            self._pins[].unpin(inputs.manifest.generation)
-            if self._closed:
-                discard_compaction_output(self._path, output)
-                raise Error("collection is closed")
-            self._ensure_open()
-            if not publish_compaction_output(
-                self._path, self._config.dimension, inputs, output
+            try:
+                self._ensure_open()
+            except error:
+                _ = finish_compaction(
+                    self._path,
+                    self._config.dimension,
+                    inputs,
+                    output,
+                    True,
+                    self._pins,
+                    self._retired,
+                    self._read_generations,
+                )
+                raise error^
+            if not finish_compaction(
+                self._path,
+                self._config.dimension,
+                inputs,
+                output,
+                False,
+                self._pins,
+                self._retired,
+                self._read_generations,
             ):
                 self._compaction_conflicts += 1
-                discard_compaction_output(self._path, output)
                 return False
-            self._read_generations[].publish(inputs.manifest.generation + 1)
             self._publish_index_caches_best_effort()
-            self._retired[].retire_or_reclaim(
-                self._path,
-                inputs.manifest.generation,
-                compaction_input_paths(self._path, inputs.manifest),
-                self._pins,
-            )
             return True
 
     def compaction_attempts(self) raises -> Int:
@@ -1725,10 +1799,16 @@ struct PersistentCollection:
             return self._compaction_attempts
 
     def compaction_conflicts(self) raises -> Int:
-        """Foreground compaction jobs discarded because a newer publish won."""
+        """Foreground compaction jobs discarded because their inputs were
+        replaced by another publish."""
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
             return self._compaction_conflicts
+
+    def background_compaction_counts(mut self) raises -> CompactionCounts:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._maintenance.compaction_counts()
 
     def _compact_committed(mut self, var previous: Manifest) raises:
         if previous.generation == UInt64.MAX:

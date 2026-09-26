@@ -1,13 +1,28 @@
-from akasha.storage.committed_compaction import compact_committed_segments
+from akasha.storage.committed_compaction import (
+    begin_compaction,
+    build_compaction,
+    COMPACTION_ATTEMPTS,
+    CompactionInputs,
+    finish_compaction,
+)
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.native_worker import NativeWorker
-from akasha.storage.read_generation import ReadGenerationCache
+from akasha.storage.read_generation import ReadGenerationCache, SealedMerge
 from akasha.storage.retired_files import RetiredFileQueue
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
 comptime DEFAULT_MAINTENANCE_LIBRARY = ".build/native/libakasha_worker.so"
+
+
+@fieldwise_init
+struct CompactionCounts(ImplicitlyCopyable, Movable):
+    """Background compaction jobs: captures, lost races, spent budgets."""
+
+    var attempts: Int
+    var conflicts: Int
+    var exhausted: Int
 
 
 struct _MaintenanceState(Movable):
@@ -17,10 +32,14 @@ struct _MaintenanceState(Movable):
     var pins: ArcPointer[GenerationPinRegistry]
     var retired: ArcPointer[RetiredFileQueue]
     var read_generations: ArcPointer[ReadGenerationCache]
+    var cancelled: Bool
+    """Set by the owner's close under the writer lock; jobs read it there."""
     var status_lock: BlockingSpinLock
     var error_message: String
     var run_count: Int
     var compaction_count: Int
+    var compaction_requested: Bool
+    var counts: CompactionCounts
 
     def __init__(
         out self,
@@ -37,10 +56,13 @@ struct _MaintenanceState(Movable):
         self.pins = pins^
         self.retired = retired^
         self.read_generations = read_generations^
+        self.cancelled = False
         self.status_lock = BlockingSpinLock()
         self.error_message = String()
         self.run_count = 0
         self.compaction_count = 0
+        self.compaction_requested = False
+        self.counts = CompactionCounts(0, 0, 0)
 
     def record_success(mut self, compacted: Bool):
         with BlockingScopedLock(self.status_lock):
@@ -61,28 +83,101 @@ struct _MaintenanceState(Movable):
         with BlockingScopedLock(self.status_lock):
             return self.run_count
 
+    def request_compaction(mut self):
+        with BlockingScopedLock(self.status_lock):
+            self.compaction_requested = True
+
+    def take_compaction_request(mut self) -> Bool:
+        with BlockingScopedLock(self.status_lock):
+            var requested = self.compaction_requested
+            self.compaction_requested = False
+            return requested
+
+    def compaction_counts(mut self) -> CompactionCounts:
+        with BlockingScopedLock(self.status_lock):
+            return self.counts
+
+    def count_attempt(mut self):
+        with BlockingScopedLock(self.status_lock):
+            self.counts.attempts += 1
+
+    def count_conflict(mut self):
+        with BlockingScopedLock(self.status_lock):
+            self.counts.conflicts += 1
+
+    def count_exhausted(mut self):
+        with BlockingScopedLock(self.status_lock):
+            self.counts.exhausted += 1
+
 
 def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
     var state = context.unsafe_bitcast[_MaintenanceState]()
     try:
-        with BlockingScopedLock(state[].writer_lock[]):
-            var result = compact_committed_segments(
-                state[].path, state[].dimension
-            )
-            var did_compact = result.compacted
-            if did_compact:
-                state[].read_generations[].publish(result.generation)
-                state[].retired[].retire_or_reclaim(
-                    state[].path,
-                    result.previous_generation,
-                    result.removed_files,
-                    state[].pins,
-                )
-            state[].record_success(did_compact)
+        _merge_sealed_runs(state[])
+        var compacted = False
+        if state[].take_compaction_request():
+            compacted = _compact(state[])
+        state[].record_success(compacted)
         return 0
     except error:
         state[].record_failure(String(error))
         return 1
+
+
+def _merge_sealed_runs(mut state: _MaintenanceState) raises:
+    """Merge the sealed-run prefix outside the writer lock, then publish it.
+
+    A merge captured before the publisher reset is stale; publish drops it.
+    """
+    var merge: Optional[SealedMerge]
+    with BlockingScopedLock(state.writer_lock[]):
+        if state.cancelled or not state.read_generations[].merge_due():
+            return
+        merge = Optional(state.read_generations[].capture_merge())
+    merge.value().build()
+    with BlockingScopedLock(state.writer_lock[]):
+        if not state.cancelled:
+            _ = state.read_generations[].publish_merge(merge.take())
+
+
+def _compact(mut state: _MaintenanceState) raises -> Bool:
+    """Run the foreground job's steps; the build holds no writer lock.
+
+    Spending the retry budget is counted, not a failure: a failure closes
+    every operation of the owner, while the next request simply retries.
+    A cancelled job discards its output and is not a failure either.
+    """
+    for _ in range(COMPACTION_ATTEMPTS):
+        var inputs: Optional[CompactionInputs]
+        with BlockingScopedLock(state.writer_lock[]):
+            if state.cancelled:
+                return False
+            inputs = begin_compaction(state.path, state.dimension, state.pins)
+            if inputs:
+                state.count_attempt()
+        if not inputs:
+            return False
+        var output = build_compaction(
+            state.path, state.dimension, inputs.value(), state.pins
+        )
+        with BlockingScopedLock(state.writer_lock[]):
+            var cancelled = state.cancelled
+            if finish_compaction(
+                state.path,
+                state.dimension,
+                inputs.value(),
+                output,
+                cancelled,
+                state.pins,
+                state.retired,
+                state.read_generations,
+            ):
+                return True
+            if cancelled:
+                return False
+            state.count_conflict()
+    state.count_exhausted()
+    return False
 
 
 struct MaintenanceController(Movable):
@@ -144,15 +239,36 @@ struct MaintenanceController(Movable):
                 _ = self._worker.value().close()
             except:
                 pass
+        # The worker reaches the state through a raw pointer; without this
+        # last use the field is destroyed before the join above.
+        _ = self._state^
 
     def enabled(self) -> Bool:
         return self._enabled and not self._closed
 
-    def request(mut self) raises -> Bool:
+    def request_compaction(mut self) raises -> Bool:
         if not self.enabled():
             return False
         self._raise_failure()
+        self._state[].request_compaction()
         return self._worker.value().request()
+
+    def request_merge(mut self):
+        """Best effort: a refused request leaves the runs to backpressure,
+        and the failure or close that refused it ends the wait."""
+        if not self.enabled():
+            return
+        try:
+            _ = self._worker.value().request()
+        except:
+            pass
+
+    def cancel(mut self):
+        """Stop jobs from publishing; the caller holds the writer lock."""
+        self._state[].cancelled = True
+
+    def compaction_counts(mut self) -> CompactionCounts:
+        return self._state[].compaction_counts()
 
     def wait(mut self) raises -> Bool:
         if not self.enabled():

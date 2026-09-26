@@ -24,7 +24,11 @@ maintenance. See the
 only to capture and pin its inputs and to publish if the manifest is unchanged; the
 merge runs without it. See the
 [#51 implementation and measurements](../benchmarks/2026-09-26-compaction-publish.md).
-The rest of this ADR remains the design for #52 onward.
+**#52 is implemented (2026-09-26):** publish rebases the output onto the current
+manifest, the background worker runs the same three steps with the build outside the
+lock, and sealed runs merge on the worker behind write backpressure. See the
+[#52 implementation and measurements](../benchmarks/2026-09-26-background-publication.md).
+The rest of this ADR remains the design for #53 onward.
 
 ## Evidence and constraints
 
@@ -92,6 +96,19 @@ consolidation primitive in #48, keeping the chain bounded and the system usable.
 #52 schedules that same primitive through the worker; the intermediate #48 slice
 does not claim to eliminate consolidation writer stalls. It is not a second data
 format or a parallel legacy visibility path.
+
+#52 implementation notes: recording only rolls the head over; it never merges. When
+the eighth sealed run appears, `_record_read_state` asks the worker for a merge. The
+worker captures the sealed prefix under the writer lock (`capture_merge`), builds
+the merged run and its sparse index without the lock, and `publish_merge` replaces
+only that prefix under a short lock; runs sealed meanwhile stay behind it. A merge
+captured before a publisher reset is dropped at publish. Backpressure: a write is
+not admitted while 16 sealed runs (`SEALED_RUN_LIMIT`) exist. It requests a merge,
+sleeps without the lock and retries; close or a maintenance failure ends the wait
+through `_ensure_open`. The check runs before the write, so one admitted batch can
+still seal up to 64 runs past the limit. A merge error is a maintenance failure: the
+owner closes, and every acknowledged write stays in the WAL for the next open. With
+no worker loaded, the merge runs inline at the eighth run, as in #48.
 
 The root owns its head snapshot, base, sealed runs and exact file lease. It does not
 own an O(all-points) copied lookup or full replacement mask per capture. Lookup probes
@@ -217,17 +234,19 @@ fsync outputs outside it. Allocate job-unique output names with exclusive creati
 never overwrite a captured/committed input, and clean up only that job's outputs.
 Concurrent foreground/background builds and restart orphan cleanup must test this
 namespace rule. The manifest already permits safe arbitrary file names, so this
-requires no new on-disk schema. On publication, require the current manifest/config to
-match the captured inputs and generation. A concurrent WAL-only write is allowed:
-keep all current head/sealed data with sequence > H when constructing the new root.
-Do not rotate or truncate those newer WAL records. If another flush/compaction changed
-the manifest, discard this output and reschedule; do not overwrite its manifest.
-The first version uses strict compare-and-publish, not an unverified append-only
-manifest rebase. Bound retries and measure conflict rate; a build cannot hold the
-writer lock to avoid conflict. Full-coverage tombstone elision retains its existing
-rule. Publish durable manifest before in-memory root, and queue replaced inputs for
-lease-aware retirement. Recovery uses the committed manifest if interrupted between
-those steps. Orphan cleanup cannot unlink a live in-process pinned input.
+requires no new on-disk schema. On publication, rebase the output onto the current
+manifest, as a RocksDB version edit does: the captured inputs must still be its
+leading run, and segments appended since the capture must start above H. The new
+manifest is the output followed by those segments. A concurrent WAL-only write is
+allowed: keep all current head/sealed data with sequence > H when constructing the
+new root. Do not rotate or truncate those newer WAL records. Only a compaction that
+replaced the inputs is a conflict: discard this output and reschedule; do not
+overwrite its manifest. Bound retries and measure conflict rate; a build cannot hold
+the writer lock to avoid conflict. Full-coverage tombstone elision retains its
+existing rule. Publish durable manifest before in-memory root, and queue replaced
+inputs for lease-aware retirement. Recovery uses the committed manifest if
+interrupted between those steps. Orphan cleanup cannot unlink a live in-process
+pinned input.
 
 #51 implementation notes: foreground `compact()` runs three steps, and only the
 first and last take the writer lock. Begin checkpoints the WAL tail without the
@@ -235,12 +254,12 @@ compaction policy, reads the manifest with its exact bytes and pins G. Build mer
 the captured segments into `segment-compact-<G+1>-<n>.bin` and
 `sparse-compact-<G+1>-<n>.bin`, each claimed with `O_CREAT|O_EXCL`, fsyncs both and
 syncs the directory. A build failure removes only those two files and drops the pin.
-Finish drops the job pin first, so retirement sees reader pins only. It then
-publishes G+1 with last sequence H only if the current manifest bytes equal the
-captured ones. The bytes cover G, H, descriptors, checksums and the HNSW reference;
-the config cannot change for an open instance because `collection.bin` is written
-only at creation. The durable manifest is published first, then the read root, the
-index caches, and the inputs go to `retire_or_reclaim` at G. Writes after begin stay
+Finish drops the job pin first, so retirement sees reader pins only. #51 published
+G+1 with last sequence H only if the current manifest bytes equal the captured ones;
+#52 replaced that compare with the rebase below. The config cannot change for an
+open instance because `collection.bin` is written only at creation. The durable
+manifest is published first, then the read root, the index caches, and the inputs go
+to `retire_or_reclaim`. Writes after begin stay
 in the memtable and WAL; publish does not rotate the WAL. On a lost race the output
 is removed and `compact()` recaptures from the newer manifest. After 4 attempts it
 raises "compaction retry budget exhausted". `compaction_attempts()` and
@@ -251,11 +270,38 @@ published output always targets at most the committed generation, so a committed
 pinned file never matches. Known leak: an output whose target is at most the
 committed generation and that was never published stays on disk. This needs a crash
 between a lost race and its discard. Retired inputs still pinned at close also stay,
-as before, because the retire queue lives in memory. The worker's
-`compact_committed_segments` now calls the same capture, build and publish functions
-under its lock, so only its output names change; building outside the lock there is
-#52. Synchronous `maintenance()` and the flush-inline fallback still use the locked
-memtable compaction.
+as before, because the retire queue lives in memory. Synchronous `maintenance()` and
+the flush-inline fallback still use the locked memtable compaction.
+
+#52 implementation notes: `publish_compaction_output` reloads the current manifest
+under the writer lock. The captured segments must equal its leading run (names,
+checksums, sequence ranges, sparse files); otherwise the job conflicts and the
+current manifest stays untouched. The new manifest is `[output] + appended`, with
+generation current + 1 and last sequence from the current manifest. An appended
+segment starting at or below H raises instead of publishing, because flushes only
+append above the committed sequence. The HNSW reference also carries over from the
+current manifest. Compaction changes only the layout of the same live points, and a
+flush during the build may have written a newer sidecar that the captured reference
+predates; `test_flush_during_build_rebases_onto_newer_manifest` reopens and maps it
+with no graph build. Inputs retire at the generation current before publish, so a
+reader pinned at an intervening flush's generation keeps them. Tombstone elision is
+unchanged and stays safe: the output is the oldest run, so an elided tombstone has
+nothing older to expose. A conflict now needs another compaction of the same inputs;
+a flush during the build no longer costs an attempt.
+
+The worker's job runs `_compact`, the same begin, build and finish functions and the
+same 4-attempt budget as `compact()`, with the build outside the lock. Spending the
+budget is counted (`background_compaction_counts().exhausted`), not a failure: a
+failure closes every operation of the owner, while the next flush request simply
+retries. `compact()` still raises. Close sets a cancel flag under the writer lock
+before joining. A job that finishes after it discards its output and counts neither
+a conflict nor a failure. Output names and the orphan rule are unchanged. The known
+leak widens: a crash after a flush publishes during a worker build, and before the
+rebase publish, leaves an output whose target is at most the committed generation.
+Dropping an open collection without close joins the worker in
+`MaintenanceController.__deinit__`. Mojo destroys a field after its last use, even
+inside a destructor, so the shared worker state is used once more after the join;
+otherwise the worker could run a merge against freed state.
 
 Backup first checkpoints/captures the exact manifest and config/file set under the
 writer lock. Copy that set outside it, holding source leases and target writer lock.
@@ -303,15 +349,16 @@ device snapshot of its own, and a newer sequence always gets a new root and stat
 | Manifest generation as the only cache key | WAL-only writes and layout-only publications make it insufficient. |
 | Returning Span while allowing unrelated close/reallocation | Compiler probe shows ownership must be held explicitly per operation/export. |
 | Release writer lock without a publication predicate | Can lose a newer manifest or accepted tail. |
+| Strict byte compare-and-publish for compaction | Every flush during a build conflicts; #51 measured all 20 calls exhausting the budget with 50 ms flushes. Rebase on the leading run instead (#52). |
 | Implement all vector dtypes before sharing F32 | Delays the largest current cost; field boundary is enough for staged implementation. |
 
 | Invariant | Existing evidence to preserve | New regression assigned below |
 |---|---|---|
 | Full-point visibility and owned get | `test_snapshot.mojo`, `test_concurrency.mojo` batch boundaries | #47–#49: equal G/different S, tombstone/reinsert, pointer-sharing and sparse/payload-only updates |
-| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point, merge backpressure; capture does not clone base bytes |
+| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point; capture does not clone base bytes. #52 done: `test_background_publication.mojo` (worker merge at the eighth run, prefix-only publish, stale merge after reset, inline merge without a worker, backpressure, close during a wait, merge failure) |
 | Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
-| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, conflict, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52: worker build without the lock, worker failure |
-| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #53: stale build |
+| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52 done: its conflict tests now rebase (flush during build + reopen with mapped HNSW, racing flushes without conflicts); `test_background_publication.mojo` (worker build without the lock, foreground and worker on the same inputs, worker checksum/IO failure, close during build, counted budget exhaustion, flushes faster than a build, write+flush+worker stress, drop without close) |
+| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53: stale build |
 | Backup exact captured generation | `test_storage_operations.mojo` | #53: concurrent source flush/compact, bounded RSS, independent restore and corrupt source |
 | Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
 | GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |

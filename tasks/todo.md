@@ -191,15 +191,16 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#51 已完成；#52–#63 待實作）
+## #46 定案後的實作隊列（#47–#52 已完成；#53–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#52**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+建議下一個引擎項目是 **#53**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
 共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
-獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish。
+獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish，
+#52 已讓 background worker 走同一流程並 rebase 到較新的 manifest。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -311,12 +312,34 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #52 Background worker 接用相同 publication 流程
 
-- [ ] `_maintenance_entry` 接用 #51，不在整個 merge 期間持 writer lock；原單 worker、
+- [x] `_maintenance_entry` 接用 #51，不在整個 merge 期間持 writer lock；原單 worker、
   bounded pending work、error reporting、close/join 保持。接入 sealed delta merge/backpressure。
 - 相依：#51。主要檔：`storage/maintenance.mojo`、`read_generation.mojo`、
   `tests/mojo/test_maintenance.mojo`、`tests/mojo/test_concurrency.mojo`。
 - 驗收：連續寫入/flush/取消/close 壓力、衝突 retry budget、第一個錯誤回報、無死鎖或
   unbounded delta；沿用 #51 crash cases，量 writer p95/p99 stall。沒有新 worker framework。
+- 完成（2026-09-26）：finish 在鎖內重讀目前 manifest，採 RocksDB version edit 式 rebase：
+  captured inputs 仍是 leading run（名稱、checksum、sequence 範圍、sparse 檔一致）時，新
+  manifest 為 `[output] + capture 後附加的 segments`，代數為目前 + 1，last sequence 與 HNSW
+  reference 取自目前 manifest；只有 inputs 已被取代才算 conflict。inputs 在 publish 前的
+  目前代數退休，tombstone elision 不變。worker 以相同三個函式與 4 次 budget 在鎖外 build；
+  budget 用完只計數（`background_compaction_counts()`），不算 failure；close 後才完成的
+  job 丟棄輸出。sealed run 到第 8 個時請 worker merge：鎖內 capture、鎖外 merge 與 sparse
+  build、短鎖只替換 captured prefix；reset 前 capture 的 merge 丟棄；未載入 worker 時照
+  #48 inline merge。16 個 sealed run 時 write 不 admit，請求 merge、放鎖睡 1 ms 重試，close
+  或 maintenance failure 結束等待；merge 錯誤走 maintenance failure，已 ack 寫入留在 WAL。
+  另修 drop 未 close 的 collection 時 `__deinit__` 在 join 前釋放 worker 共用狀態的舊 bug。
+  壓測（每 1 ms 一筆 upsert，三個 process 中位數）：worker compaction 期間可寫筆數每輪
+  1 → 約 84，扣除排在 `flush()` 後的 upsert，p50／p99 由 118／122 ms 降為 0.48／0.79 ms；
+  整體 p99 34 ms 是約 36 ms 的 `flush()` 鎖（worker 鎖內 begin／finish 中位數 0.05／0.57
+  ms）。sealed merge 那筆 upsert p50 5.9 → 1.3 ms（publish 鎖約 1.6 ms），backpressure
+  未觸發。conflict：flush 不再造成 conflict，200／1000 ms 的 foreground conflict 19／2 →
+  0；50 ms 時前後台互搶同一批 inputs 仍有衝突（foreground 5／25、worker 17／43），但沒有
+  任何 call 或 job 用完 budget（之前 2／20 call 用完），segments 最多 7。foreground
+  `compact()` 的兩段約 32 ms 鎖不變（#54／#56）。700 Mojo／66 Python／15 crash、C ABI、
+  build 通過；GPU 路徑未變，未跑。一個 process 有一筆 282 ms 的 job-only upsert，較早一批
+  非正式壓測有一次 hang、一次 conflict bench 失敗，皆未重現、原因未定。
+  [實作與量測報告](../docs/benchmarks/2026-09-26-background-publication.md)。
 
 ### #53 Captured manifest backup 與 bounded copy
 
