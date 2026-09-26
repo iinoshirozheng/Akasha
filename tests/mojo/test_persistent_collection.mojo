@@ -460,7 +460,7 @@ def test_full_compaction_replaces_segments_and_preserves_query_results() raises:
     assert_equal(compacted.generation, UInt64(4))
     assert_equal(len(compacted.segments), 1)
     assert_equal(compacted.segments[0].level, 1)
-    assert_equal(compacted.segments[0].name, "segment-base-5.bin")
+    assert_equal(compacted.segments[0].name, "segment-compact-4-0.bin")
     assert_equal(path_exists(path + "/segment-base-1.bin"), False)
     assert_equal(path_exists(path + "/segment-delta-3.bin"), False)
     assert_equal(path_exists(path + "/segment-delta-5.bin"), False)

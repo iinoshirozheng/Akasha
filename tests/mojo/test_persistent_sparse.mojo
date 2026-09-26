@@ -12,7 +12,7 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
 )
 from akasha.storage.manifest import load_manifest
-from std.testing import assert_equal, assert_raises, TestSuite
+from std.testing import assert_equal, assert_raises, assert_true, TestSuite
 
 
 def _reset(directory: String) raises:
@@ -158,7 +158,10 @@ def test_full_compaction_rewrites_sparse_state_and_reclaims_inputs() raises:
 
     assert_equal(path_exists(path + "/sparse-base-2.bin"), False)
     assert_equal(path_exists(path + "/sparse-delta-3.bin"), False)
-    assert_equal(path_exists(path + "/sparse-base-3.bin"), True)
+    var manifest = load_manifest(path, 1)
+    assert_equal(len(manifest.segments), 1)
+    assert_true(manifest.segments[0].sparse_name.startswith("sparse-compact-"))
+    assert_true(path_exists(path + "/" + manifest.segments[0].sparse_name))
     collection.close()
     var reopened = PersistentCollection.open(path, 1)
     var results = reopened.search_sparse_dot([SparseElement(2, 1.0)], 1)

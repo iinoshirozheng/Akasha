@@ -400,13 +400,19 @@ def publish_manifest(directory: String, manifest: Manifest) raises:
     sync_directory(directory)
 
 
+def read_manifest_bytes(directory: String) raises -> List[UInt8]:
+    """Read the published manifest's exact bytes within the format bound."""
+    return read_file_bytes_bounded(
+        directory + "/" + _MANIFEST_NAME, _MAX_MANIFEST_BYTES
+    )
+
+
 def load_manifest(
     directory: String, expected_dimension: Int
 ) raises -> Manifest:
-    var bytes = read_file_bytes_bounded(
-        directory + "/" + _MANIFEST_NAME, _MAX_MANIFEST_BYTES
+    var manifest = decode_manifest_bytes(
+        read_manifest_bytes(directory), expected_dimension
     )
-    var manifest = decode_manifest_bytes(bytes^, expected_dimension)
     _validate_manifest_names(manifest, True)
     for index in range(len(manifest.segments)):
         if not path_exists(directory + "/" + manifest.segments[index].name):

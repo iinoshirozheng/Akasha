@@ -1,7 +1,12 @@
 from std.ffi import c_int, external_call
+from std.io.file import O_CREAT, O_WRONLY
 from std.os import makedirs, remove
 from std.os.path import exists
-from std.sys._libc_errno import get_errno
+from std.sys._libc_errno import ErrNo, get_errno
+from std.sys.info import CompilationTarget
+
+# The standard library exposes O_CREAT but not O_EXCL.
+comptime _O_EXCL = 0x80 if CompilationTarget.is_linux() else 0x800
 
 
 trait _DurableDirectoryOps:
@@ -97,6 +102,24 @@ def write_file_sync(path: String, bytes: List[UInt8]) raises:
     file.write_all(bytes)
     _sync_descriptor(file.handle)
     file.close()
+
+
+def create_file_exclusive(path: String) raises -> Bool:
+    """Create an empty file only if the name is free; False when it exists."""
+    var file_path = path
+    var descriptor = external_call["open", c_int, num_fixed_args=2](
+        file_path.as_c_string_slice().unsafe_ptr(),
+        c_int(O_WRONLY | O_CREAT | _O_EXCL),
+        c_int(0o644),
+    )
+    if descriptor < 0:
+        var error = get_errno()
+        if error == ErrNo.EEXIST:
+            return False
+        raise Error("exclusive create failed: " + String(error))
+    if external_call["close", c_int](descriptor) != 0:
+        raise Error("close failed: " + String(get_errno()))
+    return True
 
 
 def append_file_sync(path: String, bytes: List[UInt8]) raises:

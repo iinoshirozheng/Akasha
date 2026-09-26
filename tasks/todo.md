@@ -191,15 +191,15 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#50 已完成；#51–#63 待實作）
+## #46 定案後的實作隊列（#47–#51 已完成；#52–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#51**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+建議下一個引擎項目是 **#52**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
 共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
-獨立 root owner。
+獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -288,7 +288,7 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #51 Compaction 分離鎖外 build 與 conditional publish
 
-- [ ] Foreground `compact()` 先 pin 精確 committed inputs，鎖外建置，短鎖核對 G/config
+- [x] Foreground `compact()` 先 pin 精確 committed inputs，鎖外建置，短鎖核對 G/config
   後 publish；保留所有 sequence > H 的目前 head/sealed/WAL。衝突丟棄新輸出並有界重試。
 - 相依：#50。主要檔：`storage/committed_compaction.mojo`、`api/collection.mojo`、
   `storage/retired_files.mojo`、新 `tests/mojo/test_compaction_publish.mojo`、
@@ -296,6 +296,18 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - 驗收：build 期間 writer 持續接受資料；concurrent flush 造成 conflict 時不覆蓋新 manifest；
   old snapshots/pinned files 可讀。輸出 fsync、manifest publish、root swap、cleanup 各 crash
   邊界可重開；checksum/cancel/IO failure 舊代不受損，無遺失 WAL tail。無格式變更。
+- 完成（2026-09-26）：begin 在鎖內 checkpoint WAL tail、取 manifest 與其精確 bytes、pin G；
+  build 在鎖外合併成 `segment-compact-<G+1>-<n>.bin`／`sparse-compact-…`（`O_EXCL` 建立、
+  fsync、sync 目錄）；finish 在鎖內放 pin，bytes 未變才 publish G+1（durable manifest →
+  read root → index caches → inputs 交 lease-aware retirement），否則丟輸出、重抓，4 次後
+  raise。open 清掉目標代數大於 committed 的輸出。背景 worker 共用這三個函式但仍整段持鎖（#52）。
+  壓測（每 1 ms 一筆 upsert，20 輪 flush＋compact，三個 process 中位數）：與 compact 重疊的
+  upsert p50／p95／p99 由 133／139／148 ms 降為 0.49／0.69／67 ms，每輪可寫筆數 1 → 約 87；
+  殘留 p99 來自鎖內兩段約 32 ms 的 HNSW snapshot／index cache 寫入（#54／#56 範圍）。
+  conflict rate：每 50／200／1000 ms flush 一次為 100%／49%／9%；50 ms（短於一次約 150 ms 的
+  build）時 20 次 compact 全數用完 retry budget，#52 移出鎖後須接受 capture 之後附加的 delta
+  或對 flush 加 backpressure。684 Mojo／66 Python／14 crash、C ABI、build 通過；GPU 路徑未變，
+  未跑。[實作與量測報告](../docs/benchmarks/2026-09-26-compaction-publish.md)。
 
 ### #52 Background worker 接用相同 publication 流程
 

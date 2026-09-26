@@ -26,6 +26,16 @@ from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
 from akasha.storage.read_generation import ReadGeneration, ReadGenerationCache
+from akasha.storage.committed_compaction import (
+    build_compaction_output,
+    capture_compaction_inputs,
+    compaction_input_paths,
+    CompactionInputs,
+    CompactionOutput,
+    discard_compaction_output,
+    publish_compaction_output,
+    remove_unpublished_compaction_outputs,
+)
 from akasha.storage.compaction import CompactionPolicy
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.maintenance import (
@@ -106,6 +116,7 @@ from std.utils import BlockingScopedLock, BlockingSpinLock
 comptime _DOT_METRIC = 0
 comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
+comptime _COMPACTION_ATTEMPTS = 4
 
 
 struct _ResolvedCollectionConfig(Movable):
@@ -180,6 +191,8 @@ struct PersistentCollection:
     var _hnsw_sidecar_max_bytes_for_test: UInt64
     var _hnsw_cache_was_hit: Bool
     var _metadata_cache_was_hit: Bool
+    var _compaction_attempts: Int
+    var _compaction_conflicts: Int
 
     def __init__(
         out self,
@@ -252,6 +265,8 @@ struct PersistentCollection:
         self._hnsw_sidecar_max_bytes_for_test = hnsw_snapshot_max_bytes()
         self._hnsw_cache_was_hit = hnsw_cache_hit
         self._metadata_cache_was_hit = metadata_cache_hit
+        self._compaction_attempts = 0
+        self._compaction_conflicts = 0
 
     @staticmethod
     def open(
@@ -318,6 +333,7 @@ struct PersistentCollection:
                     raise Error("compacted manifest entry must be a base")
                 memtable.apply_recovered_entries(snapshot.entries)
             snapshot_sequence = manifest.last_sequence
+        remove_unpublished_compaction_outputs(path, cache_generation)
 
         # Preserve the exact committed dense identity before newer WAL replay.
         # A sidecar describes this checkpoint, not the post-WAL MemTable.
@@ -1400,6 +1416,15 @@ struct PersistentCollection:
                 raise Error(String(error))
 
     def _flush_unlocked(mut self) raises:
+        var published = self._checkpoint_unlocked()
+        if published and CompactionPolicy(4).should_compact(published.value()):
+            if self._maintenance.enabled():
+                _ = self._maintenance.request()
+            else:
+                self._compact_committed(published.take())
+
+    def _checkpoint_unlocked(mut self) raises -> Optional[Manifest]:
+        """Checkpoint the WAL tail; returns the manifest when one was added."""
         self._ensure_open()
         self._reclaim_retired()
         var previous_sequence = UInt64(0)
@@ -1503,7 +1528,7 @@ struct PersistentCollection:
                 )
             self._sparse_pending = List[SparseWalRecord]()
             self._publish_index_caches_best_effort()
-            return
+            return None
 
         var sparse_kind = SPARSE_SEGMENT_KIND_BASE
         var sparse_prefix = String("sparse-base-")
@@ -1624,27 +1649,86 @@ struct PersistentCollection:
                 self._path, self._path + "/" + previous_hnsw_name
             )
         self._publish_index_caches_best_effort()
-        var policy = CompactionPolicy(4)
-        if policy.should_compact(manifest):
-            if self._maintenance.enabled():
-                _ = self._maintenance.request()
-            else:
-                self._compact_committed(manifest^)
+        return manifest^
 
     def compact(mut self) raises:
-        """Replace the committed segment set with one complete live base."""
-        with BlockingScopedLock(self._writer_lock[]):
-            self._compact_unlocked()
+        """Replace the committed segment set with one complete live base.
 
-    def _compact_unlocked(mut self) raises:
-        self._ensure_open()
-        self._flush_unlocked()
-        if not path_exists(self._path + "/manifest.bin"):
-            return
-        var previous = load_manifest(self._path, self._config.dimension)
-        if len(previous.segments) <= 1:
-            return
-        self._compact_committed(previous^)
+        The merge runs without the writer lock; writes continue meanwhile and
+        stay in the WAL tail. A publish that loses to a newer manifest is
+        discarded and retried from the new state, a bounded number of times.
+        """
+        for _ in range(_COMPACTION_ATTEMPTS):
+            var inputs = self._begin_compaction()
+            if not inputs:
+                return
+            var output = self._build_compaction(inputs.value())
+            if self._finish_compaction(inputs.value(), output):
+                return
+        raise Error("compaction retry budget exhausted")
+
+    def _begin_compaction(mut self) raises -> Optional[CompactionInputs]:
+        """Checkpoint, then capture and pin the committed inputs."""
+        with BlockingScopedLock(self._writer_lock[]):
+            _ = self._checkpoint_unlocked()
+            var inputs = capture_compaction_inputs(
+                self._path, self._config.dimension
+            )
+            if inputs:
+                self._pins[].pin(inputs.value().manifest.generation)
+                self._compaction_attempts += 1
+            return inputs^
+
+    def _build_compaction(
+        self, inputs: CompactionInputs
+    ) raises -> CompactionOutput:
+        """Merge the pinned inputs into new files without the writer lock."""
+        try:
+            return build_compaction_output(
+                self._path, self._config.dimension, inputs
+            )
+        except error:
+            self._pins[].unpin(inputs.manifest.generation)
+            raise error^
+
+    def _finish_compaction(
+        mut self, inputs: CompactionInputs, output: CompactionOutput
+    ) raises -> Bool:
+        """Publish if the manifest is unchanged; False after a lost race."""
+        with BlockingScopedLock(self._writer_lock[]):
+            # Release the job's lease first so retirement sees reader pins only.
+            self._pins[].unpin(inputs.manifest.generation)
+            if self._closed:
+                discard_compaction_output(self._path, output)
+                raise Error("collection is closed")
+            self._ensure_open()
+            if not publish_compaction_output(
+                self._path, self._config.dimension, inputs, output
+            ):
+                self._compaction_conflicts += 1
+                discard_compaction_output(self._path, output)
+                return False
+            self._read_generations[].publish(inputs.manifest.generation + 1)
+            self._publish_index_caches_best_effort()
+            self._retired[].retire_or_reclaim(
+                self._path,
+                inputs.manifest.generation,
+                compaction_input_paths(self._path, inputs.manifest),
+                self._pins,
+            )
+            return True
+
+    def compaction_attempts(self) raises -> Int:
+        """Foreground compaction jobs that captured inputs."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._compaction_attempts
+
+    def compaction_conflicts(self) raises -> Int:
+        """Foreground compaction jobs discarded because a newer publish won."""
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._compaction_conflicts
 
     def _compact_committed(mut self, var previous: Manifest) raises:
         if previous.generation == UInt64.MAX:

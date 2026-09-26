@@ -20,7 +20,11 @@ root. A capture takes the manifest generation from memory: the collection's read
 publisher records it at open and at every manifest publish, including background
 maintenance. See the
 [#50 implementation and measurements](../benchmarks/2026-09-25-operation-owners.md).
-The rest of this ADR remains the design for #51 onward.
+**#51 is implemented (2026-09-26):** foreground `compact()` holds the writer lock
+only to capture and pin its inputs and to publish if the manifest is unchanged; the
+merge runs without it. See the
+[#51 implementation and measurements](../benchmarks/2026-09-26-compaction-publish.md).
+The rest of this ADR remains the design for #52 onward.
 
 ## Evidence and constraints
 
@@ -225,6 +229,34 @@ rule. Publish durable manifest before in-memory root, and queue replaced inputs 
 lease-aware retirement. Recovery uses the committed manifest if interrupted between
 those steps. Orphan cleanup cannot unlink a live in-process pinned input.
 
+#51 implementation notes: foreground `compact()` runs three steps, and only the
+first and last take the writer lock. Begin checkpoints the WAL tail without the
+compaction policy, reads the manifest with its exact bytes and pins G. Build merges
+the captured segments into `segment-compact-<G+1>-<n>.bin` and
+`sparse-compact-<G+1>-<n>.bin`, each claimed with `O_CREAT|O_EXCL`, fsyncs both and
+syncs the directory. A build failure removes only those two files and drops the pin.
+Finish drops the job pin first, so retirement sees reader pins only. It then
+publishes G+1 with last sequence H only if the current manifest bytes equal the
+captured ones. The bytes cover G, H, descriptors, checksums and the HNSW reference;
+the config cannot change for an open instance because `collection.bin` is written
+only at creation. The durable manifest is published first, then the read root, the
+index caches, and the inputs go to `retire_or_reclaim` at G. Writes after begin stay
+in the memtable and WAL; publish does not rotate the WAL. On a lost race the output
+is removed and `compact()` recaptures from the newer manifest. After 4 attempts it
+raises "compaction retry budget exhausted". `compaction_attempts()` and
+`compaction_conflicts()` count jobs. Close before finish discards the output. A
+publish error keeps the output, because the manifest may already name it. Open
+removes job outputs whose target generation is above the committed generation. A
+published output always targets at most the committed generation, so a committed or
+pinned file never matches. Known leak: an output whose target is at most the
+committed generation and that was never published stays on disk. This needs a crash
+between a lost race and its discard. Retired inputs still pinned at close also stay,
+as before, because the retire queue lives in memory. The worker's
+`compact_committed_segments` now calls the same capture, build and publish functions
+under its lock, so only its output names change; building outside the lock there is
+#52. Synchronous `maintenance()` and the flush-inline fallback still use the locked
+memtable compaction.
+
 Backup first checkpoints/captures the exact manifest and config/file set under the
 writer lock. Copy that set outside it, holding source leases and target writer lock.
 Use bounded buffers, per-file temp+fsync+rename and manifest-last publication. Do not
@@ -278,8 +310,8 @@ device snapshot of its own, and a newer sequence always gets a new root and stat
 | Full-point visibility and owned get | `test_snapshot.mojo`, `test_concurrency.mojo` batch boundaries | #47–#49: equal G/different S, tombstone/reinsert, pointer-sharing and sparse/payload-only updates |
 | Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point, merge backpressure; capture does not clone base bytes |
 | Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
-| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51/#52: lock-free build with concurrent writes/flush, last release, cancellation and worker failure |
-| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51/#53: output fsync/manifest/root-publication/cleanup crash boundaries and stale build |
+| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, conflict, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52: worker build without the lock, worker failure |
+| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #53: stale build |
 | Backup exact captured generation | `test_storage_operations.mojo` | #53: concurrent source flush/compact, bounded RSS, independent restore and corrupt source |
 | Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
 | GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |
