@@ -329,16 +329,31 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
   #48 inline merge。16 個 sealed run 時 write 不 admit，請求 merge、放鎖睡 1 ms 重試，close
   或 maintenance failure 結束等待；merge 錯誤走 maintenance failure，已 ack 寫入留在 WAL。
   另修 drop 未 close 的 collection 時 `__deinit__` 在 join 前釋放 worker 共用狀態的舊 bug。
-  壓測（每 1 ms 一筆 upsert，三個 process 中位數）：worker compaction 期間可寫筆數每輪
-  1 → 約 84，扣除排在 `flush()` 後的 upsert，p50／p99 由 118／122 ms 降為 0.48／0.79 ms；
-  整體 p99 34 ms 是約 36 ms 的 `flush()` 鎖（worker 鎖內 begin／finish 中位數 0.05／0.57
-  ms）。sealed merge 那筆 upsert p50 5.9 → 1.3 ms（publish 鎖約 1.6 ms），backpressure
-  未觸發。conflict：flush 不再造成 conflict，200／1000 ms 的 foreground conflict 19／2 →
-  0；50 ms 時前後台互搶同一批 inputs 仍有衝突（foreground 5／25、worker 17／43），但沒有
-  任何 call 或 job 用完 budget（之前 2／20 call 用完），segments 最多 7。foreground
-  `compact()` 的兩段約 32 ms 鎖不變（#54／#56）。700 Mojo／66 Python／15 crash、C ABI、
-  build 通過；GPU 路徑未變，未跑。一個 process 有一筆 282 ms 的 job-only upsert，較早一批
-  非正式壓測有一次 hang、一次 conflict bench 失敗，皆未重現、原因未定。
+  另加 L0 stall：flush 看到 8 個 L0 segment（`LEVEL_ZERO_SEGMENT_LIMIT`，flush policy 觸發點
+  4 的兩倍）時不寫，請 worker compact、放鎖睡 1 ms 重試（RocksDB level-zero stop），close 或
+  maintenance failure 結束等待；少了它，unfair spin lock 下 upsert／flush 緊迴圈會讓 job 一直
+  publish 不了，segments 無上限，bounded-segments 測試間歇失敗。
+  壓測（2026-09-27 一批、全程電池無睡眠；每 1 ms 一筆 upsert，三個 process 中位數）：worker
+  compaction 期間可寫筆數每輪 1 → 約 83；扣除排在 `flush()` 後的 upsert，job-only p50／p99
+  0.48／1.06 ms（之前那筆等完整個 job，約 120 ms）；整體 p99 34 ms 是約 35 ms 的 `flush()`
+  鎖（worker 鎖內 begin／finish 中位數 0.04／0.56 ms）。sealed merge 那筆 upsert p50 5.1 →
+  1.2 ms，backpressure 未觸發。job-only 最大值（本批最多 106 ms、前一批 282 ms）是 upsert
+  在鎖內 WAL append＋fsync 的 I/O stall，不是 worker 持鎖：探針量到最長 184 ms 的 upsert 有
+  183.4 ms 在 fsync，當時沒有 job 或 flush；baseline 的 quiet upsert 也到 114 ms。
+  conflict：flush 不再造成 conflict，200／1000 ms 的 foreground conflict 19／2 → 0；50 ms 無
+  負載時 20 個 call 都第一次就 publish（之前 18／20 用完 budget）。但旁邊跑 12 個 busy loop
+  時仍有 4–11／20 call 用完 budget（之前 17–20），worker 從未用完：前後台仍互搶同一批
+  inputs，AkashaDB 沒有 RocksDB `being_compacted`／`exclusive_manual_compaction` 那樣的互斥，
+  列為限制。segments 最多 9（L0 stall 上限）。無負載的結果也受 bench 自己在 flush 後讀
+  manifest 時是否持鎖影響：同一 1be5483 engine 的 foreground conflict 鎖外 3–23、鎖內 0；
+  355e1d5 用完 budget 的 call 鎖外 0–5、鎖內 18–20。前一批 baseline 只 2／20 用完，用的就是
+  鎖外讀的 bench。#51 的 bench 在 355e1d5 上仍 20／20，與 #51 報告一致。
+  前一批非正式壓測的兩個失敗：`conflict bench task failed` 已重現，是 1be5483 bench 在鎖外
+  讀 manifest，被 worker publish 回收的 segment 造成 missing segment；engine 只在 open 或鎖內
+  讀 manifest，bench 已改鎖內讀，32 個 case 無錯。hang 未重現：1be5483 與目前 tree 各 5 個
+  process（無負載、busy loop、併行 `mojo build`）跑完 worker＋6 輪 sealed 共 70 段，原因未定。
+  foreground `compact()` 的兩段約 32 ms 鎖不變（#54／#56）。703 Mojo／66 Python／15 crash、
+  C ABI、build 通過；GPU 路徑未變，未跑。
   [實作與量測報告](../docs/benchmarks/2026-09-26-background-publication.md)。
 
 ### #53 Captured manifest backup 與 bounded copy
