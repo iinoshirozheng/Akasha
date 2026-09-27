@@ -369,8 +369,11 @@ def bench_conflict(flush_period_ms: Int) raises:
                 if _now() >= deadline:
                     collection.flush()
                     _ = flushes.fetch_add(1)
-                    var segments = len(load_manifest(path, DIMENSION).segments)
-                    max_segments = max(max_segments, segments)
+                    # A publish reclaims its inputs under the writer lock, so
+                    # an unlocked read can name a segment already deleted.
+                    with BlockingScopedLock(collection._writer_lock[]):
+                        var manifest = load_manifest(path, DIMENSION)
+                        max_segments = max(max_segments, len(manifest.segments))
                     deadline = _now() + period_ns
         except error:
             print("writer error: " + String(error))
