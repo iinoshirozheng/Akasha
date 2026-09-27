@@ -1,5 +1,5 @@
 from std.ffi import c_int, external_call
-from std.io.file import O_CREAT, O_WRONLY
+from std.io.file import FileHandle, O_CREAT, O_WRONLY
 from std.os import makedirs, remove
 from std.os.path import exists
 from std.sys._libc_errno import ErrNo, get_errno
@@ -153,6 +153,11 @@ def atomic_replace(source: String, destination: String) raises:
     )
     if result != 0:
         raise Error("rename failed: " + String(get_errno()))
+
+
+def sync_file(file: FileHandle) raises:
+    """Flush one open file's contents to stable storage."""
+    _sync_descriptor(file.handle)
 
 
 def sync_directory(path: String) raises:

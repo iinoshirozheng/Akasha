@@ -19,7 +19,9 @@ A08 其他 list-based Python API、Z04 result export 與 durable owned copies �
 
 #46 已交付 [ADR 0007](../adr/0007-generation-field-ownership.md)、
 [成本與 owner probe](2026-09-07-generation-costs.md) 以及 #47–#63 後續切片。
-L02–L06／Z01／Z04／Z07／Z09 的實作仍未完成；不能以設計完成關閉它們。
+L02–L06／Z01／Z04／Z09 的實作仍未完成；不能以設計完成關閉它們。Z07 與 A09 的 backup
+I/O 已由 #53 結案：備份只複製 pinned generation 的檔案集合，經 1 MiB buffer 串流，
+128 MiB 檔的峰值 RSS 增加 16 KiB；不用 hardlink。A09 的 WAL 讀取留給 #62。
 Mojo 1.0 的 close/Span 反例支持 operation/export 獨立 owner，並非 origin 標註即可保證。
 
 ## #39–#42 實作進度
@@ -54,7 +56,7 @@ borrowed decoder／cache publication 一起量測；不能宣稱整個 flush 已
 | A12 CRC 速度、Z10 mapped validation 記憶體 | #37 已做相同 polynomial 的 CRC table、排序 reciprocal audit 與 peak RSS 量測 | 保留格式與安全檢查；不重做 CRC 優化。WAL owned decode copies（Z06）仍另有改善空間 |
 | A16 compact SIMD、M5 execution crossover | #36/#38 已完成；GPU 保持 opt-in | 沿用證據，沒有新資料不增加 kernel／scratch 改寫 |
 | A01–A10 的通用 API 候選（上述已完成部分除外） | bitmap、List loops、heaps/sorts、sparse/fusion lookup、Arrow boxing 仍存在 | 先做可直接驗收的小替換；heap/sort 需語意與量測適配 |
-| Z01/Z02/Z03/Z04/Z07/Z09、L02–L06 | snapshot clone、flush 無效 clone、Arrow materialization、whole-file backup、query-time PQ、長鎖仍存在 | 列入下一輪，不能由 GPU cache 完成推定共享 authoritative generation 已完成 |
+| Z01/Z02/Z03/Z04/Z09、L02–L06 | snapshot clone、flush 無效 clone、Arrow materialization、query-time PQ、長鎖仍存在（Z07 whole-file backup 已由 #53 結案） | 列入下一輪，不能由 GPU cache 完成推定共享 authoritative generation 已完成 |
 
 #31–#38 的 macOS／Linux CI 已成功，Apple M4 Pro 的 9 個實機 GPU tests 有交付紀錄。
 高維 uniform workload 在 ef=128 的最低 Recall@10 約 0.684375，且尚無 Qdrant 同條件

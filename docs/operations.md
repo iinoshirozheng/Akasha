@@ -23,10 +23,13 @@ akashadb-admin quarantine-orphans PATH DIMENSION QUARANTINE
 dense/sparse segment. They compare format, sequence ranges, levels, and stored
 checksums; corruption is an error, not a warning.
 
-Online backup opens the collection, checkpoints accepted WAL state, pins the
-committed manifest generation, verifies every referenced file, copies immutable
-files, and publishes the destination manifest last. Restore repeats strict
-validation and also publishes its target manifest last. The target must not
+Online backup checkpoints accepted WAL state, then captures and pins that
+committed manifest generation under the writer lock. It copies only the captured
+files after releasing the lock, so writes, flushes and compactions continue. Each
+file streams through a 1 MiB buffer into a temporary name, is checked against its
+manifest checksum, fsynced and renamed; the destination manifest is published last.
+The backup omits the derived HNSW graph, which the first open rebuilds. Restore
+strictly decodes the backup, then copies and publishes its target manifest last. The target must not
 already contain a committed manifest, dense WAL, or sparse WAL. A WAL-only
 collection is authoritative even without a manifest and is never overwritten
 or merged by restore. Backup and restore acquire the target's normal

@@ -191,16 +191,17 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#52 已完成；#53–#63 待實作）
+## #46 定案後的實作隊列（#47–#53 已完成；#54–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#53**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+建議下一個引擎項目是 **#54**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
 共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
 獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish，
-#52 已讓 background worker 走同一流程並 rebase 到較新的 manifest。
+#52 已讓 background worker 走同一流程並 rebase 到較新的 manifest，
+#53 已讓 backup 只在鎖內 capture＋pin，鎖外有界複製。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -358,13 +359,30 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #53 Captured manifest backup 與 bounded copy
 
-- [ ] 備份捕捉 manifest/config/檔案集合並持 lease；解鎖後只複製該集合。官方 FileHandle
+- [x] 備份捕捉 manifest/config/檔案集合並持 lease；解鎖後只複製該集合。官方 FileHandle
   分塊讀寫，預設 1 MiB buffer；保留 target lock、temp/fsync/rename、manifest-last。
 - 相依：#50（可在 #51 前做）。主要檔：`storage/operations.mojo`、`api/collection.mojo`、
   `storage/filesystem.mojo`、`tests/mojo/test_storage_operations.mojo`、新 backup crash test。
 - 驗收：來源持續 flush/compact 時備份仍是單一 captured view，關閉/移除來源後獨立重開；
   大檔峰值記憶體不隨檔案大小線性增長。corrupt source、partial copy、manifest 前 crash、
   active/WAL target 拒絕；不默默新增 hardlink。Z07/A09 的 backup I/O 在此結案。
+- 結果（2026-09-27）：`backup_to` 分三步：鎖內 flush、capture manifest／config／live
+  count 並 pin 該 generation；鎖外 `copy_checkpoint` 複製；結束時 unpin，下一次 reclaim
+  才回收。每個 dense／sparse 檔經 `FileHandle.read(Span)`／`write_all` 串流進
+  `<name>.tmp`，同時比對 magic、body CRC-32、尾端 checksum 與 descriptor，拒絕長度變化，
+  fsync 後 rename；一次 directory fsync 後才 publish manifest。報告取自 capture 的狀態，
+  複製後不再 decode。buffer 1–7 byte 與 4096 都逐位元相同；128 MiB 檔的峰值 RSS 增加
+  16 KiB，負控制（buffer＝檔案大小）增加 130 MiB 而失敗。新測試：來源在複製中
+  flush＋compact 且 sidecar 已刪、lease 釋放後回收、刪除來源後 restore 再開；corrupt／
+  magic 錯／截斷的 dense 與 sparse 檔；committed／WAL-only／開啟中的 target；crash 在
+  manifest 前（torn tmp）與 manifest rename 前，retry 覆寫殘留。未新增 hardlink。
+  新增串流 `crc32_update`，`crc32_range` 改用它（同一查表）。
+  限制：(1) backup manifest 省略 HNSW sidecar（v2，同 generation／last sequence），開啟時
+  重建 graph。checkpoint 直接刪改 `hnsw-<sequence>.bin`，不受 pin 保護，格式又固定其名稱；
+  要複製它需讓 sidecar 經 pin 退役，屬 #56 範圍但尚未列入其驗收。(2) restore 仍嚴格
+  decode 整個備份（來源不受信任），記憶體仍是 O(segment)，只有複製是有界的。
+  (3) 失敗的複製在 target 留下已複製檔與 `.tmp`，沒有 manifest 故不是備份；retry 覆寫。
+  707 Mojo／66 Python／17 crash、C ABI、build 通過；GPU 路徑未變，未跑。
 
 ### #54 SQ8 ready artifact 重用
 

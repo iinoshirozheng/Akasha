@@ -29,7 +29,10 @@ manifest, the background worker runs the same three steps with the build outside
 lock, a flush waits at eight L0 segments until the worker publishes, and sealed runs
 merge on the worker behind write backpressure. See the
 [#52 implementation and measurements](../benchmarks/2026-09-26-background-publication.md).
-The rest of this ADR remains the design for #53 onward.
+**#53 is implemented (2026-09-27):** backup holds the writer lock only to checkpoint,
+capture the manifest and config and pin that generation, then copies outside it
+through one 1 MiB buffer; the backup manifest omits the HNSW sidecar (see Backup below).
+The rest of this ADR remains the design for #54 onward.
 
 ## Evidence and constraints
 
@@ -316,6 +319,20 @@ source is closed/deleted; default copy semantics do not introduce shared mutable
 inodes. Optional derived files are either copied with their captured metadata or
 explicitly omitted from the backup's manifest; required data must be complete.
 
+#53 omits the HNSW sidecar. A checkpoint removes or rewrites `hnsw-<sequence>.bin`
+directly instead of retiring it behind generation pins, and the format fixes its
+name, so a pin cannot keep the captured sidecar. The backup manifest is the captured
+one without it (format v2, same generation and last sequence), and opening a backup
+or restore rebuilds the graph. Copying it needs the sidecar to retire behind pins,
+which belongs with HNSW publication (#56) but is not yet in its acceptance.
+Each dense and sparse file streams through `FileHandle.read(Span)`/`write_all` into
+`<name>.tmp`, checks the magic, the CRC-32 of the body and the stored tail against its
+descriptor, rejects a size change, then fsyncs and renames. One directory fsync
+precedes manifest publication. The backup report comes from the captured manifest,
+the memtable live count and the config, so no decode runs after the copy. Restore
+still strictly decodes the backup before copying (an untrusted source), so its
+memory stays O(segment); only its copy is bounded.
+
 ## Derived indexes and device ownership
 
 SQ8/PQ/HNSW build artifacts carry root/layout identity, field/config fingerprint,
@@ -363,8 +380,8 @@ device snapshot of its own, and a newer sequence always gets a new root and stat
 | Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point; capture does not clone base bytes. #52 done: `test_background_publication.mojo` (worker merge at the eighth run, prefix-only publish, stale merge after reset, inline merge without a worker, backpressure, close during a wait, merge failure; the flush stall at eight L0 segments, close and compaction failure during it) |
 | Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
 | Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52 done: its conflict tests now rebase (flush during build + reopen with mapped HNSW, racing flushes without conflicts); `test_background_publication.mojo` (worker build without the lock, foreground and worker on the same inputs, worker checksum/IO failure, close during build, counted budget exhaustion, flushes faster than a build, write+flush+worker stress, drop without close) |
-| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53: stale build |
-| Backup exact captured generation | `test_storage_operations.mojo` | #53: concurrent source flush/compact, bounded RSS, independent restore and corrupt source |
+| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53 done: `tests/crash/test_backup_publication.mojo` (torn copy and no manifest, manifest temp not renamed, retry over the leftovers) |
+| Backup exact captured generation | `test_storage_operations.mojo` | #53 done: `test_storage_operations.mojo` (flush, compact and sidecar removal during the copy, lease release reclaims, restore after the source is deleted, every buffer size, corrupt/mislabeled/torn source, committed/WAL/active target); `test_backup_bounded_memory.mojo` (128 MiB copy) |
 | Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
 | GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |
 | Typed buffer bounds and ownership | #45 real Python/Mojo Arrow tests | #57/#58: output pointer/release/slice, filtered gather copied-byte accounting |

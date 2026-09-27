@@ -9,10 +9,22 @@ def crc32(data: List[UInt8]) -> UInt32:
 
 def crc32_range(data: List[UInt8], start: Int, end: Int) -> UInt32:
     """Compute CRC-32/ISO-HDLC over ``[start, end)``."""
-    var checksum = UInt32(0xFFFFFFFF)
-    for index in range(start, end):
-        checksum = _crc32_update(checksum, data[index])
-    return ~checksum
+    return ~crc32_update(CRC32_INITIAL, Span(data)[start:end])
+
+
+comptime CRC32_INITIAL = UInt32(0xFFFFFFFF)
+"""The CRC-32/ISO-HDLC register before any byte; see ``crc32_update``."""
+
+
+def crc32_update(register: UInt32, data: Span[UInt8, _]) -> UInt32:
+    """Advance a CRC-32/ISO-HDLC register over ``data``.
+
+    Streams start from ``CRC32_INITIAL``; the checksum is ``~register``.
+    """
+    var result = register
+    for byte in data:
+        result = _crc32_update(result, byte)
+    return result
 
 
 def _crc32_table() -> Array[UInt32, 256]:

@@ -85,7 +85,11 @@ from akasha.storage.manifest import (
     SegmentDescriptor,
 )
 from akasha.storage.lock import CollectionLock
-from akasha.storage.operations import backup_storage, StorageInspection
+from akasha.storage.operations import (
+    CheckpointCopy,
+    copy_checkpoint,
+    StorageInspection,
+)
 from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.segment import (
     read_segment,
@@ -1480,27 +1484,40 @@ struct PersistentCollection:
             self._rebuild_hnsw_unlocked()
 
     def backup_to(mut self, target: String) raises -> StorageInspection:
-        """Checkpoint and copy one generation while it remains pinned."""
+        """Checkpoint, then copy that generation without the writer lock.
+
+        Like a RocksDB backup, the copy holds a lease on the captured files
+        instead of the lock; writes, flushes and compactions continue.
+        """
+        var checkpoint = self._begin_backup()
+        try:
+            copy_checkpoint(self._path, target, checkpoint)
+        except error:
+            self._end_backup(checkpoint)
+            raise error^
+        self._end_backup(checkpoint)
+        return checkpoint.report.copy()
+
+    def _begin_backup(mut self) raises -> CheckpointCopy:
+        """Checkpoint, then capture and pin the committed generation."""
         var waited = False
         while True:
             with BlockingScopedLock(self._writer_lock[]):
                 if self._flush_admitted(waited):
                     self._flush_unlocked()
-                    var manifest = load_manifest(
-                        self._path, self._config.dimension
+                    var checkpoint = CheckpointCopy(
+                        load_manifest(self._path, self._config.dimension),
+                        Optional(self._config.copy()),
+                        self._memtable.live_count(),
                     )
-                    self._pins[].pin(manifest.generation)
-                    try:
-                        var report = backup_storage(
-                            self._path, target, self._config.dimension
-                        )
-                        self._pins[].unpin(manifest.generation)
-                        return report^
-                    except error:
-                        self._pins[].unpin(manifest.generation)
-                        raise Error(String(error))
+                    self._pins[].pin(checkpoint.manifest.generation)
+                    return checkpoint^
             waited = True
             sleep(_BACKPRESSURE_SLEEP_SECONDS)
+
+    def _end_backup(self, checkpoint: CheckpointCopy):
+        """Release the captured files to the next reclaim."""
+        self._pins[].unpin(checkpoint.manifest.generation)
 
     def _flush_admitted(mut self, waited: Bool) raises -> Bool:
         """Admit a flush unless level-zero segments reached the limit.
