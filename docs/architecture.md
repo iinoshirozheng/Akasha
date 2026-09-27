@@ -105,7 +105,10 @@ bounded engine-owned maintenance request. A small portable pthread shim invokes
 a Mojo callback; the callback pins the committed manifest under the same writer
 lock, merges its dense and sparse segments without the lock, and atomically
 publishes one L1 base under a short lock, keeping segments flushed during the
-merge after it. It never modifies or rotates a newer WAL. At most one callback waits
+merge after it. A flush that finds eight L0 segments (`LEVEL_ZERO_SEGMENT_LIMIT`)
+waits without the lock until the worker publishes, so a writer that flushes faster
+than the merge cannot grow L0 without bound. The callback never modifies or rotates
+a newer WAL. At most one callback waits
 behind the active callback. Failure is stored and surfaced by the next public
 data operation, explicit wait, later scheduling, or close. If the shared
 library cannot load, flush uses the same synchronous compaction path.

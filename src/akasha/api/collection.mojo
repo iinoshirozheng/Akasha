@@ -39,7 +39,10 @@ from akasha.storage.committed_compaction import (
     finish_compaction,
     remove_unpublished_compaction_outputs,
 )
-from akasha.storage.compaction import CompactionPolicy
+from akasha.storage.compaction import (
+    CompactionPolicy,
+    LEVEL_ZERO_SEGMENT_LIMIT,
+)
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.maintenance import (
     CompactionCounts,
@@ -200,7 +203,7 @@ struct PersistentCollection:
     var _compaction_attempts: Int
     var _compaction_conflicts: Int
     var _backpressure_waits: Int
-    """Writes that waited for a sealed-run merge before admission."""
+    """Calls that waited for a sealed-run merge or a background compaction."""
 
     def __init__(
         out self,
@@ -1461,8 +1464,14 @@ struct PersistentCollection:
 
     def flush(mut self) raises:
         """Atomically append an immutable incremental checkpoint."""
-        with BlockingScopedLock(self._writer_lock[]):
-            self._flush_unlocked()
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._flush_admitted(waited):
+                    self._flush_unlocked()
+                    return
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
 
     def rebuild_hnsw(mut self) raises:
         """Explicitly rebuild the derived graph from authoritative live data."""
@@ -1472,19 +1481,49 @@ struct PersistentCollection:
 
     def backup_to(mut self, target: String) raises -> StorageInspection:
         """Checkpoint and copy one generation while it remains pinned."""
-        with BlockingScopedLock(self._writer_lock[]):
-            self._flush_unlocked()
-            var manifest = load_manifest(self._path, self._config.dimension)
-            self._pins[].pin(manifest.generation)
-            try:
-                var report = backup_storage(
-                    self._path, target, self._config.dimension
-                )
-                self._pins[].unpin(manifest.generation)
-                return report^
-            except error:
-                self._pins[].unpin(manifest.generation)
-                raise Error(String(error))
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._flush_admitted(waited):
+                    self._flush_unlocked()
+                    var manifest = load_manifest(
+                        self._path, self._config.dimension
+                    )
+                    self._pins[].pin(manifest.generation)
+                    try:
+                        var report = backup_storage(
+                            self._path, target, self._config.dimension
+                        )
+                        self._pins[].unpin(manifest.generation)
+                        return report^
+                    except error:
+                        self._pins[].unpin(manifest.generation)
+                        raise Error(String(error))
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
+
+    def _flush_admitted(mut self, waited: Bool) raises -> Bool:
+        """Admit a flush unless level-zero segments reached the limit.
+
+        The caller holds the writer lock. Like a RocksDB level-zero stop, a held
+        flush sleeps without the lock until the background compaction
+        publishes; close or a maintenance failure ends the wait through
+        `_ensure_open`. Without a worker, a flush compacts inline at the policy
+        threshold and never reaches the limit.
+        """
+        self._ensure_open()
+        if not self._maintenance.enabled() or not path_exists(
+            self._path + "/manifest.bin"
+        ):
+            return True
+        var manifest = load_manifest(self._path, self._config.dimension)
+        var policy = CompactionPolicy(LEVEL_ZERO_SEGMENT_LIMIT)
+        if not policy.should_compact(manifest):
+            return True
+        if not waited:
+            self._backpressure_waits += 1
+        _ = self._maintenance.request_compaction()
+        return False
 
     def _flush_unlocked(mut self) raises:
         var published = self._checkpoint_unlocked()

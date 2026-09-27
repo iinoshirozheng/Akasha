@@ -26,7 +26,8 @@ merge runs without it. See the
 [#51 implementation and measurements](../benchmarks/2026-09-26-compaction-publish.md).
 **#52 is implemented (2026-09-26):** publish rebases the output onto the current
 manifest, the background worker runs the same three steps with the build outside the
-lock, and sealed runs merge on the worker behind write backpressure. See the
+lock, a flush waits at eight L0 segments until the worker publishes, and sealed runs
+merge on the worker behind write backpressure. See the
 [#52 implementation and measurements](../benchmarks/2026-09-26-background-publication.md).
 The rest of this ADR remains the design for #53 onward.
 
@@ -108,7 +109,11 @@ sleeps without the lock and retries; close or a maintenance failure ends the wai
 through `_ensure_open`. The check runs before the write, so one admitted batch can
 still seal up to 64 runs past the limit. A merge error is a maintenance failure: the
 owner closes, and every acknowledged write stays in the WAL for the next open. With
-no worker loaded, the merge runs inline at the eighth run, as in #48.
+no worker loaded, the merge runs inline at the eighth run, as in #48. Compaction has
+the same stall at level zero: a flush that finds eight L0 segments
+(`LEVEL_ZERO_SEGMENT_LIMIT`, twice the four that request a compaction) requests one,
+sleeps without the lock and retries, and close or a maintenance failure ends the wait.
+Without a worker, the flush compacts inline at four and never waits.
 
 The root owns its head snapshot, base, sealed runs and exact file lease. It does not
 own an O(all-points) copied lookup or full replacement mask per capture. Lookup probes
@@ -355,7 +360,7 @@ device snapshot of its own, and a newer sequence always gets a new root and stat
 | Invariant | Existing evidence to preserve | New regression assigned below |
 |---|---|---|
 | Full-point visibility and owned get | `test_snapshot.mojo`, `test_concurrency.mojo` batch boundaries | #47–#49: equal G/different S, tombstone/reinsert, pointer-sharing and sparse/payload-only updates |
-| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point; capture does not clone base bytes. #52 done: `test_background_publication.mojo` (worker merge at the eighth run, prefix-only publish, stale merge after reset, inline merge without a worker, backpressure, close during a wait, merge failure) |
+| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point; capture does not clone base bytes. #52 done: `test_background_publication.mojo` (worker merge at the eighth run, prefix-only publish, stale merge after reset, inline merge without a worker, backpressure, close during a wait, merge failure; the flush stall at eight L0 segments, close and compaction failure during it) |
 | Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
 | Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52 done: its conflict tests now rebase (flush during build + reopen with mapped HNSW, racing flushes without conflicts); `test_background_publication.mojo` (worker build without the lock, foreground and worker on the same inputs, worker checksum/IO failure, close during build, counted budget exhaustion, flushes faster than a build, write+flush+worker stress, drop without close) |
 | Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53: stale build |

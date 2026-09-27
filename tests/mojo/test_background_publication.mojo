@@ -1,5 +1,6 @@
 from akasha import BatchMutation, PersistentCollection, SparseElement
 from akasha.common.config import CollectionConfig
+from akasha.storage.compaction import CompactionPolicy, LEVEL_ZERO_SEGMENT_LIMIT
 from akasha.storage.committed_compaction import (
     begin_compaction,
     build_compaction,
@@ -614,6 +615,26 @@ def test_merge_failure_reports_without_losing_acked_writes() raises:
     reopened.close()
 
 
+def _level_zero_count(collection: PersistentCollection) raises -> Int:
+    """Count under the writer lock, which a publish holds to reclaim inputs."""
+    with BlockingScopedLock(collection._writer_lock[]):
+        return CompactionPolicy(LEVEL_ZERO_SEGMENT_LIMIT).level_zero_count(
+            load_manifest(collection._path, 4)
+        )
+
+
+def _flush_to_level_zero_limit(mut collection: PersistentCollection) raises:
+    """Flush one write at a time until the deltas reach the level-zero limit.
+
+    The first flush writes the base. The job requested at four deltas still
+    sleeps before its build.
+    """
+    for id in range(LEVEL_ZERO_SEGMENT_LIMIT + 1):
+        collection.upsert(id, _vector(id, 4))
+        collection.flush()
+    assert_equal(_level_zero_count(collection), LEVEL_ZERO_SEGMENT_LIMIT)
+
+
 def test_writes_flushes_and_worker_keep_segments_bounded() raises:
     var path = String("/tmp/akasha-52-worker-stress")
     _reset(path)
@@ -627,21 +648,109 @@ def test_writes_flushes_and_worker_keep_segments_bounded() raises:
             collection.upsert(written, _vector(written, 4))
             written += 1
         collection.flush()
-        most = max(most, len(load_manifest(path, 4).segments))
+        most = max(most, _level_zero_count(collection))
     assert_true(collection.wait_for_maintenance())
 
     var counts = collection.background_compaction_counts()
     assert_true(counts.attempts - counts.conflicts >= 1)
     assert_equal(counts.exhausted, 0)
-    # The policy requests at four segments; a rebase keeps at most the
-    # segments flushed while one build ran.
-    assert_true(most <= 8)
+    assert_true(most <= LEVEL_ZERO_SEGMENT_LIMIT)
     var expected = collection.last_sequence()
     collection.close()
 
     var reopened = PersistentCollection.open_with_config(path, _cheap_config(4))
     assert_equal(reopened.last_sequence(), expected)
     for id in range(written):
+        assert_equal(reopened.get(id).value().vector[0], Float32(id))
+    reopened.close()
+
+
+def test_flush_waits_for_compaction_at_the_level_zero_limit() raises:
+    var path = String("/tmp/akasha-52-flush-stall")
+    var collection = _small_collection(path)
+    collection._maintenance._state[].compaction_delay_for_test = 0.5
+    _flush_to_level_zero_limit(collection)
+    var written = LEVEL_ZERO_SEGMENT_LIMIT + 5
+    var most = 0
+    for id in range(LEVEL_ZERO_SEGMENT_LIMIT + 1, written):
+        collection.upsert(id, _vector(id, 4))
+        collection.flush()
+        most = max(most, _level_zero_count(collection))
+    assert_true(collection._backpressure_waits >= 1)
+    assert_true(most <= LEVEL_ZERO_SEGMENT_LIMIT)
+
+    assert_true(collection.wait_for_maintenance())
+    collection.close()
+    var reopened = PersistentCollection.open_with_config(path, _cheap_config(4))
+    assert_equal(reopened.last_sequence(), UInt64(written))
+    for id in range(written):
+        assert_equal(reopened.get(id).value().vector[0], Float32(id))
+    reopened.close()
+
+
+def test_close_during_flush_wait_keeps_acked_writes() raises:
+    var path = String("/tmp/akasha-52-flush-stall-close")
+    var collection = _small_collection(path)
+    collection._maintenance._state[].compaction_delay_for_test = 1.0
+    _flush_to_level_zero_limit(collection)
+    var acked = LEVEL_ZERO_SEGMENT_LIMIT + 1
+    collection.upsert(acked, _vector(acked, 4))
+    var closed_errors = Atomic[DType.int64](0)
+    var other_errors = Atomic[DType.int64](0)
+
+    def flush_or_close(
+        task: Int,
+    ) {mut collection, mut closed_errors, mut other_errors}:
+        if task == 0:
+            try:
+                collection.flush()
+            except error:
+                if "collection is closed" in String(error):
+                    _ = closed_errors.fetch_add(1)
+                else:
+                    _ = other_errors.fetch_add(1)
+            return
+        sleep(0.1)
+        try:
+            collection.close()
+        except:
+            _ = other_errors.fetch_add(1)
+
+    parallelize(flush_or_close, 2, 2)
+
+    assert_equal(closed_errors.load(), 1)
+    assert_equal(other_errors.load(), 0)
+    assert_equal(collection._backpressure_waits, 1)
+    var reopened = PersistentCollection.open_with_config(path, _cheap_config(4))
+    assert_equal(reopened.last_sequence(), UInt64(acked + 1))
+    assert_equal(reopened.get(acked).value().vector[0], Float32(acked))
+    reopened.close()
+
+
+def test_compaction_failure_ends_the_flush_wait() raises:
+    var path = String("/tmp/akasha-52-flush-stall-failure")
+    var collection = _small_collection(path)
+    collection._maintenance._state[].compaction_delay_for_test = 0.5
+    _flush_to_level_zero_limit(collection)
+    # The sleeping job captured the first delta, so its build fails.
+    var victim = path + "/" + load_manifest(path, 4).segments[1].name
+    var original = read_file_bytes(victim)
+    var corrupted = original.copy()
+    corrupted[len(corrupted) // 2] ^= 0xFF
+    write_file_sync(victim, corrupted)
+    var acked = LEVEL_ZERO_SEGMENT_LIMIT + 1
+    collection.upsert(acked, _vector(acked, 4))
+
+    with assert_raises(contains="background maintenance failed"):
+        collection.flush()
+    assert_equal(collection._backpressure_waits, 1)
+    with assert_raises(contains="background maintenance failed"):
+        collection.close()
+
+    write_file_sync(victim, original)
+    var reopened = PersistentCollection.open_with_config(path, _cheap_config(4))
+    assert_equal(reopened.last_sequence(), UInt64(acked + 1))
+    for id in range(acked + 1):
         assert_equal(reopened.get(id).value().vector[0], Float32(id))
     reopened.close()
 

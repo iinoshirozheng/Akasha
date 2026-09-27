@@ -44,8 +44,9 @@ the manifest. It merges those segments into paired bases without the lock, then
 takes the lock briefly to publish a new generation in which the bases replace
 their inputs and segments flushed meanwhile stay after them. A WAL accepted
 after the capture remains untouched and is replayed above the compacted
-checkpoint. The worker also merges sealed in-memory read runs; a writer that
-finds 16 sealed runs waits without the lock until a merge publishes.
+checkpoint. A flush that finds eight L0 segments waits without the lock until
+the compaction publishes. The worker also merges sealed in-memory read runs; a
+writer that finds 16 sealed runs waits without the lock until a merge publishes.
 `wait_for_maintenance()` drains the
 queue; `close()` drains and joins it before releasing the collection lock. The
 first worker error is surfaced deterministically. If the portable native worker

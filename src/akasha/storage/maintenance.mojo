@@ -10,6 +10,7 @@ from akasha.storage.native_worker import NativeWorker
 from akasha.storage.read_generation import ReadGenerationCache, SealedMerge
 from akasha.storage.retired_files import RetiredFileQueue
 from std.memory import ArcPointer
+from std.time import sleep
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
@@ -40,6 +41,8 @@ struct _MaintenanceState(Movable):
     var compaction_count: Int
     var compaction_requested: Bool
     var counts: CompactionCounts
+    var compaction_delay_for_test: Float64
+    """Seconds a job sleeps between capture and build."""
 
     def __init__(
         out self,
@@ -63,6 +66,7 @@ struct _MaintenanceState(Movable):
         self.compaction_count = 0
         self.compaction_requested = False
         self.counts = CompactionCounts(0, 0, 0)
+        self.compaction_delay_for_test = 0
 
     def record_success(mut self, compacted: Bool):
         with BlockingScopedLock(self.status_lock):
@@ -157,6 +161,8 @@ def _compact(mut state: _MaintenanceState) raises -> Bool:
                 state.count_attempt()
         if not inputs:
             return False
+        if state.compaction_delay_for_test > 0:
+            sleep(state.compaction_delay_for_test)
         var output = build_compaction(
             state.path, state.dimension, inputs.value(), state.pins
         )
