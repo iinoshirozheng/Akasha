@@ -6,6 +6,7 @@ from akasha.index.quantization import PqIndex, Sq8Index
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.manifest import load_manifest
 from std.memory import ArcPointer
 from std.time import perf_counter_ns
 
@@ -206,22 +207,35 @@ def _reopen_benchmark() raises:
     var warm = PersistentCollection.open(path, _DIMENSION)
     var warm_result = warm.search_l2_approx(_vector(99_999), 10, 80)
     var warm_ns = perf_counter_ns() - warm_start
-    if not warm.hnsw_cache_hit() or not warm.metadata_cache_hit():
+    if not warm._hnsw_checkpoint_was_hit or not warm.metadata_cache_hit():
         raise Error("Phase 12 warm reopen cache gate failed")
     if len(warm_result) != 10:
         raise Error("Phase 12 warm reopen query gate failed")
     warm.close()
 
+    # Current manifests use the HNSW sidecar, not the legacy hnsw.cache.
+    var checkpoint = load_manifest(path, _DIMENSION)
+    remove_file_if_exists(path + "/" + checkpoint.hnsw_name.value())
     remove_file_if_exists(path + "/hnsw.cache")
     remove_file_if_exists(path + "/metadata.cache")
     var cold_start = perf_counter_ns()
     var cold = PersistentCollection.open(path, _DIMENSION)
     var cold_result = cold.search_l2_approx(_vector(99_999), 10, 80)
     var cold_ns = perf_counter_ns() - cold_start
-    if cold.hnsw_cache_hit() or cold.metadata_cache_hit():
+    if (
+        cold._hnsw_checkpoint_was_hit
+        or cold.hnsw_cache_hit()
+        or cold.metadata_cache_hit()
+    ):
         raise Error("Phase 12 cold reopen cache gate failed")
-    if cold_result[0].id != warm_result[0].id:
-        raise Error("Phase 12 reopen result parity gate failed")
+    if len(cold_result) != len(warm_result):
+        raise Error("Phase 12 reopen result count gate failed")
+    for rank in range(len(warm_result)):
+        if (
+            cold_result[rank].id != warm_result[rank].id
+            or cold_result[rank].score != warm_result[rank].score
+        ):
+            raise Error("Phase 12 reopen result parity gate failed")
     print("phase12 warm reopen+query ns", warm_ns, "cold ns", cold_ns)
     cold.close()
 
