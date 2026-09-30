@@ -12,6 +12,7 @@ from max.algorithm import parallelize
 from std.atomic import Atomic
 from std.ffi import c_int, external_call
 from std.os import listdir
+from std.utils import BlockingScopedLock
 from std.testing import (
     assert_equal,
     assert_false,
@@ -79,9 +80,11 @@ def _assert_committed_records(collection: PersistentCollection) raises:
 def _assert_disk_generation(
     collection: PersistentCollection, path: String
 ) raises:
-    var snapshot = collection.snapshot()
-    assert_equal(snapshot.generation(), load_manifest(path, 1).generation)
-    snapshot.close()
+    # A worker may publish again after public snapshot() releases the lock.
+    with BlockingScopedLock(collection._writer_lock[]):
+        var snapshot = collection._snapshot_unlocked()
+        assert_equal(snapshot.generation(), load_manifest(path, 1).generation)
+        snapshot.close()
 
 
 def test_compact_publishes_one_job_unique_base_at_disk_generation() raises:

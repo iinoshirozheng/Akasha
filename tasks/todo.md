@@ -447,6 +447,15 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #56 HNSW rebuild 鎖外建置與 bounded catch-up
 
+- 前置穩定性修復（2026-09-30）：已重現 foreground／worker 同 inputs 競爭；共用 job
+  lock 排除重複 full-compaction build，鎖順序固定 job → writer，等待不占 writer。
+  同步 maintenance、無 worker 的 flush／backup 也改用相同鎖外 builder，移除舊
+  `_compact_committed`／`_maintenance_unlocked`／`_retire_or_reclaim` 路徑。
+  備份在同步 compact 前 capture＋pin，驗證舊檔保活及刪除來源後可獨立重開。
+  62 targeted Mojo、9 crash tests 通過；原 flush 競態在無負載及 6 個 busy processes
+  下各重複 12 次，共 24 次通過；66 Python、C ABI、build 也通過。#56 本體仍未完成。
+  [原因、改動與驗證](../docs/benchmarks/2026-09-30-compaction-admission.md)。
+
 - [ ] 建立 pinned root 的 graph，publication 時核對 field/config 並用既有增量更新追上
   accepted mutations；無法有界追上就重排，不發布漏掉更新的 graph。
 - 相依：#50/#51。主要檔：`api/collection.mojo`、`index/segmented_hnsw.mojo`、

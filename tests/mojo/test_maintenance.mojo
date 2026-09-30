@@ -151,7 +151,7 @@ def test_background_publication_drops_cached_root_before_retiring_files() raises
     # so the worker deterministically sees a cached root for its input layout.
     with BlockingScopedLock(collection._writer_lock[]):
         collection._upsert_unlocked(5, [5.0])
-        collection._flush_unlocked()
+        _ = collection._flush_unlocked()
         snapshot = collection._snapshot_unlocked()
     _ = collection.wait_for_maintenance()
     assert_false(Bool(collection._read_generations[].root))

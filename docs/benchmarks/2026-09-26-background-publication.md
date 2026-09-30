@@ -1,5 +1,10 @@
 # #52: Background worker on the same publication path
 
+Follow-up (2026-09-30): [compaction admission](2026-09-30-compaction-admission.md)
+now prevents competing public full-compaction builders and removes the locked
+synchronous-compaction implementation. The measurements below describe the earlier
+#52 engine; its foreground/worker conflict and locked-inline limits are historical.
+
 Date: 2026-09-26; the benchmark numbers are from a rerun on 2026-09-27. Engine,
 tests and bench: the #52 working tree on `feat/48-bounded-generation-head` (on top of
 `355e1d5`, which is #51 and the baseline). Platform: Apple M4 Pro, macOS arm64;

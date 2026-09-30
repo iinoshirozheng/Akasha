@@ -1469,13 +1469,16 @@ struct PersistentCollection:
     def flush(mut self) raises:
         """Atomically append an immutable incremental checkpoint."""
         var waited = False
+        var inline_compaction: Bool
         while True:
             with BlockingScopedLock(self._writer_lock[]):
                 if self._flush_admitted(waited):
-                    self._flush_unlocked()
-                    return
+                    inline_compaction = self._flush_unlocked()
+                    break
             waited = True
             sleep(_BACKPRESSURE_SLEEP_SECONDS)
+        if inline_compaction:
+            self.compact()
 
     def rebuild_hnsw(mut self) raises:
         """Explicitly rebuild the derived graph from authoritative live data."""
@@ -1501,19 +1504,31 @@ struct PersistentCollection:
     def _begin_backup(mut self) raises -> CheckpointCopy:
         """Checkpoint, then capture and pin the committed generation."""
         var waited = False
+        var inline_compaction: Bool
+        var captured: CheckpointCopy
         while True:
             with BlockingScopedLock(self._writer_lock[]):
                 if self._flush_admitted(waited):
-                    self._flush_unlocked()
+                    inline_compaction = self._flush_unlocked()
                     var checkpoint = CheckpointCopy(
                         load_manifest(self._path, self._config.dimension),
                         Optional(self._config.copy()),
                         self._memtable.live_count(),
                     )
                     self._pins[].pin(checkpoint.manifest.generation)
-                    return checkpoint^
+                    captured = checkpoint^
+                    break
             waited = True
             sleep(_BACKPRESSURE_SLEEP_SECONDS)
+        # The captured files are pinned even if synchronous maintenance
+        # replaces them before the backup starts copying.
+        if inline_compaction:
+            try:
+                self.compact()
+            except error:
+                self._end_backup(captured)
+                raise error^
+        return captured^
 
     def _end_backup(self, checkpoint: CheckpointCopy):
         """Release the captured files to the next reclaim."""
@@ -1542,13 +1557,15 @@ struct PersistentCollection:
         _ = self._maintenance.request_compaction()
         return False
 
-    def _flush_unlocked(mut self) raises:
+    def _flush_unlocked(mut self) raises -> Bool:
+        """Checkpoint and schedule; True asks the caller to compact unlocked."""
         var published = self._checkpoint_unlocked()
         if published and CompactionPolicy(4).should_compact(published.value()):
             if self._maintenance.enabled():
                 _ = self._maintenance.request_compaction()
             else:
-                self._compact_committed(published.take())
+                return True
+        return False
 
     def _checkpoint_unlocked(mut self) raises -> Optional[Manifest]:
         """Checkpoint the WAL tail; returns the manifest when one was added."""
@@ -1782,9 +1799,16 @@ struct PersistentCollection:
         """Replace the committed segment set with one complete live base.
 
         The merge runs without the writer lock; writes and flushes continue
-        meanwhile. The publish rebases onto segments flushed during the build;
+        meanwhile. A separate job lock prevents competing full compactions.
+        The publish rebases onto segments flushed during the build;
         a job whose inputs another publish replaced is discarded and retried
         from the new state, a bounded number of times.
+        """
+        with BlockingScopedLock(self._maintenance.compaction_lock[]):
+            self._compact_exclusive()
+
+    def _compact_exclusive(mut self) raises:
+        """Run under the compaction lock, acquiring writer only at boundaries.
         """
         for _ in range(COMPACTION_ATTEMPTS):
             var inputs = self._begin_compaction()
@@ -1866,124 +1890,18 @@ struct PersistentCollection:
             self._ensure_open()
             return self._maintenance.compaction_counts()
 
-    def _compact_committed(mut self, var previous: Manifest) raises:
-        if previous.generation == UInt64.MAX:
-            raise Error("manifest generation exhausted")
-
-        var sparse_name = "sparse-base-" + String(self._last_sequence) + ".bin"
-        var sparse_temporary = self._path + "/" + sparse_name + ".tmp"
-        var sparse_mutations = List[SparseWalRecord]()
-        var sparse_records = self._sparse.records()
-        for index in range(len(sparse_records)):
-            var elements = sparse_records[index].elements.copy()
-            sparse_mutations.append(
-                SparseWalRecord.upsert(
-                    self._last_sequence, sparse_records[index].id, elements^
-                )
-            )
-        var sparse_checksum = write_sparse_segment(
-            sparse_temporary,
-            SPARSE_SEGMENT_KIND_BASE,
-            0,
-            self._last_sequence,
-            sparse_mutations,
-        )
-        atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
-        sync_directory(self._path)
-
-        var segment_name = (
-            "segment-base-" + String(self._last_sequence) + ".bin"
-        )
-        var segment_temporary = self._path + "/" + segment_name + ".tmp"
-        var live_entries = self._memtable.live_entries()
-        var checksum = write_segment_v3(
-            segment_temporary,
-            self._config.dimension,
-            SEGMENT_KIND_BASE,
-            0,
-            self._last_sequence,
-            live_entries,
-        )
-        atomic_replace(segment_temporary, self._path + "/" + segment_name)
-        sync_directory(self._path)
-
-        var descriptors = List[SegmentDescriptor]()
-        descriptors.append(
-            SegmentDescriptor.with_sparse(
-                1,
-                0,
-                self._last_sequence,
-                checksum,
-                segment_name,
-                sparse_checksum,
-                sparse_name,
-            )
-        )
-        var compacted: Manifest
-        if Bool(previous.hnsw_name):
-            compacted = Manifest.with_hnsw(
-                self._config.dimension,
-                previous.generation + 1,
-                self._last_sequence,
-                descriptors^,
-                previous.hnsw_name.value(),
-                previous.hnsw_checksum.value(),
-                previous.hnsw_config_fingerprint.value(),
-                previous.hnsw_point_count.value(),
-            )
-        else:
-            compacted = Manifest.with_segments(
-                self._config.dimension,
-                previous.generation + 1,
-                self._last_sequence,
-                descriptors^,
-            )
-        publish_manifest(self._path, compacted)
-        self._read_generations[].publish(compacted.generation)
-
-        self._publish_index_caches_best_effort()
-
-        self._retire_or_reclaim(previous, segment_name, sparse_name)
-
     def maintenance(mut self) raises -> Bool:
         """Run synchronous compaction when the default L0 threshold is met."""
-        with BlockingScopedLock(self._writer_lock[]):
-            return self._maintenance_unlocked()
-
-    def _maintenance_unlocked(mut self) raises -> Bool:
-        self._ensure_open()
-        self._reclaim_retired()
-        self._flush_unlocked()
-        if not path_exists(self._path + "/manifest.bin"):
-            return False
-        var manifest = load_manifest(self._path, self._config.dimension)
-        var policy = CompactionPolicy(4)
-        if not policy.should_compact(manifest):
-            return False
-        self._compact_committed(manifest^)
-        return True
-
-    def _retire_or_reclaim(
-        mut self,
-        previous: Manifest,
-        retained_dense: String,
-        retained_sparse: String,
-    ) raises:
-        var removed = List[String]()
-        for index in range(len(previous.segments)):
-            if previous.segments[index].name != retained_dense:
-                removed.append(self._path + "/" + previous.segments[index].name)
-            if (
-                previous.segments[index].sparse_name.byte_length() > 0
-                and previous.segments[index].sparse_name != retained_sparse
-            ):
-                removed.append(
-                    self._path + "/" + previous.segments[index].sparse_name
-                )
-
-        self._retired[].retire_or_reclaim(
-            self._path, previous.generation, removed, self._pins
-        )
+        with BlockingScopedLock(self._maintenance.compaction_lock[]):
+            with BlockingScopedLock(self._writer_lock[]):
+                _ = self._checkpoint_unlocked()
+                if not path_exists(self._path + "/manifest.bin"):
+                    return False
+                var manifest = load_manifest(self._path, self._config.dimension)
+                if not CompactionPolicy(4).should_compact(manifest):
+                    return False
+            self._compact_exclusive()
+            return True
 
     def _reclaim_retired(mut self) raises:
         self._retired[].reclaim(self._path, self._pins)

@@ -30,6 +30,7 @@ struct _MaintenanceState(Movable):
     var path: String
     var dimension: Int
     var writer_lock: ArcPointer[BlockingSpinLock]
+    var compaction_lock: ArcPointer[BlockingSpinLock]
     var pins: ArcPointer[GenerationPinRegistry]
     var retired: ArcPointer[RetiredFileQueue]
     var read_generations: ArcPointer[ReadGenerationCache]
@@ -56,6 +57,7 @@ struct _MaintenanceState(Movable):
         self.path = String(copy=path)
         self.dimension = dimension
         self.writer_lock = writer_lock^
+        self.compaction_lock = ArcPointer(BlockingSpinLock())
         self.pins = pins^
         self.retired = retired^
         self.read_generations = read_generations^
@@ -151,45 +153,51 @@ def _compact(mut state: _MaintenanceState) raises -> Bool:
     every operation of the owner, while the next request simply retries.
     A cancelled job discards its output and is not a failure either.
     """
-    for _ in range(COMPACTION_ATTEMPTS):
-        var inputs: Optional[CompactionInputs]
-        with BlockingScopedLock(state.writer_lock[]):
-            if state.cancelled:
+    with BlockingScopedLock(state.compaction_lock[]):
+        for _ in range(COMPACTION_ATTEMPTS):
+            var inputs: Optional[CompactionInputs]
+            with BlockingScopedLock(state.writer_lock[]):
+                if state.cancelled:
+                    return False
+                inputs = begin_compaction(
+                    state.path, state.dimension, state.pins
+                )
+                if inputs:
+                    state.count_attempt()
+            if not inputs:
                 return False
-            inputs = begin_compaction(state.path, state.dimension, state.pins)
-            if inputs:
-                state.count_attempt()
-        if not inputs:
-            return False
-        if state.compaction_delay_for_test > 0:
-            sleep(state.compaction_delay_for_test)
-        var output = build_compaction(
-            state.path, state.dimension, inputs.value(), state.pins
-        )
-        with BlockingScopedLock(state.writer_lock[]):
-            var cancelled = state.cancelled
-            if finish_compaction(
-                state.path,
-                state.dimension,
-                inputs.value(),
-                output,
-                cancelled,
-                state.pins,
-                state.retired,
-                state.read_generations,
-            ):
-                return True
-            if cancelled:
-                return False
-            state.count_conflict()
-    state.count_exhausted()
-    return False
+            if state.compaction_delay_for_test > 0:
+                sleep(state.compaction_delay_for_test)
+            var output = build_compaction(
+                state.path, state.dimension, inputs.value(), state.pins
+            )
+            with BlockingScopedLock(state.writer_lock[]):
+                var cancelled = state.cancelled
+                if finish_compaction(
+                    state.path,
+                    state.dimension,
+                    inputs.value(),
+                    output,
+                    cancelled,
+                    state.pins,
+                    state.retired,
+                    state.read_generations,
+                ):
+                    return True
+                if cancelled:
+                    return False
+                state.count_conflict()
+        state.count_exhausted()
+        return False
 
 
 struct MaintenanceController(Movable):
     """Own the background worker and its shared, heap-stable state."""
 
     var _state: ArcPointer[_MaintenanceState]
+    # Acquire before the writer lock, never while holding it. All full
+    # compactions overlap, so serialize builders without blocking writers.
+    var compaction_lock: ArcPointer[BlockingSpinLock]
     var _worker: Optional[NativeWorker]
     var _enabled: Bool
     var _closed: Bool
@@ -201,6 +209,7 @@ struct MaintenanceController(Movable):
         enabled: Bool,
     ):
         self._state = state^
+        self.compaction_lock = self._state[].compaction_lock
         self._worker = worker^
         self._enabled = enabled
         self._closed = False

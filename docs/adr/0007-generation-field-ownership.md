@@ -29,6 +29,9 @@ manifest, the background worker runs the same three steps with the build outside
 lock, a flush waits at eight L0 segments until the worker publishes, and sealed runs
 merge on the worker behind write backpressure. See the
 [#52 implementation and measurements](../benchmarks/2026-09-26-background-publication.md).
+**Compaction admission is fixed (2026-09-30):** one shared job lock serializes
+full compaction builders. Synchronous maintenance and the no-worker path now use
+the same unlocked builder; see the [regression evidence](../benchmarks/2026-09-30-compaction-admission.md).
 **#53 is implemented (2026-09-27):** backup holds the writer lock only to checkpoint,
 capture the manifest and config and pin that generation, then copies outside it
 through one 1 MiB buffer; the backup manifest omits the HNSW sidecar (see Backup below).
@@ -285,8 +288,9 @@ published output always targets at most the committed generation, so a committed
 pinned file never matches. Known leak: an output whose target is at most the
 committed generation and that was never published stays on disk. This needs a crash
 between a lost race and its discard. Retired inputs still pinned at close also stay,
-as before, because the retire queue lives in memory. Synchronous `maintenance()` and
-the flush-inline fallback still use the locked memtable compaction.
+as before, because the retire queue lives in memory. The former locked memtable
+compaction used by synchronous maintenance and the no-worker path was removed on
+2026-09-30; all public compaction paths now use the captured-input builder.
 
 #52 implementation notes: `publish_compaction_output` reloads the current manifest
 under the writer lock. The captured segments must equal its leading run (names,
@@ -303,6 +307,17 @@ reader pinned at an intervening flush's generation keeps them. Tombstone elision
 unchanged and stays safe: the output is the oldest run, so an elided tombstone has
 nothing older to expose. A conflict now needs another compaction of the same inputs;
 a flush during the build no longer costs an attempt.
+
+The 2026-09-30 admission fix adds one shared full-compaction lock. Public
+`compact()`, synchronous `maintenance()`, the worker, and no-worker flush/backup
+maintenance take it before taking the writer lock. They never wait for a job while
+holding the writer lock. Every current job selects the full committed input set,
+so parallel compactions would necessarily overlap; segment-level scheduling would
+add no useful parallelism here. Flushes still append during an unlocked build and
+publication still validates/rebases as before. Low-level publication tests bypass
+admission deliberately to keep stale-output and exhausted-budget coverage.
+No-worker backup captures and pins before synchronous compaction, preserving the
+exact pre-compaction file set until its copy finishes.
 
 The worker's job runs `_compact`, the same begin, build and finish functions and the
 same 4-attempt budget as `compact()`, with the build outside the lock. Spending the

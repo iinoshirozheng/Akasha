@@ -218,6 +218,31 @@ def test_foreground_and_worker_on_the_same_inputs_publish_once() raises:
     collection.close()
 
 
+def test_public_compact_does_not_compete_with_running_worker() raises:
+    var path = String("/tmp/akasha-compaction-exclusive-public")
+    var collection = _slow_collection(path)
+    collection._maintenance._state[].compaction_delay_for_test = 0.3
+    assert_true(collection.schedule_maintenance())
+    _await_attempts(collection, 1)
+    # The worker has captured its inputs. Foreground compaction must wait
+    # without the writer lock; its checkpoint includes this accepted write.
+    collection.upsert(90_003, _vector(90_003, _DIMENSION))
+    collection.compact()
+    assert_true(collection.wait_for_maintenance())
+    var counts = collection.background_compaction_counts()
+    assert_equal(counts.conflicts + collection.compaction_conflicts(), 0)
+    assert_equal(counts.exhausted, 0)
+    assert_equal(counts.attempts, 1)
+    assert_equal(collection.compaction_attempts(), 1)
+    _assert_slow_records(collection, [90_003])
+    collection.close()
+    var reopened = PersistentCollection.open_with_config(
+        path, _cheap_config(_DIMENSION)
+    )
+    _assert_slow_records(reopened, [90_003])
+    reopened.close()
+
+
 def test_worker_checksum_failure_keeps_old_generation() raises:
     var path = String("/tmp/akasha-52-worker-checksum")
     var collection = _slow_collection(path)
@@ -307,20 +332,22 @@ def test_close_during_worker_build_discards_output() raises:
 def test_exhausted_worker_budget_is_counted_not_a_failure() raises:
     var path = String("/tmp/akasha-52-worker-exhausted")
     var collection = _slow_collection(path)
+    collection._maintenance._state[].compaction_delay_for_test = 0.3
     assert_true(collection.schedule_maintenance())
     var id = 90_000
     for attempt in range(COMPACTION_ATTEMPTS):
         _await_attempts(collection, attempt + 1)
-        # Replace the job's inputs while it builds: publish a locked
-        # compaction, then append a delta so the retry has work to capture.
+        # Deliberately bypass public job admission to test defensive stale
+        # publication handling. Normal public compactions are serialized.
         with BlockingScopedLock(collection._writer_lock[]):
             var counts = collection._maintenance.compaction_counts()
             assert_equal(counts.conflicts, attempt)
-            var current = load_manifest(path, _DIMENSION)
-            assert_false(current.segments[0].name.startswith("segment-compact"))
             collection._upsert_unlocked(id, _vector(id, _DIMENSION))
             _ = collection._checkpoint_unlocked()
-            collection._compact_committed(load_manifest(path, _DIMENSION))
+        var injected = collection._begin_compaction()
+        var output = collection._build_compaction(injected.value())
+        assert_true(collection._finish_compaction(injected.value(), output))
+        with BlockingScopedLock(collection._writer_lock[]):
             collection._upsert_unlocked(id + 1, _vector(id + 1, _DIMENSION))
             _ = collection._checkpoint_unlocked()
         id += 2
@@ -331,7 +358,16 @@ def test_exhausted_worker_budget_is_counted_not_a_failure() raises:
     assert_equal(counts.conflicts, COMPACTION_ATTEMPTS)
     assert_equal(counts.exhausted, 1)
     assert_equal(collection._pins[].active_count(), 0)
-    assert_equal(len(_job_outputs(path)), 0)
+    # Reclaim the retired winner files; only the latest published pair remains.
+    collection.flush()
+    var published = load_manifest(path, _DIMENSION)
+    var outputs = _job_outputs(path)
+    assert_equal(len(outputs), 2)
+    for name in outputs:
+        assert_true(
+            name == published.segments[0].name
+            or name == published.segments[0].sparse_name
+        )
 
     # The collection stays usable and the worker takes the next request.
     collection.upsert(id, _vector(id, _DIMENSION))

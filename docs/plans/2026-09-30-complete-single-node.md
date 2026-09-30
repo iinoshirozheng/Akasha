@@ -86,3 +86,27 @@ The authoritative requirements are this goal's full scope, #54–#63 in
 `2026-09-07-single-node-lifecycle-zero-copy.md`, and format/API compatibility.
 No checkbox is evidence by itself. Inspect implementation, tests and measured
 artifacts for each requirement before marking the overall goal complete.
+
+## #56 implementation findings (2026-09-30)
+
+- `_build_hnsw` orders rows by accepted row sequence then point ID, not physical
+  ordinal or ID alone. A pinned root's `dense_run()` produces shared dense
+  descriptors suitable for this existing builder outside the writer lock; keep
+  its deterministic ordering and existing rebuild tests.
+- `_record_read_state(ids, sequence)` is the centralized accepted-write hook.
+  A bounded rebuild catch-up journal must cover all accepted mutation paths,
+  including batches/deletes/reinserts and unavailable-graph recovery. Do not scan
+  the entire live table under the publish lock to discover changes. Journal
+  overflow must invalidate the candidate and trigger bounded recapture/retry.
+- Current manifest v3 explicitly requires `hnsw-<last_sequence>.bin` in both
+  `storage/manifest.mojo:_validate_descriptors` and the canonical
+  `docs/formats/manifest-format.md`. Job-unique sidecar filenames require a
+  versioned reader-first migration; do not silently relax the v3 contract.
+  `formats/manifest-format.md` is a stale placeholder, not the detailed spec.
+- Current flush removes/replaces sidecar paths directly, and #53 backup omits
+  HNSW for that reason. Sidecars must retire through pins before backup can copy
+  them safely. Cover same-sequence rebuild, downgrade/upgrade, build/publish crash
+  boundaries, stale config, and restore after deleting the original source.
+- The separate compaction job lock is now implemented and tested. Preserve the
+  job → writer order and keep the HNSW build outside both the writer and any
+  unnecessary full-compaction exclusion.
