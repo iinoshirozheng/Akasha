@@ -32,7 +32,12 @@ merge on the worker behind write backpressure. See the
 **#53 is implemented (2026-09-27):** backup holds the writer lock only to checkpoint,
 capture the manifest and config and pin that generation, then copies outside it
 through one 1 MiB buffer; the backup manifest omits the HNSW sidecar (see Backup below).
-The rest of this ADR remains the design for #54 onward.
+**#54 is implemented (2026-09-27):** each read root owns one SQ8 artifact state. The
+first SQ8 query on a root builds the artifact once under the root's artifact lock;
+every later query, handle and metric on that root reuses the ready artifact. A failed
+build publishes nothing and the next query may retry; a ready artifact is never
+replaced (see Derived indexes below).
+The rest of this ADR remains the design for #55 onward.
 
 ## Evidence and constraints
 
@@ -361,6 +366,20 @@ device. A second device would need one state per device on the root. Handles and
 operations on one root share the table and the cache. The collection keeps no
 device snapshot of its own, and a newer sequence always gets a new root and state.
 
+#54 implementation: `ReadGeneration.sq8` holds one `ArtifactState[Sq8Index]` per root
+(`index/artifact_state.mojo`), the same pattern as `device`. The root already fixes
+root/layout identity, the dense field, the config and the source coverage, and the
+SQ8 codec has no metric or training parameter (the same codes serve dot, L2 and
+cosine), so the root is the whole key and one artifact serves all three metrics.
+`absent/building/ready/failed` are explicit states. The first query builds under the
+state's lock, held from the ready check through publication, so concurrent first
+queries wait for one build and share its `ArcPointer[Sq8Index]`. A failed build
+records its message, publishes nothing and raises; the next query may retry, and
+`publish` never replaces a ready artifact. The artifact lives exactly as long as its
+root: a handle close drops only that handle's root owner, and a newer sequence or
+layout gets a new root with an absent state. Exact `search_*` is unchanged and rerank
+still rescores from the root's Float32 vectors.
+
 ## Rejected alternatives and validation mapping
 
 | Alternative | Reason rejected |
@@ -382,7 +401,7 @@ device snapshot of its own, and a newer sequence always gets a new root and stat
 | Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52 done: its conflict tests now rebase (flush during build + reopen with mapped HNSW, racing flushes without conflicts); `test_background_publication.mojo` (worker build without the lock, foreground and worker on the same inputs, worker checksum/IO failure, close during build, counted budget exhaustion, flushes faster than a build, write+flush+worker stress, drop without close) |
 | Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53 done: `tests/crash/test_backup_publication.mojo` (torn copy and no manifest, manifest temp not renamed, retry over the leftovers) |
 | Backup exact captured generation | `test_storage_operations.mojo` | #53 done: `test_storage_operations.mojo` (flush, compact and sidecar removal during the copy, lease release reclaims, restore after the source is deleted, every buffer size, corrupt/mislabeled/torn source, committed/WAL/active target); `test_backup_bounded_memory.mojo` (128 MiB copy) |
-| Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
+| Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54 done: `test_quantized_search.mojo` (build once per root with oracle parity for three metrics with and without rerank, sibling handle shares the state, new root after an update and after a flush, failed build keeps the ready root artifact and retries, artifact survives sibling handle and collection close, eight concurrent first queries build once, first ready artifact is never replaced); #55–#56: full cache keys, mutation catch-up |
 | GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |
 | Typed buffer bounds and ownership | #45 real Python/Mojo Arrow tests | #57/#58: output pointer/release/slice, filtered gather copied-byte accounting |
 

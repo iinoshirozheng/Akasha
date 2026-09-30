@@ -802,26 +802,51 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        var ordinals = view.id_ordered_locations()
-        if len(ordinals) == 0:
+        if view.visible_count == 0:
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(ordinals))
-        var vectors = List[List[Float32]](capacity=len(ordinals))
-        self._gather(view, ordinals, ids, vectors)
-        var sq8 = Sq8Index.build(ids, vectors)
+        var sq8 = self._sq8_artifact(view)
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(ordinals))
+        candidate_count = min(candidate_count, sq8[].point_count())
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
-            candidates = sq8.search_dot(query, candidate_count)
+            candidates = sq8[].search_dot(query, candidate_count)
         elif metric == _L2_METRIC:
-            candidates = sq8.search_l2(query, candidate_count)
+            candidates = sq8[].search_l2(query, candidate_count)
         else:
-            candidates = sq8.search_cosine(query, candidate_count)
+            candidates = sq8[].search_cosine(query, candidate_count)
         if rerank_k == 0:
             return candidates^
 
         return self._exact_rerank(view, query, k, metric, candidates)
+
+    def _sq8_artifact(
+        self, view: ReadGeneration
+    ) raises -> ArcPointer[Sq8Index]:
+        """Return the root's ready SQ8 artifact, building it once under its lock.
+
+        The root fixes layout, field, config and coverage, so the artifact can
+        never go stale; every handle and metric on the root shares it. The lock
+        is held from the ready check through publication, so concurrent first
+        queries wait for one build instead of each building. A failed build
+        publishes nothing, records the failure and raises; the next query may
+        try again, and a ready artifact is never replaced.
+        """
+        ref state = view.sq8[]
+        with BlockingScopedLock(state.lock):
+            if state.ready:
+                return state.ready.value().copy()
+            try:
+                state.begin()
+                var ordinals = view.id_ordered_locations()
+                var ids = List[Int](capacity=len(ordinals))
+                var vectors = List[List[Float32]](capacity=len(ordinals))
+                self._gather(view, ordinals, ids, vectors)
+                var built = ArcPointer(Sq8Index.build(ids, vectors))
+                state.publish(built.copy())
+                return built^
+            except error:
+                state.fail(String(error))
+                raise error
 
     def _search_pq(
         self,

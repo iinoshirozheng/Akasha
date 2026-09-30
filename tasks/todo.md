@@ -191,17 +191,18 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#53 已完成；#54–#63 待實作）
+## #46 定案後的實作隊列（#47–#54 已完成；#55–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#54**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+建議下一個引擎項目是 **#55**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
 共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
 獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish，
 #52 已讓 background worker 走同一流程並 rebase 到較新的 manifest，
-#53 已讓 backup 只在鎖內 capture＋pin，鎖外有界複製。
+#53 已讓 backup 只在鎖內 capture＋pin，鎖外有界複製，
+#54 已讓 SQ8 artifact 由 root 保管、每 root 只建一次並共享。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -386,12 +387,36 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #54 SQ8 ready artifact 重用
 
-- [ ] SQ8 由 root/field/metric/config-bound owner 保管，query reuse ready artifact；
+- [x] SQ8 由 root/field/metric/config-bound owner 保管，query reuse ready artifact；
   建置中的狀態不冒充 ready，不因另一 handle close 被清除。
 - 相依：#49。主要檔：`api/snapshot.mojo`、新 `index/artifact_state.mojo`、
   `index/quantization.mojo`、`tests/mojo/test_quantized_search.mojo`。
 - 驗收：同 root repeated query build_count=1，更新/布局改變 freshness、metric/rescore 結果
   與舊 oracle 相同；失敗保留既有可用 artifact。純記憶體 derived cache，無 migration。
+- 結果（2026-09-27）：新增 `index/artifact_state.mojo` 的 `ArtifactState[T]`：
+  `absent/building/ready/failed` 狀態、lock、ready `ArcPointer`、build／failure 計數與
+  測試用 delay／fail hook。`ReadGeneration.sq8` 每 root 持有一個 `ArtifactState[Sq8Index]`，
+  與 #50 的 `device` 同一 pattern。`_search_sq8` 不再每次 query 重建：`_sq8_artifact`
+  在 root 的 artifact lock 內檢查 ready，否則 `begin` → gather → `Sq8Index.build` →
+  `publish`；鎖從檢查持到 publish，併發首查只建一次並共享同一 `ArcPointer`。失敗只記錄
+  訊息、不 publish、raise，下一次 query 重試；`publish` 不取代既有 ready artifact。
+  root 即 key：layout／field／config／coverage 在 root 生命期固定，任何寫入或 flush 產生
+  新 root 與新 state，freshness 不需另外判斷；handle close 只釋放該 handle 的 root owner，
+  artifact 隨 root 的最後一個 owner 釋放。三種 metric、有無 rerank 的結果與舊的
+  query-time `Sq8Index.build` oracle 逐位元相同。`index/quantization.mojo` 未改。
+  新測試：同 root 三輪六種查詢 build_count=1、sibling handle 共享同一 state；upsert 後
+  新 root 由 absent 重建且舊 root 不變、flush 後新 generation 結果與前一 root 相同；
+  fail hook 讓建置失敗 → failed／無 ready／build_count 0，舊 root 仍服務，清掉 hook 後
+  重建成功；first handle 與 collection close 後 second 仍以同一 artifact 查詢；
+  8 workers × 4 次併發首查 build_count=1、failure_count=0；純 `ArtifactState` 生命週期。
+  限制：(1) 一個 artifact 服務三種 metric——SQ8 codec 與 metric、訓練參數無關，故 key
+  不含 metric。(2) artifact 記憶體隨每個存活 root 存在（約 n·d＋8n bytes），無預算或
+  淘汰。(3) 建置期間持鎖，其他 query 等待而非觀察到 building。(4) `Sq8Index.build`
+  既有的 O(n²) 重複 ID 檢查未動。
+  713 Mojo／66 Python／17 crash、build 通過；`test_compaction_publish.mojo` 的
+  `test_racing_flushes_rebase_without_conflicts` 在完整跑時 retry budget 耗盡一次，
+  同一測試在不含 #54 的乾淨 HEAD worktree 也失敗、重跑通過，是 #52 benchmark 已註明
+  的 timing 依賴（CPU 負載下不成立），與本項無關。GPU 路徑未變，未跑。
 
 ### #55 PQ training 與 query 分離
 

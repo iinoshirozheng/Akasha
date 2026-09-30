@@ -62,7 +62,9 @@ Snapshots expose `search_*_parallel` and `search_*_where_parallel` for exact
 single-query CPU parallelism. Fixed ordinal ranges and range-ordered heap merge
 produce the same IDs, raw scores, and ascending-ID ties as scalar execution.
 
-`search_sq8_*` builds a per-dimension scalar codebook; `search_pq_*` accepts a
+`search_sq8_*` builds a per-dimension scalar codebook once per read root; every
+later query, handle and metric on that root reuses it, and a newer write or
+layout change creates a new root with its own artifact. `search_pq_*` accepts a
 subquantizer and centroid count and trains deterministic bounded-iteration
 centroids. With `rerank_k=0`, returned scores are reconstructed/centroid
 approximations. With `rerank_k >= k`, the approximate index selects candidates
