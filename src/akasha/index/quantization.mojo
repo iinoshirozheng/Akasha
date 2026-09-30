@@ -1,6 +1,7 @@
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.quantization import round_clamp_u8
 from akasha.index.flat import SearchResult
+from akasha.query.control import QueryControl
 from std.math import isfinite, sqrt
 
 
@@ -271,9 +272,13 @@ struct PqCodebook(Movable):
         centroids: Int,
         *,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> PqCodebook:
         if len(vectors) == 0 or len(vectors[0]) == 0:
             raise Error("PQ training requires non-empty vectors")
+        if control:
+            control.value().validate_candidate_count(len(vectors))
+            control.value().checkpoint(0)
         var dimension = len(vectors[0])
         if subquantizers <= 0 or dimension % subquantizers != 0:
             raise Error("PQ dimension must divide into subquantizers")
@@ -282,6 +287,8 @@ struct PqCodebook(Movable):
         if iterations <= 0:
             raise Error("PQ training iterations must be positive")
         for row in range(len(vectors)):
+            if control:
+                control.value().checkpoint(row)
             if len(vectors[row]) != dimension:
                 raise Error("PQ training vectors must share one dimension")
             for value in vectors[row]:
@@ -307,9 +314,13 @@ struct PqCodebook(Movable):
                     ] = vectors[source][subquantizer * subdimension + offset]
 
         for _ in range(iterations):
+            if control:
+                control.value().checkpoint(0)
             var sums = List[Float32](length=len(values), fill=Float32(0.0))
             var counts = List[Int](length=subquantizers * centroids, fill=0)
             for row in range(len(vectors)):
+                if control:
+                    control.value().checkpoint(row)
                 for subquantizer in range(subquantizers):
                     var nearest = _nearest_pq_centroid(
                         vectors[row],
@@ -343,6 +354,8 @@ struct PqCodebook(Movable):
                             subdimension,
                         )
                         values[index] = sums[index] / Float32(count)
+        if control:
+            control.value().checkpoint(0)
         return PqCodebook(dimension, subquantizers, centroids, values^)
 
     def version(self) -> UInt32:
@@ -434,17 +447,24 @@ struct PqIndex(Movable):
         centroids: Int,
         *,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> PqIndex:
         if len(ids) != len(vectors):
             raise Error("PQ IDs and vectors must have equal lengths")
         var codebook = PqCodebook.train(
-            vectors, subquantizers, centroids, iterations=iterations
+            vectors,
+            subquantizers,
+            centroids,
+            iterations=iterations,
+            control=control,
         )
         var owned_ids = List[Int](capacity=len(ids))
         var codes = List[UInt8](
             capacity=len(ids) * codebook.subquantizer_count()
         )
         for row in range(len(ids)):
+            if control:
+                control.value().checkpoint(row)
             for previous in range(row):
                 if ids[previous] == ids[row]:
                     raise Error("PQ point IDs must be unique")
@@ -452,6 +472,8 @@ struct PqIndex(Movable):
             var encoded = codebook.encode(vectors[row])
             for code in encoded:
                 codes.append(code)
+        if control:
+            control.value().checkpoint(0)
         return PqIndex(codebook^, owned_ids^, codes^)
 
     def point_count(self) -> Int:
@@ -468,24 +490,43 @@ struct PqIndex(Movable):
         )
 
     def search_dot(
-        self, query: List[Float32], k: Int
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _DOT_METRIC)
+        return self._search(query, k, _DOT_METRIC, control)
 
     def search_l2(
-        self, query: List[Float32], k: Int
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _L2_METRIC)
+        return self._search(query, k, _L2_METRIC, control)
 
     def search_cosine(
-        self, query: List[Float32], k: Int
+        self,
+        query: List[Float32],
+        k: Int,
+        *,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
-        return self._search(query, k, _COSINE_METRIC)
+        return self._search(query, k, _COSINE_METRIC, control)
 
     def _search(
-        self, query: List[Float32], k: Int, metric: Int
+        self,
+        query: List[Float32],
+        k: Int,
+        metric: Int,
+        control: Optional[QueryControl],
     ) raises -> List[SearchResult]:
         self._validate_query(query, k, metric)
+        if control:
+            control.value().validate_candidate_count(len(self._ids))
+            control.value().checkpoint(0)
         var result_count = min(k, len(self._ids))
         if result_count == 0:
             return List[SearchResult]()
@@ -493,11 +534,15 @@ struct PqIndex(Movable):
             result_count, smaller_is_better=metric == _L2_METRIC
         )
         for row in range(len(self._ids)):
+            if control:
+                control.value().checkpoint(row)
             topk.offer(self._ids[row], self._score(query, row, metric))
         var retained = topk.sorted_entries()
         var output = List[SearchResult](capacity=len(retained))
         for entry in retained:
             output.append(SearchResult(entry.id, entry.score))
+        if control:
+            control.value().checkpoint(0)
         return output^
 
     def _score(

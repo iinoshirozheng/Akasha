@@ -1,7 +1,9 @@
 # 下一輪工作包 checklist
 
 依據：[plan.md](plan.md)。基線 `a8895c6`，engine `9b98dbc`。
-使用者已授權實作 #39–#42；其餘維持規劃。狀態須附實際驗證證據。
+使用者於 2026-09-30 已授權完成全部剩餘工作：#54 收尾、#55–#63、compaction
+穩定性與後續向量型別擴充。執行計畫見
+[完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
 ## #39：移除 incremental flush 被丟棄的全量複製
@@ -191,18 +193,18 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 - [x] 把同 recall 的 Qdrant 基線與高維品質曲線排入下一批，先量差距再決定 HNSW 調校。
 - [x] 下一批同時列入 A03/A04 官方 sort/heap 適配，以及 Z06/A09 的 bounded decode／I/O；優先度依量測，避免延後 shared snapshot。
 
-## #46 定案後的實作隊列（#47–#54 已完成；#55–#63 待實作）
+## #46 定案後的實作隊列（#47–#55 已完成；#56–#63 待實作）
 
 合約：[ADR 0007](../docs/adr/0007-generation-field-ownership.md)。每項是可單獨驗證的
 切片，檔案為預計主要修改範圍；開始前沿實際 caller 確認，超過約 2–5 檔就先按接口
 拆分。不得以保留舊 runtime fallback 讓半套 visibility resolver 通過測試。
 
-建議下一個引擎項目是 **#55**；#59 的同 recall 對照同批提早建立。#47 已完成相同 view
+下一個引擎項目是 **#56**，先修 compaction job 競爭；#59 的同 recall 對照提早建立。#47 已完成相同 view
 共享，#48／#49 已讓 capture 不複製 dense／payload／sparse bytes，#50 已讓每個 query 持有
 獨立 root owner，#51 已讓 foreground compact 鎖外 build、條件 publish，
 #52 已讓 background worker 走同一流程並 rebase 到較新的 manifest，
 #53 已讓 backup 只在鎖內 capture＋pin，鎖外有界複製，
-#54 已讓 SQ8 artifact 由 root 保管、每 root 只建一次並共享。
+#54 已讓 SQ8 artifact 由 root 保管、每 root 只建一次並共享；#55 已讓 PQ 依訓練參數共享。
 #60–#63 不阻擋這條主線。
 
 ### #47 共享相同 view 的 snapshot root
@@ -389,6 +391,7 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 - [x] SQ8 由 root/field/metric/config-bound owner 保管，query reuse ready artifact；
   建置中的狀態不冒充 ready，不因另一 handle close 被清除。
+- 2026-09-30 收尾：重新通過 8 個 targeted tests，提交 `7e98e89`。
 - 相依：#49。主要檔：`api/snapshot.mojo`、新 `index/artifact_state.mojo`、
   `index/quantization.mojo`、`tests/mojo/test_quantized_search.mojo`。
 - 驗收：同 root repeated query build_count=1，更新/布局改變 freshness、metric/rescore 結果
@@ -420,12 +423,27 @@ field 邊界。交付設計、成本基線與下一批小型實作清單，不�
 
 ### #55 PQ training 與 query 分離
 
-- [ ] PQ 沿用 artifact owner，cache key 包含 subspaces/centroids/training iterations/seed
+- [x] PQ 沿用 artifact owner，cache key 包含 subspaces/centroids/training iterations/seed
   等實際參數及 root coverage；不要只用 k 或 manifest G。
 - 相依：#54。主要檔：`api/snapshot.mojo`、`index/artifact_state.mojo`、
   `index/quantization.mojo`、`tests/mojo/test_product_quantization.mojo`。
 - 驗收：cold build/warm query 分開量測、不同參數不誤中、失敗/取消不發布半成品、
   query 不反覆 training；matched-recall/rescore 測試保留。持久化 PQ artifact 若要加，另立版本切片。
+- 完成（2026-09-30）：root 持有 `PqArtifacts`，以官方 Dict 的三整數 tuple 分開
+  subquantizers／centroids／iterations；既有初始化完全 deterministic，無 seed 參數。
+  registry 短鎖只取 owner，每個 key 的 `ArtifactState[PqIndex]` 分別鎖住首建置；
+  metrics／k／rerank 共用 ready，換 root 自然失效，關閉 sibling 不清除共用 artifact。
+  沿用 `QueryControl` 為 PQ 新增 optional cancellation／deadline／candidate budget，
+  gather、training、encode、score、rerank 與 publish 前檢查；失敗／取消不發布，之後可重試。
+  10 PQ＋8 SQ8＋2 query-control＋10 snapshot＋5 generation-close tests 通過；
+  `bench-phase12` 的 SQ8/PQ recall（1.0／0.77）、exact rerank、warm/cold reopen 通過。
+  另修該舊 benchmark 仍檢查 legacy hnsw.cache 的失效 gate（未含 #55 基線同樣失敗），
+  改驗當前 sidecar；cold case 確實移除 sidecar 並逐項比較結果。
+  1024×32、兩組 PQ 設定、3 processes×7 roots×64 warm calls，build_count 皆為 1；
+  cold 6.959／4.073 ms，warm 49.72／52.39 µs。無格式變更，未重跑無關 crash/GPU gates。
+  限制：每個存活 root 的各訓練設定各保留一份，未加淘汰；同 key 首查等待建置鎖，
+  取得鎖後才觀察取消；既有 build 的 quadratic ID validation 未更動。
+  [實作／量測／驗證](../docs/benchmarks/2026-09-30-pq-artifacts.md)。
 
 ### #56 HNSW rebuild 鎖外建置與 bounded catch-up
 

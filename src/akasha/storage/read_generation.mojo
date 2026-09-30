@@ -12,7 +12,7 @@ over their own slots; the small frozen head is evaluated directly.
 from akasha.common.config import CollectionConfig
 from akasha.compute.gpu.context import GpuSnapshotState
 from akasha.document.record import clone_fields
-from akasha.index.artifact_state import ArtifactState
+from akasha.index.artifact_state import ArtifactState, PqArtifacts
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import Sq8Index
@@ -152,6 +152,7 @@ struct ReadGeneration(Movable):
     # SQ8 artifact derived from this root; shared by every handle and
     # operation that owns the root, built once and released with it.
     var sq8: ArcPointer[ArtifactState[Sq8Index]]
+    var pq: ArcPointer[PqArtifacts]
     var _pins: ArcPointer[GenerationPinRegistry]
 
     def __init__(
@@ -172,6 +173,7 @@ struct ReadGeneration(Movable):
         self.visible_count = visible_count
         self.device = ArcPointer(GpuSnapshotState(generation, sequence))
         self.sq8 = ArcPointer(ArtifactState[Sq8Index]())
+        self.pq = ArcPointer(PqArtifacts())
         self._pins = pins^
         self._pins[].pin(generation)
 

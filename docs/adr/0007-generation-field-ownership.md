@@ -37,7 +37,9 @@ first SQ8 query on a root builds the artifact once under the root's artifact loc
 every later query, handle and metric on that root reuses the ready artifact. A failed
 build publishes nothing and the next query may retry; a ready artifact is never
 replaced (see Derived indexes below).
-The rest of this ADR remains the design for #55 onward.
+**#55 is implemented (2026-09-30):** each root also owns parameter-keyed PQ states.
+Training happens once per configuration; cancelled/failed builds publish nothing.
+The remaining implementation slices are tracked in `tasks/todo.md`.
 
 ## Evidence and constraints
 
@@ -379,6 +381,19 @@ records its message, publishes nothing and raises; the next query may retry, and
 root: a handle close drops only that handle's root owner, and a newer sequence or
 layout gets a new root with an absent state. Exact `search_*` is unchanged and rerank
 still rescores from the root's Float32 vectors.
+
+#55 implementation: `ReadGeneration.pq` owns `PqArtifacts`, an official `Dict`
+keyed by `(subquantizers, centroids, iterations)`. The root fixes field/config,
+layout and accepted data coverage; the existing training initializer has no random
+seed. Metric, query `k`, and rerank do not change the trained codebook. A registry
+lock guards lookup and returns a strong `ArtifactState[PqIndex]` owner; each state
+uses its own build lock, so different configurations may train independently.
+The first query gathers and builds; warm queries only score the ready artifact.
+`QueryControl` checks cancellation/deadline/resource bounds; publication happens
+only after a complete build and final checkpoint. A cancelled waiter does not
+change another query's ready state. Artifacts are memory-only and live with their
+root, with no eviction or durable format change. Cold/warm costs and limits are in
+[`2026-09-30-pq-artifacts.md`](../benchmarks/2026-09-30-pq-artifacts.md).
 
 ## Rejected alternatives and validation mapping
 

@@ -64,9 +64,14 @@ produce the same IDs, raw scores, and ascending-ID ties as scalar execution.
 
 `search_sq8_*` builds a per-dimension scalar codebook once per read root; every
 later query, handle and metric on that root reuses it, and a newer write or
-layout change creates a new root with its own artifact. `search_pq_*` accepts a
-subquantizer and centroid count and trains deterministic bounded-iteration
-centroids. With `rerank_k=0`, returned scores are reconstructed/centroid
+layout change creates a new root with its own artifact. `search_pq_*` trains once
+per root and `(subquantizers, centroids, iterations)` configuration, then reuses
+the immutable artifact across metrics, `k` and rerank settings. Initialization
+is deterministic; there is no seed parameter. An optional
+`control=Optional(QueryControl(...))` bounds candidates and cooperatively checks
+cancellation/deadlines during preparation, training, encoding, search and rerank.
+Failed or cancelled builds publish nothing; the next query can retry without
+changing any other ready artifact. With `rerank_k=0`, returned scores are reconstructed/centroid
 approximations. With `rerank_k >= k`, the approximate index selects candidates
 and original Float32 vectors produce final metric scores. A larger candidate
 set improves recall at extra CPU cost.

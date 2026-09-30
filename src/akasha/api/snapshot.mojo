@@ -267,6 +267,7 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -279,6 +280,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _DOT_METRIC,
+            control,
         )
 
     def search_pq_l2(
@@ -290,6 +292,7 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -302,6 +305,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _L2_METRIC,
+            control,
         )
 
     def search_pq_cosine(
@@ -313,6 +317,7 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -325,6 +330,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _COSINE_METRIC,
+            control,
         )
 
     def search_dot_batch(
@@ -858,35 +864,83 @@ struct ReadSnapshot(Movable):
         rerank_k: Int,
         iterations: Int,
         metric: Int,
+        control: Optional[QueryControl],
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("PQ rerank candidate count must be zero or at least k")
-        var ordinals = view.id_ordered_locations()
-        if len(ordinals) == 0:
+        if control:
+            control.value().validate_candidate_count(view.visible_count)
+            control.value().checkpoint(0)
+        if view.visible_count == 0:
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(ordinals))
-        var vectors = List[List[Float32]](capacity=len(ordinals))
-        self._gather(view, ordinals, ids, vectors)
-        var pq = PqIndex.build(
-            ids,
-            vectors,
-            subquantizers,
-            centroids,
-            iterations=iterations,
+        var pq = self._pq_artifact(
+            view, subquantizers, centroids, iterations, control
         )
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(ordinals))
+        candidate_count = min(candidate_count, pq[].point_count())
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
-            candidates = pq.search_dot(query, candidate_count)
+            candidates = pq[].search_dot(
+                query, candidate_count, control=control
+            )
         elif metric == _L2_METRIC:
-            candidates = pq.search_l2(query, candidate_count)
+            candidates = pq[].search_l2(query, candidate_count, control=control)
         else:
-            candidates = pq.search_cosine(query, candidate_count)
+            candidates = pq[].search_cosine(
+                query, candidate_count, control=control
+            )
         if rerank_k == 0:
             return candidates^
-        return self._exact_rerank(view, query, k, metric, candidates)
+        return self._exact_rerank(view, query, k, metric, candidates, control)
+
+    def _pq_artifact(
+        self,
+        view: ReadGeneration,
+        subquantizers: Int,
+        centroids: Int,
+        iterations: Int,
+        control: Optional[QueryControl],
+    ) raises -> ArcPointer[PqIndex]:
+        # Reject malformed keys before retaining an artifact state.
+        if subquantizers <= 0 or self._dimension % subquantizers != 0:
+            raise Error("PQ dimension must divide into subquantizers")
+        if centroids <= 0 or centroids > 256 or centroids > view.visible_count:
+            raise Error("PQ centroid count exceeds supported training rows")
+        if iterations <= 0:
+            raise Error("PQ training iterations must be positive")
+        var owner = view.pq[].get(subquantizers, centroids, iterations)
+        ref state = owner[]
+        with BlockingScopedLock(state.lock):
+            if control:
+                control.value().checkpoint(0)
+            if state.ready:
+                return state.ready.value().copy()
+            try:
+                state.begin()
+                if control:
+                    control.value().checkpoint(0)
+                var ordinals = view.id_ordered_locations()
+                var ids = List[Int](capacity=len(ordinals))
+                var vectors = List[List[Float32]](capacity=len(ordinals))
+                self._gather(view, ordinals, ids, vectors, control)
+                var built = ArcPointer(
+                    PqIndex.build(
+                        ids,
+                        vectors,
+                        subquantizers,
+                        centroids,
+                        iterations=iterations,
+                        control=control,
+                    )
+                )
+                if control:
+                    control.value().checkpoint(0)
+                state.publish(built.copy())
+                return built^
+            except error:
+                state.fail(String(error))
+                raise error
 
     def _exact_rerank(
         self,
@@ -895,12 +949,16 @@ struct ReadSnapshot(Movable):
         k: Int,
         metric: Int,
         candidates: List[SearchResult],
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         var topk = BoundedTopK(
             min(k, len(candidates)),
             smaller_is_better=metric == _L2_METRIC,
         )
-        for candidate in candidates:
+        for index in range(len(candidates)):
+            if control:
+                control.value().checkpoint(index)
+            ref candidate = candidates[index]
             var location = view.find(candidate.id)
             if location[0] < 0:
                 raise Error("quantized candidate is absent from snapshot")
@@ -910,6 +968,8 @@ struct ReadSnapshot(Movable):
         var output = List[SearchResult](capacity=len(retained))
         for entry in retained:
             output.append(SearchResult(entry.id, entry.score))
+        if control:
+            control.value().checkpoint(0)
         return output^
 
     def _search_where(
@@ -1146,8 +1206,12 @@ struct ReadSnapshot(Movable):
         locations: List[Tuple[Int, Int]],
         mut ids: List[Int],
         mut vectors: List[List[Float32]],
+        control: Optional[QueryControl] = None,
     ) raises:
-        for location in locations:
+        for index in range(len(locations)):
+            if control:
+                control.value().checkpoint(index)
+            var location = locations[index]
             ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
             ids.append(entry.id)
             vectors.append(entry.values().copy())

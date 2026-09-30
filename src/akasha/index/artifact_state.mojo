@@ -1,9 +1,9 @@
 """Root-owned derived-index artifacts with explicit lifecycle states.
 
-An artifact is derived from one immutable read root, and that root is its key:
-root and layout identity, the single dense field, the config fingerprint and
-the source coverage are fixed for the root's lifetime, so nothing under the
-artifact can go stale. The owner lives exactly as long as its root; a handle
+An artifact is derived from one immutable read root and codec configuration.
+Root/layout identity, the single dense field, collection config and source
+coverage are fixed for the root's lifetime; PQ additionally separates its
+training configurations. The owner lives exactly as long as its root; a handle
 close drops only that handle's root owner and never clears an artifact another
 handle or operation still uses.
 
@@ -16,9 +16,10 @@ concurrent first queries on one root wait for the builder and then share its
 artifact instead of building their own.
 """
 
+from akasha.index.quantization import PqIndex
 from std.memory import ArcPointer
 from std.time import sleep
-from std.utils import BlockingSpinLock
+from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
 comptime ARTIFACT_ABSENT = 0
@@ -71,3 +72,34 @@ struct ArtifactState[T: Deinitable & Movable](Movable):
         self.failure_count += 1
         if not self.ready:
             self.status = ARTIFACT_FAILED
+
+
+struct PqArtifacts(Movable):
+    """Training-parameter states for one immutable root's dense field.
+
+    Initialization is deterministic, with no seed parameter. Metrics, k and
+    rerank do not affect training. The registry lock only protects lookup;
+    different configurations can build under their own artifact locks.
+    """
+
+    var _lock: BlockingSpinLock
+    var _states: Dict[Tuple[Int, Int, Int], ArcPointer[ArtifactState[PqIndex]]]
+
+    def __init__(out self):
+        self._lock = BlockingSpinLock()
+        self._states = Dict[
+            Tuple[Int, Int, Int], ArcPointer[ArtifactState[PqIndex]]
+        ]()
+
+    def get(
+        mut self, subquantizers: Int, centroids: Int, iterations: Int
+    ) raises -> ArcPointer[ArtifactState[PqIndex]]:
+        with BlockingScopedLock(self._lock):
+            var key = (subquantizers, centroids, iterations)
+            if key not in self._states:
+                self._states[key] = ArcPointer(ArtifactState[PqIndex]())
+            return self._states[key].copy()
+
+    def count(mut self) -> Int:
+        with BlockingScopedLock(self._lock):
+            return len(self._states)
