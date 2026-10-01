@@ -1,0 +1,1321 @@
+{
+  "scope": "Apply the user-confirmed strict gate to previously frozen refined-ef measurements; no rerun, no retuning, no discarded cell. These are historical measurements, not a claim for subsequent engine changes.",
+  "source_report_sha256": "c49f1174dd4d4a5034c70cf483d1d04ff88f58f67c15610dee5b1abca4b22c47",
+  "raw_archive": "docs/benchmarks/results/2026-10-02-refined-ef-warm.json.gz",
+  "raw_archive_sha256": "57ef83273b96c0a6866f8ea516d71cce626881369da6dcb43454865023e2259f",
+  "gate_source_sha256": "157f6ad9b2702a71cc061af74212bb3fdcae3028fe2c3537e5ad8d3c852bb8ba",
+  "rule": "Every matched-recall cell must satisfy QPS >= Qdrant AND p95 <= Qdrant, with no tolerance or cross-cell offsets.",
+  "quality_passed": 36,
+  "parity_passed": 16,
+  "cells": 36,
+  "status": "FAILED",
+  "trials": [
+    {
+      "corpus": "cost-plan-uniform-128",
+      "trial": 0,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 5956.8136594204825,
+            "p50_ns": 159250,
+            "p95_ns": 208500,
+            "p99_ns": 368083,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 96,
+            "recall": 0.95,
+            "samples": 64,
+            "qps": 8543.632397400654,
+            "p50_ns": 116250,
+            "p95_ns": 127375,
+            "p99_ns": 134667,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.6972226077087312,
+          "p95_ratio_akasha_over_qdrant": 1.6368989205103042,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 8996.765100648498,
+            "p50_ns": 81333,
+            "p95_ns": 207125,
+            "p99_ns": 249458,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 4782.769236839668,
+            "p50_ns": 198875,
+            "p95_ns": 264416,
+            "p99_ns": 319000,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.8810786502828076,
+          "p95_ratio_akasha_over_qdrant": 0.7833300556698536,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 12447.024781831857,
+            "p50_ns": 73292,
+            "p95_ns": 95958,
+            "p99_ns": 198750,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9828125,
+            "samples": 64,
+            "qps": 4555.767794223942,
+            "p50_ns": 212084,
+            "p95_ns": 255417,
+            "p99_ns": 284834,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 2.7321464446921317,
+          "p95_ratio_akasha_over_qdrant": 0.37569151622640623,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 27040.867200611123,
+            "p50_ns": 35541,
+            "p95_ns": 44458,
+            "p99_ns": 56458,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 20488.46419432796,
+            "p50_ns": 43917,
+            "p95_ns": 74708,
+            "p99_ns": 126167,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.3198093787867777,
+          "p95_ratio_akasha_over_qdrant": 0.5950902179150828,
+          "qps_passed": true,
+          "p95_passed": true
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-uniform-128",
+      "trial": 1,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 5636.345126093847,
+            "p50_ns": 168042,
+            "p95_ns": 215750,
+            "p99_ns": 389000,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 96,
+            "recall": 0.95,
+            "samples": 64,
+            "qps": 7898.277101919738,
+            "p50_ns": 122166,
+            "p95_ns": 156750,
+            "p99_ns": 181541,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.7136170399394939,
+          "p95_ratio_akasha_over_qdrant": 1.3763955342902712,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 10492.7304232292,
+            "p50_ns": 84458,
+            "p95_ns": 166542,
+            "p99_ns": 190291,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 4821.667246647943,
+            "p50_ns": 200750,
+            "p95_ns": 238541,
+            "p99_ns": 282833,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 2.176162287126682,
+          "p95_ratio_akasha_over_qdrant": 0.6981692874600174,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 12111.270786441584,
+            "p50_ns": 76125,
+            "p95_ns": 131666,
+            "p99_ns": 180167,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9828125,
+            "samples": 64,
+            "qps": 4984.133323074326,
+            "p50_ns": 199708,
+            "p95_ns": 212875,
+            "p99_ns": 216208,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 2.4299652520071593,
+          "p95_ratio_akasha_over_qdrant": 0.6185132119788609,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 25871.683725134382,
+            "p50_ns": 37333,
+            "p95_ns": 45833,
+            "p99_ns": 57583,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 25959.981876687652,
+            "p50_ns": 37167,
+            "p95_ns": 45875,
+            "p99_ns": 58959,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.9965986820802613,
+          "p95_ratio_akasha_over_qdrant": 0.9990844686648501,
+          "qps_passed": false,
+          "p95_passed": true,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-uniform-128",
+      "trial": 2,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 6055.852560428656,
+            "p50_ns": 160792,
+            "p95_ns": 186792,
+            "p99_ns": 360416,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 96,
+            "recall": 0.95,
+            "samples": 64,
+            "qps": 7729.394852392109,
+            "p50_ns": 124875,
+            "p95_ns": 165041,
+            "p99_ns": 201375,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.7834834001984616,
+          "p95_ratio_akasha_over_qdrant": 1.131791494234766,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 12249.971384832468,
+            "p50_ns": 76208,
+            "p95_ns": 105125,
+            "p99_ns": 173000,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 4944.534300195812,
+            "p50_ns": 200125,
+            "p95_ns": 223250,
+            "p99_ns": 244709,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 2.477477279174168,
+          "p95_ratio_akasha_over_qdrant": 0.4708846584546473,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 10626.07329566501,
+            "p50_ns": 76375,
+            "p95_ns": 182292,
+            "p99_ns": 209125,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 256,
+            "recall": 0.9828125,
+            "samples": 64,
+            "qps": 4819.414650463293,
+            "p50_ns": 205500,
+            "p95_ns": 227667,
+            "p99_ns": 242041,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 2.204847282572692,
+          "p95_ratio_akasha_over_qdrant": 0.8006957530076823,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 23549.602085317263,
+            "p50_ns": 39083,
+            "p95_ns": 56500,
+            "p99_ns": 79750,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 27028.453782399833,
+            "p50_ns": 36375,
+            "p95_ns": 45292,
+            "p99_ns": 55000,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8712892818401659,
+          "p95_ratio_akasha_over_qdrant": 1.247460920250817,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-uniform-1536",
+      "trial": 0,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 512,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 676.368289085725,
+            "p50_ns": 1464042,
+            "p95_ns": 1550917,
+            "p99_ns": 1705625,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9921875,
+            "samples": 64,
+            "qps": 362.9989704441701,
+            "p50_ns": 2694375,
+            "p95_ns": 2984791,
+            "p99_ns": 4207250,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.8632788083616665,
+          "p95_ratio_akasha_over_qdrant": 0.5196065654178131,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1248.241588421748,
+            "p50_ns": 716416,
+            "p95_ns": 1051917,
+            "p99_ns": 1100625,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9765625,
+            "samples": 64,
+            "qps": 1028.467613948547,
+            "p50_ns": 979209,
+            "p95_ns": 1172375,
+            "p99_ns": 1199750,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.2136907098410548,
+          "p95_ratio_akasha_over_qdrant": 0.8972530120481927,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1117.2453310841322,
+            "p50_ns": 872958,
+            "p95_ns": 1149917,
+            "p99_ns": 1206292,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.978125,
+            "samples": 64,
+            "qps": 966.8817908149433,
+            "p50_ns": 994667,
+            "p95_ns": 1225125,
+            "p99_ns": 1243458,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.1555138815288413,
+          "p95_ratio_akasha_over_qdrant": 0.9386119783695541,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 7589.680974875547,
+            "p50_ns": 129542,
+            "p95_ns": 158625,
+            "p99_ns": 185167,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 9592.270069164764,
+            "p50_ns": 102542,
+            "p95_ns": 114792,
+            "p99_ns": 140875,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.7912288665926198,
+          "p95_ratio_akasha_over_qdrant": 1.3818471670499686,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-uniform-1536",
+      "trial": 1,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 512,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 687.2548017150701,
+            "p50_ns": 1451250,
+            "p95_ns": 1493916,
+            "p99_ns": 1515417,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9921875,
+            "samples": 64,
+            "qps": 390.29239388913345,
+            "p50_ns": 2529083,
+            "p95_ns": 2727917,
+            "p99_ns": 2908208,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.7608716246473712,
+          "p95_ratio_akasha_over_qdrant": 0.5476398292176778,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1226.0995598589948,
+            "p50_ns": 804125,
+            "p95_ns": 1076125,
+            "p99_ns": 1131875,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9765625,
+            "samples": 64,
+            "qps": 1016.435766341746,
+            "p50_ns": 904583,
+            "p95_ns": 1198959,
+            "p99_ns": 1219042,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.206273529976075,
+          "p95_ratio_akasha_over_qdrant": 0.8975494574877039,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1105.1346160158837,
+            "p50_ns": 853750,
+            "p95_ns": 1153542,
+            "p99_ns": 1295500,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.978125,
+            "samples": 64,
+            "qps": 947.5258272222483,
+            "p50_ns": 1048125,
+            "p95_ns": 1302000,
+            "p99_ns": 1329334,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.1663371955313122,
+          "p95_ratio_akasha_over_qdrant": 0.8859769585253456,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 7881.651097532231,
+            "p50_ns": 124458,
+            "p95_ns": 152042,
+            "p99_ns": 180750,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 9837.200480301313,
+            "p50_ns": 98708,
+            "p95_ns": 124625,
+            "p99_ns": 159458,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8012087497164453,
+          "p95_ratio_akasha_over_qdrant": 1.2199959879638917,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-uniform-1536",
+      "trial": 2,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 512,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 664.9813890931312,
+            "p50_ns": 1492500,
+            "p95_ns": 1605958,
+            "p99_ns": 1736792,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9921875,
+            "samples": 64,
+            "qps": 395.49251739898267,
+            "p50_ns": 2488166,
+            "p95_ns": 2714500,
+            "p99_ns": 2754792,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.6814006835489164,
+          "p95_ratio_akasha_over_qdrant": 0.5916220298397495,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1258.9574329574677,
+            "p50_ns": 806958,
+            "p95_ns": 1055875,
+            "p99_ns": 1078959,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.9765625,
+            "samples": 64,
+            "qps": 1017.4084467125093,
+            "p50_ns": 964000,
+            "p95_ns": 1191584,
+            "p99_ns": 1215125,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.2374159434447995,
+          "p95_ratio_akasha_over_qdrant": 0.8861104210865537,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 128,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 1100.6208000030817,
+            "p50_ns": 900750,
+            "p95_ns": 1168917,
+            "p99_ns": 1189791,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 512,
+            "recall": 0.978125,
+            "samples": 64,
+            "qps": 955.0593253007273,
+            "p50_ns": 968000,
+            "p95_ns": 1309084,
+            "p99_ns": 1336875,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "PASSED",
+          "qps_ratio_akasha_over_qdrant": 1.1524109244800267,
+          "p95_ratio_akasha_over_qdrant": 0.8929274210058331,
+          "qps_passed": true,
+          "p95_passed": true
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 7778.671514723688,
+            "p50_ns": 126584,
+            "p95_ns": 143875,
+            "p99_ns": 183000,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 8737.853871135496,
+            "p50_ns": 102958,
+            "p95_ns": 164166,
+            "p99_ns": 192916,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8902267798755072,
+          "p95_ratio_akasha_over_qdrant": 0.8763994980690277,
+          "qps_passed": false,
+          "p95_passed": true,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-real-1536",
+      "trial": 0,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 16,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2614.121090010071,
+            "p50_ns": 371625,
+            "p95_ns": 473208,
+            "p99_ns": 528125,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 24,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 3096.818198336012,
+            "p50_ns": 318167,
+            "p95_ns": 373875,
+            "p99_ns": 404750,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8441312736455422,
+          "p95_ratio_akasha_over_qdrant": 1.2656850551654966,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 1776.6694321636796,
+            "p50_ns": 562541,
+            "p95_ns": 665833,
+            "p99_ns": 687333,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2780.306601785895,
+            "p50_ns": 358416,
+            "p95_ns": 442875,
+            "p99_ns": 482584,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.6390192473817305,
+          "p95_ratio_akasha_over_qdrant": 1.5034332486593283,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 40,
+            "recall": 0.965625,
+            "samples": 64,
+            "qps": 1558.5933947883461,
+            "p50_ns": 646750,
+            "p95_ns": 747125,
+            "p99_ns": 804958,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9625,
+            "samples": 64,
+            "qps": 2541.943961971565,
+            "p50_ns": 387625,
+            "p95_ns": 473166,
+            "p99_ns": 506917,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.6131501788023214,
+          "p95_ratio_akasha_over_qdrant": 1.5789913053769713,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 7075.180983682311,
+            "p50_ns": 137208,
+            "p95_ns": 164541,
+            "p99_ns": 186625,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 9987.849157259621,
+            "p50_ns": 97292,
+            "p95_ns": 111167,
+            "p99_ns": 172500,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.7083788383547772,
+          "p95_ratio_akasha_over_qdrant": 1.480124497377819,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-real-1536",
+      "trial": 1,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 16,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2577.6785443140398,
+            "p50_ns": 381459,
+            "p95_ns": 463000,
+            "p99_ns": 511042,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 24,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 3137.812325091477,
+            "p50_ns": 317250,
+            "p95_ns": 380458,
+            "p99_ns": 398834,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8214890749525284,
+          "p95_ratio_akasha_over_qdrant": 1.2169543024459992,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 1773.5859074854359,
+            "p50_ns": 563083,
+            "p95_ns": 689834,
+            "p99_ns": 745917,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2628.6787537696896,
+            "p50_ns": 375208,
+            "p95_ns": 486500,
+            "p99_ns": 537250,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.6747062207361789,
+          "p95_ratio_akasha_over_qdrant": 1.4179527235354574,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 40,
+            "recall": 0.965625,
+            "samples": 64,
+            "qps": 1526.0108307664957,
+            "p50_ns": 657208,
+            "p95_ns": 770083,
+            "p99_ns": 882416,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9625,
+            "samples": 64,
+            "qps": 2684.366484476476,
+            "p50_ns": 368083,
+            "p95_ns": 435708,
+            "p99_ns": 485792,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.5684808090070119,
+          "p95_ratio_akasha_over_qdrant": 1.7674291038952694,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 6557.684776601197,
+            "p50_ns": 144958,
+            "p95_ns": 200083,
+            "p99_ns": 219375,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 10144.450636786187,
+            "p50_ns": 97458,
+            "p95_ns": 110208,
+            "p99_ns": 120166,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.6464307443935382,
+          "p95_ratio_akasha_over_qdrant": 1.815503411730546,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    },
+    {
+      "corpus": "cost-plan-real-1536",
+      "trial": 2,
+      "cells": [
+        {
+          "mode": "all",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 16,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2617.1324194579543,
+            "p50_ns": 375459,
+            "p95_ns": 473833,
+            "p99_ns": 496292,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 24,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 3073.112122399751,
+            "p50_ns": 321250,
+            "p95_ns": 374084,
+            "p99_ns": 399875,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.8516228224742648,
+          "p95_ratio_akasha_over_qdrant": 1.2666486671442778,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "correlated",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 32,
+            "recall": 0.953125,
+            "samples": 64,
+            "qps": 1796.6425242827465,
+            "p50_ns": 551667,
+            "p95_ns": 677333,
+            "p99_ns": 696500,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9671875,
+            "samples": 64,
+            "qps": 2444.9100639832964,
+            "p50_ns": 403334,
+            "p95_ns": 518584,
+            "p99_ns": 546125,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.734850148784459,
+          "p95_ratio_akasha_over_qdrant": 1.3061201271153757,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "independent",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 40,
+            "recall": 0.965625,
+            "samples": 64,
+            "qps": 1568.0238770835883,
+            "p50_ns": 649292,
+            "p95_ns": 741291,
+            "p99_ns": 812333,
+            "execution_counts": {
+              "ann": 64
+            }
+          },
+          "qdrant": {
+            "ef": 128,
+            "recall": 0.9625,
+            "samples": 64,
+            "qps": 2735.997995881468,
+            "p50_ns": 362750,
+            "p95_ns": 433375,
+            "p99_ns": 459750,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.5731085620106281,
+          "p95_ratio_akasha_over_qdrant": 1.7105070666282087,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        },
+        {
+          "mode": "selective",
+          "target_recall": 0.95,
+          "akasha": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 6644.578288861206,
+            "p50_ns": 148292,
+            "p95_ns": 188459,
+            "p99_ns": 207375,
+            "execution_counts": {
+              "planned_exact": 64
+            }
+          },
+          "qdrant": {
+            "ef": 10,
+            "recall": 1.0,
+            "samples": 64,
+            "qps": 9513.308077482327,
+            "p50_ns": 102625,
+            "p95_ns": 127375,
+            "p99_ns": 178041,
+            "execution_counts": {
+              "unobservable": 64
+            }
+          },
+          "quality_status": "PASSED",
+          "status": "FAILED",
+          "qps_ratio_akasha_over_qdrant": 0.69845086848272,
+          "p95_ratio_akasha_over_qdrant": 1.4795603532875368,
+          "qps_passed": false,
+          "p95_passed": false,
+          "reason": "matched recall, but QPS or p95 misses Qdrant; no tolerance"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "command": "pixi run env PYTHONPATH=python:.:.build/qdrant-compare/deps pytest tests/python/test_qdrant_compare.py -q --tb=short --junitxml=.build/prepared-query-probe/parity-tests.xml",
+    "passed": 13,
+    "new_cases": 5,
+    "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"13\" time=\"1.322\" timestamp=\"2026-10-02T06:11:32.897411+08:00\" hostname=\"Rays-MacBook-Pro.local\"><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_cost_plan_comparison_requires_explicit_policy_exact_oracle_and_storage\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_splitmix_matches_published_seed_zero_sequence_and_chunking\" time=\"0.001\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_oracle_uses_replacements_deletes_filters_and_id_ties\" time=\"0.001\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_result_validation_rejects_duplicates_deleted_and_wrong_filter\" time=\"0.001\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_workload_roundtrip_checksums_and_corruption\" time=\"0.005\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_failed_recall_cannot_produce_speed_ratio_or_skip_missing_cells\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_matched_cell_requires_both_qps_and_p95_without_tolerance[akasha_samples0-qdrant_samples0-True-True]\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_matched_cell_requires_both_qps_and_p95_without_tolerance[akasha_samples1-qdrant_samples1-True-True]\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_matched_cell_requires_both_qps_and_p95_without_tolerance[akasha_samples2-qdrant_samples2-False-True]\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_matched_cell_requires_both_qps_and_p95_without_tolerance[akasha_samples3-qdrant_samples3-True-False]\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_matched_cell_requires_both_qps_and_p95_without_tolerance[akasha_samples4-qdrant_samples4-False-False]\" time=\"0.000\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_public_adapter_exact_filters_mutations_and_reopen[Akasha]\" time=\"0.104\" /><testcase classname=\"tests.python.test_qdrant_compare\" name=\"test_public_adapter_exact_filters_mutations_and_reopen[Qdrant]\" time=\"1.161\" /></testsuite></testsuites>"
+  },
+  "gate_source": "\"\"\"Matched-recall Python-binding comparison of Akasha and native Qdrant Edge.\n\nRun under pixi with PYTHONPATH=python:.:.build/qdrant-compare/deps. See the dataset\nREADME for pinned downloads. Every trial uses separate sequential processes;\noracle calculation is outside those processes and outside all engine timings.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nfrom dataclasses import asdict\nfrom datetime import datetime, timezone\nimport importlib.metadata\nimport json\nimport os\nfrom pathlib import Path\nimport platform\nimport statistics\nimport subprocess\nimport sys\nfrom time import perf_counter_ns\nimport traceback\n\nfrom benchmarks.arrow_scanner import peak_rss, source_hash\nfrom benchmarks.post_hnsw import nearest_rank\nfrom benchmarks.qdrant_workload import (\n    MODES, exact_ids, file_sha256, filter_spec, load_workload, payload,\n    real_workload, save_workload, synthetic_workload, validate_result,\n)\n\nROOT = Path(__file__).resolve().parents[1]\nQDRANT_VERSION = \"0.8.0\"\nQDRANT_COMMIT = \"21db2f3ff95d50de3a2b88a741312c056fd1762d\"\nPLANNER_POLICY = \"dimension-ef-v1\"\n\n\ndef execution_kind(engine: str, mode: str, stats: dict, recall: float, spec: dict) -> str:\n    \"\"\"Distinguish deliberate exact plans from a failed ANN execution.\n\n    The old baseline accepted only selective exact fallback. New policy reports\n    opt into cost-based exact plans explicitly, and those must match the oracle.\n    Unknown/unavailable/exhausted graph fallbacks remain invalid comparisons.\n    \"\"\"\n    if engine != \"akasha\":\n        return \"unobservable\"\n    reason = stats.get(\"fallback_reason\", \"\")\n    if not reason:\n        return \"ann\"\n    planned = reason in (\"selectivity\", \"filtered_match_count\", \"small_collection\") and mode == \"selective\"\n    planned |= reason == \"scan_cost\" and spec.get(\"akasha_planner_policy\") == PLANNER_POLICY\n    if planned and recall == 1.0 and stats.get(\"storage_name\") == \"exact\":\n        return \"planned_exact\"\n    return \"invalid_fallback\"\n\n\ndef latency_summary(samples: list[int]) -> dict:\n    if not samples or min(samples) <= 0:\n        raise ValueError(\"positive latency samples required\")\n    return {\"samples\": len(samples), \"qps\": len(samples) * 1e9 / sum(samples),\n            **{f\"p{p}_ns\": nearest_rank(samples, p / 100) for p in (50, 95, 99)}}\n\n\ndef matched_summary(akasha: dict, qdrant: dict, target: float,\n                    modes=MODES) -> list[dict]:\n    \"\"\"Match quality by smallest ef, then require both throughput and tail parity.\"\"\"\n    rows = []\n    for mode in modes:\n        selected = {}\n        for engine, report in ((\"akasha\", akasha), (\"qdrant\", qdrant)):\n            eligible = [m for m in report.get(\"measurements\", [])\n                        if report.get(\"status\") == \"ok\" and m[\"mode\"] == mode\n                        and report.get(\"reopen\", {}).get(\"status\", \"ok\") == \"ok\"\n                        and m[\"recall\"] >= target and m[\"execution_valid\"]]\n            if eligible:\n                cell = min(eligible, key=lambda item: item[\"ef\"])\n                selected[engine] = {\"ef\": cell[\"ef\"], \"recall\": cell[\"recall\"],\n                                    **latency_summary(cell[\"latency_ns\"]),\n                                    \"execution_counts\": cell.get(\"execution_counts\", {})}\n        row = {\"mode\": mode, \"target_recall\": target, **selected,\n               \"quality_status\": \"PASSED\" if len(selected) == 2 else \"FAILED\",\n               \"status\": \"PASSED\" if len(selected) == 2 else \"FAILED\"}\n        if len(selected) == 2:\n            row[\"qps_ratio_akasha_over_qdrant\"] = selected[\"akasha\"][\"qps\"] / selected[\"qdrant\"][\"qps\"]\n            row[\"p95_ratio_akasha_over_qdrant\"] = selected[\"akasha\"][\"p95_ns\"] / selected[\"qdrant\"][\"p95_ns\"]\n            row[\"qps_passed\"] = selected[\"akasha\"][\"qps\"] >= selected[\"qdrant\"][\"qps\"]\n            row[\"p95_passed\"] = selected[\"akasha\"][\"p95_ns\"] <= selected[\"qdrant\"][\"p95_ns\"]\n            if not (row[\"qps_passed\"] and row[\"p95_passed\"]):\n                row[\"status\"] = \"FAILED\"\n                row[\"reason\"] = \"matched recall, but QPS or p95 misses Qdrant; no tolerance\"\n        else:\n            row[\"reason\"] = \"missing, invalid or below-target engine cell; no speed comparison\"\n        rows.append(row)\n    return rows\n\n\nclass Akasha:\n    def __init__(self, path: Path, spec: dict, *, reopen=False):\n        import akashadb as api\n        self.api = api\n        self.spec = spec\n        config = api.CollectionConfig.defaults(\n            spec[\"dimension\"], ann_metric=spec[\"metric\"], scalar_kind=spec[\"scalar\"],\n            m=24, m0=48, ef_construction=192, max_level=16,\n            default_ef_search=128, max_ef_search=max(512, max(spec[\"efs\"])),\n            delta_max_points=spec[\"points\"], rebuild_inactive_percent=90,\n            level_seed=spec[\"seed\"],\n        )\n        self.collection = api.Collection(path, spec[\"dimension\"], config=config)\n\n    def upsert(self, ids, vectors):\n        for start in range(0, len(ids), 256):\n            batch = [self.api.BatchMutation.upsert(\n                int(id), vector.tolist(),\n                [self.api.PayloadField(key, \"string\" if isinstance(value, str) else \"int\", value)\n                 for key, value in payload(int(id), self.spec[\"seed\"]).items()],\n            ) for id, vector in zip(ids[start:start + 256], vectors[start:start + 256], strict=True)]\n            self.collection.apply_batch(batch)\n\n    def delete(self, ids):\n        self.collection.apply_batch([self.api.BatchMutation.delete(int(id)) for id in ids])\n\n    def optimize(self):\n        # Public Python flush promotes/builds and persists the HNSW base. There\n        # is no benchmark-only kernel seam; the actual base/delta path is reported.\n        self.collection.flush()\n\n    def flush(self):\n        self.collection.flush()\n\n    def request(self, query, mode, ordinal, ef, *, exact=False):\n        condition = filter_spec(mode, ordinal)\n        expression = None if condition is None else {\n            \"kind\": \"condition\", \"name\": condition[0], \"operator\": \"eq\",\n            \"type\": \"int\", \"value\": condition[1]}\n        return self.api.SearchRequest(\n            self.spec[\"metric\"], self.spec[\"k\"], vector=query,\n            mode=\"exact\" if exact else \"approx\", ef_search=ef, filter=expression,\n        )\n\n    def search(self, request):\n        return self.collection.search(request)\n\n    def stats(self):\n        return asdict(self.collection.last_search_stats())\n\n    def info(self):\n        return {\"config\": asdict(self.collection.collection_config())}\n\n    def close(self):\n        self.collection.close()\n\n\nclass Qdrant:\n    def __init__(self, path: Path, spec: dict, *, reopen=False):\n        import qdrant_edge as api\n        if importlib.metadata.version(\"qdrant-edge-py\") != QDRANT_VERSION:\n            raise ValueError(f\"comparison requires qdrant-edge-py=={QDRANT_VERSION}\")\n        self.api, self.spec, self.path = api, spec, path\n        if reopen:\n            self.collection = api.EdgeShard.load(str(path))\n            return\n        distance = {\"dot\": api.Distance.Dot, \"cosine\": api.Distance.Cosine,\n                    \"l2\": api.Distance.Euclid}[spec[\"metric\"]]\n        config = api.EdgeConfig(\n            vectors=api.EdgeVectorParams(size=spec[\"dimension\"], distance=distance, on_disk=False),\n            on_disk_payload=False, max_search_threads=1,\n            hnsw_config=api.HnswIndexConfig(\n                m=24, ef_construct=192,\n                # Qdrant expresses this in KiB, Akasha uses eligible fraction\n                # (<1/8). Fix an equivalent initial-corpus cutoff before builds.\n                full_scan_threshold=max(1, spec[\"points\"] * spec[\"dimension\"] * 4 // (1024 * 8)),\n                max_indexing_threads=1,\n            ),\n            optimizers=api.EdgeOptimizersConfig(\n                default_segment_number=1, indexing_threshold=1, prevent_unoptimized=False,\n            ),\n        )\n        path.mkdir(parents=True, exist_ok=False)\n        self.collection = api.EdgeShard.create(str(path), config)\n        for field in (\"correlated\", \"independent\", \"rare\"):\n            self.collection.update(api.UpdateOperation.create_field_index(field, api.PayloadSchemaType.Integer))\n\n    def upsert(self, ids, vectors):\n        for start in range(0, len(ids), 256):\n            points = [self.api.Point(int(id), vector.tolist(), payload(int(id), self.spec[\"seed\"]))\n                      for id, vector in zip(ids[start:start + 256], vectors[start:start + 256], strict=True)]\n            self.collection.update(self.api.UpdateOperation.upsert_points(points))\n\n    def delete(self, ids):\n        self.collection.update(self.api.UpdateOperation.delete_points([int(id) for id in ids]))\n\n    def optimize(self):\n        self.collection.optimize()\n        self.collection.flush()\n        if self.collection.info().indexed_vectors_count < self.spec[\"points\"]:\n            raise ValueError(\"Qdrant optimization did not build the required HNSW index\")\n\n    def flush(self):\n        self.collection.flush()\n\n    def request(self, query, mode, ordinal, ef, *, exact=False):\n        condition = filter_spec(mode, ordinal)\n        expression = None if condition is None else self.api.Filter(must=[\n            self.api.FieldCondition(key=condition[0], match=self.api.MatchValue(value=condition[1]))])\n        return self.api.SearchRequest(\n            query=self.api.Query.Nearest(query), limit=self.spec[\"k\"], filter=expression,\n            params=self.api.SearchParams(hnsw_ef=ef, exact=exact), with_payload=False, with_vector=False,\n        )\n\n    def search(self, request):\n        return self.collection.search(request)\n\n    def stats(self):\n        # Edge 0.8 has no public per-query fallback/candidate counters.\n        return {\"fallback_observability\": \"unavailable in public Edge API\"}\n\n    def info(self):\n        info = self.collection.info()\n        return {**{key: getattr(info, key) for key in (\"points_count\", \"indexed_vectors_count\", \"segments_count\")},\n                \"config\": json.loads((self.path / \"edge_config.json\").read_text())}\n\n    def close(self):\n        self.collection.close()\n\n\ndef _timed(function, *args):\n    started = perf_counter_ns()\n    value = function(*args)\n    return perf_counter_ns() - started, value\n\n\ndef _timed_query(database, query, mode, ordinal, ef):\n    # Both start with the same Python list and scalar filter/ef values. Qdrant's\n    # Query constructor crosses into Rust; excluding it would undercount its\n    # binding cost relative to Akasha's Python dataclass request.\n    started = perf_counter_ns()\n    request = database.request(query, mode, ordinal, ef)\n    values = database.search(request)\n    return perf_counter_ns() - started, values\n\n\ndef measure(engine: str, spec: dict, directory: Path, workload_path: Path,\n            oracle_path: Path, *, reopen=False) -> dict:\n    workload = load_workload(workload_path)\n    oracles = json.loads(oracle_path.read_text())\n    if oracles[\"checksum\"] != workload.checksum():\n        raise ValueError(\"oracle belongs to different input data\")\n    report = {\"engine\": engine, \"spec\": spec, \"workload_sha256\": workload.checksum(),\n              \"status\": \"running\", \"measurements\": [], \"phase\": \"reopen\" if reopen else \"build-query\",\n              \"input_peak_rss_bytes\": peak_rss()}\n    if not reopen and directory.exists():\n        raise ValueError(\"fresh trial requires an unused database path\")\n    factory = Akasha if engine == \"akasha\" else Qdrant\n    started = perf_counter_ns()\n    database = factory(directory, spec, reopen=reopen)\n    report[\"open_ns\"] = perf_counter_ns() - started\n    if engine == \"akasha\":\n        from akashadb import _kernel\n        binary = Path(_kernel.__file__)\n    else:\n        from qdrant_edge import qdrant_edge\n        binary = Path(qdrant_edge.__file__)\n    report[\"native_binary_sha256\"] = file_sha256(binary)\n    try:\n        if not reopen:\n            report[\"ingest_ns\"], _ = _timed(database.upsert, workload.ids, workload.vectors)\n            report[\"build_checkpoint_ns\"], _ = _timed(database.optimize)\n            report[\"built_info\"] = database.info()\n            report[\"replace_ns\"], _ = _timed(database.upsert, workload.update_ids, workload.updates)\n            report[\"delete_ns\"], _ = _timed(database.delete, workload.deletes)\n            report[\"mutation_flush_ns\"], _ = _timed(database.flush)\n        report[\"ready_info\"] = database.info()\n        report[\"ready_peak_rss_bytes\"] = peak_rss()\n        # Fresh process/open first query; OS cache is explicitly NOT evicted.\n        elapsed, values = _timed_query(database, workload.queries[0, 0].tolist(), \"all\", 0, max(spec[\"efs\"]))\n        ids = [int(value.id) for value in values]\n        report[\"first_query\"] = {\"latency_ns\": elapsed, \"ids\": ids,\n                                 \"recall\": validate_result(workload, ids, oracles[\"ids\"][0][0], \"all\", 0),\n                                 \"stats\": database.stats()}\n        if not reopen:\n            for mode_index, mode in enumerate(MODES):\n                # Both exact APIs must agree with the independent oracle before\n                # accepting approximate timing. IDs, count and filtering checked.\n                for ordinal, vector in enumerate(workload.queries[mode_index]):\n                    request = database.request(vector.tolist(), mode, ordinal, 128, exact=True)\n                    ids = [int(value.id) for value in database.search(request)]\n                    recall = validate_result(workload, ids, oracles[\"ids\"][mode_index][ordinal], mode, ordinal)\n                    if recall != 1:\n                        raise ValueError(f\"exact oracle disagreement: {mode=} {ordinal=} {recall=}\")\n                for ef in spec[\"efs\"]:\n                    cell = {\"mode\": mode, \"ef\": ef, \"latency_ns\": [], \"queries\": [],\n                            \"execution_valid\": True, \"execution_counts\": {}}\n                    for ordinal, vector in enumerate(workload.queries[mode_index]):\n                        elapsed, values = _timed_query(database, vector.tolist(), mode, ordinal, ef)\n                        ids = [int(value.id) for value in values]\n                        stats = database.stats()\n                        recall = validate_result(workload, ids, oracles[\"ids\"][mode_index][ordinal], mode, ordinal)\n                        if ordinal < 3:\n                            continue\n                        execution = execution_kind(engine, mode, stats, recall, spec)\n                        if execution == \"invalid_fallback\":\n                            cell[\"execution_valid\"] = False\n                        cell[\"execution_counts\"][execution] = cell[\"execution_counts\"].get(execution, 0) + 1\n                        cell[\"latency_ns\"].append(elapsed)\n                        cell[\"queries\"].append({\"ordinal\": ordinal, \"ids\": ids, \"recall\": recall, \"stats\": stats})\n                    cell[\"recall\"] = statistics.mean(row[\"recall\"] for row in cell[\"queries\"])\n                    cell[\"status\"] = (\"PASSED\" if cell[\"execution_valid\"]\n                                      and cell[\"recall\"] >= spec[\"target_recall\"] else \"FAILED\")\n                    cell.update(latency_summary(cell[\"latency_ns\"]))\n                    report[\"measurements\"].append(cell)\n        report[\"final_peak_rss_bytes\"] = peak_rss()\n        report[\"disk_bytes\"] = sum(path.stat().st_size for path in directory.rglob(\"*\") if path.is_file())\n        report[\"status\"] = \"ok\"\n    finally:\n        database.close()\n    return report\n\n\ndef main() -> None:\n    parser = argparse.ArgumentParser(description=__doc__)\n    parser.add_argument(\"--output\", type=Path, required=True)\n    parser.add_argument(\"--points\", type=int, default=8192)\n    parser.add_argument(\"--dimension\", type=int, default=128)\n    parser.add_argument(\"--queries\", type=int, default=64)\n    parser.add_argument(\"--seed\", type=int, default=12345)\n    parser.add_argument(\"--metric\", choices=(\"dot\", \"l2\", \"cosine\"), default=\"dot\")\n    parser.add_argument(\"--scalar\", choices=(\"f32\", \"f16\", \"bf16\", \"i8\"), default=\"f32\")\n    parser.add_argument(\"--real-parquet\", type=Path)\n    parser.add_argument(\"--efs\", default=\"32,64,128,256,512,1024\")\n    parser.add_argument(\"--target-recall\", type=float, default=.95)\n    parser.add_argument(\"--trials\", type=int, default=3)\n    parser.add_argument(\"--engine\", choices=(\"akasha\", \"qdrant\", \"both\"), default=\"both\")\n    parser.add_argument(\"--worker\", type=Path, help=argparse.SUPPRESS)\n    parser.add_argument(\"--reopen\", action=\"store_true\", help=argparse.SUPPRESS)\n    args = parser.parse_args()\n    if args.worker:\n        spec = json.loads((args.worker / \"spec.json\").read_text())\n        try:\n            report = measure(args.engine, spec, args.output.parent / \"database\",\n                             args.worker / \"workload.npz\", args.worker / \"oracle.json\", reopen=args.reopen)\n        except Exception:\n            report = {\"status\": \"FAILED\", \"engine\": args.engine, \"spec\": spec, \"error\": traceback.format_exc()}\n        args.output.write_text(json.dumps(report, indent=2) + \"\\n\")\n        print(json.dumps({\"engine\": args.engine, \"status\": report[\"status\"], \"output\": str(args.output)}), flush=True)\n        if report[\"status\"] != \"ok\":\n            print(report[\"error\"], file=sys.stderr)\n            raise SystemExit(1)\n        return\n    try:\n        efs = sorted(set(map(int, args.efs.split(\",\"))))\n    except ValueError:\n        parser.error(\"efs must be comma-separated integers\")\n    if not efs or min(efs) < 10 or args.trials < 1 or not 0 < args.target_recall <= 1:\n        parser.error(\"require ef >= 10, trials >= 1, target-recall in (0, 1]\")\n    if args.scalar != \"f32\" and args.engine != \"akasha\":\n        parser.error(\"non-F32 graphs are separate Akasha diagnostics; paired baseline uses F32\")\n    args.output.mkdir(parents=True, exist_ok=True)\n    if any(args.output.iterdir()):\n        parser.error(\"output directory must be empty; use a fresh path to repeat a failed cell\")\n    workload = (real_workload(args.real_parquet, args.points, args.queries, args.seed)\n                if args.real_parquet else synthetic_workload(args.points, args.dimension, args.queries, args.seed))\n    spec = {\"points\": args.points, \"dimension\": workload.vectors.shape[1], \"queries\": args.queries,\n            \"seed\": args.seed, \"metric\": args.metric, \"scalar\": args.scalar, \"k\": 10, \"efs\": efs,\n            \"target_recall\": args.target_recall, \"search_threads\": 1, \"index_threads\": 1,\n            \"qdrant_full_scan_threshold_kib\": max(1, args.points * workload.vectors.shape[1] * 4 // (1024 * 8)),\n            \"query_concurrency\": 1, \"update_percent\": 10, \"warm_read_write_mix\": \"100% reads after replacements/deletes\",\n            \"akasha_planner_policy\": PLANNER_POLICY}\n    save_workload(args.output / \"workload.npz\", workload)\n    (args.output / \"spec.json\").write_text(json.dumps(spec, indent=2) + \"\\n\")\n    print(\"Calculating independent exact oracle\", flush=True)\n    oracle = {\"checksum\": workload.checksum(), \"metric\": args.metric, \"k\": 10,\n              \"ids\": [[exact_ids(workload, vector, args.metric, 10, mode, ordinal)\n                       for ordinal, vector in enumerate(workload.queries[index])]\n                      for index, mode in enumerate(MODES)]}\n    (args.output / \"oracle.json\").write_text(json.dumps(oracle) + \"\\n\")\n    report = {\n        \"started_utc\": datetime.now(timezone.utc).isoformat(), \"spec\": spec,\n        \"source_sha256\": source_hash(), \"git_head\": subprocess.check_output(\n            [\"git\", \"-c\", \"core.fsmonitor=false\", \"rev-parse\", \"HEAD\"], cwd=ROOT, text=True).strip(),\n        \"benchmark_sha256\": {name: file_sha256(ROOT / \"benchmarks\" / name)\n                             for name in (\"qdrant_compare.py\", \"qdrant_workload.py\")},\n        \"lockfile_sha256\": file_sha256(ROOT / \"pixi.lock\"),\n        \"mojo\": subprocess.check_output([\"mojo\", \"--version\"], text=True).strip(),\n        \"qdrant_version\": QDRANT_VERSION, \"qdrant_commit\": QDRANT_COMMIT,\n        \"recorded_macos_arm64_wheel_sha256\": \"d84d0702a31b6560c84f4d28b3272f94f1df354c04b80167e73acc08cc134642\",\n        \"qdrant_release_run\": \"https://github.com/qdrant/qdrant/actions/runs/31007802524\",\n        \"host\": platform.platform(), \"machine\": platform.machine(), \"cpu_count\": os.cpu_count(),\n        \"python\": sys.version, \"memory_limit\": \"no imposed process limit; process peak RSS reported\",\n        \"workload\": workload.metadata, \"workload_sha256\": workload.checksum(),\n        \"timing_scope\": \"Python list/filter/ef -> typed request construction -> public Python binding -> returned result objects; shared NumPy-to-list conversion, result validation and stats excluded\",\n        \"cold_scope\": \"new process loads persisted database, first query; OS page cache NOT evicted\",\n        \"qps_scope\": \"reciprocal mean single-request service time, not concurrent server throughput\",\n        \"limitations\": [\"Edge public API does not expose query candidate/fallback counters\",\n                        \"Qdrant graph build has no exposed seed; repeated fresh trials record variability\",\n                        \"fixed F32 baseline; not final M6 concurrent maintenance/non-resident/type matrix\"],\n        \"trials\": [],\n    }\n    (args.output / \"report.json\").write_text(json.dumps(report, indent=2) + \"\\n\")\n    engines = [\"akasha\", \"qdrant\"] if args.engine == \"both\" else [args.engine]\n    env = dict(os.environ, OMP_NUM_THREADS=\"1\", OPENBLAS_NUM_THREADS=\"1\", VECLIB_MAXIMUM_THREADS=\"1\")\n    for trial in range(args.trials):\n        outputs = {}\n        commands = []\n        for engine in (engines if trial % 2 == 0 else list(reversed(engines))):\n            directory = args.output / f\"trial-{trial}-{engine}\"\n            directory.mkdir()\n            for phase in (\"build\", \"reopen\"):\n                output = directory / f\"{phase}.json\"\n                command = [sys.executable, str(Path(__file__).resolve()), \"--worker\", str(args.output.resolve()),\n                           \"--engine\", engine, \"--output\", str(output.resolve())]\n                if phase == \"reopen\":\n                    command.append(\"--reopen\")\n                commands.append(command)\n                result = subprocess.run(command, cwd=ROOT, env=env)\n                if output.exists():\n                    value = json.loads(output.read_text())\n                else:\n                    value = {\"engine\": engine, \"status\": \"FAILED\", \"returncode\": result.returncode,\n                             \"error\": \"worker exited without a result artifact\"}\n                if phase == \"build\":\n                    outputs[engine] = value\n                else:\n                    outputs[engine][\"reopen\"] = value\n                if result.returncode:\n                    break\n        trial_report = {\"trial\": trial, \"commands\": commands, \"engines\": outputs,\n                        \"matched\": matched_summary(outputs.get(\"akasha\", {}), outputs.get(\"qdrant\", {}), args.target_recall)}\n        report[\"trials\"].append(trial_report)\n        (args.output / \"report.json\").write_text(json.dumps(report, indent=2) + \"\\n\")\n        print(json.dumps({\"trial\": trial, \"matched\": trial_report[\"matched\"]}), flush=True)\n    if any(row[\"status\"] != \"PASSED\" for trial in report[\"trials\"] for row in trial[\"matched\"]):\n        raise SystemExit(1)\n\n\nif __name__ == \"__main__\":\n    main()\n",
+  "test_source": "\"\"\"Correctness gates for the reproducible comparison, independent of Qdrant.\"\"\"\n\nimport numpy as np\nimport pytest\n\nfrom benchmarks.qdrant_workload import (\n    SplitMix64, Workload, exact_ids, load_workload, save_workload,\n    synthetic_workload, validate_result,\n)\nfrom benchmarks.qdrant_compare import Akasha, Qdrant, PLANNER_POLICY, execution_kind, matched_summary\n\n\ndef test_cost_plan_comparison_requires_explicit_policy_exact_oracle_and_storage():\n    stats = {\"fallback_reason\": \"scan_cost\", \"storage_name\": \"exact\"}\n    spec = {\"akasha_planner_policy\": PLANNER_POLICY}\n    assert execution_kind(\"akasha\", \"all\", stats, 1.0, spec) == \"planned_exact\"\n    assert execution_kind(\"akasha\", \"all\", stats, 1.0, {}) == \"invalid_fallback\"\n    assert execution_kind(\"akasha\", \"all\", stats, .99, spec) == \"invalid_fallback\"\n    assert execution_kind(\"akasha\", \"all\", {**stats, \"storage_name\": \"segmented-f32\"}, 1.0, spec) == \"invalid_fallback\"\n    for reason in (\"graph_unavailable\", \"filtered_exhausted\", \"unknown\"):\n        assert execution_kind(\"akasha\", \"selective\", {**stats, \"fallback_reason\": reason}, 1.0, spec) == \"invalid_fallback\"\n    assert execution_kind(\"akasha\", \"selective\", {**stats, \"fallback_reason\": \"selectivity\"}, 1.0, spec) == \"planned_exact\"\n    assert execution_kind(\"qdrant\", \"all\", {}, 1.0, spec) == \"unobservable\"\n\n\ndef test_splitmix_matches_published_seed_zero_sequence_and_chunking():\n    expected = [0xE220A8397B1DCDAF, 0x6E789E6AA1B965F4, 0x06C45D188009454F]\n    scalar = SplitMix64(0)\n    assert [scalar.next_u64() for _ in range(3)] == expected\n    vector = SplitMix64(0)\n    assert vector.words(2).tolist() + vector.words(1).tolist() == expected\n\n\ndef test_oracle_uses_replacements_deletes_filters_and_id_ties():\n    workload = Workload(\n        ids=np.array([5, 1, 9, 3], dtype=np.int64),\n        vectors=np.array([[4, 0], [4, 0], [10, 0], [1, 0]], dtype=np.float32),\n        update_ids=np.array([3], dtype=np.int64),\n        updates=np.array([[8, 0]], dtype=np.float32),\n        deletes=np.array([9], dtype=np.int64),\n        queries=np.ones((4, 4, 2), dtype=np.float32), metadata={\"seed\": 0},\n    )\n    assert exact_ids(workload, [1, 0], \"dot\", 10, \"all\", 0) == [3, 1, 5]\n    assert exact_ids(workload, [4, 0], \"l2\", 2, \"all\", 0) == [1, 5]\n    assert exact_ids(workload, [1, 0], \"cosine\", 3, \"all\", 0) == [1, 3, 5]\n    assert exact_ids(workload, [1, 0], \"dot\", 10, \"correlated\", 0) == [1]\n    assert exact_ids(workload, [1, 0], \"dot\", 10, \"selective\", 0) == []\n\n\ndef test_result_validation_rejects_duplicates_deleted_and_wrong_filter():\n    workload = synthetic_workload(128, 8, 4, seed=12345)\n    valid = exact_ids(workload, [1] * 8, \"dot\", 10, \"all\", 0)\n    assert validate_result(workload, valid, valid, \"all\", 0) == 1.0\n    with pytest.raises(ValueError, match=\"duplicate\"):\n        validate_result(workload, [valid[0]] * 10, valid, \"all\", 0)\n    with pytest.raises(ValueError, match=\"live\"):\n        validate_result(workload, [int(workload.deletes[0])], valid, \"all\", 0)\n    with pytest.raises(ValueError, match=\"filter\"):\n        validate_result(workload, [valid[0]], valid, \"selective\", (valid[0] + 1) % 32)\n    assert validate_result(workload, [], valid, \"all\", 0) == 0.0\n\n\ndef test_workload_roundtrip_checksums_and_corruption(tmp_path):\n    original = synthetic_workload(128, 8, 4, seed=12345)\n    second = synthetic_workload(128, 8, 4, seed=12345)\n    assert original.checksum() == second.checksum()\n    path = tmp_path / \"data.npz\"\n    save_workload(path, original)\n    loaded = load_workload(path)\n    assert loaded.checksum() == original.checksum()\n    loaded.vectors[0, 0] += 1\n    assert loaded.checksum() != original.checksum()\n    with np.load(path, allow_pickle=False) as data:\n        arrays = dict(data)\n    arrays[\"vectors\"][0, 0] += 1\n    np.savez(path, **arrays)\n    with pytest.raises(ValueError, match=\"checksum\"):\n        load_workload(path)\n\n\ndef test_failed_recall_cannot_produce_speed_ratio_or_skip_missing_cells():\n    def result(engine, recalls):\n        return {\"engine\": engine, \"status\": \"ok\", \"measurements\": [\n            {\"mode\": \"all\", \"ef\": ef, \"recall\": recall,\n             \"latency_ns\": [100, 200], \"execution_valid\": True}\n            for ef, recall in recalls\n        ]}\n    left = result(\"akasha\", [(32, .8), (64, .95), (128, .99)])\n    right = result(\"qdrant\", [(32, .7), (64, .94)])\n    report = matched_summary(left, right, .95, modes=(\"all\", \"correlated\"))\n    assert all(row[\"status\"] == \"FAILED\" for row in report)\n    assert all(\"qps_ratio_akasha_over_qdrant\" not in row for row in report)\n    right[\"measurements\"].append({\"mode\": \"all\", \"ef\": 128, \"recall\": .96,\n                                  \"latency_ns\": [200, 400], \"execution_valid\": True})\n    row = matched_summary(left, right, .95, modes=(\"all\",))[0]\n    assert row[\"status\"] == \"PASSED\"\n    assert row[\"akasha\"][\"ef\"] == 64\n    assert row[\"qdrant\"][\"ef\"] == 128\n    assert row[\"qps_ratio_akasha_over_qdrant\"] == 2.0\n    right[\"measurements\"][-1][\"execution_valid\"] = False\n    assert matched_summary(left, right, .95, modes=(\"all\",))[0][\"status\"] == \"FAILED\"\n    right[\"measurements\"][-1][\"execution_valid\"] = True\n    right[\"reopen\"] = {\"status\": \"FAILED\"}\n    assert matched_summary(left, right, .95, modes=(\"all\",))[0][\"status\"] == \"FAILED\"\n\n\n@pytest.mark.parametrize(\n    \"akasha_samples,qdrant_samples,qps_passed,p95_passed\",\n    [\n        ([100] * 20, [100] * 20, True, True),\n        ([90] * 20, [100] * 20, True, True),\n        ([90] * 20, [50] * 18 + [100] * 2, False, True),\n        ([40] * 18 + [150] * 2, [60] * 20, True, False),\n        ([101] * 20, [100] * 20, False, False),\n    ],\n)\ndef test_matched_cell_requires_both_qps_and_p95_without_tolerance(\n    akasha_samples, qdrant_samples, qps_passed, p95_passed,\n):\n    def report(samples):\n        return {\"status\": \"ok\", \"measurements\": [\n            {\"mode\": \"all\", \"ef\": 32, \"recall\": .95,\n             \"latency_ns\": samples, \"execution_valid\": True},\n            {\"mode\": \"selective\", \"ef\": 10, \"recall\": 1.0,\n             \"latency_ns\": [1] * 20, \"execution_valid\": True},\n        ]}\n\n    rows = matched_summary(report(akasha_samples), report(qdrant_samples), .95,\n                           modes=(\"all\", \"selective\"))\n    row = rows[0]\n    assert row[\"quality_status\"] == \"PASSED\"\n    assert row[\"qps_passed\"] is qps_passed\n    assert row[\"p95_passed\"] is p95_passed\n    assert row[\"status\"] == (\"PASSED\" if qps_passed and p95_passed else \"FAILED\")\n    assert row[\"p95_ratio_akasha_over_qdrant\"] > 0\n    assert rows[1][\"status\"] == \"PASSED\"\n\n\n@pytest.mark.parametrize(\"factory\", [Akasha, Qdrant])\ndef test_public_adapter_exact_filters_mutations_and_reopen(tmp_path, factory):\n    if factory is Qdrant:\n        pytest.importorskip(\"qdrant_edge\", reason=\"optional pinned benchmark dependency\")\n    workload = synthetic_workload(128, 8, 2)\n    spec = {\"dimension\": 8, \"metric\": \"dot\", \"scalar\": \"f32\", \"efs\": [128],\n            \"points\": 128, \"seed\": 12345, \"k\": 10}\n    database = factory(tmp_path / \"database\", spec)\n    try:\n        database.upsert(workload.ids, workload.vectors)\n        database.optimize()\n        info = database.info()\n        if factory is Akasha:\n            assert info[\"config\"][\"dimension\"] == 8\n        else:\n            assert info[\"indexed_vectors_count\"] == 128\n            assert info[\"config\"][\"max_search_threads\"] == 1\n        database.upsert(workload.update_ids, workload.updates)\n        database.delete(workload.deletes)\n        database.flush()\n    finally:\n        database.close()\n    database = factory(tmp_path / \"database\", spec, reopen=True)\n    try:\n        for index, mode in enumerate((\"all\", \"correlated\", \"independent\", \"selective\")):\n            query = workload.queries[index, 0].tolist()\n            result = database.search(database.request(query, mode, 0, 128, exact=True))\n            assert [row.id for row in result] == exact_ids(workload, query, \"dot\", 10, mode, 0)\n    finally:\n        database.close()\n",
+  "reclassification_script": "from pathlib import Path\nimport hashlib,json\nfrom benchmarks.qdrant_compare import matched_summary\nsource=Path('.build/refined-ef-warm/report.json')\nraw=json.loads(source.read_text())\nrows=[]\nfor trial in raw['trials']:\n    cells=matched_summary(trial['engines']['akasha'],trial['engines']['qdrant'],.95)\n    rows.append({'corpus':trial['corpus'],'trial':trial['trial'],'cells':cells})\ncells=[c for row in rows for c in row['cells']]\nreport={'scope':'Apply the user-confirmed strict gate to previously frozen refined-ef measurements; no rerun, no retuning, no discarded cell. These are historical measurements, not a claim for subsequent engine changes.','source_report_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'raw_archive':'docs/benchmarks/results/2026-10-02-refined-ef-warm.json.gz','raw_archive_sha256':'57ef83273b96c0a6866f8ea516d71cce626881369da6dcb43454865023e2259f','gate_source_sha256':hashlib.sha256(Path('benchmarks/qdrant_compare.py').read_bytes()).hexdigest(),'rule':'Every matched-recall cell must satisfy QPS >= Qdrant AND p95 <= Qdrant, with no tolerance or cross-cell offsets.','quality_passed':sum(c['quality_status']=='PASSED' for c in cells),'parity_passed':sum(c['status']=='PASSED' for c in cells),'cells':len(cells),'status':'PASSED' if all(c['status']=='PASSED' for c in cells) else 'FAILED','trials':rows}\nPath('.build/qdrant-strict-gate.json').write_text(json.dumps(report,indent=2)+'\\n')\nprint({k:report[k] for k in ['cells','quality_passed','parity_passed','status']})\nfor corpus in dict.fromkeys(row['corpus'] for row in rows):\n    print(corpus,[(mode,sum(c['status']=='PASSED' for row in rows if row['corpus']==corpus for c in row['cells'] if c['mode']==mode)) for mode in ['all','correlated','independent','selective']])\n"
+}

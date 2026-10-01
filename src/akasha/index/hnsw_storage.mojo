@@ -133,6 +133,14 @@ trait HnswGraphAccess:
     ) raises -> Float32:
         ...
 
+    def neighbor_range(
+        self, slot: UInt32, level: Int
+    ) raises -> Tuple[Int, Int]:
+        ...
+
+    def neighbor_at_offset(self, offset: Int) raises -> UInt32:
+        ...
+
     def neighbor_count(self, slot: UInt32, level: Int) raises -> Int:
         ...
 
@@ -561,6 +569,17 @@ struct HnswStorage(HnswGraphAccess):
         slot: UInt32,
     ) raises -> Float32:
         """Specialized query/member kernel selected before graph traversal."""
+        comptime width = simd_width_of[DType.float32]()
+        comptime if backend_tag <= DISTANCE_COSINE_F32:
+            if self.dimension >= 64:
+                return self._distance_to_slot_width[backend_tag, width * 4](
+                    query, slot
+                )
+        return self._distance_to_slot_width[backend_tag, width](query, slot)
+
+    def _distance_to_slot_width[
+        backend_tag: Int, width: Int
+    ](self, query: List[Float32], slot: UInt32) raises -> Float32:
         var expected_query = self.dimension
         comptime if (
             backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
@@ -569,7 +588,6 @@ struct HnswStorage(HnswGraphAccess):
         if len(query) != expected_query:
             raise Error("prepared query dimension does not match graph")
         var offset = self.vector_offset(slot)
-        comptime width = simd_width_of[DType.float32]()
         comptime if (
             backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
         ):
@@ -687,9 +705,19 @@ struct HnswStorage(HnswGraphAccess):
         rhs: UInt32,
     ) raises -> Float32:
         """Specialized member/member kernel selected before insertion."""
+        comptime width = simd_width_of[DType.float32]()
+        comptime if backend_tag <= DISTANCE_COSINE_F32:
+            if self.dimension >= 64:
+                return self._distance_between_width[backend_tag, width * 4](
+                    lhs, rhs
+                )
+        return self._distance_between_width[backend_tag, width](lhs, rhs)
+
+    def _distance_between_width[
+        backend_tag: Int, width: Int
+    ](self, lhs: UInt32, rhs: UInt32) raises -> Float32:
         var lhs_offset = self.vector_offset(lhs)
         var rhs_offset = self.vector_offset(rhs)
-        comptime width = simd_width_of[DType.float32]()
         comptime if (
             backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
         ):
@@ -845,6 +873,25 @@ struct HnswStorage(HnswGraphAccess):
         if index < 0 or index >= count:
             raise Error("HNSW neighbor index out of bounds")
         return self.neighbor_slots[self._level_base(slot, level) + index]
+
+    def neighbor_range(
+        self, slot: UInt32, level: Int
+    ) raises -> Tuple[Int, Int]:
+        """Return the first edge ordinal and occupied count for one level."""
+        var count = self.neighbor_count(slot, level)
+        var capacity = self.m0 if level == 0 else self.m
+        var base = self._level_base(slot, level)
+        if count > capacity or base < 0 or base > len(self.neighbor_slots):
+            raise Error("HNSW neighbor range is invalid")
+        if count > len(self.neighbor_slots) - base:
+            raise Error("HNSW neighbor range exceeds storage")
+        return (base, count)
+
+    @always_inline
+    def neighbor_at_offset(self, offset: Int) raises -> UInt32:
+        if offset < 0 or offset >= len(self.neighbor_slots):
+            raise Error("HNSW neighbor offset out of bounds")
+        return self.neighbor_slots[offset]
 
     def contains_neighbor(
         self, slot: UInt32, level: Int, neighbor: UInt32

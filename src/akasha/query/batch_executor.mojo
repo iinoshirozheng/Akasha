@@ -99,11 +99,11 @@ def execute_scalar_exact_reported(
             continue
         var score: Float32
         if metric == BATCH_DOT_METRIC:
-            score = dot_product(query, entry.values)
+            score = dot_product(query, entry.values())
         elif metric == BATCH_L2_METRIC:
-            score = l2_squared_distance(query, entry.values)
+            score = l2_squared_distance(query, entry.values())
         else:
-            score = cosine_similarity(query, entry.values)
+            score = cosine_similarity(query, entry.values())
         topk.offer(entry.id, score)
     var retained = topk.sorted_entries()
     var query_results = List[SearchResult](capacity=len(retained))
@@ -131,7 +131,21 @@ def execute_exact_batch(
     metric: Int,
     num_workers: Int,
 ) raises -> List[List[SearchResult]]:
-    """Execute validated queries with one deterministic heap per input."""
+    """Execute validated queries over every live slot of one table."""
+    return execute_exact_ordinal_batch(
+        memtable, queries, memtable.live_ordinals(), k, metric, num_workers
+    )
+
+
+def execute_exact_ordinal_batch(
+    memtable: MemTable,
+    queries: List[List[Float32]],
+    ordinals: List[Int],
+    k: Int,
+    metric: Int,
+    num_workers: Int,
+) raises -> List[List[SearchResult]]:
+    """Score one shared list of live stable slots with a heap per query."""
     if k <= 0:
         raise Error("k must be positive")
     if num_workers < 0:
@@ -156,24 +170,24 @@ def execute_exact_batch(
         return List[List[SearchResult]]()
 
     var entries = memtable.entry_view()
-    if metric == BATCH_COSINE_METRIC:
-        for entry_index in range(len(entries)):
-            if entries[entry_index].tombstone:
-                continue
+    for ordinal in ordinals:
+        if not memtable.is_live_at(ordinal):
+            raise Error("batch candidate slot is not live")
+        if metric == BATCH_COSINE_METRIC:
             var candidate_norm: Float32 = 0.0
-            for value in entries[entry_index].values:
+            for value in entries[ordinal].values():
                 candidate_norm += value * value
             if candidate_norm == 0.0:
                 raise Error("cosine similarity requires non-zero vectors")
 
-    var result_count = min(k, memtable.live_count())
+    var result_count = min(k, len(ordinals))
     var output = List[List[SearchResult]](capacity=len(queries))
     if result_count == 0:
         for _ in range(len(queries)):
             output.append(List[SearchResult]())
         return output^
 
-    var heaps = List[BoundedTopK](capacity=len(queries))
+    var heaps = List[BoundedTopK[]](capacity=len(queries))
     for _ in range(len(queries)):
         heaps.append(
             BoundedTopK(
@@ -184,24 +198,22 @@ def execute_exact_batch(
 
     def score_query(
         query_index: Int,
-    ) {imm queries, imm entries, mut heaps, imm metric}:
-        for entry_index in range(len(entries)):
-            if entries[entry_index].tombstone:
-                continue
+    ) {imm queries, imm ordinals, imm entries, mut heaps, imm metric}:
+        for ordinal in ordinals:
             var score: Float32
             if metric == BATCH_DOT_METRIC:
                 score = prevalidated_simd_dot_product(
-                    queries[query_index], entries[entry_index].values
+                    queries[query_index], entries[ordinal].values()
                 )
             elif metric == BATCH_L2_METRIC:
                 score = prevalidated_simd_l2_squared_distance(
-                    queries[query_index], entries[entry_index].values
+                    queries[query_index], entries[ordinal].values()
                 )
             else:
                 score = prevalidated_simd_cosine_similarity(
-                    queries[query_index], entries[entry_index].values
+                    queries[query_index], entries[ordinal].values()
                 )
-            heaps[query_index].offer(entries[entry_index].id, score)
+            heaps[query_index].offer(entries[ordinal].id, score)
 
     if len(queries) < 4 or num_workers == 1:
         for query_index in range(len(queries)):
@@ -260,14 +272,14 @@ def execute_exact_candidate_batch(
                 var candidate_norm: Float32 = 0.0
                 for value in entries[
                     candidates[query_index][entry_index]
-                ].values:
+                ].values():
                     candidate_norm += value * value
                 if candidate_norm == 0.0:
                     raise Error("cosine similarity requires non-zero vectors")
     if len(queries) == 0:
         return List[List[SearchResult]]()
 
-    var heaps = List[BoundedTopK](capacity=len(queries))
+    var heaps = List[BoundedTopK[]](capacity=len(queries))
     for _ in range(len(queries)):
         heaps.append(
             BoundedTopK(
@@ -283,7 +295,7 @@ def execute_exact_candidate_batch(
             var score = _score_prevalidated(
                 metric,
                 queries[query_index],
-                entries[candidates[query_index][entry_index]].values,
+                entries[candidates[query_index][entry_index]].values(),
             )
             heaps[query_index].offer(
                 entries[candidates[query_index][entry_index]].id, score

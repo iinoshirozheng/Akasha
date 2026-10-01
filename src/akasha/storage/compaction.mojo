@@ -1,6 +1,13 @@
 from akasha.storage.manifest import Manifest
 
 
+comptime LEVEL_ZERO_SEGMENT_LIMIT = 8
+"""Level-zero segments at which a flush waits for the background compaction.
+
+Twice the flush policy's compaction threshold of four.
+"""
+
+
 struct CompactionPolicy:
     """Bound level-zero segment growth with a deterministic threshold."""
 

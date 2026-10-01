@@ -1,0 +1,166 @@
+{
+  "status": "in-progress: typed read/maintenance primitives; production collection and Python/Arrow API integration pending",
+  "toolchain": "Mojo 1.0.0 (ed45d567)",
+  "records": [
+    {
+      "key": "typed-gate-0",
+      "result": {
+        "chunk_id": "b3a91c",
+        "wall_time_seconds": 0.000006875,
+        "exit_code": 0,
+        "original_token_count": 185,
+        "output": "\nRunning 6 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_migration.mojo \n    PASS [ 5.447 ] test_legacy_cutover_preserves_document_versions_and_publishes_reopenable_identity\n    PASS [ 2.180 ] test_mixed_replay_finishes_sparse_at_cutover_then_applies_atomic_fields\n    PASS [ 10.115 ] test_every_torn_new_batch_preserves_only_legacy_state_and_source_bytes\n    PASS [ 2.938 ] test_wrong_cutover_and_late_new_patch_fail_before_any_repair\n    PASS [ 2.455 ] test_published_upgrade_combined_write_and_reopen_use_one_wal_commit\n    PASS [ 0.004 ] test_cutover_shares_accepted_legacy_owners_and_rejects_nonfinite_authority\n--------\nSummary [ 23.139 ] 6 tests run: 6 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-gate-1",
+      "result": {
+        "chunk_id": "cc707e",
+        "wall_time_seconds": 0.000004958,
+        "exit_code": 0,
+        "original_token_count": 136,
+        "output": "\nRunning 4 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_compaction.mojo \n    PASS [ 3.865 ] test_point_compaction_rebases_over_later_delta_and_preserves_wal\n    PASS [ 2.423 ] test_point_compaction_discards_only_its_own_output_when_inputs_replaced\n    PASS [ 1.518 ] test_point_compaction_corruption_does_not_publish_or_modify_sources\n    PASS [ 1.954 ] test_point_compaction_uses_existing_generation_leases_and_publication\n--------\nSummary [ 9.760 ] 4 tests run: 4 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-gate-2",
+      "result": {
+        "chunk_id": "976395",
+        "wall_time_seconds": 0.000004125,
+        "exit_code": 0,
+        "original_token_count": 126,
+        "output": "\nRunning 4 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_batch_query.mojo \n    PASS [ 25.900 ] test_parallel_batch_results_equal_single_query_oracle_for_all_metrics\n    PASS [ 1.020 ] test_batch_query_preserves_ties_input_order_and_validation\n    PASS [ 0.848 ] test_empty_batch_query_returns_empty_results\n    PASS [ 1.423 ] test_parallel_filtered_batch_equals_per_query_expression_oracle\n--------\nSummary [ 29.191 ] 4 tests run: 4 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-gate-3",
+      "result": {
+        "chunk_id": "d85387",
+        "wall_time_seconds": 0.000002625,
+        "exit_code": 0,
+        "original_token_count": 104,
+        "output": "\nRunning 3 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_parallel_scan.mojo \n    PASS [ 32.134 ] test_parallel_scan_matches_scalar_for_workers_metrics_tails_and_ties\n    PASS [ 7.714 ] test_parallel_filtered_scan_matches_expression_oracle\n    PASS [ 1.050 ] test_parallel_scan_validates_worker_count\n--------\nSummary [ 40.898 ] 3 tests run: 3 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-backup",
+      "result": {
+        "chunk_id": "bbd08c",
+        "wall_time_seconds": 0.000003541,
+        "exit_code": 0,
+        "original_token_count": 111,
+        "output": "\nRunning 3 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_backup.mojo \n    PASS [ 3.082 ] test_streamed_point_backup_restores_exact_identity_and_native_fields\n    PASS [ 1.483 ] test_point_copy_rejects_corruption_without_committing_target\n    PASS [ 1.270 ] test_point_copy_rejects_foreign_named_schema_before_manifest_commit\n--------\nSummary [ 5.835 ] 3 tests run: 3 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-storage-operations",
+      "result": {
+        "chunk_id": "db66b3",
+        "wall_time_seconds": 0.000006166,
+        "exit_code": 0,
+        "original_token_count": 224,
+        "output": "\nRunning 9 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_storage_operations.mojo \n    PASS [ 8.234 ] test_inspection_backup_and_restore_validate_committed_generation\n    PASS [ 22.152 ] test_backup_copies_the_pinned_view_while_the_source_moves_on\n    PASS [ 59.212 ] test_backup_copy_is_exact_for_any_buffer_size\n    PASS [ 6.149 ] test_captured_backup_retains_source_lock_after_collection_close\n    PASS [ 14.508 ] test_backup_rejects_corrupt_torn_or_mislabeled_source_files\n    PASS [ 6.203 ] test_backup_rejects_committed_wal_and_active_targets\n    PASS [ 9.090 ] test_backup_rejects_checksummed_hnsw_header_mismatch\n    PASS [ 5.236 ] test_backup_and_restore_preserve_non_default_collection_identity\n    PASS [ 6.189 ] test_restore_rejects_wal_state_and_active_empty_target\n--------\nSummary [ 136.973 ] 9 tests run: 9 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-vector-value",
+      "result": {
+        "chunk_id": "fb63b4",
+        "wall_time_seconds": 0.000022625,
+        "exit_code": 0,
+        "original_token_count": 122,
+        "output": "\nRunning 4 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_vector_value.mojo \n    PASS [ 0.037 ] test_numeric_types_move_typed_storage_without_promoting_to_f32\n    PASS [ 0.002 ] test_shape_and_finite_checks_precede_acceptance\n    PASS [ 0.004 ] test_new_sparse_empty_is_present_and_legacy_sparse_rule_is_preserved\n    PASS [ 0.010 ] test_binary_lsb_padding_and_bit_dimensions\n--------\nSummary [ 0.053 ] 4 tests run: 4 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-scanner",
+      "result": {
+        "chunk_id": "63e7ea",
+        "wall_time_seconds": 0.000010291,
+        "exit_code": 0,
+        "original_token_count": 119,
+        "output": "\nRunning 4 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_scanner.mojo \n    PASS [ 0.068 ] test_scanner_batches_share_pinned_rows_after_snapshot_close\n    PASS [ 0.016 ] test_scanner_latest_visibility_filter_and_stable_capture\n    PASS [ 0.006 ] test_scanner_empty_close_and_bounds\n    PASS [ 0.008 ] test_cancel_and_budget_fail_terminally_without_leaking_root\n--------\nSummary [ 0.098 ] 4 tests run: 4 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-quantization",
+      "result": {
+        "chunk_id": "9d9b31",
+        "wall_time_seconds": 0.000006166,
+        "exit_code": 0,
+        "original_token_count": 260,
+        "output": "\nRunning 11 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_quantization.mojo \n    PASS [ 0.004 ] test_native_bf16_conversion_is_deterministic_and_rounds_to_even\n    PASS [ 0.001 ] test_native_f16_conversion_is_deterministic_and_rounds_to_even\n    PASS [ 0.008 ] test_symmetric_i8_uses_per_vector_scale_rounding_and_saturation\n    PASS [ 0.001 ] test_shared_unsigned_rounding_matches_sq8_domain\n    PASS [ 0.001 ] test_i8_dot_accumulates_in_integer_then_restores_magnitudes\n    PASS [ 0.004 ] test_i8_checked_dot_rejects_unsafe_decoded_component_magnitude\n    PASS [ 0.001 ] test_i8_dot_scale_preserves_positive_and_negative_subnormals\n    PASS [ 0.001 ] test_cosine_i8_normalizes_once_and_rejects_zero_norm\n    PASS [ 0.007 ] test_sq8_codebook_is_deterministic_and_bounds_reconstruction\n    PASS [ 0.004 ] test_sq8_index_searches_all_metrics_with_stable_ties\n    PASS [ 0.002 ] test_sq8_rejects_invalid_training_and_queries\n--------\nSummary [ 0.030 ] 11 tests run: 11 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-product-quantization",
+      "result": {
+        "chunk_id": "d1ddd4",
+        "wall_time_seconds": 0.000006625,
+        "exit_code": 0,
+        "original_token_count": 231,
+        "output": "\nRunning 10 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_product_quantization.mojo \n    PASS [ 0.031 ] test_pq_training_and_codes_are_deterministic\n    PASS [ 0.023 ] test_pq_index_searches_all_metrics\n    PASS [ 3.728 ] test_pq_snapshot_rerank_matches_exact_oracle\n    PASS [ 0.003 ] test_pq_rejects_malformed_configuration\n    PASS [ 1.988 ] test_pq_cache_keys_all_training_parameters_and_reuses_across_metrics\n    PASS [ 4.312 ] test_pq_new_roots_failures_and_close_preserve_ready_owners\n    PASS [ 108.751 ] test_concurrent_pq_first_queries_share_parameter_bound_artifacts\n    PASS [ 204.356 ] test_pq_cancelled_build_never_publishes_and_can_retry\n    PASS [ 3.759 ] test_pq_invalid_keys_and_empty_snapshot_do_not_retain_artifacts\n    PASS [ 20.009 ] test_pq_training_cooperatively_stops_on_deadline\n--------\nSummary [ 346.960 ] 10 tests run: 10 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-point-backup-revised",
+      "result": {
+        "chunk_id": "196bfe",
+        "wall_time_seconds": 0.000010875,
+        "exit_code": 0,
+        "original_token_count": 111,
+        "output": "\nRunning 3 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_backup.mojo \n    PASS [ 3.571 ] test_streamed_point_backup_restores_exact_identity_and_native_fields\n    PASS [ 1.532 ] test_point_copy_rejects_corruption_without_committing_target\n    PASS [ 1.298 ] test_point_copy_rejects_foreign_named_schema_before_manifest_commit\n--------\nSummary [ 6.401 ] 3 tests run: 3 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-hnsw-projection",
+      "result": {
+        "chunk_id": "659362",
+        "wall_time_seconds": 0.000004708,
+        "exit_code": 0,
+        "original_token_count": 89,
+        "output": "\nRunning 2 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_hnsw_projection.mojo \n    PASS [ 0.057 ] test_default_hnsw_build_skips_named_only_points\n    PASS [ 0.033 ] test_rebuild_journal_ignores_named_updates_and_deletes_removed_default\n--------\nSummary [ 0.090 ] 2 tests run: 2 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-hnsw-rebuild",
+      "result": {
+        "chunk_id": "41f63a",
+        "wall_time_seconds": 0.000023209,
+        "exit_code": 0,
+        "original_token_count": 244,
+        "output": "\nRunning 10 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_hnsw_rebuild.mojo \n    PASS [ 0.072 ] test_inactive_threshold_rebuilds_at_boundary\n    PASS [ 12.123 ] test_explicit_rebuild_is_deterministic_and_removes_inactive_slots\n    PASS [ 9.074 ] test_live_results_are_equivalent_across_rebuild\n    PASS [ 8.818 ] test_explicit_rebuild_recovers_an_unavailable_invalid_graph\n    PASS [ 3.030 ] test_rebuild_failure_preserves_authoritative_data_and_quarantines_graph\n    PASS [ 6.891 ] test_flush_rebuilds_only_at_dense_delta_threshold\n    PASS [ 4.422 ] test_first_delta_only_flush_at_threshold_promotes_without_rebuild\n    PASS [ 5.707 ] test_flush_rebuilds_only_at_frozen_base_stale_threshold\n    PASS [ 4.508 ] test_empty_collection_explicit_rebuild_and_flush_stay_available\n    PASS [ 4.755 ] test_all_tombstoned_rebuild_and_flush_remove_stale_graph_state\n--------\nSummary [ 59.400 ] 10 tests run: 10 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-hnsw-rebuild-publication",
+      "result": {
+        "chunk_id": "05ff90",
+        "wall_time_seconds": 0.000007583,
+        "exit_code": 0,
+        "original_token_count": 389,
+        "output": "\nRunning 18 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_hnsw_rebuild_publication.mojo \n    PASS [ 10.137 ] test_rebuild_catches_latest_dense_states_across_flush_and_batch\n    PASS [ 5.048 ] test_stale_config_cannot_replace_current_graph\n    PASS [ 53.527 ] test_overflow_discards_candidate_then_new_capture_covers_all_writes\n    PASS [ 4.508 ] test_repeated_ids_and_sparse_only_writes_do_not_fill_journal\n    PASS [ 2.961 ] test_build_failure_keeps_current_graph_and_clears_job\n    PASS [ 2.880 ] test_close_keeps_build_input_alive_but_rejects_publication\n    PASS [ 3.181 ] test_catchup_failure_preserves_ready_graph\n    PASS [ 2.843 ] test_unavailable_graph_still_records_every_batch_state\n    PASS [ 3.016 ] test_missing_coverage_and_stale_jobs_cannot_publish\n    PASS [ 274.416 ] test_public_rebuild_retries_overflowed_capture\n    PASS [ 503.452 ] test_public_rebuild_stops_at_retry_budget_without_losing_graph\n    PASS [ 205.642 ] test_public_rebuild_allows_writer_during_build\n    PASS [ 224.945 ] test_flush_triggered_rebuild_allows_writer_during_build\n    PASS [ 224.705 ] test_compaction_checkpoint_allows_writer_during_rebuild\n    PASS [ 221.261 ] test_maintenance_checkpoint_allows_writer_during_rebuild\n    PASS [ 224.431 ] test_backup_checkpoint_allows_writer_during_rebuild\n    PASS [ 421.137 ] test_writer_can_update_same_id_during_detached_catchup\n    PASS [ 833.721 ] test_continuous_writes_stop_at_catchup_pass_budget\n--------\nSummary [ 3221.811 ] 18 tests run: 18 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-backup-crash",
+      "result": {
+        "chunk_id": "80b5a4",
+        "wall_time_seconds": 0.000009584,
+        "exit_code": 0,
+        "original_token_count": 111,
+        "output": "\nRunning 3 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/crash/test_backup_publication.mojo \n    PASS [ 15.449 ] test_crash_before_backup_manifest_leaves_no_backup_and_retry_completes\n    PASS [ 13.010 ] test_crash_before_manifest_rename_leaves_no_backup\n    PASS [ 13.616 ] test_crash_during_hnsw_copy_leaves_no_backup_and_retry_completes\n--------\nSummary [ 42.075 ] 3 tests run: 3 passed , 0 failed , 0 skipped \n\n"
+      }
+    },
+    {
+      "key": "typed-checkpoint-crash",
+      "result": {
+        "chunk_id": "921aa1",
+        "wall_time_seconds": 0.0000115,
+        "exit_code": 0,
+        "original_token_count": 192,
+        "output": "\nRunning 7 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/crash/test_checkpoint_order.mojo \n    PASS [ 5.512 ] test_manifest_publish_before_wal_rotation_recovers_once\n    PASS [ 15.116 ] test_compaction_output_fsync_boundary_recovers_old_generation\n    PASS [ 15.257 ] test_compaction_manifest_temporary_boundary_recovers_old_generation\n    PASS [ 15.455 ] test_compaction_manifest_publish_boundary_recovers_new_generation\n    PASS [ 13.914 ] test_compaction_root_swap_boundary_recovers_new_generation\n    PASS [ 13.741 ] test_compaction_cleanup_boundary_recovers_new_generation\n    PASS [ 19.328 ] test_compaction_rebase_publish_boundary_recovers_new_generation\n--------\nSummary [ 98.323 ] 7 tests run: 7 passed , 0 failed , 0 skipped \n\n"
+      }
+    }
+  ]
+}

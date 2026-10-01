@@ -26,6 +26,7 @@ from akasha.index.hnsw_core import (
     HnswResultAdmission,
 )
 from akasha.index.hnsw_stats import HnswSearchStats
+from akasha.index.hnsw_heap import HnswHeapItem, ResultMaxHeap
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.memtable import MemTable
 from std.collections import Dict
@@ -36,6 +37,24 @@ comptime _NO_BASE = 0
 comptime _OWNED_BASE = 1
 comptime _MAPPED_BASE = 2
 comptime _DELTA_SOURCE = -1
+
+
+def _should_scan_delta(
+    base_live: Int, physical_slots: Int, dimension: Int, m0: Int, ef: Int
+) -> Bool:
+    """Bound scan work by physical history, vector components and graph breadth.
+
+    See the 2026-10-02 delta scan diagnostic. This deliberately leaves a
+    delta-only collection on HNSW and excludes measured low-ef regressions.
+    Division avoids overflow even for invalid or extreme inputs.
+    """
+    if base_live <= 0 or physical_slots <= 0 or physical_slots > 1024:
+        return False
+    if dimension <= 0 or dimension > 1572864 // physical_slots:
+        return False
+    if m0 <= 0 or ef <= 0:
+        return False
+    return (physical_slots - 1) // m0 + 1 <= ef
 
 
 struct _CurrentSourceState:
@@ -345,6 +364,14 @@ struct SegmentedHnsw(Movable):
             raise Error("segmented HNSW has no complete owned checkpoint base")
         return self._owned_base
 
+    def immutable_owned_base(
+        ref self,
+    ) raises -> ref[origin_of(self._owned_base)] HnswIndex:
+        """Borrow the captured base; a v5 checkpoint may recover its overlay."""
+        if not self.base_is_owned():
+            raise Error("segmented HNSW has no immutable owned base")
+        return self._owned_base
+
     def needs_rebuild(self) -> Bool:
         if (
             self._delta_mutations >= self.config.delta_max_points
@@ -456,21 +483,6 @@ struct SegmentedHnsw(Movable):
         self._mapped_base.close()
         self._owned_base = self._delta^
         self._delta = replacement^
-        self._base_kind = _OWNED_BASE
-        self._sources = _CurrentSourceLookup()
-        self._index_owned_base_sources()
-        self._base_stale_count = 0
-        self._delta_mutations = 0
-
-    def replace_owned_base(mut self, var base: HnswIndex) raises:
-        """Install one explicit fully materialized checkpoint base."""
-        if base.config != self.config:
-            raise Error("segmented HNSW replacement config mismatch")
-        base.validate_structure()
-        base._bind_distance_backend(self.distance_backend)
-        self._mapped_base.close()
-        self._owned_base = base^
-        self._delta = HnswIndex(self.config, self.distance_backend)
         self._base_kind = _OWNED_BASE
         self._sources = _CurrentSourceLookup()
         self._index_owned_base_sources()
@@ -678,6 +690,88 @@ struct SegmentedHnsw(Movable):
             )
         return candidates^
 
+    def _search_delta_prepared_backend[
+        AdmissionType: HnswResultAdmission, backend_tag: Int
+    ](
+        mut self,
+        prepared: List[Float32],
+        k: Int,
+        initial_ef: Int,
+        max_ef: Int,
+        delta_live: Int,
+        allowed: AdmissionType,
+    ) raises -> List[SearchResult]:
+        var slots = self._delta.graph.slot_count()
+        var target = min(k, delta_live, slots)
+        var breadth = min(max(initial_ef, target), max_ef, slots)
+        if not _should_scan_delta(
+            self._sources.base_count(),
+            slots,
+            self.config.dimension,
+            self.config.m0,
+            breadth,
+        ):
+            return self._delta._search_admitted_prepared_backend[
+                backend_tag=backend_tag
+            ](prepared, k, initial_ef, max_ef, delta_live, allowed)
+
+        self._delta._validate_bound_identity()
+        if not self._delta.valid or not self._delta.graph.is_valid():
+            raise Error("cannot search an invalid HNSW index")
+        if max_ef > self.config.max_ef_search:
+            raise Error("HNSW widening maximum exceeds collection maximum")
+        self._delta.metric.require_supported_backend()
+        if k <= 0 or delta_live < 0:
+            raise Error("HNSW result demand is invalid")
+        if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
+            raise Error("HNSW widening ef range is invalid")
+        if breadth < target:
+            raise Error("HNSW result demand exceeds traversable graph slots")
+        allowed.validate(slots)
+        self._delta.metric.validate_prepared_vector(prepared)
+
+        # Retain the same initial per-source candidate breadth as graph search.
+        # Exact scoring needs no widening or upper-level descent. Final scores
+        # still come from the authoritative vector during the merged rerank.
+        var retained = ResultMaxHeap()
+        retained.reserve(min(breadth, delta_live))
+        var stats = HnswSearchStats()
+        stats.requested_ef = breadth
+        stats.effective_ef = breadth
+        stats.backend_name = self.distance_backend.backend_name()
+        stats.metric_name = self.distance_backend.metric_name()
+        stats.scalar_name = self.distance_backend.scalar_name()
+        stats.storage_name = String("delta-scan-", self.config.scalar_name())
+        for index in range(slots):
+            stats.base_visited += 1
+            var slot = UInt32(index)
+            if not self._delta.graph.is_current(slot):
+                stats.inactive_rejections += 1
+                continue
+            var id = self._delta.graph.id_at(slot)
+            if not allowed._allows_item(slot, id):
+                stats.filtered_rejections += 1
+                continue
+            var distance = self._delta.graph._distance_to_slot_backend[
+                backend_tag
+            ](self._delta.metric, prepared, slot)
+            stats.distance_evaluations += 1
+            retained.offer(HnswHeapItem(slot, id, distance), breadth)
+        var exact = retained.take_sorted_best()
+        var results = List[SearchResult](capacity=len(exact))
+        for candidate in exact:
+            results.append(
+                SearchResult(
+                    candidate.id,
+                    self._delta.metric.public_score(candidate.distance),
+                )
+            )
+        stats.retained_candidates = len(results)
+        self._delta.last_search_stats = stats^
+        self._delta._last_search_query_preparations = 0
+        self._delta._last_search_upper_descents = 0
+        return results^
+
     def _collect_candidates[
         backend_tag: Int
     ](mut self, query: List[Float32], k: Int, ef_search: Int) raises -> List[
@@ -759,7 +853,7 @@ struct SegmentedHnsw(Movable):
 
         if delta_live > 0:
             var delta_admission = _SourceAdmission(self._sources, True)
-            var delta_results = self._delta._search_admitted_prepared_backend[
+            var delta_results = self._search_delta_prepared_backend[
                 backend_tag=backend_tag
             ](
                 prepared,
@@ -770,6 +864,12 @@ struct SegmentedHnsw(Movable):
                 delta_admission,
             )
             self._accumulate_source_stats(stats, self._delta.last_search_stats)
+            if self._delta.last_search_stats.storage_name == String(
+                "delta-scan-", self.config.scalar_name()
+            ):
+                stats.storage_name = String(
+                    "segmented-", self._delta.last_search_stats.storage_name
+                )
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
@@ -877,7 +977,7 @@ struct SegmentedHnsw(Movable):
             var delta_admission = _FilteredSourceAdmission(
                 self._sources, True, allowed
             )
-            var delta_results = self._delta._search_admitted_prepared_backend[
+            var delta_results = self._search_delta_prepared_backend[
                 backend_tag=backend_tag
             ](
                 prepared,
@@ -888,6 +988,12 @@ struct SegmentedHnsw(Movable):
                 delta_admission,
             )
             self._accumulate_source_stats(stats, self._delta.last_search_stats)
+            if self._delta.last_search_stats.storage_name == String(
+                "delta-scan-", self.config.scalar_name()
+            ):
+                stats.storage_name = String(
+                    "segmented-", self._delta.last_search_stats.storage_name
+                )
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
@@ -955,7 +1061,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1017,7 +1123,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1050,7 +1156,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1089,7 +1195,7 @@ struct SegmentedHnsw(Movable):
             topk.offer(
                 id,
                 authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values
+                    Int(self.config.ann_metric.tag()), query, entry.values()
                 ),
             )
             scored += 1
@@ -1099,7 +1205,7 @@ struct SegmentedHnsw(Movable):
             self._last_stats.fallback_reason = "filtered_ann_exhausted"
         return self._finish_topk(topk^)
 
-    def _finish_topk(mut self, var topk: BoundedTopK) -> List[SearchResult]:
+    def _finish_topk(mut self, var topk: BoundedTopK[]) -> List[SearchResult]:
         var retained = topk.sorted_entries()
         var result = List[SearchResult](capacity=len(retained))
         for entry in retained:

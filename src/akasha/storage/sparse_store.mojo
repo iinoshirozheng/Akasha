@@ -395,14 +395,10 @@ def preflight_sparse_wal(path: String) raises -> SparseWalReplayState:
         prefix = List[UInt8](capacity=valid_length)
         for index in range(valid_length):
             prefix.append(bytes[index])
-    return SparseWalReplayState(
-        records^, prefix^, valid_length, len(bytes)
-    )
+    return SparseWalReplayState(records^, prefix^, valid_length, len(bytes))
 
 
-def repair_sparse_wal_tail(
-    path: String, replay: SparseWalReplayState
-) raises:
+def repair_sparse_wal_tail(path: String, replay: SparseWalReplayState) raises:
     """Apply only the repair established by ``preflight_sparse_wal``."""
     if replay.needs_repair():
         write_file_sync(path, replay.valid_prefix)

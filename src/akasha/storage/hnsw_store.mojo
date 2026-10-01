@@ -13,7 +13,6 @@ from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
-    _crc32_update,
     crc32_range,
 )
 from akasha.storage.filesystem import read_file_bytes_bounded, write_file_sync
@@ -292,21 +291,24 @@ def encode_hnsw_snapshot(
         edge_base = _checked_add_u64(edge_base, node_edge_count)
 
     _write_zeros(writer, Int(vector_offset - (node_offset + node_length)))
-    for slot_index in range(slots):
-        var slot = UInt32(slot_index)
-        var scale = _graph_i8_scale(index, slot)
-        for component in range(index.config.dimension):
-            var value = index.graph.vector_value(slot, component)
-            if index.config.scalar_kind == ScalarKind.f32():
-                writer.write_f32(value)
-            elif index.config.scalar_kind == ScalarKind.bf16():
-                writer.write_u16(encode_bf16(value))
-            elif index.config.scalar_kind == ScalarKind.f16():
-                writer.write_u16(encode_f16(value))
-            else:
-                writer.write_u8(
-                    bitcast[DType.uint8](encode_symmetric_i8(value, scale))
-                )
+    if index.config.scalar_kind == ScalarKind.f32():
+        # Structure and prepared-vector validation above prove the complete
+        # flat tape's bounds and contents before copying its identical bytes.
+        writer.write_f32s(index.graph.vector_scalars)
+    else:
+        for slot_index in range(slots):
+            var slot = UInt32(slot_index)
+            var scale = _graph_i8_scale(index, slot)
+            for component in range(index.config.dimension):
+                var value = index.graph.vector_value(slot, component)
+                if index.config.scalar_kind == ScalarKind.bf16():
+                    writer.write_u16(encode_bf16(value))
+                elif index.config.scalar_kind == ScalarKind.f16():
+                    writer.write_u16(encode_f16(value))
+                else:
+                    writer.write_u8(
+                        bitcast[DType.uint8](encode_symmetric_i8(value, scale))
+                    )
 
     _write_zeros(writer, Int(scale_offset - (vector_offset + vector_length)))
     if scale_width == 4:
@@ -646,16 +648,18 @@ def decode_hnsw_snapshot_owned(
         )
     )
     for _ in range(slots):
-        var prepared = List[Float32](capacity=config.dimension)
-        for _ in range(config.dimension):
-            if config.scalar_kind == ScalarKind.f32():
-                prepared.append(reader.read_f32())
-            elif config.scalar_kind == ScalarKind.bf16():
-                prepared.append(decode_bf16(reader.read_u16()))
-            elif config.scalar_kind == ScalarKind.f16():
-                prepared.append(decode_f16(reader.read_u16()))
-            else:
-                vector_codes.append(bitcast[DType.int8](reader.read_u8()))
+        var prepared = List[Float32]()
+        if config.scalar_kind == ScalarKind.f32():
+            prepared = reader.read_f32s(config.dimension)
+        else:
+            prepared.reserve(config.dimension)
+            for _ in range(config.dimension):
+                if config.scalar_kind == ScalarKind.bf16():
+                    prepared.append(decode_bf16(reader.read_u16()))
+                elif config.scalar_kind == ScalarKind.f16():
+                    prepared.append(decode_f16(reader.read_u16()))
+                else:
+                    vector_codes.append(bitcast[DType.int8](reader.read_u8()))
         if config.scalar_kind != ScalarKind.i8():
             index.metric.validate_prepared_vector(prepared)
             for value in prepared:
@@ -900,10 +904,7 @@ def try_open_compatible_hnsw_snapshot_view(
         return HnswMappedSnapshotLoad(0, HnswGraphView())
     if encoded_size < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
-    var checksum = UInt32(0xFFFFFFFF)
-    for offset in range(checksum_offset):
-        checksum = _crc32_update(checksum, mapping.byte_at(offset))
-    if ~checksum != stored_checksum:
+    if mapping.checksum(0, UInt64(checksum_offset)) != stored_checksum:
         raise Error("HNSW snapshot checksum mismatch")
     if not _mapped_hnsw_snapshot_identity_matches(
         mapping, config, sequence, manifest_live_point_count
@@ -933,10 +934,7 @@ def _open_hnsw_snapshot_view_from_mapping(
     var checksum_offset = encoded_size - _CHECKSUM_BYTES
     var stored_checksum = _mapped_u32(mapping, checksum_offset)
     if not checksum_already_validated:
-        var checksum = UInt32(0xFFFFFFFF)
-        for offset in range(checksum_offset):
-            checksum = _crc32_update(checksum, mapping.byte_at(offset))
-        if ~checksum != stored_checksum:
+        if mapping.checksum(0, UInt64(checksum_offset)) != stored_checksum:
             raise Error("HNSW snapshot checksum mismatch")
 
     stats.checksum_ns = perf_counter_ns() - started

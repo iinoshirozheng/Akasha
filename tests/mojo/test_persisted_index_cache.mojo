@@ -125,9 +125,7 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 81):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
         collection.upsert_document(
             id, [Float32(id), Float32(id % 7) + 1.0], fields^
         )
@@ -146,9 +144,7 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     var actual = reopened.search_l2_approx([1.0, 2.0], 3, 80)
     for index in range(3):
         assert_equal(actual[index].id, expected[index].id)
-    var filtered = reopened.search_dot_where(
-        [1.0, 0.0], 2, _expression()
-    )
+    var filtered = reopened.search_dot_where([1.0, 0.0], 2, _expression())
     assert_equal(filtered[0].id, 80)
     assert_equal(filtered[1].id, 78)
     reopened.close()
@@ -162,9 +158,7 @@ def test_corrupt_or_stale_caches_rebuild_without_losing_queries() raises:
     var reopened = PersistentCollection.open_with_config(path, config.copy())
     assert_false(reopened.hnsw_cache_hit())
     assert_false(reopened.metadata_cache_hit())
-    assert_equal(
-        reopened.search_l2_approx([1.0, 2.0], 1, 80)[0].id, 1
-    )
+    assert_equal(reopened.search_l2_approx([1.0, 2.0], 1, 80)[0].id, 1)
     assert_equal(
         reopened.search_dot_where([1.0, 0.0], 1, _expression())[0].id,
         80,
@@ -192,9 +186,7 @@ def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
     collection.flush()
     collection.close()
 
-    var current = decode_cache_bytes(
-        read_file_bytes(path + "/hnsw.cache")
-    )
+    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
     var legacy = _legacy_two_point_hnsw_payload()
     var artifact = CacheArtifact(
         CACHE_HNSW_KIND,

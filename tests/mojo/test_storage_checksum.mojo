@@ -1,4 +1,10 @@
-from akasha.storage.checksum import BinaryReader, BinaryWriter, crc32
+from std.memory import bitcast
+from akasha.storage.checksum import (
+    BinaryReader,
+    BinaryWriter,
+    crc32,
+    CRC32_INITIAL,
+)
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -21,6 +27,29 @@ def test_crc32_matches_standard_check_value() raises:
     ]
 
     assert_equal(crc32(data), UInt32(0xCBF43926))
+
+
+def test_writer_crc_drain_preserves_stream_and_reuses_allocation() raises:
+    var writer = BinaryWriter()
+    assert_equal(writer.update_crc32_and_clear(CRC32_INITIAL), CRC32_INITIAL)
+    writer.write_u32(0x34333231)  # ASCII 1234, little endian.
+    var capacity = writer._bytes.capacity()
+    var address = Int(writer._bytes.unsafe_ptr())
+    var register = writer.update_crc32_and_clear(CRC32_INITIAL)
+    assert_equal(len(writer._bytes), 0)
+    assert_equal(writer._bytes.capacity(), capacity)
+    assert_equal(Int(writer._bytes.unsafe_ptr()), address)
+    writer.write_u32(0x38373635)  # ASCII 5678.
+    register = writer.update_crc32_and_clear(register)
+    assert_equal(writer.update_crc32_and_clear(register), register)
+    writer.write_u8(0x39)
+    register = writer.update_crc32_and_clear(register)
+    assert_equal(~register, UInt32(0xCBF43926))
+    assert_equal(Int(writer._bytes.unsafe_ptr()), address)
+    writer.write_u8(42)
+    var remaining = writer.take_bytes()
+    assert_equal(len(remaining), 1)
+    assert_equal(remaining[0], UInt8(42))
 
 
 def test_binary_codec_round_trips_little_endian_values() raises:
@@ -96,6 +125,36 @@ def test_binary_writer_can_reuse_taken_bytes_without_aliasing() raises:
     var expected: List[UInt8] = [42, 0, 127, 128, 255]
     assert_equal(second, expected)
     assert_equal(len(writer.take_bytes()), 0)
+
+
+def test_f32_tape_write_preserves_every_bit_and_surrounding_bytes() raises:
+    var words: List[UInt32] = [
+        0,
+        0x80000000,
+        1,
+        0x00800000,
+        0x3F800000,
+        0x7F800000,
+        0xFF800000,
+        0x7FC12345,
+    ]
+    var values = List[Float32]()
+    for word in words:
+        values.append(bitcast[DType.float32](word))
+    var expected = BinaryWriter()
+    var actual = BinaryWriter()
+    expected.write_u8(42)
+    actual.write_u8(42)
+    actual.write_f32s(List[Float32]())
+    for _ in range(2):
+        for word in words:
+            expected.write_u32(word)
+        actual.write_f32s(values)
+    expected.write_u8(17)
+    actual.write_u8(17)
+    assert_equal(actual.take_bytes(), expected.take_bytes())
+    for i in range(len(words)):
+        assert_equal(bitcast[DType.uint32](values[i]), words[i])
 
 
 def main() raises:

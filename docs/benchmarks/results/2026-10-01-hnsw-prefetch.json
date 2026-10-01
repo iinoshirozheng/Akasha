@@ -1,0 +1,55 @@
+{
+  "scope": "immutable mapped base only, 67 real1536 cosine queries, ef32, seven alternating-order passes with warmup; IDs and distances equal in every case",
+  "cache_line_stride_bytes": 128,
+  "timings_ns": {
+    "0": [
+      23979000,
+      25420000,
+      23854000,
+      23055000,
+      24744000,
+      29632000,
+      28017000
+    ],
+    "1": [
+      26228000,
+      26605000,
+      25366000,
+      24208000,
+      26444000,
+      37495000,
+      28188000
+    ],
+    "2": [
+      26154000,
+      26459000,
+      25790000,
+      24689000,
+      26134000,
+      29724000,
+      28269000
+    ],
+    "8": [
+      24813000,
+      25529000,
+      30229000,
+      29505000,
+      25146000,
+      25970000,
+      27866000
+    ],
+    "48": [
+      22015000,
+      21608000,
+      25979000,
+      26400000,
+      22901000,
+      20976000,
+      24418000
+    ]
+  },
+  "decision": "not adopted; small inconsistent benefit from whole-vector prefetch, shorter prefetch regresses; no end-to-end proof",
+  "binary_sha256": "1c6adb3c1609ae291b2dba57753da0e3c19e084eed687e1c7b2af1dc263e0f79",
+  "compiler": "Mojo 1.0.0 (ed45d567), apple-m4, metal:4",
+  "source": "benchmarks/mojo/hnsw_prefetch_bench.mojo (formatted after compilation, no semantic changes)"
+}

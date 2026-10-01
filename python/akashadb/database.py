@@ -3,8 +3,9 @@
 from pathlib import Path
 from threading import Event
 from time import monotonic_ns, perf_counter_ns
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
+from .vectors import FieldQuery, IvfOptions, Point, PointMutation, VectorField, _vector_value
 from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_error
 from .models import (
     BatchMutation,
@@ -28,6 +29,12 @@ class KernelCollection(Protocol):
     def last_sequence(self) -> int: ...
     def collection_config(self) -> dict[str, Any]: ...
     def last_search_stats(self) -> dict[str, Any]: ...
+    def vector_fields(self) -> list[dict[str, Any]]: ...
+    def apply_point_batch(self, mutations: list[dict[str, Any]]) -> dict[str, int]: ...
+    def get_point(self, id: int) -> dict[str, Any] | None: ...
+    def search_field(
+        self, name: str, vector: Any, k: int, options: dict[str, Any],
+    ) -> list[dict[str, Any]]: ...
     def upsert(self, id: int, vector: list[float]) -> None: ...
     def upsert_document(
         self, id: int, vector: list[float], fields: list[dict[str, object]]
@@ -89,6 +96,9 @@ class KernelCollection(Protocol):
     ) -> list[dict[str, Any]]: ...
     def backup_to(self, target: str) -> dict[str, Any]: ...
     def export_records(self) -> list[dict[str, Any]]: ...
+    def export_points(self) -> dict[str, Any] | None: ...
+    def is_point_collection(self) -> bool: ...
+    def scanner(self, options: dict[str, Any]) -> Any: ...
     def search_controlled(
         self,
         metric: str,
@@ -113,6 +123,7 @@ class Collection:
         dimension: int,
         *,
         config: CollectionConfig | dict[str, Any] | None = None,
+        vectors: dict[str, VectorField] | None = None,
         kernel: KernelCollection | None = None,
         limits: ResourceLimits | None = None,
     ) -> None:
@@ -122,6 +133,7 @@ class Collection:
                 if config is None
                 else CollectionConfig.from_options(dimension, config)
             )
+            schema = None if vectors is None else [value.to_kernel(name, index + 2) for index, (name, value) in enumerate(sorted(vectors.items()))]
         except (TypeError, ValueError) as error:
             raise ValidationError(str(error)) from error
         try:
@@ -129,7 +141,9 @@ class Collection:
                 kernel
                 if kernel is not None
                 else (
-                    _kernel_module().Collection(str(path), dimension)
+                    _kernel_module().Collection(str(path), dimension, None if requested is None else requested.to_kernel(), schema)
+                    if schema is not None
+                    else _kernel_module().Collection(str(path), dimension)
                     if requested is None
                     else _kernel_module().Collection(
                         str(path), dimension, requested.to_kernel()
@@ -226,6 +240,105 @@ class Collection:
                 "upsert_document", id, vector, [item.to_kernel() for item in fields]
             )
 
+    def vector_fields(self) -> dict[str, VectorField]:
+        return {item["name"]: VectorField.from_kernel(item) for item in self._call("vector_fields") if item["id"] >= 2}
+
+    def apply_point_batch(self, mutations: list[PointMutation]) -> BatchWriteResult:
+        if len(mutations) > self.limits.max_batch_rows:
+            raise ValidationError("mutation batch resource limit exceeded")
+        raw = self._call("apply_point_batch", [item.to_kernel() for item in mutations])
+        return BatchWriteResult(**raw)
+
+    def get_point(self, id: int) -> Point | None:
+        raw = self._call("get_point", id)
+        return None if raw is None else Point.from_kernel(raw)
+
+    def search_field(
+        self, name: str, vector: Any, k: int, *,
+        filter: Mapping[str, Any] | None = None, mode: str = "exact",
+        ef_search: int | None = None, rerank_k: int = 0,
+        ivf: IvfOptions | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        raw = self._search_field_raw(name, vector, k, filter=filter, mode=mode,
+                                     ef_search=ef_search, rerank_k=rerank_k, ivf=ivf,
+                                     cancellation=cancellation, timeout_ns=timeout_ns)
+        return [SearchResult(**item) for item in raw]
+
+    def _search_field_raw(
+        self, name: str, vector: Any, k: int, *,
+        filter: Mapping[str, Any] | None = None, mode: str = "exact",
+        ef_search: int | None = None, rerank_k: int = 0, columns: bool = False,
+        ivf: IvfOptions | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> Any:
+        if type(k) is not int or not 0 < k <= self.limits.max_k:
+            raise ValidationError("named search k exceeds resource limit")
+        if mode not in ("exact", "approx", "ivf"):
+            raise ValidationError("named search mode must be exact, approx or ivf")
+        if ef_search is not None and (type(ef_search) is not int or ef_search <= 0):
+            raise ValidationError("ef_search must be a positive integer")
+        if type(rerank_k) is not int or rerank_k < 0 or (rerank_k and rerank_k < k):
+            raise ValidationError("rerank_k must be zero or at least k")
+        if mode != "approx" and (ef_search is not None or rerank_k):
+            raise ValidationError("ef_search and rerank_k require approximate field search")
+        if ivf is not None and (mode != "ivf" or not isinstance(ivf, IvfOptions)):
+            raise ValidationError("IvfOptions require ivf mode")
+        if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+            raise ValidationError("query timeout must be a positive integer")
+        deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        return self._call(
+            "search_field_columns" if columns else "search_field", name,
+            _vector_value(vector), k,
+            {"filter": None if filter is None else dict(filter), "mode": mode,
+             "ef_search": -1 if ef_search is None else ef_search, "rerank_k": rerank_k,
+             "ivf": (ivf or IvfOptions()).to_kernel() if mode == "ivf" else None,
+             "cancelled": bool(cancellation and cancellation.cancelled),
+             "deadline_ns": deadline, "max_candidates": self.limits.max_candidates},
+        )
+
+    def search_fields(
+        self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
+        rank_constant: int = 60, filter: Mapping[str, Any] | None = None,
+        rerank: FieldQuery | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        raw = self._search_fields_raw(queries, k, fetch_k=fetch_k, rank_constant=rank_constant,
+                                      filter=filter, rerank=rerank, cancellation=cancellation, timeout_ns=timeout_ns)
+        return [SearchResult(**item) for item in raw]
+
+    def _search_fields_raw(
+        self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
+        rank_constant: int = 60, filter: Mapping[str, Any] | None = None,
+        rerank: FieldQuery | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+        columns: bool = False,
+    ) -> Any:
+        if type(k) is not int or not 0 < k <= self.limits.max_k:
+            raise ValidationError("named fusion k exceeds resource limit")
+        if type(fetch_k) is not int or not k <= fetch_k <= self.limits.max_k:
+            raise ValidationError("fetch_k must be at least k and fit the resource limit")
+        if type(rank_constant) is not int or rank_constant <= 0:
+            raise ValidationError("RRF rank constant must be a positive integer")
+        if not 0 < len(queries) <= self.limits.max_query_batch:
+            raise ValidationError("field fusion branch count exceeds resource limit")
+        if any(not isinstance(query, FieldQuery) for query in queries):
+            raise ValidationError("field fusion requires FieldQuery branches")
+        if rerank is not None and (not isinstance(rerank, FieldQuery) or rerank.mode != "exact"):
+            raise ValidationError("final field reranking requires an exact FieldQuery")
+        if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+            raise ValidationError("query timeout must be a positive integer")
+        deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        return self._call(
+            "search_fields_columns" if columns else "search_fields",
+            [query.to_kernel() for query in queries],
+            {"k": k, "fetch_k": fetch_k, "rank_constant": rank_constant,
+             "rerank": None if rerank is None else rerank.to_kernel(),
+             "filter": None if filter is None else dict(filter),
+             "cancelled": bool(cancellation and cancellation.cancelled),
+             "deadline_ns": deadline, "max_candidates": self.limits.max_candidates},
+        )
+
     def upsert_sparse(self, id: int, elements: list[SparseElement]) -> None:
         self._call("upsert_sparse", id, [item.to_kernel() for item in elements])
 
@@ -253,6 +366,13 @@ class Collection:
     def _export_records(self) -> list[dict[str, Any]]:
         return list(self._call("export_records"))
 
+    def _export_points(self) -> dict[str, Any] | None:
+        value = self._call("export_points")
+        return None if value is None else dict(value)
+
+    def _is_point_collection(self) -> bool:
+        return bool(self._call("is_point_collection"))
+
     def get(self, id: int, *, projection: Projection | None = None) -> Document | None:
         raw = (
             self._call("get", id)
@@ -269,13 +389,20 @@ class Collection:
         )
 
     def search(self, request: SearchRequest) -> list[SearchResult]:
+        return [
+            SearchResult(id=int(item["id"]), score=float(item["score"]))
+            for item in self._search_raw(request)
+        ]
+
+    def _search_raw(self, request: SearchRequest, *, columns: bool = False) -> Any:
+        suffix = "_columns" if columns else ""
         if request.k > self.limits.max_k:
             raise ValidationError("query k resource limit exceeded")
         vector = request.vector
         sparse = [item.to_kernel() for item in request.sparse]
         if request.filter is not None and request.mode == "sparse":
             raw = self._call(
-                "search_sparse_where",
+                "search_sparse_where" + suffix,
                 sparse,
                 {"k": request.k, "filter": request.filter},
             )
@@ -283,7 +410,7 @@ class Collection:
             if vector is None:
                 raise ValidationError("hybrid search requires a dense vector")
             raw = self._call(
-                "search_hybrid_where",
+                "search_hybrid_where" + suffix,
                 request.metric,
                 vector,
                 sparse,
@@ -298,7 +425,7 @@ class Collection:
             if vector is None:
                 raise ValidationError("dense search requires a vector")
             raw = self._call(
-                "search_dense_where",
+                "search_dense_where" + suffix,
                 request.metric,
                 vector,
                 {
@@ -309,12 +436,12 @@ class Collection:
                 },
             )
         elif request.mode == "sparse":
-            raw = self._call("search_sparse", sparse, request.k)
+            raw = self._call("search_sparse" + suffix, sparse, request.k)
         elif request.mode == "hybrid":
             if vector is None:
                 raise ValidationError("hybrid search requires a dense vector")
             raw = self._call(
-                "search_hybrid",
+                "search_hybrid" + suffix,
                 request.metric,
                 vector,
                 sparse,
@@ -328,7 +455,11 @@ class Collection:
             if vector is None:
                 raise ValidationError("approximate search requires a dense vector")
             raw = self._call(
-                "search_approx", request.metric, vector, request.k, request.ef_search
+                "search_approx" + suffix,
+                request.metric,
+                vector,
+                request.k,
+                request.ef_search,
             )
         else:
             if vector is None:
@@ -338,11 +469,8 @@ class Collection:
                 "l2": "search_l2",
                 "cosine": "search_cosine",
             }[request.metric]
-            raw = self._call(method, vector, request.k)
-        return [
-            SearchResult(id=int(item["id"]), score=float(item["score"]))
-            for item in raw
-        ]
+            raw = self._call(method + suffix, vector, request.k)
+        return raw
 
     def search_batch(
         self,
@@ -435,6 +563,7 @@ class LocalDatabase:
         dimension: int,
         *,
         config: CollectionConfig | dict[str, Any] | None = None,
+        vectors: dict[str, VectorField] | None = None,
     ) -> Collection:
         if not name or "/" in name or "\\" in name or name in {".", ".."}:
             raise ValidationError("collection name must be one safe path component")
@@ -448,8 +577,10 @@ class LocalDatabase:
                 raise ValidationError(str(error)) from error
             if collection.collection_config() != requested:
                 raise ValidationError("open collection configuration mismatch")
+            if vectors is not None and collection.vector_fields() != vectors:
+                raise ValidationError("open collection vector schema mismatch")
             return collection
-        collection = Collection(self.root / name, dimension, config=config)
+        collection = Collection(self.root / name, dimension, config=config, vectors=vectors)
         self._collections[name] = collection
         return collection
 

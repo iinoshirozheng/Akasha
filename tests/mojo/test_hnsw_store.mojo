@@ -97,17 +97,13 @@ def test_identity_preflight_reads_fixed_header_without_payload_copy() raises:
     var index = _graph(config.copy(), 12)
     var bytes = encode_hnsw_snapshot(index, UInt64(44))
     assert_true(
-        hnsw_snapshot_identity_matches(
-            bytes, config, UInt64(44), UInt64(12)
-        )
+        hnsw_snapshot_identity_matches(bytes, config, UInt64(44), UInt64(12))
     )
     # Compatibility classification is deliberately independent of payload
     # traversal; CRC/layout validation follows only for matching identity.
     bytes[160] ^= UInt8(1)
     assert_true(
-        hnsw_snapshot_identity_matches(
-            bytes, config, UInt64(44), UInt64(12)
-        )
+        hnsw_snapshot_identity_matches(bytes, config, UInt64(44), UInt64(12))
     )
 
 
@@ -693,8 +689,7 @@ def test_legacy_cache_fixture_remains_readable_and_sidecar_is_independent() rais
     assert_equal(sidecar[3], UInt8(0x47))
 
 
-def test_typed_mapped_compatibility_distinguishes_hit_stale_and_open_failure(
-) raises:
+def test_typed_mapped_compatibility_distinguishes_hit_stale_and_open_failure() raises:
     var directory = "/tmp/akasha-hnsw-mapped-compatibility"
     ensure_directory(directory)
     var path = directory + "/hnsw-301.bin"

@@ -1,0 +1,1030 @@
+{
+  "base_commit": "31f27e5",
+  "source_sha256": "b5d2ca3e0cbbd307b473ca34754923402114babf384caac172078f8248ccde38",
+  "source_hash_definition": "SHA256 of sorted rg --files src tests native include python paths, each relative path + NUL + file bytes + NUL; ignored build artifacts excluded",
+  "compiler": "Mojo 1.0.0 (ed45d567)",
+  "platform": "Darwin arm64",
+  "mojo": {
+    "files": 94,
+    "tests": 761,
+    "results": [
+      {
+        "file": "tests/mojo/test_arrow_c_data.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_background_publication.mojo",
+        "tests": 20,
+        "passed": 20,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_backup_bounded_memory.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_backup_compaction.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_batch_query.mojo",
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_bitmap.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_collection_config_migration.mojo",
+        "tests": 16,
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_collection_config_storage.mojo",
+        "tests": 12,
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_collection_hnsw_incremental.mojo",
+        "tests": 17,
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_collection_lock.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_compact_load.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_compaction.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_compaction_publish.mojo",
+        "tests": 11,
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_concurrency.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_crc32_table.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_database_config.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_distance.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_distance_dispatch.mojo",
+        "tests": 13,
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_document_codec.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_document_value.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_file_retirement.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_filesystem.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_filter_ast.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_filter_evaluator.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_filter_expression.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_flat_index.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_generation_close.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_generation_delta.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_generation_fields.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_gpu_fallback.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_gpu_planner.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_checkpoint_cleanup.mojo",
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_config.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_filtered.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_heap.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_invariants.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_level.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_links.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_mutation.mojo",
+        "tests": 12,
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_neighbor_selection.mojo",
+        "tests": 15,
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_quality_gate.mojo",
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_quantized.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_rebuild.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_rebuild_publication.mojo",
+        "tests": 18,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_scratch.mojo",
+        "tests": 11,
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_search_layer.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_sidecar_publication.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_stats.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_storage.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_store.mojo",
+        "tests": 18,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_store_v1_compat.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_view.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_hnsw_widening.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_index_cache.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_maintenance.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_manifest.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_manifest_v1_v2_compat.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_manifest_v4.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_mapped_file.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_memtable.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_metadata_field_indexes.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_metadata_index.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_metric_dispatch.mojo",
+        "tests": 22,
+        "passed": 22,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_native_worker.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_parallel_scan.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persisted_index_cache.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_batch.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_collection.mojo",
+        "tests": 17,
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_documents.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_filters.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_hnsw.mojo",
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_persistent_sparse.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_product_quantization.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_projection.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_public_api.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_quantization.mojo",
+        "tests": 11,
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_quantized_search.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_query_control.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_query_executor.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_query_planner.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_rank_fusion.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_segment.mojo",
+        "tests": 8,
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_segment_v1_compat.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_segmented_hnsw.mojo",
+        "tests": 18,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_simd_distance.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_snapshot.mojo",
+        "tests": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_sparse_index.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_sparse_storage.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_storage_checksum.mojo",
+        "tests": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_storage_operations.mojo",
+        "tests": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_topk.mojo",
+        "tests": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_wal.mojo",
+        "tests": 14,
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/mojo/test_wal_v1_compat.mojo",
+        "tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      }
+    ],
+    "execution": "pixi run test through test_snapshot.mojo; corrected last-use RAII assertion, reran that file directly, then completed all lexically later CPU files with pixi run bash. Every current test file has a passing result; no failing test skipped."
+  },
+  "python": {
+    "command": "pixi run test-python",
+    "exit_code": 0,
+    "tests": 66,
+    "output": "\n✨ Pixi task (build-native-worker): bash -c 'mkdir -p .build/native; if [ \"$(uname -s)\" = Darwin ]; then clang -std=c11 -Wall -Wextra -Werror -dynamiclib native/maintenance_worker.c -o .build/native/libakasha_worker.so; else cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -pthread native/maintenance_worker.c -o .build/native/libakasha_worker.so; fi'\n\n✨ Pixi task (test-python): pytest tests/python -q\n..................................................................       [100%]\n=============================== warnings summary ===============================\n.pixi/envs/default/lib/python3.11/site-packages/fastapi/testclient.py:1\n  /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.pixi/envs/default/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\ntests/python/test_arrow_c_data.py::test_c_data_lease_and_typed_batch_round_trip\n  <frozen importlib._bootstrap>:241: DeprecationWarning: builtin type Collection has no __module__ attribute\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n66 passed, 2 warnings in 5.29s\n"
+  },
+  "crash": {
+    "files": 6,
+    "tests": 19,
+    "results": [
+      {
+        "file": "tests/crash/test_backup_publication.mojo",
+        "tests": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/crash/test_batch_atomicity.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/crash/test_checkpoint_order.mojo",
+        "tests": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/crash/test_hnsw_checkpoint_order.mojo",
+        "tests": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/crash/test_sparse_checkpoint_order.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "tests/crash/test_wal_tail.mojo",
+        "tests": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      }
+    ],
+    "execution": "pixi run test-crash; corrected same-sequence crash fixture to restore old graph bytes after normal lease cleanup, reran HNSW file, and ran remaining sparse/WAL files directly"
+  },
+  "build": {
+    "command": "pixi run build",
+    "exit_code": 0
+  },
+  "c_abi": {
+    "command": "pixi run test-c",
+    "exit_code": 0
+  },
+  "examples": {
+    "exit_code": 0,
+    "executables": [
+      ".build/akasha-smoke",
+      ".build/akasha-persistent",
+      ".build/akasha-configured-hnsw"
+    ]
+  },
+  "benchmark": {
+    "source": "benchmarks/mojo/file_lease_bench.mojo",
+    "build_command": "pixi run mojo build -I src benchmarks/mojo/file_lease_bench.mojo -o .build/file-lease-bench",
+    "run_command": "pixi run .build/file-lease-bench",
+    "exit_code": 0,
+    "samples": [
+      {
+        "sample": 0,
+        "referenced_files": 3,
+        "capture_ns": 39000,
+        "shared_pin_unpin_ns": 55.6640625,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 66000
+      },
+      {
+        "sample": 1,
+        "referenced_files": 2,
+        "capture_ns": 34000,
+        "shared_pin_unpin_ns": 50.78125,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 61000
+      },
+      {
+        "sample": 2,
+        "referenced_files": 3,
+        "capture_ns": 41000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 14000,
+        "retired_release_ns": 80000
+      },
+      {
+        "sample": 3,
+        "referenced_files": 2,
+        "capture_ns": 33000,
+        "shared_pin_unpin_ns": 51.7578125,
+        "referenced_release_ns": 14000,
+        "retired_release_ns": 70000
+      },
+      {
+        "sample": 4,
+        "referenced_files": 3,
+        "capture_ns": 40000,
+        "shared_pin_unpin_ns": 52.734375,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 84000
+      },
+      {
+        "sample": 5,
+        "referenced_files": 2,
+        "capture_ns": 37000,
+        "shared_pin_unpin_ns": 54.6875,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 73000
+      },
+      {
+        "sample": 6,
+        "referenced_files": 3,
+        "capture_ns": 42000,
+        "shared_pin_unpin_ns": 55.6640625,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 93000
+      },
+      {
+        "sample": 7,
+        "referenced_files": 2,
+        "capture_ns": 36000,
+        "shared_pin_unpin_ns": 58.59375,
+        "referenced_release_ns": 20000,
+        "retired_release_ns": 79000
+      },
+      {
+        "sample": 8,
+        "referenced_files": 3,
+        "capture_ns": 50000,
+        "shared_pin_unpin_ns": 58.59375,
+        "referenced_release_ns": 18000,
+        "retired_release_ns": 116000
+      },
+      {
+        "sample": 9,
+        "referenced_files": 2,
+        "capture_ns": 44000,
+        "shared_pin_unpin_ns": 57.6171875,
+        "referenced_release_ns": 16000,
+        "retired_release_ns": 66000
+      },
+      {
+        "sample": 10,
+        "referenced_files": 3,
+        "capture_ns": 42000,
+        "shared_pin_unpin_ns": 57.6171875,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 76000
+      },
+      {
+        "sample": 11,
+        "referenced_files": 2,
+        "capture_ns": 33000,
+        "shared_pin_unpin_ns": 56.640625,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 56000
+      },
+      {
+        "sample": 12,
+        "referenced_files": 3,
+        "capture_ns": 103000,
+        "shared_pin_unpin_ns": 51.7578125,
+        "referenced_release_ns": 14000,
+        "retired_release_ns": 70000
+      },
+      {
+        "sample": 13,
+        "referenced_files": 2,
+        "capture_ns": 31000,
+        "shared_pin_unpin_ns": 51.7578125,
+        "referenced_release_ns": 15000,
+        "retired_release_ns": 50000
+      },
+      {
+        "sample": 14,
+        "referenced_files": 3,
+        "capture_ns": 37000,
+        "shared_pin_unpin_ns": 50.78125,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 59000
+      },
+      {
+        "sample": 15,
+        "referenced_files": 2,
+        "capture_ns": 33000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 70000
+      },
+      {
+        "sample": 16,
+        "referenced_files": 3,
+        "capture_ns": 60000,
+        "shared_pin_unpin_ns": 47.8515625,
+        "referenced_release_ns": 16000,
+        "retired_release_ns": 68000
+      },
+      {
+        "sample": 17,
+        "referenced_files": 2,
+        "capture_ns": 31000,
+        "shared_pin_unpin_ns": 48.828125,
+        "referenced_release_ns": 9000,
+        "retired_release_ns": 58000
+      },
+      {
+        "sample": 18,
+        "referenced_files": 3,
+        "capture_ns": 58000,
+        "shared_pin_unpin_ns": 51.7578125,
+        "referenced_release_ns": 14000,
+        "retired_release_ns": 60000
+      },
+      {
+        "sample": 19,
+        "referenced_files": 2,
+        "capture_ns": 36000,
+        "shared_pin_unpin_ns": 51.7578125,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 45000
+      },
+      {
+        "sample": 20,
+        "referenced_files": 3,
+        "capture_ns": 38000,
+        "shared_pin_unpin_ns": 50.78125,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 61000
+      },
+      {
+        "sample": 21,
+        "referenced_files": 2,
+        "capture_ns": 32000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 9000,
+        "retired_release_ns": 44000
+      },
+      {
+        "sample": 22,
+        "referenced_files": 3,
+        "capture_ns": 44000,
+        "shared_pin_unpin_ns": 54.6875,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 63000
+      },
+      {
+        "sample": 23,
+        "referenced_files": 2,
+        "capture_ns": 34000,
+        "shared_pin_unpin_ns": 50.78125,
+        "referenced_release_ns": 10000,
+        "retired_release_ns": 44000
+      },
+      {
+        "sample": 24,
+        "referenced_files": 3,
+        "capture_ns": 38000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 60000
+      },
+      {
+        "sample": 25,
+        "referenced_files": 2,
+        "capture_ns": 31000,
+        "shared_pin_unpin_ns": 50.78125,
+        "referenced_release_ns": 10000,
+        "retired_release_ns": 48000
+      },
+      {
+        "sample": 26,
+        "referenced_files": 3,
+        "capture_ns": 40000,
+        "shared_pin_unpin_ns": 48.828125,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 65000
+      },
+      {
+        "sample": 27,
+        "referenced_files": 2,
+        "capture_ns": 31000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 10000,
+        "retired_release_ns": 68000
+      },
+      {
+        "sample": 28,
+        "referenced_files": 3,
+        "capture_ns": 112000,
+        "shared_pin_unpin_ns": 47.8515625,
+        "referenced_release_ns": 18000,
+        "retired_release_ns": 60000
+      },
+      {
+        "sample": 29,
+        "referenced_files": 2,
+        "capture_ns": 35000,
+        "shared_pin_unpin_ns": 49.8046875,
+        "referenced_release_ns": 12000,
+        "retired_release_ns": 47000
+      },
+      {
+        "sample": 30,
+        "referenced_files": 3,
+        "capture_ns": 38000,
+        "shared_pin_unpin_ns": 47.8515625,
+        "referenced_release_ns": 11000,
+        "retired_release_ns": 61000
+      }
+    ],
+    "summary_ns": {
+      "capture_ns": {
+        "min": 31000,
+        "median": 38000,
+        "max": 112000
+      },
+      "shared_pin_unpin_ns": {
+        "min": 47.8515625,
+        "median": 50.78125,
+        "max": 58.59375
+      },
+      "referenced_release_ns": {
+        "min": 9000,
+        "median": 12000,
+        "max": 20000
+      },
+      "retired_release_ns": {
+        "min": 44000,
+        "median": 63000,
+        "max": 116000
+      }
+    },
+    "scope": "31 samples, 32 one-dimensional points, 2 or 3 referenced immutable files plus directory, metadata already cached, no worker, 1024 shared pin/unpin pairs per sample; timing diagnostic not threshold"
+  },
+  "reused_quality": "Previous sidecar validation's two quality gates remain applicable to unchanged graph scoring/build algorithms; this follow-up also passed all current Mojo HNSW quality/quantization/publication tests.",
+  "remaining": [
+    "Matched-recall Qdrant comparison (#59)",
+    "Arrow result integration and leased scanner (#57/#58)",
+    "Sort/heap/WAL/read-only-copy packages (#60–#63)",
+    "Named/native scalar/binary/multivector formats, bindings and tests",
+    "Commits and branch integration"
+  ]
+}

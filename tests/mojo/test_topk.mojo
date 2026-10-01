@@ -49,3 +49,22 @@ def test_topk_rejects_non_positive_capacity() raises:
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+
+
+def test_float64_scores_preserve_binary_counts_and_large_native_distances() raises:
+    var smaller = BoundedTopK[DType.float64](2, smaller_is_better=True)
+    smaller.offer(1, Float64(16_777_217))
+    smaller.offer(2, Float64(16_777_216))
+    smaller.offer(3, Float64(16_777_218))
+    var small = smaller.sorted_entries()
+    assert_equal(small[0].id, 2)
+    assert_equal(small[1].id, 1)
+    assert_equal(small[1].score, Float64(16_777_217))
+    var larger = BoundedTopK[DType.float64](2, smaller_is_better=False)
+    larger.offer(3, Float64(1.0e100))
+    larger.offer(2, Float64(1.0e101))
+    larger.offer(-1, Float64(1.0e101))
+    var large = larger.sorted_entries()
+    assert_equal(large[0].id, -1)
+    assert_equal(large[1].id, 2)
+    assert_equal(large[0].score, Float64(1.0e101))

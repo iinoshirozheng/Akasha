@@ -19,11 +19,14 @@ comptime _MAGIC_3 = UInt8(0x46)  # F
 comptime _VERSION_V1 = UInt16(1)
 comptime _VERSION_V2 = UInt16(2)
 comptime _VERSION_V3 = UInt16(3)
+comptime _VERSION_V4 = UInt16(4)
+comptime _VERSION_V5 = UInt16(5)
 comptime _FIXED_SIZE_V1 = 32
 comptime _FIXED_SIZE_V2 = 40
 comptime _FIXED_SIZE_V3 = 40
+comptime _FIXED_SIZE_V4 = 40
 comptime _HNSW_DESCRIPTOR_FIXED_SIZE = 24
-comptime _V3_FLAG_HNSW = UInt16(1)
+comptime _FLAG_HNSW = UInt16(1)
 comptime _MAX_SEGMENTS = 1024
 comptime _MAX_LEVEL = 7
 comptime _MAX_NAME_BYTES = Int(UInt16.MAX)
@@ -193,17 +196,21 @@ struct Manifest(Movable):
         hnsw_checksum: UInt32,
         hnsw_config_fingerprint: UInt64,
         hnsw_point_count: UInt64,
+        *,
+        format_version: Int = 3,
     ) raises -> Manifest:
+        if format_version < 3 or format_version > 5:
+            raise Error("unsupported HNSW manifest version")
         _validate_safe_filename(hnsw_name)
         var manifest = Manifest.with_segments(
             dimension, generation, last_sequence, segments^
         )
-        manifest.format_version = 3
+        manifest.format_version = format_version
         manifest.hnsw_name = Optional(String(copy=hnsw_name))
         manifest.hnsw_checksum = Optional(hnsw_checksum)
         manifest.hnsw_config_fingerprint = Optional(hnsw_config_fingerprint)
         manifest.hnsw_point_count = Optional(hnsw_point_count)
-        _ = _validate_hnsw_reference(manifest)
+        _ = _validate_hnsw_reference(manifest, manifest.format_version)
         return manifest^
 
 
@@ -239,14 +246,34 @@ def encode_manifest(
 
 
 def encode_manifest_v2(manifest: Manifest) raises -> List[UInt8]:
-    if _validate_hnsw_reference(manifest):
+    if _validate_hnsw_reference(manifest, manifest.format_version):
         raise Error("manifest v2 cannot reference an HNSW sidecar")
     return _encode_multi_manifest(manifest, _VERSION_V2, False, False)
 
 
 def encode_manifest_v3(manifest: Manifest) raises -> List[UInt8]:
-    var has_hnsw = _validate_hnsw_reference(manifest)
+    var has_hnsw = _validate_hnsw_reference(manifest, 3)
     return _encode_multi_manifest(manifest, _VERSION_V3, has_hnsw, True)
+
+
+def encode_manifest_v4(manifest: Manifest) raises -> List[UInt8]:
+    var has_hnsw = _validate_hnsw_reference(manifest, 4)
+    return _encode_multi_manifest(manifest, _VERSION_V4, has_hnsw, True)
+
+
+def encode_manifest_v5(manifest: Manifest) raises -> List[UInt8]:
+    var has_hnsw = _validate_hnsw_reference(manifest, 5)
+    return _encode_multi_manifest(manifest, _VERSION_V5, has_hnsw, True)
+
+
+def hnsw_base_sequence(manifest: Manifest) raises -> UInt64:
+    """Sequence represented by the referenced immutable graph, not its overlay.
+    """
+    if not _validate_hnsw_reference(manifest, manifest.format_version):
+        raise Error("manifest has no HNSW base")
+    if manifest.format_version == 5:
+        return parse_hnsw_job_name(manifest.hnsw_name.value())[0]
+    return manifest.last_sequence
 
 
 def _encode_multi_manifest(
@@ -269,7 +296,7 @@ def _encode_multi_manifest(
     writer.write_u8(_MAGIC_2)
     writer.write_u8(_MAGIC_3)
     writer.write_u16(version)
-    writer.write_u16(_V3_FLAG_HNSW if has_hnsw else UInt16(0))
+    writer.write_u16(_FLAG_HNSW if has_hnsw else UInt16(0))
     writer.write_u32(UInt32(manifest.dimension))
     writer.write_u64(manifest.generation)
     writer.write_u64(manifest.last_sequence)
@@ -337,6 +364,8 @@ def decode_manifest_bytes(
         minimum_size = _FIXED_SIZE_V2
     elif version == _VERSION_V3:
         minimum_size = _FIXED_SIZE_V3
+    elif version == _VERSION_V4 or version == _VERSION_V5:
+        minimum_size = _FIXED_SIZE_V4
     else:
         raise Error("unsupported manifest version")
     if len(bytes) < minimum_size:
@@ -358,9 +387,9 @@ def decode_manifest_bytes(
     if reader.read_u16() != version:
         raise Error("manifest version changed during decode")
     var flags = reader.read_u16()
-    if version != _VERSION_V3 and flags != UInt16(0):
+    if version < _VERSION_V3 and flags != UInt16(0):
         raise Error("unsupported manifest flags")
-    if version == _VERSION_V3 and flags > _V3_FLAG_HNSW:
+    if version >= _VERSION_V3 and flags > _FLAG_HNSW:
         raise Error("unsupported manifest flags")
     var dimension = Int(reader.read_u32())
     if dimension != expected_dimension:
@@ -373,15 +402,20 @@ def decode_manifest_bytes(
         dimension,
         encoded_size,
         version,
-        flags == _V3_FLAG_HNSW,
+        flags == _FLAG_HNSW,
     )
 
 
 def publish_manifest(directory: String, manifest: Manifest) raises:
     _validate_manifest_names(manifest, True)
     var bytes: List[UInt8]
-    if _validate_hnsw_reference(manifest):
-        bytes = encode_manifest_v3(manifest)
+    if _validate_hnsw_reference(manifest, manifest.format_version):
+        if manifest.format_version == 5:
+            bytes = encode_manifest_v5(manifest)
+        elif manifest.format_version == 4:
+            bytes = encode_manifest_v4(manifest)
+        else:
+            bytes = encode_manifest_v3(manifest)
     elif manifest.format_version == 1:
         bytes = encode_manifest(
             manifest.dimension,
@@ -389,7 +423,7 @@ def publish_manifest(directory: String, manifest: Manifest) raises:
             manifest.segment_checksum,
             manifest.segment_name,
         )
-    elif manifest.format_version == 2 or manifest.format_version == 3:
+    elif 2 <= manifest.format_version <= 5:
         bytes = encode_manifest_v2(manifest)
     else:
         raise Error("unsupported in-memory manifest version")
@@ -400,13 +434,27 @@ def publish_manifest(directory: String, manifest: Manifest) raises:
     sync_directory(directory)
 
 
+def read_manifest_bytes(directory: String) raises -> List[UInt8]:
+    """Read the published manifest's exact bytes within the format bound."""
+    return read_file_bytes_bounded(
+        directory + "/" + _MANIFEST_NAME, _MAX_MANIFEST_BYTES
+    )
+
+
+def read_manifest_bytes(file: FileHandle) raises -> List[UInt8]:
+    """Read an already-open manifest, including from an anchored directory."""
+    var bytes = file.read_bytes(_MAX_MANIFEST_BYTES + 1)
+    if len(bytes) > _MAX_MANIFEST_BYTES:
+        raise Error("manifest exceeds bounded read limit")
+    return bytes^
+
+
 def load_manifest(
     directory: String, expected_dimension: Int
 ) raises -> Manifest:
-    var bytes = read_file_bytes_bounded(
-        directory + "/" + _MANIFEST_NAME, _MAX_MANIFEST_BYTES
+    var manifest = decode_manifest_bytes(
+        read_manifest_bytes(directory), expected_dimension
     )
-    var manifest = decode_manifest_bytes(bytes^, expected_dimension)
     _validate_manifest_names(manifest, True)
     for index in range(len(manifest.segments)):
         if not path_exists(directory + "/" + manifest.segments[index].name):
@@ -447,7 +495,7 @@ def _decode_manifest_multi(
     version: UInt16,
     has_hnsw: Bool,
 ) raises -> Manifest:
-    var strict_names = version == _VERSION_V3
+    var strict_names = version >= _VERSION_V3
     var generation = reader.read_u64()
     var last_sequence = reader.read_u64()
     var segment_count_u32 = reader.read_u32()
@@ -538,7 +586,7 @@ def _decode_manifest_multi(
         manifest.hnsw_checksum = hnsw_checksum
         manifest.hnsw_config_fingerprint = hnsw_config_fingerprint
         manifest.hnsw_point_count = hnsw_point_count
-        _ = _validate_hnsw_reference(manifest)
+        _ = _validate_hnsw_reference(manifest, manifest.format_version)
     return manifest^
 
 
@@ -585,7 +633,7 @@ def _finish_manifest(var writer: BinaryWriter) -> List[UInt8]:
     return complete.take_bytes()
 
 
-def _validate_hnsw_reference(manifest: Manifest) raises -> Bool:
+def _validate_hnsw_reference(manifest: Manifest, version: Int) raises -> Bool:
     var has_name = Bool(manifest.hnsw_name)
     if (
         has_name != Bool(manifest.hnsw_checksum)
@@ -598,8 +646,19 @@ def _validate_hnsw_reference(manifest: Manifest) raises -> Bool:
     if has_name:
         var hnsw_name = manifest.hnsw_name.value()
         _validate_safe_filename(hnsw_name, True)
-        if hnsw_name != "hnsw-" + String(manifest.last_sequence) + ".bin":
-            raise Error("manifest HNSW name must match checkpoint sequence")
+        if version == 3:
+            if hnsw_name != "hnsw-" + String(manifest.last_sequence) + ".bin":
+                raise Error("manifest HNSW name must match checkpoint sequence")
+        elif version == 4 or version == 5:
+            var identity = parse_hnsw_job_name(hnsw_name)
+            if (
+                version == 4 and identity[0] != manifest.last_sequence
+            ) or identity[0] > manifest.last_sequence:
+                raise Error("manifest HNSW name must match checkpoint sequence")
+            if identity[1] == 0 or identity[1] > manifest.generation:
+                raise Error("manifest HNSW creation generation is invalid")
+        else:
+            raise Error("manifest version cannot reference an HNSW sidecar")
         for index in range(len(manifest.segments)):
             if hnsw_name == manifest.segments[index].name or (
                 manifest.segments[index].sparse_name.byte_length() > 0
@@ -642,3 +701,34 @@ def _read_u32_at(bytes: List[UInt8], offset: Int) -> Int:
         | (UInt32(bytes[offset + 2]) << UInt32(16))
         | (UInt32(bytes[offset + 3]) << UInt32(24))
     )
+
+
+def parse_hnsw_job_name(name: String) raises -> Tuple[UInt64, UInt64, UInt64]:
+    """Read the canonical v4 sequence, creation generation and path claim."""
+    if not name.startswith("hnsw-") or not name.endswith(".bin"):
+        raise Error("invalid HNSW job filename")
+    var body = String(name.removeprefix("hnsw-").removesuffix(".bin"))
+    var parts = body.split("-")
+    if len(parts) != 3:
+        raise Error("invalid HNSW job filename")
+    return (
+        _canonical_u64(String(parts[0])),
+        _canonical_u64(String(parts[1])),
+        _canonical_u64(String(parts[2])),
+    )
+
+
+def _canonical_u64(value: String) raises -> UInt64:
+    if value.byte_length() == 0 or (
+        value.byte_length() > 1 and value.as_bytes()[0] == UInt8(48)
+    ):
+        raise Error("noncanonical HNSW job filename integer")
+    var result = UInt64(0)
+    for byte in value.bytes():
+        if byte < UInt8(48) or byte > UInt8(57):
+            raise Error("invalid HNSW job filename integer")
+        var digit = UInt64(byte - UInt8(48))
+        if result > (UInt64.MAX - digit) // UInt64(10):
+            raise Error("HNSW job filename integer overflow")
+        result = result * UInt64(10) + digit
+    return result

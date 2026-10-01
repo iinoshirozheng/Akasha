@@ -1,9 +1,10 @@
 from akasha.document.value import PayloadValue
 from akasha.index.bitmap import Bitmap
+from akasha.index.sorted_postings import insert_posting, remove_posting
 from akasha.query.filter_ast import FilterCondition
 
 
-struct _KeywordEntry(Movable):
+struct _KeywordEntry(Comparable, Copyable, Movable):
     var name: String
     var kind: UInt8
     var string_value: String
@@ -24,6 +25,24 @@ struct _KeywordEntry(Movable):
             self.bool_value = value.as_bool()
         else:
             raise Error("keyword index requires String or Bool values")
+
+    def __lt__(self, other: Self) -> Bool:
+        return _keyword_after(other, self)
+
+    def __gt__(self, other: Self) -> Bool:
+        return _keyword_after(self, other)
+
+    def __eq__(self, other: Self) -> Bool:
+        return not (_keyword_after(self, other) or _keyword_after(other, self))
+
+    def __ne__(self, other: Self) -> Bool:
+        return not self.__eq__(other)
+
+    def __le__(self, other: Self) -> Bool:
+        return not _keyword_after(self, other)
+
+    def __ge__(self, other: Self) -> Bool:
+        return not _keyword_after(other, self)
 
 
 struct KeywordIndex:
@@ -59,40 +78,31 @@ struct KeywordIndex:
     def finish_bulk(mut self) raises:
         if not self._bulk_loading:
             raise Error("keyword bulk load is not active")
-        _sort_keyword_entries(self._entries)
+        # Mojo 1.0's stable merge sort moves descriptors without copying strings.
+        # It avoids the default quicksort's input-dependent scaling at the cost
+        # of one temporary entry buffer (72 bytes/entry on the pinned target).
+        sort[stable=True](Span(self._entries))
         self._bulk_loading = False
 
     def add(mut self, name: String, value: PayloadValue, ordinal: Int) raises:
         self._validate_value(value)
         self._validate_ordinal(ordinal)
-        if not self._bulk_loading:
-            for index in range(len(self._entries)):
-                if _same_entry(self._entries[index], name, value, ordinal):
-                    return
-
-        self._entries.append(_KeywordEntry(name, value, ordinal))
-        if self._bulk_loading:
-            return
-        var cursor = len(self._entries) - 1
-        while cursor > 0 and _keyword_after(
-            self._entries[cursor - 1], self._entries[cursor]
-        ):
-            self._entries.swap_elements(cursor - 1, cursor)
-            cursor -= 1
+        insert_posting(
+            self._entries,
+            _KeywordEntry(name, value, ordinal),
+            self._bulk_loading,
+        )
 
     def remove(
         mut self, name: String, value: PayloadValue, ordinal: Int
     ) raises:
         self._validate_value(value)
         self._validate_ordinal(ordinal)
-        for index in range(len(self._entries)):
-            if _same_entry(self._entries[index], name, value, ordinal):
-                var cursor = index
-                while cursor + 1 < len(self._entries):
-                    self._entries.swap_elements(cursor, cursor + 1)
-                    cursor += 1
-                _ = self._entries.pop()
-                return
+        remove_posting(
+            self._entries,
+            _KeywordEntry(name, value, ordinal),
+            self._bulk_loading,
+        )
 
     def evaluate(self, condition: FilterCondition) raises -> Bitmap:
         condition.validate()
@@ -129,19 +139,6 @@ struct KeywordIndex:
     def _validate_ordinal(self, ordinal: Int) raises:
         if ordinal < 0 or ordinal >= self._size:
             raise Error("keyword index ordinal out of bounds")
-
-
-def _same_entry(
-    entry: _KeywordEntry,
-    name: String,
-    value: PayloadValue,
-    ordinal: Int,
-) raises -> Bool:
-    return (
-        entry.name == name
-        and entry.ordinal == ordinal
-        and _same_value(entry, value)
-    )
 
 
 def _same_value(entry: _KeywordEntry, value: PayloadValue) raises -> Bool:
@@ -252,29 +249,3 @@ def _keyword_value_upper(
         else:
             high = middle
     return low
-
-
-def _sort_keyword_entries(mut entries: List[_KeywordEntry]):
-    var start = len(entries) // 2
-    while start > 0:
-        start -= 1
-        _sift_keyword(entries, start, len(entries))
-    var end = len(entries)
-    while end > 1:
-        end -= 1
-        entries.swap_elements(0, end)
-        _sift_keyword(entries, 0, end)
-
-
-def _sift_keyword(mut entries: List[_KeywordEntry], root: Int, end: Int):
-    var current = root
-    while current * 2 + 1 < end:
-        var child = current * 2 + 1
-        if child + 1 < end and _keyword_after(
-            entries[child + 1], entries[child]
-        ):
-            child += 1
-        if not _keyword_after(entries[child], entries[current]):
-            return
-        entries.swap_elements(current, child)
-        current = child

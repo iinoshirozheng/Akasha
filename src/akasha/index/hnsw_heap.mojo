@@ -1,8 +1,8 @@
-struct HnswHeapItem(Copyable, Movable, Writable):
+struct HnswHeapItem(TrivialRegisterPassable, Writable):
     """Candidate ordered by canonical distance, public ID, then graph slot."""
 
-    var slot: UInt32
     var id: Int
+    var slot: UInt32
     var distance: Float32
 
     def __init__(out self, slot: UInt32, id: Int, distance: Float32):
@@ -65,7 +65,7 @@ struct CandidateMinHeap(Sized):
         var best = self._heap.pop()
         if len(self._heap) > 0:
             self._sift_down(0)
-        return best^
+        return best
 
     def _sift_up(mut self, start_index: Int):
         var index = start_index
@@ -156,7 +156,7 @@ struct ResultMaxHeap(Sized):
         var worst = self._heap.pop()
         if len(self._heap) > 0:
             self._sift_down(0)
-        return worst^
+        return worst
 
     def take_sorted_best(mut self) raises -> List[HnswHeapItem]:
         """Drain into ``(distance ASC, id ASC, slot ASC)`` order."""

@@ -19,8 +19,30 @@ A08 其他 list-based Python API、Z04 result export 與 durable owned copies �
 
 #46 已交付 [ADR 0007](../adr/0007-generation-field-ownership.md)、
 [成本與 owner probe](2026-09-07-generation-costs.md) 以及 #47–#63 後續切片。
-L02–L06／Z01／Z04／Z07／Z09 的實作仍未完成；不能以設計完成關閉它們。
+L02–L06／Z01／Z04／Z09 的實作仍未完成；不能以設計完成關閉它們。Z07 與 A09 的 backup
+I/O 已由 #53 結案：備份只複製 pinned generation 的檔案集合，經 1 MiB buffer 串流，
+128 MiB 檔的峰值 RSS 增加 16 KiB；不用 hardlink。A09 的 dense-WAL 讀取由 #62 完成，見下方更新。
 Mojo 1.0 的 close/Span 反例支持 operation/export 獨立 owner，並非 origin 標註即可保證。
+
+## #62 dense-WAL 有界解碼（2026-10-01）
+
+Z06 與 A09 的 dense-WAL 路徑已改為 origin-backed reader、payload subspans、64 KiB
+預讀與逐 envelope 驗證；移除整份 decode copy、record/payload byte-list copies 與
+repair-prefix copy。Collection recovery 移交 owned values、依序合併 sparse，matching
+HNSW sidecar 再做一次有界 replay，不保留全部 dense 歷史。Owned replay API 的回傳值、
+sparse WAL 與 segment decoding 仍有各自成本，不宣稱整條 recovery 零複製。
+1,853 個相容性案例、42 次配對量測、789 Mojo／118 Python／19 crash、C ABI、build、
+examples 與品質 gates 通過；[完整證據](../benchmarks/2026-10-01-borrowed-wal.md)。
+下方原始 inventory 保留歷史基線，不能把其中舊 clone 路徑當成目前實作。
+
+## #63 唯讀 materialization（2026-10-01）
+
+Fingerprint 已使用 immutable `entry_ref_at`，消除 descriptor／owner 複製，但仍完整
+序列化全庫 fingerprint。Sparse 存在檢查已使用 ordinal/liveness，避免 owned get。
+49 targeted Mojo、118 Python、48 次直接量測與 14 次 flush 量測通過；7 組 flush 的
+持久化檔案完全相同。大 payload flush 的時間／RSS 差異很小，sparse 沒有一致加速。
+官方 String 來源及指標／修改隔離探針證明 heap string copy 採 COW；原始 inventory 的
+payload 邏輯大小不能當實際 memcpy 計數。[證據與限制](../benchmarks/2026-10-01-readonly-copies.md)。
 
 ## #39–#42 實作進度
 
@@ -38,9 +60,8 @@ A06 的 retired-file batch／其他 Movable 容器整理仍留待後續；沒有
 詳細測試、copy trace、端到端量測與限制見
 [#39–#42 驗證報告](../benchmarks/2026-09-07-official-primitives.md)。
 
-#39 的追蹤也確認 `authoritative_index_checksum` 仍逐 slot 用 owned `entry_at` 複製
-資料並重新編碼全量 fingerprint。這個不同呼叫路徑未在 #39 改動，後續可和 Z06
-borrowed decoder／cache publication 一起量測；不能宣稱整個 flush 已只有 delta 成本。
+#39 當時的追蹤確認 `authoritative_index_checksum` 逐 slot 用 owned `entry_at`；#63 已改
+成借用 entry。全量 fingerprint 編碼仍保留，不能宣稱整個 flush 已只有 delta 成本。
 
 ## #31–#38 完成後的複核（#39 實作前）
 
@@ -54,7 +75,7 @@ borrowed decoder／cache publication 一起量測；不能宣稱整個 flush 已
 | A12 CRC 速度、Z10 mapped validation 記憶體 | #37 已做相同 polynomial 的 CRC table、排序 reciprocal audit 與 peak RSS 量測 | 保留格式與安全檢查；不重做 CRC 優化。WAL owned decode copies（Z06）仍另有改善空間 |
 | A16 compact SIMD、M5 execution crossover | #36/#38 已完成；GPU 保持 opt-in | 沿用證據，沒有新資料不增加 kernel／scratch 改寫 |
 | A01–A10 的通用 API 候選（上述已完成部分除外） | bitmap、List loops、heaps/sorts、sparse/fusion lookup、Arrow boxing 仍存在 | 先做可直接驗收的小替換；heap/sort 需語意與量測適配 |
-| Z01/Z02/Z03/Z04/Z07/Z09、L02–L06 | snapshot clone、flush 無效 clone、Arrow materialization、whole-file backup、query-time PQ、長鎖仍存在 | 列入下一輪，不能由 GPU cache 完成推定共享 authoritative generation 已完成 |
+| Z01/Z02/Z03/Z04/Z09、L02–L06 | snapshot clone、flush 無效 clone、Arrow materialization、query-time PQ、長鎖仍存在（Z07 whole-file backup 已由 #53 結案） | 列入下一輪，不能由 GPU cache 完成推定共享 authoritative generation 已完成 |
 
 #31–#38 的 macOS／Linux CI 已成功，Apple M4 Pro 的 9 個實機 GPU tests 有交付紀錄。
 高維 uniform workload 在 ef=128 的最低 Recall@10 約 0.684375，且尚無 Qdrant 同條件
@@ -90,8 +111,8 @@ symbol table，也不代表 1,567 個函式均經逐行正確性審查。
 |---|---|---|---|
 | A01 | `index/bitmap.mojo::_popcount` | `std.bit.pop_count` 有相同 UInt64 位元計數能力；編譯與 1,028 個值的差異測試通過 | 可直接使用官方 primitive；保留現有 bitmap 語意 |
 | A02 | `Bitmap.set_ordinals` 逐 word 掃 64 個 bit | `std.bit.count_trailing_zeros` 可逐個列舉 set bit | `word != 0` 時取最低 set bit，再 `word &= word - 1`；需覆蓋 0、63、64、尾端 padding 與順序 |
-| A03 | `keyword::_sort_keyword_entries/_sift_keyword`；`sorted_block::_sort_int_entries/_sift_int/_sort_float_entries/_sift_float` | 官方 `sort(Span(...))` 可取代手寫 heapsort。但這些 entry 目前只有 `Movable`，官方要求 `Copyable`，需比較順序適配 | 先補合適的 Copyable／Comparable，保持 name/type/value/ordinal 全序並量測 string 複製；不能直接刪 helper 後假設會編譯 |
-| A04 | `CandidateMinHeap`、`ResultMaxHeap`、`BoundedTopK` 的 `_sift_up/_sift_down` | 官方 `BinaryHeap` 有 capacity、push、pop、peek、clear；自訂 score/ID 全序探針通過 | 保留 Akasha 的 bounded admission、min/max 方向、ID／slot ties 與空 heap Error；評估 pop+push 替代 root replacement 的成本後採用 |
+| A03 | Keyword/SortedBlock bulk sorting | #60 已於 2026-10-01 改用官方 `sort[stable=True](Span(...))`，Copyable／Comparable 保留 name/type/value/ordinal 全序；三個 heapsort/sift 已移除 | 60 配對 cell × 3 trials、62 Mojo／118 Python、21 copy probes 通過；0 entry copies，但有 72/40 bytes/entry 暫存 descriptors。預設 quicksort 拒用證據與完整成本見 [#60 報告](../benchmarks/2026-10-01-metadata-sort.md)；尚未提交整合 |
+| A04 | `CandidateMinHeap`、`ResultMaxHeap`、`BoundedTopK` | #61 於 2026-10-01 完成評估並保留現況：官方有 constructor capacity／push／pop／immutable peek／clear，但無 existing-heap reserve、capacity getter 或 root replacement | Top-K 原型 60 semantic/reuse cases 通過；232 timing runs 顯示多數較快但 k=1 持續替換慢 12.7–14.2%，未過 gate。HNSW 在公開 API gate 不適配；24 原有 tests 通過。[完整證據](../benchmarks/2026-10-01-official-heap.md)，無 production heap 改動 |
 | A05 | `storage/memtable::_clone_vector`、`api/collection::_clone_vector`、`DocumentRecord.clone` 中 F32 複製迴圈 | `List.copy()` 已有等價 owned 複製；MemTable 與其他路徑也已在使用 | 可改用官方 copy，並保留 get／export 的 owned-result 合約；這會移除重複迴圈，但不會變成 zero-copy |
 | A06 | `BinaryWriter.write_bytes` 逐 byte append；`RetiredFileBatch.clone` 等同型別複製 | `List.extend(Span(...))`、`List.copy()` 可重用，List move 可交接 ownership | primitive List 可以直接改；含 Movable-only 元素的集合先檢查 trait；回收佇列搬移 retained batch 可避免複製檔名 |
 | A07 | `SparseIndex._find_record/_find_term`、`search_dot` 的 score lookup；`fusion::_accumulate` 線性尋找 ID | 官方 `Dict` 已可用，MemTable／Metadata 已採用 | 以 Dict 維護 ID/term→ordinal 與 score 累計；swap-remove 時更新 lookup，保持浮點累計順序、tie 與刪除語意 |

@@ -25,9 +25,7 @@ struct CollectionLock(Movable):
         )
         if result != 0:
             file.close()
-            raise Error(
-                "collection is already open: " + String(get_errno())
-            )
+            raise Error("collection is already open: " + String(get_errno()))
         return CollectionLock(file^)
 
     def close(mut self) raises:

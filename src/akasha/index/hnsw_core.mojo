@@ -388,7 +388,7 @@ def _select_neighbors_heuristic[
         if key in seen:
             continue
         seen[key] = True
-        ordered.append(candidate^)
+        ordered.append(candidate)
 
     var result_capacity = capacity
     if result_capacity > len(ordered):
@@ -613,7 +613,8 @@ def _audit_bidirectional_links_with_stats[
     for index in range(graph.slot_count()):
         var slot = UInt32(index)
         for level in range(graph.level(slot) + 1):
-            var count = graph.neighbor_count(slot, level)
+            var edge_range = graph.neighbor_range(slot, level)
+            var count = edge_range[1]
             var capacity = graph.graph_m()
             if level == 0:
                 capacity = graph.graph_m0()
@@ -622,7 +623,7 @@ def _audit_bidirectional_links_with_stats[
             var source_group_key = (UInt64(level) << UInt64(32)) | UInt64(slot)
             var source_group = level_groups[source_group_key]
             for edge_index in range(count):
-                var neighbor = graph.neighbor_at(slot, level, edge_index)
+                var neighbor = graph.neighbor_at_offset(edge_range[0] + edge_index)
                 if graph.level(neighbor) < level:
                     raise Error("HNSW edge target does not own graph level")
                 var edge_key = (UInt64(source_group) << UInt64(32)) | UInt64(
@@ -827,9 +828,9 @@ def _validate_search_boundary[
     # Mutable storage permits low-level construction primitives. Validate the
     # entry adjacency up front, but do not run the O(nodes + edges) structural
     # audit on every query: construction/load boundaries own that audit.
-    var edge_count = graph.neighbor_count(entry, level)
-    for edge_index in range(edge_count):
-        var neighbor = graph.neighbor_at(entry, level, edge_index)
+    var edges = graph.neighbor_range(entry, level)
+    for edge_index in range(edges[1]):
+        var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
         if graph.level(neighbor) < level:
             raise Error("HNSW edge targets a node below its graph level")
 
@@ -875,9 +876,9 @@ def greedy_descent[
             current_slot, graph.id_at(current_slot), current_distance
         )
         var best_item = current_item.copy()
-        var count = graph.neighbor_count(current_slot, level)
-        for edge_index in range(count):
-            var neighbor = graph.neighbor_at(current_slot, level, edge_index)
+        var edges = graph.neighbor_range(current_slot, level)
+        for edge_index in range(edges[1]):
+            var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
             if graph.level(neighbor) < level:
                 raise Error("HNSW edge targets a node below its graph level")
             var neighbor_index = Int(neighbor)
@@ -1004,9 +1005,9 @@ def search_layer[
         ):
             break
 
-        var neighbor_count = graph.neighbor_count(candidate.slot, level)
-        for edge_index in range(neighbor_count):
-            var neighbor = graph.neighbor_at(candidate.slot, level, edge_index)
+        var edges = graph.neighbor_range(candidate.slot, level)
+        for edge_index in range(edges[1]):
+            var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
             if graph.level(neighbor) < level:
                 raise Error("HNSW edge targets a node below its graph level")
             if not scratch.visit(neighbor):

@@ -4,9 +4,46 @@ Date: 2026-09-07. Status: **accepted design for the next implementation slices**
 Design baseline: `234547a`. At acceptance, every capture cloned MemTable/SparseIndex
 and rebuilt metadata. **#47 is implemented in `dc858ab` (2026-09-17):** repeated
 captures share an immutable root owned through official `ArcPointer`; the first
-base at a changed view still clones/rebuilds all three structures. The rest of this
-ADR remains the design for #48 onward. See the
+base at a changed view still clones/rebuilds all three structures. See the
 [#47 implementation and measurements](../benchmarks/2026-09-17-shared-snapshot.md).
+**#48 is implemented in `8351235` (2026-09-24):** immutable dense owners, a bounded
+head, sealed runs, a shadowing resolver and foreground consolidation; captures copy
+no dense bytes. See the
+[#48 implementation and measurements](../benchmarks/2026-09-24-bounded-head.md).
+**#49 is implemented (2026-09-25):** payload and sparse are per-point shared owners
+next to the dense owner; base and sealed runs index their own slots and the frozen
+head is evaluated directly, so captures copy no field bytes. See the
+[#49 implementation and measurements](../benchmarks/2026-09-25-field-owners.md).
+**#50 is implemented (2026-09-25):** every snapshot or collection query acquires its
+own root owner; close drops only the handle's owner, and device state lives on the
+root. A capture takes the manifest generation from memory: the collection's read
+publisher records it at open and at every manifest publish, including background
+maintenance. See the
+[#50 implementation and measurements](../benchmarks/2026-09-25-operation-owners.md).
+**#51 is implemented (2026-09-26):** foreground `compact()` holds the writer lock
+only to capture and pin its inputs and to publish if the manifest is unchanged; the
+merge runs without it. See the
+[#51 implementation and measurements](../benchmarks/2026-09-26-compaction-publish.md).
+**#52 is implemented (2026-09-26):** publish rebases the output onto the current
+manifest, the background worker runs the same three steps with the build outside the
+lock, a flush waits at eight L0 segments until the worker publishes, and sealed runs
+merge on the worker behind write backpressure. See the
+[#52 implementation and measurements](../benchmarks/2026-09-26-background-publication.md).
+**Compaction admission is fixed (2026-09-30):** one shared job lock serializes
+full compaction builders. Synchronous maintenance and the no-worker path now use
+the same unlocked builder; see the [regression evidence](../benchmarks/2026-09-30-compaction-admission.md).
+**#53 is implemented (2026-09-27):** backup holds the writer lock only to checkpoint,
+capture the manifest and config and pin that generation, then copies outside it
+through one 1 MiB buffer. The #56 sidecar extension now copies the complete captured
+manifest, including its HNSW reference (see Backup below).
+**#54 is implemented (2026-09-27):** each read root owns one SQ8 artifact state. The
+first SQ8 query on a root builds the artifact once under the root's artifact lock;
+every later query, handle and metric on that root reuses the ready artifact. A failed
+build publishes nothing and the next query may retry; a ready artifact is never
+replaced (see Derived indexes below).
+**#55 is implemented (2026-09-30):** each root also owns parameter-keyed PQ states.
+Training happens once per configuration; cancelled/failed builds publish nothing.
+The remaining implementation slices are tracked in `tasks/todo.md`.
 
 ## Evidence and constraints
 
@@ -75,6 +112,23 @@ consolidation primitive in #48, keeping the chain bounded and the system usable.
 does not claim to eliminate consolidation writer stalls. It is not a second data
 format or a parallel legacy visibility path.
 
+#52 implementation notes: recording only rolls the head over; it never merges. When
+the eighth sealed run appears, `_record_read_state` asks the worker for a merge. The
+worker captures the sealed prefix under the writer lock (`capture_merge`), builds
+the merged run and its sparse index without the lock, and `publish_merge` replaces
+only that prefix under a short lock; runs sealed meanwhile stay behind it. A merge
+captured before a publisher reset is dropped at publish. Backpressure: a write is
+not admitted while 16 sealed runs (`SEALED_RUN_LIMIT`) exist. It requests a merge,
+sleeps without the lock and retries; close or a maintenance failure ends the wait
+through `_ensure_open`. The check runs before the write, so one admitted batch can
+still seal up to 64 runs past the limit. A merge error is a maintenance failure: the
+owner closes, and every acknowledged write stays in the WAL for the next open. With
+no worker loaded, the merge runs inline at the eighth run, as in #48. Compaction has
+the same stall at level zero: a flush that finds eight L0 segments
+(`LEVEL_ZERO_SEGMENT_LIMIT`, twice the four that request a compaction) requests one,
+sleeps without the lock and retries, and close or a maintenance failure ends the wait.
+Without a worker, the flush compacts inline at four and never waits.
+
 The root owns its head snapshot, base, sealed runs and exact file lease. It does not
 own an O(all-points) copied lookup or full replacement mask per capture. Lookup probes
 head then sealed runs newest first, then base. During scans, suppress an older row
@@ -84,12 +138,35 @@ different logical rows. An updated field can still reference an older immutable
 field buffer through the new point state. Never take base Top-K and only then remove
 shadowed hits, which could lose the actual winners.
 
+#48 implementation notes: the publisher records each committed point state after the
+WAL and MemTable apply, and a dense batch is recorded only after its whole staged swap.
+Sealed-run shadowing lists are
+shared owners replaced at rollover, never mutated. The root's visible count comes from
+the writer table, whose sequence the publisher checks. GPU preparation derives its flat
+table from the root resolver once per root (#50; it was once per handle in #48).
+
 Metadata/sparse indexes belong to each immutable run and its ordinal layout. The
 small captured head can evaluate fields/sparse values directly until rollover builds
 its indexes. This avoids rebuilding full metadata or sparse indexes at capture.
 Sparse products accumulate in ascending query-term order, retaining current Float32
 behavior and ID ties. CPU exact/filtered/sparse/hybrid and GPU preparation must use
 the same root visibility resolver; no independent live-table lookup inside a query.
+
+#49 implementation notes: `ReadGeneration.filtered_ordinals`, `conditioned_ordinals`
+and `sparse_hits` are that resolver for fields. An indexed run evaluates its metadata
+or sparse index and then drops non-visible slots; the head scans its visible slots
+with the linear evaluator and a term merge, summing in the same query-term order so
+a row scores bit-identically in any run. Per-run sparse hits merge into one Top-K.
+The publisher records every accepted operation, sparse-only writes included, with the
+collection's accepted sequence, and refuses to publish if it missed one. A failed
+sparse write is rejected before the WAL and records nothing.
+
+A dense delete also removes the sparse field. The dense WAL stays the durable record
+of that delete: recovery merges dense deletes into sparse WAL replay by sequence, and
+the runtime queues a sparse delete record for the next sparse checkpoint. Neither WAL
+format changed. The writer still keeps its own `SparseIndex` next to the entry owners
+for sparse checkpoints; that duplicate is writer-side, not a capture cost. There is
+no public payload-only write; payload owner independence is tested at the publisher.
 
 ## Field boundary and vector types
 
@@ -147,12 +224,46 @@ may allocate new buffers; reference those buffers from an export owner and count
 
 Collection close first rejects new operations, then cancels/drains maintenance without
 holding the writer lock, drops collection/cache owners and releases the writer file
-lock. Existing explicitly acquired snapshots/exports keep their own roots and remain
+lock owner. A captured backup or foreground compaction holds another strong
+file-lock owner until its copy, publication, discard or build failure finishes.
+This excludes replacement writers while an acquired operation can still create
+files. Snapshot roots instead retain shared locks on their exact immutable files,
+so they can coexist with a replacement writer's independent pin registry.
+Existing explicitly acquired snapshots/exports keep their own roots and remain
 usable. Snapshot close is idempotent and drops that wrapper's root immediately; an
 already-created export/operation owns an independent lease. Destruction performs the
 same release. Last owner releases mappings/device buffers; last relevant file lease
 allows unlink. Expose pin/retired/cache bytes and oldest retained sequence, with no
 automatic TTL that silently invalidates a user's view.
+
+#56 file lifetime implementation (2026-09-30): the first persistent pin of G opens
+the captured manifest's dense, sparse and HNSW files and takes shared `flock`
+leases. Pins of the same G within one registry share those descriptors. Retirement
+requires an exclusive nonblocking file lock; a different collection or process's
+lease defers unlink. The last pin reads the committed manifest and reclaims only
+its own obsolete files with no remaining lease, even after collection close.
+`openat`/`unlinkat` use an owned directory descriptor, so cleanup stays attached to
+the original directory if its path is renamed or replaced. No vector or payload
+bytes are copied by this file ownership step. First capture does perform metadata
+I/O and opens one descriptor per referenced file plus the directory; live
+generations retain those descriptors until their last pin is released.
+
+Capture failure adds no pin and closes partial descriptors. A destructor cannot
+raise: cleanup I/O or malformed-manifest errors keep files and record a diagnostic
+in the registry. A live collection's retirement queue retries on maintenance;
+reopen also retries allow-listed unreferenced job outputs. Missing or corrupt
+authority never authorizes deletion. This does not promise cleanup despite an
+unrepaired filesystem error or automatic deletion of arbitrary unrecognized files.
+
+#50 implementation notes: a snapshot handle keeps its root in a lock-guarded slot on
+the heap. Each query copies the root owner under that lock, releases the lock and
+reads only through its own owner. A slot stored inline in the handle raced: a
+concurrent close freed a run that a query was still reading. Close takes the owner
+out under the lock and drops it after releasing it. Collection queries
+without a writer lock (exact, filtered, where, sparse, hybrid and device) validate,
+then run on a snapshot operation. They no longer read the writer's live tables.
+Collection close takes the cached root out under the writer lock and drops it after,
+so a last owner frees rows and device state outside the lock.
 
 ## Build, publish and retirement
 
@@ -166,17 +277,86 @@ fsync outputs outside it. Allocate job-unique output names with exclusive creati
 never overwrite a captured/committed input, and clean up only that job's outputs.
 Concurrent foreground/background builds and restart orphan cleanup must test this
 namespace rule. The manifest already permits safe arbitrary file names, so this
-requires no new on-disk schema. On publication, require the current manifest/config to
-match the captured inputs and generation. A concurrent WAL-only write is allowed:
-keep all current head/sealed data with sequence > H when constructing the new root.
-Do not rotate or truncate those newer WAL records. If another flush/compaction changed
-the manifest, discard this output and reschedule; do not overwrite its manifest.
-The first version uses strict compare-and-publish, not an unverified append-only
-manifest rebase. Bound retries and measure conflict rate; a build cannot hold the
-writer lock to avoid conflict. Full-coverage tombstone elision retains its existing
-rule. Publish durable manifest before in-memory root, and queue replaced inputs for
-lease-aware retirement. Recovery uses the committed manifest if interrupted between
-those steps. Orphan cleanup cannot unlink a live in-process pinned input.
+requires no new on-disk schema. On publication, rebase the output onto the current
+manifest, as a RocksDB version edit does: the captured inputs must still be its
+leading run, and segments appended since the capture must start above H. The new
+manifest is the output followed by those segments. A concurrent WAL-only write is
+allowed: keep all current head/sealed data with sequence > H when constructing the
+new root. Do not rotate or truncate those newer WAL records. Only a compaction that
+replaced the inputs is a conflict: discard this output and reschedule; do not
+overwrite its manifest. Bound retries and measure conflict rate; a build cannot hold
+the writer lock to avoid conflict. Full-coverage tombstone elision retains its
+existing rule. Publish durable manifest before in-memory root, and queue replaced
+inputs for lease-aware retirement. Recovery uses the committed manifest if
+interrupted between those steps. Orphan cleanup cannot unlink a live in-process
+pinned input.
+
+#51 implementation notes: foreground `compact()` runs three steps, and only the
+first and last take the writer lock. Begin checkpoints the WAL tail without the
+compaction policy, reads the manifest with its exact bytes and pins G. Build merges
+the captured segments into `segment-compact-<G+1>-<n>.bin` and
+`sparse-compact-<G+1>-<n>.bin`, each claimed with `O_CREAT|O_EXCL`, fsyncs both and
+syncs the directory. A build failure removes only those two files and drops the pin.
+Finish drops the job pin first, so retirement sees reader pins only. #51 published
+G+1 with last sequence H only if the current manifest bytes equal the captured ones;
+#52 replaced that compare with the rebase below. The config cannot change for an
+open instance because `collection.bin` is written only at creation. The durable
+manifest is published first, then the read root, the index caches, and the inputs go
+to `retire_or_reclaim`. Writes after begin stay
+in the memtable and WAL; publish does not rotate the WAL. On a lost race the output
+is removed and `compact()` recaptures from the newer manifest. After 4 attempts it
+raises "compaction retry budget exhausted". `compaction_attempts()` and
+`compaction_conflicts()` count jobs. Close before finish discards the output. A
+publish error keeps the output, because the manifest may already name it. Open
+removes strictly named unreferenced job outputs at any generation, including
+temporary files, only after obtaining an exclusive file lease. Current manifest
+references and readers surviving an earlier collection instance remain protected.
+The source writer file lock excludes live builders from this open-time cleanup.
+Unknown filenames and legacy sequence-only HNSW names remain untouched. The
+former locked memtable
+compaction used by synchronous maintenance and the no-worker path was removed on
+2026-09-30; all public compaction paths now use the captured-input builder.
+
+#52 implementation notes: `publish_compaction_output` reloads the current manifest
+under the writer lock. The captured segments must equal its leading run (names,
+checksums, sequence ranges, sparse files); otherwise the job conflicts and the
+current manifest stays untouched. The new manifest is `[output] + appended`, with
+generation current + 1 and last sequence from the current manifest. An appended
+segment starting at or below H raises instead of publishing, because flushes only
+append above the committed sequence. The HNSW reference also carries over from the
+current manifest. Compaction changes only the layout of the same live points, and a
+flush during the build may have written a newer sidecar that the captured reference
+predates; `test_flush_during_build_rebases_onto_newer_manifest` reopens and maps it
+with no graph build. Exact file leases protect retired inputs, including a
+reader pinned at an intervening flush's generation. Tombstone elision is
+unchanged and stays safe: the output is the oldest run, so an elided tombstone has
+nothing older to expose. A conflict now needs another compaction of the same inputs;
+a flush during the build no longer costs an attempt.
+
+The 2026-09-30 admission fix adds one shared full-compaction lock. Public
+`compact()`, synchronous `maintenance()`, the worker, and no-worker flush/backup
+maintenance take it before taking the writer lock. They never wait for a job while
+holding the writer lock. Every current job selects the full committed input set,
+so parallel compactions would necessarily overlap; segment-level scheduling would
+add no useful parallelism here. Flushes still append during an unlocked build and
+publication still validates/rebases as before. Low-level publication tests bypass
+admission deliberately to keep stale-output and exhausted-budget coverage.
+No-worker backup captures and pins before synchronous compaction, preserving the
+exact pre-compaction file set until its copy finishes.
+
+The worker's job runs `_compact`, the same begin, build and finish functions and the
+same 4-attempt budget as `compact()`, with the build outside the lock. Spending the
+budget is counted (`background_compaction_counts().exhausted`), not a failure: a
+failure closes every operation of the owner, while the next flush request simply
+retries. `compact()` still raises. Close sets a cancel flag under the writer lock
+before joining. A job that finishes after it discards its output and counts neither
+a conflict nor a failure. The #56 cleanup also handles a crash after a flush
+publishes during a worker build and before the rebase publish: the unreferenced
+output is eligible even if its target is at most the committed generation.
+Dropping an open collection without close joins the worker in
+`MaintenanceController.__deinit__`. Mojo destroys a field after its last use, even
+inside a destructor, so the shared worker state is used once more after the join;
+otherwise the worker could run a merge against freed state.
 
 Backup first checkpoints/captures the exact manifest and config/file set under the
 writer lock. Copy that set outside it, holding source leases and target writer lock.
@@ -185,6 +365,23 @@ unlock then reload a newer manifest. The backup is independently reopenable afte
 source is closed/deleted; default copy semantics do not introduce shared mutable
 inodes. Optional derived files are either copied with their captured metadata or
 explicitly omitted from the backup's manifest; required data must be complete.
+
+#53 originally omitted HNSW because sequence-only paths could be overwritten.
+#56 adds manifest v4 names containing sequence, creation generation and claim;
+the legacy v3 grammar remains frozen. Every output is exclusively created and
+durable before the manifest commit. Superseded sidecars retire through pins,
+including same-sequence rebuild and disable/re-enable. A backup copies that exact
+captured sidecar and retains the source advisory lock through collection close;
+the writer mutex remains free during the copy.
+Each dense, sparse and HNSW file streams through `FileHandle.read(Span)`/`write_all`
+into `<name>.tmp`, checks magic and stored CRC against its descriptor, rejects a
+size change, then fsyncs and renames. Segment CRC excludes magic; HNSW CRC includes
+it. The HNSW path retains just 64 header bytes to validate version, header size,
+reserved fields, sequence, config fingerprint and live count. One directory fsync
+precedes manifest publication. The backup report comes from the captured manifest,
+the memtable live count and the config, so no decode runs after the copy. Restore
+still strictly decodes the backup before copying (an untrusted source), so its
+memory stays O(segment); only its copy is bounded.
 
 ## Derived indexes and device ownership
 
@@ -201,11 +398,60 @@ If catch-up cannot fit the publication budget, reschedule from a newer root; nev
 publish a graph missing accepted updates. Disk checkpoint metadata stays tied to
 committed source data, independently of a newer in-memory graph.
 
+The in-memory part is implemented by `index/hnsw_rebuild.mojo` (2026-09-30).
+The job owns a pinned read root, and every accepted write records a latest dense
+descriptor under writer locking, even while the current graph is unavailable.
+A journal holds at most 1,024 distinct IDs; repeated IDs replace descriptors and
+sparse-only mutations advance coverage without repeating covered dense states.
+Graph construction and source-map indexing run outside writer. Publication
+rotates the journal by ownership transfer, applies it outside writer, then checks
+again. At most four catch-up passes and four root captures are allowed. Only an
+empty journal with matching config and complete accepted-sequence coverage can
+publish; the old graph is released after unlocking. A stale/failed candidate
+cannot replace a valid graph. The same path serves explicit rebuild and due
+flush/compaction/maintenance/backup checkpoints. This in-memory rebuild introduces
+no durable format change. The separate #56 manifest v4 migration described above
+changes sidecar naming and lifetime while preserving HNSW v1/v2 bytes.
+
 GPU cache is keyed by root/layout + field/config + device and retains the root owner.
 Keep current budget, one-context reuse, ragged candidates and readback lock semantics.
 Scratch is mutable per operation or synchronized cache; authoritative buffers are
 immutable. Dropping one snapshot must not destroy another operation's GPU state.
 No new GPU ANN or cross-vendor claim follows from this CPU ownership work.
+
+#50 implementation: `ReadGeneration.device` holds one `GpuSnapshotState` per root.
+A root fixes the layout and config and has one dense field. The process has one
+default device context, so a key per root covers root, layout, field, config and
+device. A second device would need one state per device on the root. Handles and
+operations on one root share the table and the cache. The collection keeps no
+device snapshot of its own, and a newer sequence always gets a new root and state.
+
+#54 implementation: `ReadGeneration.sq8` holds one `ArtifactState[Sq8Index]` per root
+(`index/artifact_state.mojo`), the same pattern as `device`. The root already fixes
+root/layout identity, the dense field, the config and the source coverage, and the
+SQ8 codec has no metric or training parameter (the same codes serve dot, L2 and
+cosine), so the root is the whole key and one artifact serves all three metrics.
+`absent/building/ready/failed` are explicit states. The first query builds under the
+state's lock, held from the ready check through publication, so concurrent first
+queries wait for one build and share its `ArcPointer[Sq8Index]`. A failed build
+records its message, publishes nothing and raises; the next query may retry, and
+`publish` never replaces a ready artifact. The artifact lives exactly as long as its
+root: a handle close drops only that handle's root owner, and a newer sequence or
+layout gets a new root with an absent state. Exact `search_*` is unchanged and rerank
+still rescores from the root's Float32 vectors.
+
+#55 implementation: `ReadGeneration.pq` owns `PqArtifacts`, an official `Dict`
+keyed by `(subquantizers, centroids, iterations)`. The root fixes field/config,
+layout and accepted data coverage; the existing training initializer has no random
+seed. Metric, query `k`, and rerank do not change the trained codebook. A registry
+lock guards lookup and returns a strong `ArtifactState[PqIndex]` owner; each state
+uses its own build lock, so different configurations may train independently.
+The first query gathers and builds; warm queries only score the ready artifact.
+`QueryControl` checks cancellation/deadline/resource bounds; publication happens
+only after a complete build and final checkpoint. A cancelled waiter does not
+change another query's ready state. Artifacts are memory-only and live with their
+root, with no eviction or durable format change. Cold/warm costs and limits are in
+[`2026-09-30-pq-artifacts.md`](../benchmarks/2026-09-30-pq-artifacts.md).
 
 ## Rejected alternatives and validation mapping
 
@@ -217,18 +463,19 @@ No new GPU ANN or cross-vendor claim follows from this CPU ownership work.
 | Manifest generation as the only cache key | WAL-only writes and layout-only publications make it insufficient. |
 | Returning Span while allowing unrelated close/reallocation | Compiler probe shows ownership must be held explicitly per operation/export. |
 | Release writer lock without a publication predicate | Can lose a newer manifest or accepted tail. |
+| Strict byte compare-and-publish for compaction | Every flush during a build conflicts; #51 measured all 20 calls exhausting the budget with 50 ms flushes. Rebase on the leading run instead (#52). |
 | Implement all vector dtypes before sharing F32 | Delays the largest current cost; field boundary is enough for staged implementation. |
 
 | Invariant | Existing evidence to preserve | New regression assigned below |
 |---|---|---|
 | Full-point visibility and owned get | `test_snapshot.mojo`, `test_concurrency.mojo` batch boundaries | #47–#49: equal G/different S, tombstone/reinsert, pointer-sharing and sparse/payload-only updates |
-| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point, merge backpressure; capture does not clone base bytes |
-| Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50/#58: close during acquired operation, exported arrays after all parent handles close |
-| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51/#52: lock-free build with concurrent writes/flush, last release, cancellation and worker failure |
-| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51/#53: output fsync/manifest/root-publication/cleanup crash boundaries and stale build |
-| Backup exact captured generation | `test_storage_operations.mojo` | #53: concurrent source flush/compact, bounded RSS, independent restore and corrupt source |
-| Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54–#56: build-once counters, full cache keys, failed build keeps old artifact, mutation catch-up |
-| GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50: rerun affected real-device close/budget/freshness tests when GPU ownership is changed |
+| Bounded capture and delta lifetime | This cost harness and owner probe | #48: rollover, oversized point; capture does not clone base bytes. #52 done: `test_background_publication.mojo` (worker merge at the eighth run, prefix-only publish, stale merge after reset, inline merge without a worker, backpressure, close during a wait, merge failure; the flush stall at eight L0 segments, close and compaction failure during it) |
+| Snapshot/export survives parent close | Existing snapshot/Arrow tests | #50 done: `test_generation_close.mojo` (acquired operation, racing handle/collection close, worker errors); #58: exported arrays after all parent handles close |
+| Pins and last-owner reclamation | `test_maintenance.mojo`, snapshot pin/RAII tests | #51 done: `test_compaction_publish.mojo` (concurrent writes, retry budget, pinned inputs, checksum/cancel/IO failure, orphan cleanup); #52 done: its conflict tests now rebase (flush during build + reopen with mapped HNSW, racing flushes without conflicts); `test_background_publication.mojo` (worker build without the lock, foreground and worker on the same inputs, worker checksum/IO failure, close during build, counted budget exhaustion, flushes faster than a build, write+flush+worker stress, drop without close) |
+| Durable publication and recovery | `tests/crash/test_checkpoint_order.mojo`, sparse checkpoint, batch atomicity | #51 done: compaction boundaries in `test_checkpoint_order.mojo` (output fsync, manifest publish, root swap, cleanup); #52 done: rebase publish boundary after a flush during the build; #53 done: `tests/crash/test_backup_publication.mojo` (torn copy and no manifest, manifest temp not renamed, retry over the leftovers) |
+| Backup exact captured generation | `test_storage_operations.mojo` | #53 done: `test_storage_operations.mojo` (flush, compact and sidecar removal during the copy, lease release reclaims, restore after the source is deleted, every buffer size, corrupt/mislabeled/torn source, committed/WAL/active target); `test_backup_bounded_memory.mojo` (128 MiB copy) |
+| Index freshness and reuse | Quantization/HNSW checkpoint/rebuild tests | #54 done: `test_quantized_search.mojo` (build once per root with oracle parity for three metrics with and without rerank, sibling handle shares the state, new root after an update and after a flush, failed build keeps the ready root artifact and retries, artifact survives sibling handle and collection close, eight concurrent first queries build once, first ready artifact is never replaced); #55–#56: full cache keys, mutation catch-up |
+| GPU owner/budget correctness | Current CPU GPU-policy tests and 9 prior real-device tests | #50 done: `tests/gpu/test_gpu_cache.mojo` close during device queries, sibling sharing, budget, same G/different S freshness on Apple M4 Pro |
 | Typed buffer bounds and ownership | #45 real Python/Mojo Arrow tests | #57/#58: output pointer/release/slice, filtered gather copied-byte accounting |
 
 Execution dependencies and file-sized work packages are in [tasks/todo.md](../../tasks/todo.md).

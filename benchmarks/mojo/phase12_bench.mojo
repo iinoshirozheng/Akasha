@@ -1,10 +1,12 @@
+from akasha.common.config import CollectionConfig
+from akasha.storage.read_generation import ReadGenerationCache
 from akasha import PersistentCollection, ReadSnapshot
 from akasha.index.flat import FlatIndex, SearchResult
 from akasha.index.quantization import PqIndex, Sq8Index
-from akasha.index.sparse import SparseIndex
 from akasha.storage.filesystem import ensure_directory, remove_file_if_exists
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.manifest import load_manifest
 from std.memory import ArcPointer
 from std.time import perf_counter_ns
 
@@ -18,14 +20,15 @@ def _vector(seed: Int) -> List[Float32]:
     var vector = List[Float32](capacity=_DIMENSION)
     for column in range(_DIMENSION):
         vector.append(
-            Float32((seed * 37 + column * 19 + seed * column * 3) % 251)
-            / 37.0
+            Float32((seed * 37 + column * 19 + seed * column * 3) % 251) / 37.0
             + 0.01
         )
     return vector^
 
 
-def _recall(exact: List[SearchResult], approximate: List[SearchResult]) -> Float64:
+def _recall(
+    exact: List[SearchResult], approximate: List[SearchResult]
+) -> Float64:
     var matches = 0
     for expected in exact:
         for actual in approximate:
@@ -120,10 +123,16 @@ def _parallel_and_rerank_gate() raises:
         entries.append(MemTableEntry(id, UInt64(id), False, vector^))
     var memtable = MemTable(_DIMENSION)
     memtable.apply_recovered_entries(entries)
-    var sparse = SparseIndex()
     var pins = ArcPointer(GenerationPinRegistry())
-    var snapshot = ReadSnapshot.capture(
-        _DIMENSION, 0, UInt64(256), memtable, sparse, pins
+    var cache = ReadGenerationCache()
+    var snapshot = ReadSnapshot(
+        cache.acquire(
+            CollectionConfig.defaults(_DIMENSION),
+            0,
+            UInt64(256),
+            memtable,
+            pins,
+        )
     )
     var query = _vector(50_000)
     var scalar_start = perf_counter_ns()
@@ -198,22 +207,35 @@ def _reopen_benchmark() raises:
     var warm = PersistentCollection.open(path, _DIMENSION)
     var warm_result = warm.search_l2_approx(_vector(99_999), 10, 80)
     var warm_ns = perf_counter_ns() - warm_start
-    if not warm.hnsw_cache_hit() or not warm.metadata_cache_hit():
+    if not warm._hnsw_checkpoint_was_hit or not warm.metadata_cache_hit():
         raise Error("Phase 12 warm reopen cache gate failed")
     if len(warm_result) != 10:
         raise Error("Phase 12 warm reopen query gate failed")
     warm.close()
 
+    # Current manifests use the HNSW sidecar, not the legacy hnsw.cache.
+    var checkpoint = load_manifest(path, _DIMENSION)
+    remove_file_if_exists(path + "/" + checkpoint.hnsw_name.value())
     remove_file_if_exists(path + "/hnsw.cache")
     remove_file_if_exists(path + "/metadata.cache")
     var cold_start = perf_counter_ns()
     var cold = PersistentCollection.open(path, _DIMENSION)
     var cold_result = cold.search_l2_approx(_vector(99_999), 10, 80)
     var cold_ns = perf_counter_ns() - cold_start
-    if cold.hnsw_cache_hit() or cold.metadata_cache_hit():
+    if (
+        cold._hnsw_checkpoint_was_hit
+        or cold.hnsw_cache_hit()
+        or cold.metadata_cache_hit()
+    ):
         raise Error("Phase 12 cold reopen cache gate failed")
-    if cold_result[0].id != warm_result[0].id:
-        raise Error("Phase 12 reopen result parity gate failed")
+    if len(cold_result) != len(warm_result):
+        raise Error("Phase 12 reopen result count gate failed")
+    for rank in range(len(warm_result)):
+        if (
+            cold_result[rank].id != warm_result[rank].id
+            or cold_result[rank].score != warm_result[rank].score
+        ):
+            raise Error("Phase 12 reopen result parity gate failed")
     print("phase12 warm reopen+query ns", warm_ns, "cold ns", cold_ns)
     cold.close()
 

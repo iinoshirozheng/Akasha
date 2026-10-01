@@ -36,14 +36,10 @@ struct _FailOnceSyncOps(_CollectionConfigPublishOps):
     def remove_temp(mut self, path: String) raises:
         remove_file_if_exists(path)
 
-    def write_temp(
-        mut self, path: String, bytes: List[UInt8]
-    ) raises:
+    def write_temp(mut self, path: String, bytes: List[UInt8]) raises:
         write_file_sync(path, bytes)
 
-    def replace_temp(
-        mut self, source: String, destination: String
-    ) raises:
+    def replace_temp(mut self, source: String, destination: String) raises:
         atomic_replace(source, destination)
 
     def sync_parent(mut self, directory: String) raises:
@@ -64,14 +60,10 @@ struct _WriteAndCleanupFailOps(_CollectionConfigPublishOps):
             raise Error("injected cleanup failure")
         remove_file_if_exists(path)
 
-    def write_temp(
-        mut self, path: String, bytes: List[UInt8]
-    ) raises:
+    def write_temp(mut self, path: String, bytes: List[UInt8]) raises:
         raise Error("injected primary write failure")
 
-    def replace_temp(
-        mut self, source: String, destination: String
-    ) raises:
+    def replace_temp(mut self, source: String, destination: String) raises:
         pass
 
     def sync_parent(mut self, directory: String) raises:
@@ -127,26 +119,19 @@ def _with_valid_checksum(var bytes: List[UInt8]) -> List[UInt8]:
     return bytes^
 
 
-def _set_u16(
-    var bytes: List[UInt8], offset: Int, value: UInt16
-) -> List[UInt8]:
+def _set_u16(var bytes: List[UInt8], offset: Int, value: UInt16) -> List[UInt8]:
     bytes[offset] = UInt8(value)
     bytes[offset + 1] = UInt8(value >> UInt16(8))
     return _with_valid_checksum(bytes^)
 
 
-def _set_u32(
-    var bytes: List[UInt8], offset: Int, value: UInt32
-) -> List[UInt8]:
+def _set_u32(var bytes: List[UInt8], offset: Int, value: UInt32) -> List[UInt8]:
     for byte_index in range(4):
-        bytes[offset + byte_index] = UInt8(
-            value >> UInt32(byte_index * 8)
-        )
+        bytes[offset + byte_index] = UInt8(value >> UInt32(byte_index * 8))
     return _with_valid_checksum(bytes^)
 
 
-def test_round_trips_every_valid_metric_scalar_combination_deterministically(
-) raises:
+def test_round_trips_every_valid_metric_scalar_combination_deterministically() raises:
     for metric_tag in range(3):
         for scalar_tag in range(4):
             if metric_tag == 1 and scalar_tag == 3:
@@ -166,9 +151,7 @@ def test_round_trips_every_valid_metric_scalar_combination_deterministically(
 def test_round_trips_default_and_inclusive_boundary_configurations() raises:
     var defaults = CollectionConfig.defaults(7)
     var default_bytes = encode_collection_config(defaults)
-    assert_equal(
-        decode_collection_config_bytes(default_bytes^), defaults
-    )
+    assert_equal(decode_collection_config_bytes(default_bytes^), defaults)
 
     var minimum = CollectionConfig(
         dimension=1,
@@ -185,9 +168,7 @@ def test_round_trips_default_and_inclusive_boundary_configurations() raises:
         level_seed=UInt64(0),
     )
     var minimum_bytes = encode_collection_config(minimum)
-    assert_equal(
-        decode_collection_config_bytes(minimum_bytes^), minimum
-    )
+    assert_equal(decode_collection_config_bytes(minimum_bytes^), minimum)
 
     var maximum = CollectionConfig(
         dimension=4_294_967_295,
@@ -204,22 +185,72 @@ def test_round_trips_default_and_inclusive_boundary_configurations() raises:
         level_seed=UInt64.MAX,
     )
     var maximum_bytes = encode_collection_config(maximum)
-    assert_equal(
-        decode_collection_config_bytes(maximum_bytes^), maximum
-    )
+    assert_equal(decode_collection_config_bytes(maximum_bytes^), maximum)
 
 
 def test_default_config_matches_and_decodes_independent_golden_vector() raises:
     # Independent struct.pack/zlib fixture; CRC32 is 0x253BCFF8.
     var golden: List[UInt8] = [
-        0x41, 0x4B, 0x43, 0x46, 0x01, 0x00, 0x00, 0x00,
-        0x07, 0x00, 0x00, 0x00, 0x01, 0x00, 0x10, 0x00,
-        0x20, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
-        0x40, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
-        0x20, 0x00, 0x19, 0x00, 0x10, 0x27, 0x00, 0x00,
-        0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xF8, 0xCF, 0x3B, 0x25,
+        0x41,
+        0x4B,
+        0x43,
+        0x46,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x07,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x10,
+        0x00,
+        0x20,
+        0x00,
+        0x00,
+        0x00,
+        0x80,
+        0x00,
+        0x00,
+        0x00,
+        0x40,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x02,
+        0x00,
+        0x00,
+        0x20,
+        0x00,
+        0x19,
+        0x00,
+        0x10,
+        0x27,
+        0x00,
+        0x00,
+        0xA5,
+        0xA5,
+        0xA5,
+        0xA5,
+        0xA5,
+        0xA5,
+        0xA5,
+        0xA5,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xF8,
+        0xCF,
+        0x3B,
+        0x25,
     ]
     var encoded = encode_collection_config(CollectionConfig.defaults(7))
     _assert_bytes_equal(encoded, golden)
@@ -258,7 +289,17 @@ def test_rejects_magic_version_flags_reserved_tags_and_checksum() raises:
         _ = decode_collection_config_bytes(flags^)
 
     var reserved_offsets: List[Int] = [
-        18, 19, 35, 48, 49, 50, 51, 52, 53, 54, 55
+        18,
+        19,
+        35,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
     ]
     for offset in reserved_offsets:
         var reserved = encode_collection_config(CollectionConfig.defaults(8))

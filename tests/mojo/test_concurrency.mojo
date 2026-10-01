@@ -31,9 +31,7 @@ def _ann_collection(path: String) raises -> PersistentCollection:
     var collection = PersistentCollection.open_with_config(path, config)
     for id in range(128):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id % 2 == 0))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id % 2 == 0)))
         collection.upsert_document(id, [Float32(id + 1)], fields^)
     return collection^
 
@@ -51,16 +49,14 @@ def _run_ann_entrypoint(
     if operation == 2:
         return collection.search_cosine_approx([1.0], 1, 64)[0].id
     if operation == 3:
-        return collection.search_dot_approx_where(
-            [1.0], 1, 64, expression
-        )[0].id
+        return collection.search_dot_approx_where([1.0], 1, 64, expression)[
+            0
+        ].id
     if operation == 4:
-        return collection.search_l2_approx_where(
-            [128.0], 1, 64, expression
-        )[0].id
-    return collection.search_cosine_approx_where(
-        [1.0], 1, 64, expression
-    )[0].id
+        return collection.search_l2_approx_where([128.0], 1, 64, expression)[
+            0
+        ].id
+    return collection.search_cosine_approx_where([1.0], 1, 64, expression)[0].id
 
 
 def _valid_ann_result(operation: Int, id: Int) -> Bool:
@@ -199,9 +195,7 @@ def test_ann_queries_serialize_with_explicit_rebuild_and_release_lock() raises:
 
 
 def test_ann_queries_serialize_with_flush_rebuild_and_release_lock() raises:
-    var collection = _ann_collection(
-        "/tmp/akasha-task19-concurrent-ann-flush"
-    )
+    var collection = _ann_collection("/tmp/akasha-task19-concurrent-ann-flush")
     var failures = Atomic[DType.int64](0)
 
     def query_or_flush(task: Int) {mut collection, mut failures}:
@@ -233,7 +227,6 @@ def test_ann_queries_serialize_with_flush_rebuild_and_release_lock() raises:
     collection.close()
 
 
-
 def test_concurrent_unchanged_captures_share_one_root_and_independent_handles() raises:
     var path = String("/tmp/akasha-47-concurrent-shared-root")
     _reset(path)
@@ -242,12 +235,14 @@ def test_concurrent_unchanged_captures_share_one_root_and_independent_handles() 
     var failures = Atomic[DType.int64](0)
     var addresses = List[Int](length=16, fill=0)
 
-    def capture_and_close(task: Int) {mut collection, mut failures, mut addresses}:
+    def capture_and_close(
+        task: Int,
+    ) {mut collection, mut failures, mut addresses}:
         try:
             var first = collection.snapshot()
             var second = collection.snapshot()
-            addresses[task] = Int(first._root.value().unsafe_ptr())
-            if not (first._root.value() is second._root.value()):
+            addresses[task] = Int(first._slot[].root.value().unsafe_ptr())
+            if not (first._slot[].root.value() is second._slot[].root.value()):
                 _ = failures.fetch_add(1)
             first.close()
             if second.search_dot([1.0], 1)[0].score != 2.0:

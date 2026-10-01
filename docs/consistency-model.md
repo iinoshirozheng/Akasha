@@ -39,10 +39,15 @@ durable does flush atomically replace the dense and sparse WALs with empty
 fsynced files and sync the directory.
 
 When four L0 generations accumulate, flush coalesces a request into one bounded
-background slot. The worker acquires the writer lock, merges only the
-generation named by the manifest, writes paired bases, and publishes a new
-generation. A WAL accepted after that manifest remains untouched and is
-replayed above the compacted checkpoint. `wait_for_maintenance()` drains the
+background slot. Under the writer lock the worker pins the generation named by
+the manifest. It merges those segments into paired bases without the lock, then
+takes the lock briefly to publish a new generation in which the bases replace
+their inputs and segments flushed meanwhile stay after them. A WAL accepted
+after the capture remains untouched and is replayed above the compacted
+checkpoint. A flush that finds eight L0 segments waits without the lock until
+the compaction publishes. The worker also merges sealed in-memory read runs; a
+writer that finds 16 sealed runs waits without the lock until a merge publishes.
+`wait_for_maintenance()` drains the
 queue; `close()` drains and joins it before releasing the collection lock. The
 first worker error is surfaced deterministically. If the portable native worker
 cannot load, threshold compaction runs synchronously. Explicit `compact()` and

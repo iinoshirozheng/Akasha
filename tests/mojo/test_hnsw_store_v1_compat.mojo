@@ -12,7 +12,13 @@ from akasha.storage.hnsw_store import (
     encode_hnsw_snapshot,
     open_hnsw_snapshot_view,
 )
-from std.testing import assert_almost_equal, assert_equal, assert_raises, assert_true, TestSuite
+from std.testing import (
+    assert_almost_equal,
+    assert_equal,
+    assert_raises,
+    assert_true,
+    TestSuite,
+)
 
 
 comptime _EMPTY_FIXTURE = "tests/fixtures/hnsw-v1-empty.bin"
@@ -92,17 +98,19 @@ def test_frozen_v1_fixtures_support_owned_and_mapped_queries() raises:
         read_file_bytes(_GRAPH_FIXTURE), config, UInt64(77)
     )
     var actual_owned = owned.search([0.7, 1.3], 5, ef_search=32)
-    var mapped = open_hnsw_snapshot_view(
-        _GRAPH_FIXTURE, config, UInt64(77)
-    )
+    var mapped = open_hnsw_snapshot_view(_GRAPH_FIXTURE, config, UInt64(77))
     var actual_mapped = mapped.search([0.7, 1.3], 5, ef_search=32)
     assert_equal(len(actual_owned), len(expected))
     assert_equal(len(actual_mapped), len(expected))
     for index in range(len(expected)):
         assert_equal(actual_owned[index].id, expected[index].id)
         assert_equal(actual_mapped[index].id, expected[index].id)
-        assert_almost_equal(actual_owned[index].score, expected[index].score, atol=1.0e-6)
-        assert_almost_equal(actual_mapped[index].score, expected[index].score, atol=1.0e-6)
+        assert_almost_equal(
+            actual_owned[index].score, expected[index].score, atol=1.0e-6
+        )
+        assert_almost_equal(
+            actual_mapped[index].score, expected[index].score, atol=1.0e-6
+        )
     mapped.close()
 
 
@@ -110,7 +118,9 @@ def test_crc_valid_v1_non_f32_tags_are_rejected_owned_and_mapped() raises:
     var directory = String("/tmp/akasha-hnsw-v1-non-f32")
     ensure_directory(directory)
     var scalar_kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in scalar_kinds:
         var config = _config()

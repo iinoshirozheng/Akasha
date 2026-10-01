@@ -1,4 +1,6 @@
 from akasha.compute.simd import (
+    _prepare_f32_query,
+    _prepared_f32_score,
     simd_cosine_similarity,
     simd_dot_product,
     simd_l2_squared_distance,
@@ -96,11 +98,12 @@ struct FlatIndex:
         var topk = BoundedTopK(
             result_count, smaller_is_better=metric == _L2_METRIC
         )
+        var query_norm = _prepare_f32_query(metric, query)
         for record_index in range(len(self._records)):
             topk.offer(
                 self._records[record_index].id,
-                authoritative_f32_score(
-                    metric, query, self._records[record_index].values
+                _prepared_f32_score(
+                    metric, query, self._records[record_index].values, query_norm
                 ),
             )
 

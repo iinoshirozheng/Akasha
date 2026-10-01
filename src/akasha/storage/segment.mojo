@@ -215,9 +215,7 @@ def decode_segment_bytes(
             entries.append(MemTableEntry(id, sequence, True, List[Float32]()))
             continue
 
-        var values = List[Float32](capacity=dimension)
-        for _ in range(dimension):
-            values.append(reader.read_f32())
+        var values = reader.read_f32s(dimension)
         var fields = List[DocumentField]()
         if version != _VERSION_V1:
             var payload_length = Int(reader.read_u32())
@@ -296,11 +294,11 @@ def _validate_entries(
             if kind == SEGMENT_KIND_BASE:
                 raise Error("base segment cannot contain tombstones")
             if (
-                len(entries[index].values) != 0
-                or len(entries[index].fields) != 0
+                len(entries[index].values()) != 0
+                or len(entries[index].fields()) != 0
             ):
                 raise Error("segment tombstone must not contain a value")
-        elif len(entries[index].values) != dimension:
+        elif len(entries[index].values()) != dimension:
             raise Error("segment vector dimension mismatch")
 
 
@@ -322,9 +320,9 @@ def _write_prefix(
 
 
 def _write_live_body(mut writer: BinaryWriter, entry: MemTableEntry) raises:
-    for value in entry.values:
+    for value in entry.values():
         writer.write_f32(value)
-    var payload = encode_payload(entry.fields)
+    var payload = encode_payload(entry.fields())
     writer.write_u32(UInt32(len(payload)))
     writer.write_bytes(payload)
 

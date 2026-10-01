@@ -17,8 +17,10 @@ struct ViewRoot(Movable):
     var sequence: UInt64
 
     def __init__(
-        out self, var base: ArcPointer[FrozenField],
-        var deltas: List[ArcPointer[FrozenField]], sequence: UInt64,
+        out self,
+        var base: ArcPointer[FrozenField],
+        var deltas: List[ArcPointer[FrozenField]],
+        sequence: UInt64,
     ):
         self.base = base^
         self.deltas = deltas^
@@ -47,7 +49,9 @@ struct FieldLease(Movable):
         self._owner = Optional[ArcPointer[FrozenField]]()
 
 
-def _readonly_values(field: FrozenField) -> Span[Float32, origin_of(field.values)]:
+def _readonly_values(
+    field: FrozenField,
+) -> Span[Float32, origin_of(field.values)]:
     return Span(field.values)
 
 
@@ -55,7 +59,9 @@ def main() raises:
     var original: List[Float32] = [1.0, 2.0, 3.0]
     var address = Int(original.unsafe_ptr())
     var base = ArcPointer(FrozenField(original^))
-    var old_root = ArcPointer(ViewRoot(base, List[ArcPointer[FrozenField]](), 7))
+    var old_root = ArcPointer(
+        ViewRoot(base, List[ArcPointer[FrozenField]](), 7)
+    )
     var old_snapshot = old_root
     assert_true(old_snapshot is old_root)
     var output = FieldLease(old_root[].base)
@@ -84,4 +90,7 @@ def main() raises:
     assert_equal(output._owner.value().count(), UInt64(1))
     output.close()
     output.close()
-    print("PASS moved base/delta buffers, distinct sequence roots, shared handles, exported lease after owner release")
+    print(
+        "PASS moved base/delta buffers, distinct sequence roots, shared"
+        " handles, exported lease after owner release"
+    )

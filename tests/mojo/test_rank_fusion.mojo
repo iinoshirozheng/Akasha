@@ -42,12 +42,18 @@ def test_rrf_validates_parameters() raises:
 def test_rrf_empty_one_sided_disjoint_and_signed_ids() raises:
     var empty = List[SearchResult]()
     assert_equal(len(reciprocal_rank_fusion(empty, empty, 1)), 0)
-    var dense: List[SearchResult] = [SearchResult(-8, 10.0), SearchResult(Int.MIN, 0.0)]
+    var dense: List[SearchResult] = [
+        SearchResult(-8, 10.0),
+        SearchResult(Int.MIN, 0.0),
+    ]
     var one_sided = reciprocal_rank_fusion(empty, dense, 10, 1)
     assert_equal(len(one_sided), 2)
     assert_equal(one_sided[0].id, -8)
     assert_equal(one_sided[0].score, 0.5)
-    var sparse: List[SearchResult] = [SearchResult(-9, -1.0), SearchResult(8, 0.0)]
+    var sparse: List[SearchResult] = [
+        SearchResult(-9, -1.0),
+        SearchResult(8, 0.0),
+    ]
     var disjoint = reciprocal_rank_fusion(dense, sparse, 10, 1)
     assert_equal(disjoint[0].id, -9)
     assert_equal(disjoint[1].id, -8)
@@ -76,7 +82,10 @@ def test_rrf_rehash_overlap_and_repeated_ids_match_ordered_sum() raises:
             assert_equal(hit.score, expected)
             if hit_index > 0:
                 var previous = fused[hit_index - 1]
-                assert_true(previous.score > hit.score or (previous.score == hit.score and previous.id < hit.id))
+                assert_true(
+                    previous.score > hit.score
+                    or (previous.score == hit.score and previous.id < hit.id)
+                )
 
 
 def main() raises:

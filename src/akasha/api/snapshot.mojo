@@ -1,54 +1,71 @@
+from akasha.document.point_state import PointState
+from akasha.document.vector_value import VectorValue
+from akasha.query.field_search import (
+    FieldSearchResult,
+    FieldSearchExecution,
+    search_generation_field_reported,
+)
+from akasha.query.field_ann import search_generation_field_approx
+from akasha.query.field_ivf import search_generation_field_ivf
+from akasha.index.field_ivf import IvfOptions
+from akasha.query.field_fusion import FieldQuery, search_generation_fields
 from akasha.compute.simd import (
     simd_cosine_similarity,
     simd_dot_product,
     simd_l2_squared_distance,
 )
 from akasha.common.config import CollectionConfig
+from akasha.api.scanner import ReadScanner
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import (
     DeviceBatchResult,
     execute_snapshot_device_batch,
 )
 from akasha.compute.gpu.planner import GpuExecutionOptions
-from akasha.compute.gpu.context import GpuSnapshotState
 from akasha.document.record import (
     clone_fields,
     DocumentRecord,
     FieldProjection,
     project_document,
 )
-from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.quantization import PqIndex, Sq8Index
-from akasha.index.sparse import (
-    SparseElement,
-    SparseIndex,
-    SparseRecord,
-    validate_sparse,
-)
-from akasha.query.executor import candidate_ordinals
+from akasha.index.sparse import SparseElement, SparseRecord, validate_sparse
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.fusion import reciprocal_rank_fusion
-from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.parallel_scan import execute_parallel_scan
 from akasha.query.batch_executor import (
     BATCH_COSINE_METRIC,
     BATCH_DOT_METRIC,
     BATCH_L2_METRIC,
     execute_exact_candidate_batch,
-    execute_exact_batch,
+    execute_exact_ordinal_batch,
 )
-from akasha.storage.memtable import MemTable
-from akasha.storage.generation_pins import GenerationPinRegistry
-from akasha.storage.read_generation import ReadBase, ReadGeneration
+from akasha.storage.read_generation import (
+    contains_sorted,
+    ReadGeneration,
+    ReadRun,
+)
 from std.math import isfinite
 from std.memory import ArcPointer
+from std.utils import BlockingScopedLock, BlockingSpinLock
 
 
 comptime _DOT_METRIC = 0
 comptime _L2_METRIC = 1
 comptime _COSINE_METRIC = 2
+
+
+struct _RootSlot(Movable):
+    """A handle's root owner and the lock that guards it."""
+
+    var lock: BlockingSpinLock
+    var root: Optional[ArcPointer[ReadGeneration]]
+
+    def __init__(out self, var root: ArcPointer[ReadGeneration]):
+        self.lock = BlockingSpinLock()
+        self.root = Optional(root^)
 
 
 struct ReadSnapshot(Movable):
@@ -58,44 +75,39 @@ struct ReadSnapshot(Movable):
     var _dimension: Int
     var _generation: UInt64
     var _sequence: UInt64
-    var _root: Optional[ArcPointer[ReadGeneration]]
-    var _gpu_state: ArcPointer[GpuSnapshotState]
+    # Shared behind a pointer so close can race queries on one handle.
+    var _slot: ArcPointer[_RootSlot]
 
     def __init__(out self, var root: ArcPointer[ReadGeneration]):
         self._config = root[].config.copy()
         self._dimension = root[].config.dimension
         self._generation = root[].generation
         self._sequence = root[].sequence
-        # Device scratch/cache is still per handle. Closing a sibling must not
-        # release another handle's GPU state merely because CPU data is shared.
-        self._gpu_state = ArcPointer(GpuSnapshotState(self._generation, self._sequence))
-        self._root = Optional(root^)
-
-    @staticmethod
-    def capture(
-        config: CollectionConfig,
-        generation: UInt64,
-        sequence: UInt64,
-        memtable: MemTable,
-        sparse: SparseIndex,
-        pins: ArcPointer[GenerationPinRegistry],
-    ) raises -> ReadSnapshot:
-        return ReadSnapshot(
-            ReadGeneration.capture(config, generation, sequence, 1, memtable, sparse, pins)
-        )
+        self._slot = ArcPointer(_RootSlot(root^))
 
     def close(mut self):
-        """Drop this handle's data owner and device state; idempotent."""
-        if not self._root:
-            return
-        self._gpu_state[].release()
-        self._root = Optional[ArcPointer[ReadGeneration]]()
+        """Stop new operations and drop this handle's root owner; idempotent.
 
-    def _base(self) raises -> ref[origin_of(self._root.value()[]._base[], self)] ReadBase:
-        # Union with immutable self makes the returned borrow readonly despite
-        # ArcPointer's mutable dereference. No borrowed buffer escapes the API.
-        self._ensure_open()
-        return self._root.value()[]._base[]
+        Acquired operations own the root and finish unaffected. The last owner
+        releases the root's rows, device state and generation pin, outside
+        the handle lock.
+        """
+        var released = Optional[ArcPointer[ReadGeneration]]()
+        with BlockingScopedLock(self._slot[].lock):
+            if self._slot[].root:
+                released = Optional(self._slot[].root.take())
+        _ = released^
+
+    def _acquire(self) raises -> ArcPointer[ReadGeneration]:
+        """Return an operation owner of the root; queries read only through it.
+        """
+        var root = Optional[ArcPointer[ReadGeneration]]()
+        with BlockingScopedLock(self._slot[].lock):
+            if self._slot[].root:
+                root = Optional(self._slot[].root.value().copy())
+        if not root:
+            raise Error("snapshot is closed")
+        return root.take()
 
     def generation(self) -> UInt64:
         return self._generation
@@ -110,117 +122,297 @@ struct ReadSnapshot(Movable):
         return self._config.fingerprint()
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
-        self._ensure_open()
-        return self._base().memtable.get(id)
+        var root = self._acquire()
+        ref view = root[]
+        var location = view.find(id)
+        if (
+            location[0] < 0
+            or not view.run(location[0])
+            .memtable.entry_ref_at(location[1])
+            .has_dense()
+        ):
+            return Optional[DocumentRecord]()
+        return Optional(self._record_at(view, location))
+
+    def get_point(self, id: Int) raises -> Optional[PointState]:
+        """Return an immutable point descriptor retaining all typed owners."""
+        var root = self._acquire()
+        var location = root[].find(id)
+        if location[0] < 0:
+            return Optional[PointState]()
+        return Optional(
+            root[]
+            .run(location[0])
+            .memtable.entry_ref_at(location[1])
+            .to_point()
+        )
+
+    def search_field(
+        self,
+        name: String,
+        query: VectorValue,
+        k: Int,
+        var expression: Optional[FilterExpression] = None,
+        *,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.search_field_reported(
+            name,
+            query,
+            k,
+            expression^,
+            approximate=approximate,
+            ef_search=ef_search,
+            rerank_k=rerank_k,
+            ivf=ivf,
+            control=control,
+        )
+        return execution.take_results()
+
+    def search_field_reported(
+        self,
+        name: String,
+        query: VectorValue,
+        k: Int,
+        var expression: Optional[FilterExpression] = None,
+        *,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        if not root[].catalog:
+            raise Error("named search requires a field-aware collection")
+        ref catalog = root[].catalog.value()[]
+        var ordinal = catalog.named_ordinal(name)
+        if ordinal < 0:
+            raise Error("unknown named vector field")
+        if ivf:
+            if approximate or ef_search != -1 or rerank_k != 0:
+                raise Error("IVF cannot be combined with HNSW options")
+            return search_generation_field_ivf(
+                root[], catalog.field_at(ordinal), query, k, expression,
+                ivf.value().nlist, ivf.value().nprobe, ivf.value().iterations, control,
+            )
+        if approximate:
+            return search_generation_field_approx(
+                root[],
+                catalog.field_at(ordinal),
+                query,
+                k,
+                expression,
+                ef_search,
+                rerank_k,
+                control,
+            )
+        if ef_search != -1 or rerank_k != 0:
+            raise Error(
+                "ef_search and rerank_k require approximate field search"
+            )
+        return search_generation_field_reported(
+            root[], catalog.field_at(ordinal), query, k, expression, control
+        )
+
+    def search_fields_reported(
+        self,
+        queries: List[FieldQuery],
+        k: Int,
+        *,
+        fetch_k: Int = 100,
+        rank_constant: Int = 60,
+        var expression: Optional[FilterExpression] = None,
+        control: Optional[QueryControl] = None,
+        rerank: Optional[FieldQuery] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        return search_generation_fields(
+            root[], queries, k, fetch_k, rank_constant, expression, control, rerank
+        )
+
+    def search_fields(
+        self,
+        queries: List[FieldQuery],
+        k: Int,
+        *,
+        fetch_k: Int = 100,
+        rank_constant: Int = 60,
+        var expression: Optional[FilterExpression] = None,
+        control: Optional[QueryControl] = None,
+        rerank: Optional[FieldQuery] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.search_fields_reported(
+            queries,
+            k,
+            fetch_k=fetch_k,
+            rank_constant=rank_constant,
+            expression=expression^,
+            control=control,
+            rerank=rerank,
+        )
+        return execution.take_results()
 
     def get_projected(
         self, id: Int, projection: FieldProjection
     ) raises -> Optional[DocumentRecord]:
-        self._ensure_open()
-        var document = self._base().memtable.get(id)
+        var document = self.get(id)
         if not Bool(document):
             return Optional[DocumentRecord]()
         return Optional(project_document(document.value(), projection))
 
     def documents(self) raises -> List[DocumentRecord]:
         """Return owned live records for logical export."""
-        self._ensure_open()
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
-        var records = List[DocumentRecord](capacity=len(ordinals))
-        for ordinal in ordinals:
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            records.append(
-                DocumentRecord(
-                    entry.id,
-                    entry.sequence,
-                    entry.values.copy(),
-                    clone_fields(entry.fields),
-                )
-            )
+        var root = self._acquire()
+        ref view = root[]
+        var locations = view.id_ordered_locations()
+        var records = List[DocumentRecord](capacity=len(locations))
+        for location in locations:
+            if (
+                view.run(location[0])
+                .memtable.entry_ref_at(location[1])
+                .has_dense()
+            ):
+                records.append(self._record_at(view, location))
         return records^
+
+    def scanner(
+        self,
+        batch_size: Int = 1024,
+        var expression: Optional[FilterExpression] = Optional[
+            FilterExpression
+        ](),
+    ) raises -> ReadScanner:
+        """Capture this view for bounded run/slot iteration, independent of close.
+        """
+        return ReadScanner(self._acquire(), batch_size, expression^)
 
     def sparse_records(self) raises -> List[SparseRecord]:
         """Return an owned sparse snapshot for logical export."""
-        self._ensure_open()
-        var source = self._base().sparse.records()
-        var records = List[SparseRecord](capacity=len(source))
-        for index in range(len(source)):
-            records.append(source[index].clone())
+        var root = self._acquire()
+        ref view = root[]
+        var records = List[SparseRecord]()
+        for location in view.id_ordered_locations():
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+            if entry.has_sparse():
+                records.append(SparseRecord(entry.id, entry.sparse().copy()))
         return records^
+
+    def _record_at(
+        self, view: ReadGeneration, location: Tuple[Int, Int]
+    ) raises -> DocumentRecord:
+        """Materialize an owned record; later mutation cannot reach the run."""
+        ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+        return DocumentRecord(
+            entry.id,
+            entry.document_sequence,
+            entry.values().copy(),
+            clone_fields(entry.fields()),
+        )
 
     def search_dot(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _DOT_METRIC, conditions)
+        return self._search_filtered(view, query, k, _DOT_METRIC, conditions)
 
     def search_l2(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _L2_METRIC, conditions)
+        return self._search_filtered(view, query, k, _L2_METRIC, conditions)
 
     def search_cosine(
         self, query: List[Float32], k: Int
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         var conditions = List[FilterCondition]()
-        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+        return self._search_filtered(view, query, k, _COSINE_METRIC, conditions)
 
     def search_dot_controlled(
         self, query: List[Float32], k: Int, control: QueryControl
     ) raises -> List[SearchResult]:
-        return self._search_controlled(query, k, _DOT_METRIC, control)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_controlled(view, query, k, _DOT_METRIC, control)
 
     def search_l2_controlled(
         self, query: List[Float32], k: Int, control: QueryControl
     ) raises -> List[SearchResult]:
-        return self._search_controlled(query, k, _L2_METRIC, control)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_controlled(view, query, k, _L2_METRIC, control)
 
     def search_cosine_controlled(
         self, query: List[Float32], k: Int, control: QueryControl
     ) raises -> List[SearchResult]:
-        return self._search_controlled(query, k, _COSINE_METRIC, control)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_controlled(view, query, k, _COSINE_METRIC, control)
 
     def search_dot_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_parallel(
-            query, k, _DOT_METRIC, num_workers, self._base().memtable.live_ordinals()
+            view, query, k, _DOT_METRIC, num_workers, self._visible_layers(view)
         )
 
     def search_l2_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_parallel(
-            query, k, _L2_METRIC, num_workers, self._base().memtable.live_ordinals()
+            view, query, k, _L2_METRIC, num_workers, self._visible_layers(view)
         )
 
     def search_cosine_parallel(
         self, query: List[Float32], k: Int, *, num_workers: Int = 0
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_parallel(
+            view,
             query,
             k,
             _COSINE_METRIC,
             num_workers,
-            self._base().memtable.live_ordinals(),
+            self._visible_layers(view),
         )
 
     def search_sq8_dot(
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
     ) raises -> List[SearchResult]:
-        """Search an immutable SQ8 view and optionally exact-rerank candidates."""
-        return self._search_sq8(query, k, rerank_k, _DOT_METRIC)
+        """Search an immutable SQ8 view and optionally exact-rerank candidates.
+        """
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_sq8(view, query, k, rerank_k, _DOT_METRIC)
 
     def search_sq8_l2(
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
     ) raises -> List[SearchResult]:
-        return self._search_sq8(query, k, rerank_k, _L2_METRIC)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_sq8(view, query, k, rerank_k, _L2_METRIC)
 
     def search_sq8_cosine(
         self, query: List[Float32], k: Int, *, rerank_k: Int = 0
     ) raises -> List[SearchResult]:
-        return self._search_sq8(query, k, rerank_k, _COSINE_METRIC)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_sq8(view, query, k, rerank_k, _COSINE_METRIC)
 
     def search_pq_dot(
         self,
@@ -231,8 +423,12 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_pq(
+            view,
             query,
             k,
             subquantizers,
@@ -240,6 +436,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _DOT_METRIC,
+            control,
         )
 
     def search_pq_l2(
@@ -251,8 +448,12 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_pq(
+            view,
             query,
             k,
             subquantizers,
@@ -260,6 +461,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _L2_METRIC,
+            control,
         )
 
     def search_pq_cosine(
@@ -271,8 +473,12 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         rerank_k: Int = 0,
         iterations: Int = 8,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_pq(
+            view,
             query,
             k,
             subquantizers,
@@ -280,6 +486,7 @@ struct ReadSnapshot(Movable):
             rerank_k,
             iterations,
             _COSINE_METRIC,
+            control,
         )
 
     def search_dot_batch(
@@ -289,9 +496,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_DOT_METRIC, num_workers
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_batch(
+            view, queries, k, BATCH_DOT_METRIC, num_workers
         )
 
     def search_l2_batch(
@@ -301,9 +509,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_L2_METRIC, num_workers
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_batch(
+            view, queries, k, BATCH_L2_METRIC, num_workers
         )
 
     def search_cosine_batch(
@@ -313,39 +522,52 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
-        return execute_exact_batch(
-            self._base().memtable, queries, k, BATCH_COSINE_METRIC, num_workers
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_batch(
+            view, queries, k, BATCH_COSINE_METRIC, num_workers
         )
 
-    def search_device_dot_batch[use_accelerator: Bool](
+    def search_device_dot_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_batch[use_accelerator](
-            queries, k, BATCH_DOT_METRIC, options
+            view, queries, k, BATCH_DOT_METRIC, options
         )
 
-    def search_device_l2_batch[use_accelerator: Bool](
+    def search_device_l2_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_batch[use_accelerator](
-            queries, k, BATCH_L2_METRIC, options
+            view, queries, k, BATCH_L2_METRIC, options
         )
 
-    def search_device_cosine_batch[use_accelerator: Bool](
+    def search_device_cosine_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_batch[use_accelerator](
-            queries, k, BATCH_COSINE_METRIC, options
+            view, queries, k, BATCH_COSINE_METRIC, options
         )
 
     def search_dot_where_batch(
@@ -356,8 +578,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_batch(
-            queries, expressions, k, BATCH_DOT_METRIC, num_workers
+            view, queries, expressions, k, BATCH_DOT_METRIC, num_workers
         )
 
     def search_l2_where_batch(
@@ -368,8 +592,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_batch(
-            queries, expressions, k, BATCH_L2_METRIC, num_workers
+            view, queries, expressions, k, BATCH_L2_METRIC, num_workers
         )
 
     def search_cosine_where_batch(
@@ -380,41 +606,55 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[List[SearchResult]]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_batch(
-            queries, expressions, k, BATCH_COSINE_METRIC, num_workers
+            view, queries, expressions, k, BATCH_COSINE_METRIC, num_workers
         )
 
-    def search_device_dot_where_batch[use_accelerator: Bool](
+    def search_device_dot_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_where_batch[use_accelerator](
-            queries, expressions, k, BATCH_DOT_METRIC, options
+            view, queries, expressions, k, BATCH_DOT_METRIC, options
         )
 
-    def search_device_l2_where_batch[use_accelerator: Bool](
+    def search_device_l2_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_where_batch[use_accelerator](
-            queries, expressions, k, BATCH_L2_METRIC, options
+            view, queries, expressions, k, BATCH_L2_METRIC, options
         )
 
-    def search_device_cosine_where_batch[use_accelerator: Bool](
+    def search_device_cosine_where_batch[
+        use_accelerator: Bool
+    ](
         self,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
         k: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_device_where_batch[use_accelerator](
-            queries, expressions, k, BATCH_COSINE_METRIC, options
+            view, queries, expressions, k, BATCH_COSINE_METRIC, options
         )
 
     def search_dot_filtered(
@@ -423,7 +663,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _DOT_METRIC, conditions)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_filtered(view, query, k, _DOT_METRIC, conditions)
 
     def search_l2_filtered(
         self,
@@ -431,7 +673,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _L2_METRIC, conditions)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_filtered(view, query, k, _L2_METRIC, conditions)
 
     def search_cosine_filtered(
         self,
@@ -439,7 +683,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         conditions: List[FilterCondition],
     ) raises -> List[SearchResult]:
-        return self._search_filtered(query, k, _COSINE_METRIC, conditions)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_filtered(view, query, k, _COSINE_METRIC, conditions)
 
     def search_dot_where(
         self,
@@ -447,7 +693,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _DOT_METRIC, expression)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_where(view, query, k, _DOT_METRIC, expression)
 
     def search_l2_where(
         self,
@@ -455,7 +703,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _L2_METRIC, expression)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_where(view, query, k, _L2_METRIC, expression)
 
     def search_cosine_where(
         self,
@@ -463,7 +713,9 @@ struct ReadSnapshot(Movable):
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        return self._search_where(query, k, _COSINE_METRIC, expression)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_where(view, query, k, _COSINE_METRIC, expression)
 
     def search_dot_where_parallel(
         self,
@@ -473,8 +725,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_parallel(
-            query, k, expression, _DOT_METRIC, num_workers
+            view, query, k, expression, _DOT_METRIC, num_workers
         )
 
     def search_l2_where_parallel(
@@ -485,8 +739,10 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_parallel(
-            query, k, expression, _L2_METRIC, num_workers
+            view, query, k, expression, _L2_METRIC, num_workers
         )
 
     def search_cosine_where_parallel(
@@ -497,15 +753,18 @@ struct ReadSnapshot(Movable):
         *,
         num_workers: Int = 0,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_where_parallel(
-            query, k, expression, _COSINE_METRIC, num_workers
+            view, query, k, expression, _COSINE_METRIC, num_workers
         )
 
     def search_sparse_dot(
         self, query: List[SparseElement], k: Int
     ) raises -> List[SearchResult]:
-        self._ensure_open()
-        return self._base().sparse.search_dot(query, k)
+        var root = self._acquire()
+        ref view = root[]
+        return self._search_sparse(view, query, k, Optional[List[List[Int]]]())
 
     def search_sparse_dot_where(
         self,
@@ -513,23 +772,44 @@ struct ReadSnapshot(Movable):
         k: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
-        self._ensure_open()
+        var root = self._acquire()
+        ref view = root[]
+        validate_sparse(query)
+        expression.validate()
+        return self._search_sparse(
+            view, query, k, Optional(self._where_layers(view, expression))
+        )
+
+    def _search_sparse(
+        self,
+        view: ReadGeneration,
+        query: List[SparseElement],
+        k: Int,
+        matched: Optional[List[List[Int]]],
+    ) raises -> List[SearchResult]:
+        """Score each run's visible rows, then merge into one Top-K.
+
+        `matched` holds each run's ascending filter matches, when filtered.
+        """
         validate_sparse(query)
         if k <= 0:
             raise Error("k must be positive")
-        expression.validate()
-        var matched = evaluate_expression(self._base().metadata, expression)
-        var count = self._base().sparse.point_count()
-        if count == 0:
-            return List[SearchResult]()
-        var candidates = self._base().sparse.search_dot(query, count)
-        var result = List[SearchResult]()
-        for candidate in candidates:
-            if self._base().metadata.contains_id(matched, candidate.id):
-                result.append(candidate)
-                if len(result) == k:
-                    break
-        return result^
+        var hits = List[SearchResult]()
+        for layer in range(view.layer_count()):
+            for hit in view.sparse_hits(layer, query):
+                if not matched or contains_sorted(
+                    matched.value()[layer], hit.ordinal
+                ):
+                    hits.append(SearchResult(hit.id, hit.score))
+        if len(hits) == 0:
+            return hits^
+        var topk = BoundedTopK(min(k, len(hits)), smaller_is_better=False)
+        for hit in hits:
+            topk.offer(hit.id, hit.score)
+        var results = List[SearchResult]()
+        for entry in topk.sorted_entries():
+            results.append(SearchResult(entry.id, entry.score))
+        return results^
 
     def search_hybrid_dot(
         self,
@@ -539,7 +819,10 @@ struct ReadSnapshot(Movable):
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -556,7 +839,10 @@ struct ReadSnapshot(Movable):
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -573,7 +859,10 @@ struct ReadSnapshot(Movable):
         fetch_k: Int,
         rank_constant: Int = 60,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -591,7 +880,10 @@ struct ReadSnapshot(Movable):
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid_where(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -610,7 +902,10 @@ struct ReadSnapshot(Movable):
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid_where(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -629,7 +924,10 @@ struct ReadSnapshot(Movable):
         rank_constant: Int,
         expression: FilterExpression,
     ) raises -> List[SearchResult]:
+        var root = self._acquire()
+        ref view = root[]
         return self._search_hybrid_where(
+            view,
             dense_query,
             sparse_query,
             k,
@@ -641,6 +939,7 @@ struct ReadSnapshot(Movable):
 
     def _search_filtered(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
@@ -649,41 +948,75 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         for index in range(len(conditions)):
             conditions[index].validate()
-        var candidates = evaluate_all(self._base().metadata, conditions)
-        return self._search_candidates(query, k, metric, candidates)
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            layers.append(
+                view.dense_ordinals(
+                    layer, view.conditioned_ordinals(layer, conditions)
+                )
+            )
+        return self._scan(view, query, k, metric, layers)
 
     def _search_sq8(
-        self, query: List[Float32], k: Int, rerank_k: Int, metric: Int
+        self,
+        view: ReadGeneration,
+        query: List[Float32],
+        k: Int,
+        rerank_k: Int,
+        metric: Int,
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
-        if len(ordinals) == 0:
+        if not view.has_dense():
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(ordinals))
-        var vectors = List[List[Float32]](capacity=len(ordinals))
-        for index in range(len(ordinals)):
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            ids.append(entry.id)
-            vectors.append(entry.values.copy())
-        var sq8 = Sq8Index.build(ids, vectors)
+        var sq8 = self._sq8_artifact(view)
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(ordinals))
+        candidate_count = min(candidate_count, sq8[].point_count())
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
-            candidates = sq8.search_dot(query, candidate_count)
+            candidates = sq8[].search_dot(query, candidate_count)
         elif metric == _L2_METRIC:
-            candidates = sq8.search_l2(query, candidate_count)
+            candidates = sq8[].search_l2(query, candidate_count)
         else:
-            candidates = sq8.search_cosine(query, candidate_count)
+            candidates = sq8[].search_cosine(query, candidate_count)
         if rerank_k == 0:
             return candidates^
 
-        return self._exact_rerank(query, k, metric, candidates)
+        return self._exact_rerank(view, query, k, metric, candidates)
+
+    def _sq8_artifact(
+        self, view: ReadGeneration
+    ) raises -> ArcPointer[Sq8Index]:
+        """Return the root's ready SQ8 artifact, building it once under its lock.
+
+        The root fixes layout, field, config and coverage, so the artifact can
+        never go stale; every handle and metric on the root shares it. The lock
+        is held from the ready check through publication, so concurrent first
+        queries wait for one build instead of each building. A failed build
+        publishes nothing, records the failure and raises; the next query may
+        try again, and a ready artifact is never replaced.
+        """
+        ref state = view.sq8[]
+        with BlockingScopedLock(state.lock):
+            if state.ready:
+                return state.ready.value().copy()
+            try:
+                state.begin()
+                var ordinals = view.id_ordered_locations()
+                var ids = List[Int](capacity=len(ordinals))
+                var vectors = List[List[Float32]](capacity=len(ordinals))
+                self._gather(view, ordinals, ids, vectors)
+                var built = ArcPointer(Sq8Index.build(ids, vectors))
+                state.publish(built.copy())
+                return built^
+            except error:
+                state.fail(String(error))
+                raise error
 
     def _search_pq(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         subquantizers: Int,
@@ -691,72 +1024,117 @@ struct ReadSnapshot(Movable):
         rerank_k: Int,
         iterations: Int,
         metric: Int,
+        control: Optional[QueryControl],
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("PQ rerank candidate count must be zero or at least k")
-        var ordinals = self._base().memtable.live_ordinals(id_order=True)
-        if len(ordinals) == 0:
+        if control:
+            control.value().validate_candidate_count(view.visible_count)
+            control.value().checkpoint(0)
+        if not view.has_dense():
             return List[SearchResult]()
-        var ids = List[Int](capacity=len(ordinals))
-        var vectors = List[List[Float32]](capacity=len(ordinals))
-        for index in range(len(ordinals)):
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            ids.append(entry.id)
-            vectors.append(entry.values.copy())
-        var pq = PqIndex.build(
-            ids,
-            vectors,
-            subquantizers,
-            centroids,
-            iterations=iterations,
+        var pq = self._pq_artifact(
+            view, subquantizers, centroids, iterations, control
         )
         var candidate_count = k if rerank_k == 0 else rerank_k
-        candidate_count = min(candidate_count, len(ordinals))
+        candidate_count = min(candidate_count, pq[].point_count())
         var candidates: List[SearchResult]
         if metric == _DOT_METRIC:
-            candidates = pq.search_dot(query, candidate_count)
+            candidates = pq[].search_dot(
+                query, candidate_count, control=control
+            )
         elif metric == _L2_METRIC:
-            candidates = pq.search_l2(query, candidate_count)
+            candidates = pq[].search_l2(query, candidate_count, control=control)
         else:
-            candidates = pq.search_cosine(query, candidate_count)
+            candidates = pq[].search_cosine(
+                query, candidate_count, control=control
+            )
         if rerank_k == 0:
             return candidates^
-        return self._exact_rerank(query, k, metric, candidates)
+        return self._exact_rerank(view, query, k, metric, candidates, control)
+
+    def _pq_artifact(
+        self,
+        view: ReadGeneration,
+        subquantizers: Int,
+        centroids: Int,
+        iterations: Int,
+        control: Optional[QueryControl],
+    ) raises -> ArcPointer[PqIndex]:
+        # Reject malformed keys before retaining an artifact state.
+        if subquantizers <= 0 or self._dimension % subquantizers != 0:
+            raise Error("PQ dimension must divide into subquantizers")
+        if centroids <= 0 or centroids > 256 or centroids > view.visible_count:
+            raise Error("PQ centroid count exceeds supported training rows")
+        if iterations <= 0:
+            raise Error("PQ training iterations must be positive")
+        var owner = view.pq[].get(subquantizers, centroids, iterations)
+        ref state = owner[]
+        with BlockingScopedLock(state.lock):
+            if control:
+                control.value().checkpoint(0)
+            if state.ready:
+                return state.ready.value().copy()
+            try:
+                state.begin()
+                if control:
+                    control.value().checkpoint(0)
+                var ordinals = view.id_ordered_locations()
+                var ids = List[Int](capacity=len(ordinals))
+                var vectors = List[List[Float32]](capacity=len(ordinals))
+                self._gather(view, ordinals, ids, vectors, control)
+                var built = ArcPointer(
+                    PqIndex.build(
+                        ids,
+                        vectors,
+                        subquantizers,
+                        centroids,
+                        iterations=iterations,
+                        control=control,
+                    )
+                )
+                if control:
+                    control.value().checkpoint(0)
+                state.publish(built.copy())
+                return built^
+            except error:
+                state.fail(String(error))
+                raise error
 
     def _exact_rerank(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
         candidates: List[SearchResult],
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
-
         var topk = BoundedTopK(
             min(k, len(candidates)),
             smaller_is_better=metric == _L2_METRIC,
         )
-        for candidate in candidates:
-            var ordinal = self._base().memtable.ordinal_for(candidate.id)
-            if ordinal < 0 or not self._base().memtable.is_live_at(ordinal):
+        for index in range(len(candidates)):
+            if control:
+                control.value().checkpoint(index)
+            ref candidate = candidates[index]
+            var location = view.find(candidate.id)
+            if location[0] < 0:
                 raise Error("quantized candidate is absent from snapshot")
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+            topk.offer(entry.id, _score(metric, query, entry.values()))
         var retained = topk.sorted_entries()
         var output = List[SearchResult](capacity=len(retained))
         for entry in retained:
             output.append(SearchResult(entry.id, entry.score))
+        if control:
+            control.value().checkpoint(0)
         return output^
 
     def _search_where(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
@@ -764,36 +1142,36 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
         expression.validate()
-        var candidates = evaluate_expression(self._base().metadata, expression)
-        return self._search_candidates(query, k, metric, candidates)
+        return self._scan(
+            view, query, k, metric, self._where_layers(view, expression)
+        )
 
     def _search_controlled(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
         control: QueryControl,
     ) raises -> List[SearchResult]:
         self._validate_query(query, k)
-        var ordinals = self._base().memtable.live_ordinals()
-        control.validate_candidate_count(len(ordinals))
+        var layers = self._visible_layers(view)
+        var total = _total(layers)
+        control.validate_candidate_count(total)
         control.checkpoint(0)
-        if len(ordinals) == 0:
+        if total == 0:
             return List[SearchResult]()
         var topk = BoundedTopK(
-            min(k, len(ordinals)), smaller_is_better=metric == _L2_METRIC
+            min(k, total), smaller_is_better=metric == _L2_METRIC
         )
-        for index in range(len(ordinals)):
-            control.checkpoint(index)
-            ref entry = self._base().memtable.entry_ref_at(ordinals[index])
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
+        var index = 0
+        for layer in range(len(layers)):
+            ref table = view.run(layer).memtable
+            for ordinal in layers[layer]:
+                control.checkpoint(index)
+                index += 1
+                ref entry = table.entry_ref_at(ordinal)
+                topk.offer(entry.id, _score(metric, query, entry.values()))
         control.checkpoint(0)
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
@@ -803,121 +1181,231 @@ struct ReadSnapshot(Movable):
 
     def _search_parallel(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
         num_workers: Int,
-        var ordinals: List[Int],
+        layers: List[List[Int]],
     ) raises -> List[SearchResult]:
-        self._ensure_open()
-        var batch_metric = BATCH_DOT_METRIC
-        if metric == _L2_METRIC:
-            batch_metric = BATCH_L2_METRIC
-        elif metric == _COSINE_METRIC:
-            batch_metric = BATCH_COSINE_METRIC
-        return execute_parallel_scan(
-            self._base().memtable, ordinals, query, k, batch_metric, num_workers
-        )
+        var parts = List[List[SearchResult]](capacity=len(layers))
+        for layer in range(len(layers)):
+            parts.append(
+                execute_parallel_scan(
+                    view.run(layer).memtable,
+                    layers[layer],
+                    query,
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge(parts, k, metric)
 
     def _search_where_parallel(
         self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         expression: FilterExpression,
         metric: Int,
         num_workers: Int,
     ) raises -> List[SearchResult]:
-        self._ensure_open()
         expression.validate()
-        var bitmap = evaluate_expression(self._base().metadata, expression)
-        var ordinals = candidate_ordinals(self._base().memtable, bitmap)
-        return self._search_parallel(query, k, metric, num_workers, ordinals^)
+        return self._search_parallel(
+            view,
+            query,
+            k,
+            metric,
+            num_workers,
+            self._where_layers(view, expression),
+        )
+
+    def _search_batch(
+        self,
+        view: ReadGeneration,
+        queries: List[List[Float32]],
+        k: Int,
+        metric: Int,
+        num_workers: Int,
+    ) raises -> List[List[SearchResult]]:
+        var parts = List[List[List[SearchResult]]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            parts.append(
+                execute_exact_ordinal_batch(
+                    view.run(layer).memtable,
+                    queries,
+                    view.dense_ordinals(layer, view.visible_ordinals(layer)),
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge_batch(parts, len(queries), k, metric)
 
     def _search_where_batch(
         self,
+        view: ReadGeneration,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
         k: Int,
         metric: Int,
         num_workers: Int,
     ) raises -> List[List[SearchResult]]:
-        self._ensure_open()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
-        var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
-        return execute_exact_candidate_batch(
-            self._base().memtable,
-            queries,
-            candidates,
-            k,
-            metric,
-            num_workers,
-        )
+        var parts = List[List[List[SearchResult]]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            var candidates = List[List[Int]](capacity=len(queries))
+            for index in range(len(expressions)):
+                candidates.append(
+                    view.dense_ordinals(
+                        layer, view.filtered_ordinals(layer, expressions[index])
+                    )
+                )
+            parts.append(
+                execute_exact_candidate_batch(
+                    view.run(layer).memtable,
+                    queries,
+                    candidates,
+                    k,
+                    metric,
+                    num_workers,
+                )
+            )
+        return _merge_batch(parts, len(queries), k, metric)
 
-    def _search_device_batch[use_accelerator: Bool](
+    def _device_run(self, view: ReadGeneration) raises -> ArcPointer[ReadRun]:
+        """Build the root's flat device table once, under its device lock."""
+        with BlockingScopedLock(view.device[].lock):
+            if not view.device[].table:
+                view.device[].table = Optional(view.dense_run())
+            return view.device[].table.value()
+
+    def _search_device_batch[
+        use_accelerator: Bool
+    ](
         self,
+        view: ReadGeneration,
         queries: List[List[Float32]],
         k: Int,
         metric: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        self._ensure_open()
+        var table = self._device_run(view)
         var candidates = List[List[Int]]()
         return execute_snapshot_device_batch[use_accelerator](
-            self._base().memtable, queries, candidates, False, k, metric, options,
-            self._gpu_state[],
+            table[].memtable,
+            queries,
+            candidates,
+            False,
+            k,
+            metric,
+            options,
+            view.device[],
         )
 
-    def _search_device_where_batch[use_accelerator: Bool](
+    def _search_device_where_batch[
+        use_accelerator: Bool
+    ](
         self,
+        view: ReadGeneration,
         queries: List[List[Float32]],
         expressions: List[FilterExpression],
         k: Int,
         metric: Int,
         options: GpuExecutionOptions,
     ) raises -> DeviceBatchResult:
-        self._ensure_open()
         if len(queries) != len(expressions):
             raise Error("batch query and filter counts must match")
+        var table = self._device_run(view)
         var candidates = List[List[Int]](capacity=len(queries))
         for index in range(len(expressions)):
             expressions[index].validate()
-            var bitmap = evaluate_expression(self._base().metadata, expressions[index])
-            candidates.append(candidate_ordinals(self._base().memtable, bitmap))
+            var selected = List[Int]()
+            for layer in range(view.layer_count()):
+                ref source = view.run(layer).memtable
+                # Visible rows map by public ID into the flat table's slots.
+                for ordinal in view.filtered_ordinals(
+                    layer, expressions[index]
+                ):
+                    var target = table[].memtable.ordinal_for(
+                        source.id_at(ordinal)
+                    )
+                    if target >= 0:
+                        selected.append(target)
+            sort(Span(selected))
+            candidates.append(selected^)
         return execute_snapshot_device_batch[use_accelerator](
-            self._base().memtable, queries, candidates, True, k, metric, options,
-            self._gpu_state[],
+            table[].memtable,
+            queries,
+            candidates,
+            True,
+            k,
+            metric,
+            options,
+            view.device[],
         )
 
-    def _search_candidates(
+    def _visible_layers(self, view: ReadGeneration) raises -> List[List[Int]]:
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            layers.append(
+                view.dense_ordinals(layer, view.visible_ordinals(layer))
+            )
+        return layers^
+
+    def _where_layers(
+        self, view: ReadGeneration, expression: FilterExpression
+    ) raises -> List[List[Int]]:
+        """Evaluate a filter per run, then drop shadowed rows before Top-K."""
+        var layers = List[List[Int]](capacity=view.layer_count())
+        for layer in range(view.layer_count()):
+            layers.append(
+                view.dense_ordinals(
+                    layer, view.filtered_ordinals(layer, expression)
+                )
+            )
+        return layers^
+
+    def _gather(
         self,
+        view: ReadGeneration,
+        locations: List[Tuple[Int, Int]],
+        mut ids: List[Int],
+        mut vectors: List[List[Float32]],
+        control: Optional[QueryControl] = None,
+    ) raises:
+        for index in range(len(locations)):
+            if control:
+                control.value().checkpoint(index)
+            var location = locations[index]
+            ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+            if entry.has_dense():
+                ids.append(entry.id)
+                vectors.append(entry.values().copy())
+
+    def _scan(
+        self,
+        view: ReadGeneration,
         query: List[Float32],
         k: Int,
         metric: Int,
-        candidates: Bitmap,
+        layers: List[List[Int]],
     ) raises -> List[SearchResult]:
-        if candidates.count() == 0:
+        var total = _total(layers)
+        if total == 0:
             return List[SearchResult]()
-        var result_count = min(k, candidates.count())
         var topk = BoundedTopK(
-            result_count, smaller_is_better=metric == _L2_METRIC
+            min(k, total), smaller_is_better=metric == _L2_METRIC
         )
-        var ordinals = candidate_ordinals(self._base().memtable, candidates)
-        for ordinal in ordinals:
-            ref entry = self._base().memtable.entry_ref_at(ordinal)
-            var score: Float32
-            if metric == _DOT_METRIC:
-                score = simd_dot_product(query, entry.values)
-            elif metric == _L2_METRIC:
-                score = simd_l2_squared_distance(query, entry.values)
-            else:
-                score = simd_cosine_similarity(query, entry.values)
-            topk.offer(entry.id, score)
-
+        for layer in range(len(layers)):
+            ref table = view.run(layer).memtable
+            for ordinal in layers[layer]:
+                ref entry = table.entry_ref_at(ordinal)
+                topk.offer(entry.id, _score(metric, query, entry.values()))
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))
         for entry in retained:
@@ -925,7 +1413,6 @@ struct ReadSnapshot(Movable):
         return results^
 
     def _validate_query(self, query: List[Float32], k: Int) raises:
-        self._ensure_open()
         if len(query) != self._dimension:
             raise Error("query dimension does not match snapshot")
         if k <= 0:
@@ -951,6 +1438,7 @@ struct ReadSnapshot(Movable):
 
     def _search_hybrid(
         self,
+        view: ReadGeneration,
         dense_query: List[Float32],
         sparse_query: List[SparseElement],
         k: Int,
@@ -963,13 +1451,16 @@ struct ReadSnapshot(Movable):
         )
         var conditions = List[FilterCondition]()
         var dense = self._search_filtered(
-            dense_query, fetch_k, metric, conditions
+            view, dense_query, fetch_k, metric, conditions
         )
-        var sparse = self._base().sparse.search_dot(sparse_query, fetch_k)
+        var sparse = self._search_sparse(
+            view, sparse_query, fetch_k, Optional[List[List[Int]]]()
+        )
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
     def _search_hybrid_where(
         self,
+        view: ReadGeneration,
         dense_query: List[Float32],
         sparse_query: List[SparseElement],
         k: Int,
@@ -983,13 +1474,66 @@ struct ReadSnapshot(Movable):
         )
         expression.validate()
         var dense = self._search_where(
-            dense_query, fetch_k, metric, expression
+            view, dense_query, fetch_k, metric, expression
         )
-        var sparse = self.search_sparse_dot_where(
-            sparse_query, fetch_k, expression
+        var sparse = self._search_sparse(
+            view,
+            sparse_query,
+            fetch_k,
+            Optional(self._where_layers(view, expression)),
         )
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
-    def _ensure_open(self) raises:
-        if not self._root:
-            raise Error("snapshot is closed")
+
+def _score(
+    metric: Int, query: List[Float32], values: List[Float32]
+) raises -> Float32:
+    if metric == _DOT_METRIC:
+        return simd_dot_product(query, values)
+    if metric == _L2_METRIC:
+        return simd_l2_squared_distance(query, values)
+    return simd_cosine_similarity(query, values)
+
+
+def _total(layers: List[List[Int]]) -> Int:
+    var total = 0
+    for layer in layers:
+        total += len(layer)
+    return total
+
+
+def _merge(
+    parts: List[List[SearchResult]], k: Int, metric: Int
+) raises -> List[SearchResult]:
+    """Merge per-run exact Top-K lists; the heap's total order keeps it exact.
+    """
+    var total = 0
+    for part in parts:
+        total += len(part)
+    if total == 0:
+        return List[SearchResult]()
+    var topk = BoundedTopK(
+        min(k, total), smaller_is_better=metric == _L2_METRIC
+    )
+    for part in parts:
+        for result in part:
+            topk.offer(result.id, result.score)
+    var retained = topk.sorted_entries()
+    var results = List[SearchResult](capacity=len(retained))
+    for entry in retained:
+        results.append(SearchResult(entry.id, entry.score))
+    return results^
+
+
+def _merge_batch(
+    parts: List[List[List[SearchResult]]], queries: Int, k: Int, metric: Int
+) raises -> List[List[SearchResult]]:
+    var output = List[List[SearchResult]](capacity=queries)
+    if len(parts) == 0 or len(parts[0]) != queries:
+        return output^
+    for query in range(queries):
+        var per_query = List[List[SearchResult]](capacity=len(parts))
+        for layer in range(len(parts)):
+            per_query.append(parts[layer][query].copy())
+        output.append(_merge(per_query, k, metric))
+    return output^

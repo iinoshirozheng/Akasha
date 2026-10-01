@@ -13,6 +13,8 @@ struct HnswSearchStats(Movable, Writable):
     var inactive_rejections: Int
     var base_candidates: Int
     var delta_candidates: Int
+    var ivf_partitions: Int
+    var ivf_probed_partitions: Int
     var backend_name: String
     var metric_name: String
     var scalar_name: String
@@ -32,6 +34,8 @@ struct HnswSearchStats(Movable, Writable):
         self.inactive_rejections = 0
         self.base_candidates = 0
         self.delta_candidates = 0
+        self.ivf_partitions = 0
+        self.ivf_probed_partitions = 0
         self.backend_name = String()
         self.metric_name = String()
         self.scalar_name = String()
@@ -51,6 +55,8 @@ struct HnswSearchStats(Movable, Writable):
         self.inactive_rejections = 0
         self.base_candidates = 0
         self.delta_candidates = 0
+        self.ivf_partitions = 0
+        self.ivf_probed_partitions = 0
         self.backend_name = String()
         self.metric_name = String()
         self.scalar_name = String()
@@ -86,3 +92,27 @@ struct HnswBuildStats(Movable, Writable):
         self.directed_edges = 0
         self.distance_evaluations = 0
         self.serialized_bytes = 0
+
+
+def copy_search_stats(stats: HnswSearchStats) -> HnswSearchStats:
+    var result = HnswSearchStats()
+    result.requested_ef = stats.requested_ef
+    result.effective_ef = stats.effective_ef
+    result.widening_rounds = stats.widening_rounds
+    result.upper_visited = stats.upper_visited
+    result.base_visited = stats.base_visited
+    result.distance_evaluations = stats.distance_evaluations
+    result.retained_candidates = stats.retained_candidates
+    result.reranked_candidates = stats.reranked_candidates
+    result.filtered_rejections = stats.filtered_rejections
+    result.inactive_rejections = stats.inactive_rejections
+    result.base_candidates = stats.base_candidates
+    result.delta_candidates = stats.delta_candidates
+    result.ivf_partitions = stats.ivf_partitions
+    result.ivf_probed_partitions = stats.ivf_probed_partitions
+    result.backend_name = stats.backend_name.copy()
+    result.metric_name = stats.metric_name.copy()
+    result.scalar_name = stats.scalar_name.copy()
+    result.storage_name = stats.storage_name.copy()
+    result.fallback_reason = stats.fallback_reason.copy()
+    return result^

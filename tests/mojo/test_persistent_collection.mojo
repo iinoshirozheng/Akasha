@@ -295,7 +295,7 @@ def test_later_flush_appends_delta_and_preserves_referenced_base() raises:
     collection.flush()
 
     var manifest = load_manifest(path, 1)
-    assert_equal(manifest.format_version, 3)
+    assert_equal(manifest.format_version, 4)
     assert_equal(manifest.generation, UInt64(2))
     assert_equal(len(manifest.segments), 2)
     assert_equal(manifest.segments[0].level, 1)
@@ -460,7 +460,7 @@ def test_full_compaction_replaces_segments_and_preserves_query_results() raises:
     assert_equal(compacted.generation, UInt64(4))
     assert_equal(len(compacted.segments), 1)
     assert_equal(compacted.segments[0].level, 1)
-    assert_equal(compacted.segments[0].name, "segment-base-5.bin")
+    assert_equal(compacted.segments[0].name, "segment-compact-4-0.bin")
     assert_equal(path_exists(path + "/segment-base-1.bin"), False)
     assert_equal(path_exists(path + "/segment-delta-3.bin"), False)
     assert_equal(path_exists(path + "/segment-delta-5.bin"), False)

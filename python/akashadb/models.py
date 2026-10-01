@@ -143,6 +143,8 @@ class SearchStats:
     inactive_rejections: int
     base_candidates: int
     delta_candidates: int
+    ivf_partitions: int = 0
+    ivf_probed_partitions: int = 0
 
     @classmethod
     def from_kernel(cls, value: dict[str, Any]) -> "SearchStats":

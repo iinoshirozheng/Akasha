@@ -1,6 +1,11 @@
 """Public incremental flush timing; prepare the collection in a separate run."""
 
-from akasha import BatchMutation, DocumentField, PayloadValue, PersistentCollection
+from akasha import (
+    BatchMutation,
+    DocumentField,
+    PayloadValue,
+    PersistentCollection,
+)
 from std.sys.arg import argv
 from std.time import perf_counter_ns
 
@@ -44,20 +49,29 @@ def main() raises:
     var args = argv()
     if len(args) != 8:
         raise Error(
-            "usage: flush-bench prepare|flush PATH POINTS DIMENSION DELTA PAYLOAD_BYTES TRACE"
+            "usage: flush-bench prepare|flush PATH POINTS DIMENSION DELTA"
+            " PAYLOAD_BYTES TRACE"
         )
     var count = Int(args[3])
     var dimension = Int(args[4])
     var delta = Int(args[5])
     var payload_bytes = Int(args[6])
-    if count <= 0 or dimension <= 0 or delta <= 0 or delta > count or payload_bytes < 0:
+    if (
+        count <= 0
+        or dimension <= 0
+        or delta <= 0
+        or delta > count
+        or payload_bytes < 0
+    ):
         raise Error("invalid flush benchmark dimensions")
     if args[1] != "prepare" and args[1] != "flush":
         raise Error("expected prepare or flush")
     # Two checkpoints do not reach the L0 compaction threshold. Disable the
     # optional worker explicitly to avoid background activity in measurements.
     var collection = PersistentCollection.open(
-        args[2], dimension, maintenance_library_path="/akasha-bench-no-worker.so"
+        args[2],
+        dimension,
+        maintenance_library_path="/akasha-bench-no-worker.so",
     )
     if args[1] == "prepare":
         _populate(collection, count, dimension, payload_bytes)
@@ -85,10 +99,15 @@ def main() raises:
     ):
         raise Error("flush benchmark updated record mismatch")
     print(
-        "flush points=" + String(count)
-        + " dimension=" + String(dimension)
-        + " delta=" + String(delta)
-        + " payload_bytes=" + String(payload_bytes)
-        + " flush_ns=" + String(elapsed)
+        "flush points="
+        + String(count)
+        + " dimension="
+        + String(dimension)
+        + " delta="
+        + String(delta)
+        + " payload_bytes="
+        + String(payload_bytes)
+        + " flush_ns="
+        + String(elapsed)
     )
     collection.close()

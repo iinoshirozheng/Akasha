@@ -228,8 +228,7 @@ def test_input_permutations_have_identical_deterministic_output() raises:
     assert_equal(second_stats.distance_evaluations, 3)
 
 
-def test_duplicate_slot_keeps_smallest_cached_distance_independent_of_order(
-) raises:
+def test_duplicate_slot_keeps_smallest_cached_distance_independent_of_order() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 4, 8)
     var duplicate = _append(graph, metric, 10, 1.0, 0.0)
@@ -283,9 +282,7 @@ def test_large_reverse_candidate_stream_matches_total_order_oracle() raises:
     assert_equal(len(selected), count)
     for index in range(count):
         assert_equal(selected[index], UInt32(count - index - 1))
-    assert_equal(
-        stats.distance_evaluations, count * (count - 1) // 2
-    )
+    assert_equal(stats.distance_evaluations, count * (count - 1) // 2)
 
 
 def test_candidate_order_uses_public_id_then_slot_ties() raises:
@@ -306,9 +303,7 @@ def test_inactive_candidate_is_rejected_before_stats_mutate() raises:
     var graph = HnswStorage(2, 4, 8)
     var inactive = _append(graph, metric, 10, 1.0, 0.0)
     assert_true(graph.mark_deleted(10))
-    var candidates: List[HnswHeapItem] = [
-        HnswHeapItem(inactive, 10, 1.0)
-    ]
+    var candidates: List[HnswHeapItem] = [HnswHeapItem(inactive, 10, 1.0)]
     var stats = HnswBuildStats()
     stats.distance_evaluations = 7
     with assert_raises():
@@ -325,9 +320,7 @@ def test_invalid_candidate_fields_and_excluded_slot_preserve_stats() raises:
     var stats = HnswBuildStats()
     stats.distance_evaluations = 11
 
-    var invalid_slot: List[HnswHeapItem] = [
-        HnswHeapItem(UInt32(99), 10, 1.0)
-    ]
+    var invalid_slot: List[HnswHeapItem] = [HnswHeapItem(UInt32(99), 10, 1.0)]
     with assert_raises():
         _ = select_neighbors_heuristic(
             graph, metric, invalid_slot, _none(), 1, False, stats
@@ -355,9 +348,7 @@ def test_invalid_candidate_fields_and_excluded_slot_preserve_stats() raises:
             graph, metric, invalid_inf, _none(), 1, False, stats
         )
 
-    var invalid_negative: List[HnswHeapItem] = [
-        HnswHeapItem(slot, 10, -1.0)
-    ]
+    var invalid_negative: List[HnswHeapItem] = [HnswHeapItem(slot, 10, -1.0)]
     with assert_raises():
         _ = select_neighbors_heuristic(
             graph, metric, invalid_negative, _none(), 1, False, stats
@@ -382,9 +373,7 @@ def test_invalid_dispatcher_backend_and_dimension_preserve_stats() raises:
     var stats = HnswBuildStats()
     stats.distance_evaluations = 13
 
-    var wrong_dimension = MetricDispatcher(
-        MetricKind.l2(), ScalarKind.f32(), 3
-    )
+    var wrong_dimension = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 3)
     with assert_raises():
         _ = select_neighbors_heuristic(
             graph,
@@ -439,8 +428,7 @@ def test_prepared_cosine_uses_same_canonical_heuristic() raises:
     assert_equal(stats.distance_evaluations, 1)
 
 
-def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two(
-) raises:
+def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two() raises:
     var metric = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 4, 8, metric_kind=MetricKind.cosine())
     var same = _append(graph, metric, 10, 1.0, 0.0)
@@ -457,9 +445,7 @@ def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two(
     _assert_slots(selected, expected)
     assert_equal(boundary_stats.distance_evaluations, 1)
 
-    var above_two: List[HnswHeapItem] = [
-        HnswHeapItem(same, 10, 2.0001)
-    ]
+    var above_two: List[HnswHeapItem] = [HnswHeapItem(same, 10, 2.0001)]
     var invalid_stats = HnswBuildStats()
     invalid_stats.distance_evaluations = 19
     with assert_raises():

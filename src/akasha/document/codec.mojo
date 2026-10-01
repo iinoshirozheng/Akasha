@@ -1,6 +1,6 @@
 from akasha.document.record import DocumentField, validate_fields
 from akasha.document.value import PayloadValue
-from akasha.storage.checksum import BinaryReader, BinaryWriter
+from akasha.storage.checksum import BorrowedBinaryReader, BinaryWriter
 
 
 comptime MAX_PAYLOAD_FIELDS = 1024
@@ -55,23 +55,28 @@ def encode_payload(fields: List[DocumentField]) raises -> List[UInt8]:
 
 def decode_payload(var bytes: List[UInt8]) raises -> List[DocumentField]:
     """Strictly decode one complete payload format v1 value."""
+    return decode_payload(Span(bytes))
+
+
+def decode_payload(bytes: Span[UInt8, _]) raises -> List[DocumentField]:
+    """Borrow encoded bytes and return independently owned document fields."""
     if len(bytes) > MAX_PAYLOAD_BYTES:
         raise Error("encoded payload exceeds size limit")
 
-    var reader = BinaryReader(bytes^)
+    var reader = BorrowedBinaryReader(bytes)
     var field_count = Int(reader.read_u32())
     if field_count > MAX_PAYLOAD_FIELDS:
         raise Error("payload field count exceeds limit")
     var fields = List[DocumentField](capacity=field_count)
     for _ in range(field_count):
         var name_length = Int(reader.read_u16())
-        var name_bytes = reader.read_bytes(name_length)
+        var name_bytes = reader.read_span(name_length)
         var name = String(from_utf8=name_bytes)
         var kind = reader.read_u8()
         var value: PayloadValue
         if kind == _STRING_KIND:
             var value_length = Int(reader.read_u32())
-            var value_bytes = reader.read_bytes(value_length)
+            var value_bytes = reader.read_span(value_length)
             value = PayloadValue.string(String(from_utf8=value_bytes))
         elif kind == _INT_KIND:
             value = PayloadValue.integer(reader.read_i64())

@@ -6,7 +6,7 @@ from std.python.numpy import from_numpy_array
 from std.testing import assert_equal, assert_true, assert_raises
 
 
-struct Item(Copyable, Movable, Comparable):
+struct Item(Comparable, Copyable, Movable):
     var id: Int
     var score: Float32
 
@@ -118,10 +118,15 @@ def main() raises:
     var readonly = arrow.to_numpy(zero_copy_only=True)
     assert_true(not Bool(py=readonly.flags.writeable))
     assert_equal(borrow_readonly(readonly), 42.0)
-    assert_equal(Int(py=readonly.__array_interface__["data"][0]), Int(py=array.__array_interface__["data"][0]))
+    assert_equal(
+        Int(py=readonly.__array_interface__["data"][0]),
+        Int(py=array.__array_interface__["data"][0]),
+    )
     with assert_raises():
         _ = from_numpy_array[DType.float64](array)
-    var strided = array.__getitem__(Python.import_module("builtins").slice(0, 8, 2))
+    var strided = array.__getitem__(
+        Python.import_module("builtins").slice(0, 8, 2)
+    )
     with assert_raises():
         _ = from_numpy_array[DType.float32](strided)
     var matrix = array.reshape(2, 4)
@@ -129,4 +134,7 @@ def main() raises:
         _ = from_numpy_array[DType.float32](matrix)
     with assert_raises():
         _ = from_numpy_array[DType.float32](readonly)
-    print("PASS NumPy/Arrow pointer identity, readonly borrow, slice, dtype/stride/rank/mutability rejection")
+    print(
+        "PASS NumPy/Arrow pointer identity, readonly borrow, slice,"
+        " dtype/stride/rank/mutability rejection"
+    )

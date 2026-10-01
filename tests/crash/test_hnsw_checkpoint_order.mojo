@@ -1,12 +1,13 @@
 from akasha import CollectionConfig, PersistentCollection, SparseElement
 from akasha.storage.filesystem import (
     ensure_directory,
+    path_exists,
     read_file_bytes,
     remove_file_if_exists,
     write_file_sync,
 )
 from akasha.storage.manifest import load_manifest
-from std.testing import assert_equal, assert_true, TestSuite
+from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 
 struct _CheckpointFixture(Movable):
@@ -88,9 +89,7 @@ def _prepare(path: String) raises -> _CheckpointFixture:
     var collection = PersistentCollection.open_with_config(path, config.copy())
     for id in range(1, 81):
         collection.upsert(id, [Float32(id)])
-        collection.upsert_sparse(
-            id, [SparseElement(id, Float32(id))]
-        )
+        collection.upsert_sparse(id, [SparseElement(id, Float32(id))])
     collection.flush()
     var old_committed = load_manifest(path, 1)
     var old_hnsw_name = old_committed.hnsw_name.value().copy()
@@ -138,9 +137,7 @@ def _assert_acknowledged_records(path: String) raises:
         var record = recovered.get(id)
         assert_true(Bool(record))
         assert_equal(record.value().vector[0], Float32(id))
-        var sparse = recovered.search_sparse_dot(
-            [SparseElement(id, 1.0)], 1
-        )
+        var sparse = recovered.search_sparse_dot([SparseElement(id, 1.0)], 1)
         assert_equal(len(sparse), 1)
         assert_equal(sparse[0].id, id)
     assert_true(recovered.hnsw_available())
@@ -158,9 +155,7 @@ def test_old_manifest_ignores_unreferenced_data_temporaries() raises:
     remove_file_if_exists(path + "/" + fixture.new_dense_name)
     remove_file_if_exists(path + "/" + fixture.new_sparse_name)
     remove_file_if_exists(path + "/" + fixture.new_hnsw_name)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     write_file_sync(
         path + "/" + fixture.new_dense_name + ".tmp", fixture.new_dense
     )
@@ -179,9 +174,7 @@ def test_old_manifest_ignores_renamed_unreferenced_data_files() raises:
     write_file_sync(path + "/manifest.bin", fixture.old_manifest)
     write_file_sync(path + "/wal.bin", fixture.retained_wal)
     write_file_sync(path + "/sparse.wal", fixture.retained_sparse_wal)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 
@@ -191,9 +184,7 @@ def test_new_manifest_with_old_wal_recovers_once() raises:
     write_file_sync(path + "/manifest.bin", fixture.new_manifest)
     write_file_sync(path + "/wal.bin", fixture.retained_wal)
     write_file_sync(path + "/sparse.wal", fixture.retained_sparse_wal)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 
@@ -201,9 +192,7 @@ def test_rotated_wal_with_old_sidecar_present_uses_new_commit() raises:
     var path = String("/tmp/akasha-task22-crash-window-4")
     var fixture = _prepare(path)
     write_file_sync(path + "/manifest.bin", fixture.new_manifest)
-    write_file_sync(
-        path + "/" + fixture.old_hnsw_name, fixture.old_hnsw
-    )
+    write_file_sync(path + "/" + fixture.old_hnsw_name, fixture.old_hnsw)
     _assert_acknowledged_records(path)
 
 
@@ -213,6 +202,60 @@ def test_cleanup_boundary_keeps_new_commit_recoverable() raises:
     write_file_sync(path + "/manifest.bin", fixture.new_manifest)
     remove_file_if_exists(path + "/" + fixture.old_hnsw_name)
     _assert_acknowledged_records(path)
+
+
+def test_same_sequence_rebuild_recovers_at_every_publication_boundary() raises:
+    for boundary in range(5):
+        var path = "/tmp/akasha-56-crash-same-sequence-" + String(boundary)
+        _reset(path)
+        var collection = PersistentCollection.open(path, 1)
+        for id in range(80):
+            collection.upsert(id, [Float32(id)])
+        collection.flush()
+        var old_manifest = read_file_bytes(path + "/manifest.bin")
+        var old = load_manifest(path, 1)
+        var old_name = old.hnsw_name.value().copy()
+        var old_bytes = read_file_bytes(path + "/" + old_name)
+        var pinned = collection.snapshot()
+        collection.rebuild_hnsw()
+        collection.flush()
+        var new_manifest = read_file_bytes(path + "/manifest.bin")
+        var current = load_manifest(path, 1)
+        var new_name = current.hnsw_name.value().copy()
+        assert_true(new_name != old_name)
+        assert_equal(current.last_sequence, old.last_sequence)
+        assert_equal(read_file_bytes(path + "/" + old_name), old_bytes)
+        pinned.close()
+        collection.close()
+        # Normal last-release cleanup has now removed the old graph. Restore
+        # the exact pre-cleanup bytes to reconstruct these crash boundaries.
+        if boundary < 4:
+            write_file_sync(path + "/" + old_name, old_bytes)
+        if boundary < 3:
+            write_file_sync(path + "/manifest.bin", old_manifest)
+        if boundary == 0:
+            # The exclusively created output was only partially written.
+            write_file_sync(path + "/" + new_name, [UInt8(1)])
+        elif boundary == 2:
+            # Both sidecar and manifest temp are durable; no commit rename.
+            write_file_sync(path + "/manifest.bin.tmp", new_manifest)
+        elif boundary == 4:
+            remove_file_if_exists(path + "/" + old_name)
+        # 1 = durable output before manifest; 3 = committed before cleanup.
+        var recovered = PersistentCollection.open(path, 1)
+        assert_true(recovered._hnsw_checkpoint_was_hit)
+        assert_equal(recovered.last_sequence(), UInt64(80))
+        assert_equal(recovered.search_l2_approx([79.0], 1, 64)[0].id, 79)
+        var committed = load_manifest(path, 1)
+        assert_equal(
+            committed.hnsw_name.value(), old_name if boundary < 3 else new_name
+        )
+        if boundary < 3:
+            assert_equal(read_file_bytes(path + "/" + old_name), old_bytes)
+            assert_false(path_exists(path + "/" + new_name))
+        else:
+            assert_false(path_exists(path + "/" + old_name))
+        recovered.close()
 
 
 def main() raises:

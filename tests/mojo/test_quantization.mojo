@@ -69,9 +69,7 @@ def test_i8_dot_accumulates_in_integer_then_restores_magnitudes() raises:
 def test_i8_checked_dot_rejects_unsafe_decoded_component_magnitude() raises:
     var codes: List[Int8] = [Int8(127)]
     with assert_raises():
-        _ = i8_dot_f32(
-            codes.copy(), Float32.MAX_FINITE, codes^, Float32(1.0)
-        )
+        _ = i8_dot_f32(codes.copy(), Float32.MAX_FINITE, codes^, Float32(1.0))
 
 
 def test_i8_dot_scale_preserves_positive_and_negative_subnormals() raises:
@@ -86,9 +84,7 @@ def test_i8_dot_scale_preserves_positive_and_negative_subnormals() raises:
     var mixed_scale = symmetric_i8_scale([smallest, -three_smallest])
     assert_equal(mixed_scale, three_smallest)
     assert_equal(encode_symmetric_i8(smallest, mixed_scale), Int8(0))
-    assert_equal(
-        encode_symmetric_i8(-three_smallest, mixed_scale), Int8(-1)
-    )
+    assert_equal(encode_symmetric_i8(-three_smallest, mixed_scale), Int8(-1))
     assert_true(isfinite(decode_symmetric_i8(Int8(-1), mixed_scale)))
 
 

@@ -1,0 +1,1488 @@
+{
+  "status": "baseline implemented and verified; uncommitted",
+  "performance_parity": "NOT ACHIEVED",
+  "validation": {
+    "python_command": "pixi run env PYTHONPATH=python:.:.build/qdrant-compare/deps pytest tests/python -q",
+    "python_passed": 118,
+    "python_warnings": 3,
+    "native_generator_command": "pixi run env PYTHONPATH=. mojo run -I src -I benchmarks/mojo benchmarks/mojo/qdrant_workload_parity.mojo",
+    "native_generator_cases": 6,
+    "diff_check": "passed",
+    "unchanged_checks": "Earlier CPU/crash/C ABI/build/quality gates retained; engine source unchanged for this benchmark",
+    "archived_result_audit": {
+      "raw_archives": 5,
+      "passing_paired_cells": 36,
+      "f16_legacy_minimum_reproduced": 0.684375,
+      "native_libraries_still_match": {
+        "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+        "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+      },
+      "status": "passed"
+    }
+  },
+  "cases": [
+    {
+      "artifact": "2026-09-30-qdrant-f16-diagnostic.json.gz",
+      "sha256": "cfd33567e298857ef150901c7808e282bf46daaa022db4e401e8c9c48014398b",
+      "purpose": "Single-engine F16 recall diagnostic. Exit 1 reports the absent peer; no paired speed claim.",
+      "spec": {
+        "points": 8192,
+        "dimension": 1536,
+        "queries": 64,
+        "seed": 12345,
+        "metric": "dot",
+        "scalar": "f16",
+        "k": 10,
+        "efs": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "target_recall": 0.95,
+        "search_threads": 1,
+        "index_threads": 1,
+        "qdrant_full_scan_threshold_kib": 6144,
+        "query_concurrency": 1,
+        "update_percent": 10,
+        "warm_read_write_mix": "100% reads after replacements/deletes"
+      },
+      "source_sha256": "32fefb65170ee401611b88e1ae603a2ee5eef727e76a9a55ac50e3c8b7b6d27d",
+      "workload_sha256": "7b23e99079bb26134339ac2866df5ad6042776b2bc8f09a035198ce7d77d5c41",
+      "trials": [
+        {
+          "trial": 0,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 127.24008101041953,
+                "p50_ns": 7772667,
+                "p95_ns": 8443083,
+                "p99_ns": 9215500
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 151.31779606774367,
+                "p50_ns": 6536500,
+                "p95_ns": 7201625,
+                "p99_ns": 7866334
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 148.02468014566915,
+                "p50_ns": 6643083,
+                "p95_ns": 7459000,
+                "p99_ns": 7551750
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2775.40314573733,
+                "p50_ns": 359500,
+                "p95_ns": 377917,
+                "p99_ns": 388292
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda"
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "2026-09-30-qdrant-forced-hnsw-128.json.gz",
+      "sha256": "d6ff71eaac51911e1a1a6d527f32c62fb31623cadb267b70475111cc0fd49a7b",
+      "purpose": "paired comparison; forced-HNSW archive is diagnostic",
+      "spec": {
+        "points": 8192,
+        "dimension": 128,
+        "queries": 64,
+        "seed": 12345,
+        "metric": "dot",
+        "scalar": "f32",
+        "k": 10,
+        "efs": [
+          32,
+          64,
+          128,
+          256,
+          512,
+          1024
+        ],
+        "target_recall": 0.95,
+        "search_threads": 1,
+        "index_threads": 1,
+        "query_concurrency": 1,
+        "update_percent": 10,
+        "warm_read_write_mix": "100% reads after replacements/deletes"
+      },
+      "source_sha256": "32fefb65170ee401611b88e1ae603a2ee5eef727e76a9a55ac50e3c8b7b6d27d",
+      "workload_sha256": "9cf402d6b6917046a9422f0800dddf740ecc9e50505abb41c11a25a2cd8e97a0",
+      "trials": [
+        {
+          "trial": 0,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1637.8357249744204,
+                "p50_ns": 598500,
+                "p95_ns": 673625,
+                "p99_ns": 711250
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9921875,
+                "samples": 64,
+                "qps": 5632.127556424898,
+                "p50_ns": 178584,
+                "p95_ns": 186334,
+                "p99_ns": 190250
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.29080231379100163
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1499.3222360685672,
+                "p50_ns": 654333,
+                "p95_ns": 744625,
+                "p99_ns": 767125
+              },
+              "qdrant": {
+                "ef": 64,
+                "recall": 0.975,
+                "samples": 64,
+                "qps": 8753.034499264882,
+                "p50_ns": 113458,
+                "p95_ns": 129458,
+                "p99_ns": 138666
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.17129170874334915
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1510.3437306339715,
+                "p50_ns": 653250,
+                "p95_ns": 721416,
+                "p99_ns": 797125
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.971875,
+                "samples": 64,
+                "qps": 5940.112344230995,
+                "p50_ns": 167208,
+                "p95_ns": 184458,
+                "p99_ns": 201750
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2542618124219164
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 14357.295659789523,
+                "p50_ns": 69083,
+                "p95_ns": 92000,
+                "p99_ns": 102750
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        },
+        {
+          "trial": 1,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1622.5309104180656,
+                "p50_ns": 612458,
+                "p95_ns": 651375,
+                "p99_ns": 704250
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9921875,
+                "samples": 64,
+                "qps": 5496.747986472503,
+                "p50_ns": 181125,
+                "p95_ns": 193291,
+                "p99_ns": 208042
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2951801527759894
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1376.1984457515798,
+                "p50_ns": 703291,
+                "p95_ns": 837083,
+                "p99_ns": 871708
+              },
+              "qdrant": {
+                "ef": 64,
+                "recall": 0.971875,
+                "samples": 64,
+                "qps": 9072.009929314867,
+                "p50_ns": 110250,
+                "p95_ns": 115208,
+                "p99_ns": 119333
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.15169719350775807
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1406.7519212549512,
+                "p50_ns": 691000,
+                "p95_ns": 854166,
+                "p99_ns": 970542
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.975,
+                "samples": 64,
+                "qps": 5569.637261708726,
+                "p50_ns": 172458,
+                "p95_ns": 215916,
+                "p99_ns": 254000
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2525751418187276
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 15219.824201518082,
+                "p50_ns": 60750,
+                "p95_ns": 89375,
+                "p99_ns": 103000
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            }
+          ],
+          "native_binary_sha256": {
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d",
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda"
+          }
+        },
+        {
+          "trial": 2,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1645.2442159383033,
+                "p50_ns": 605333,
+                "p95_ns": 622709,
+                "p99_ns": 707417
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9921875,
+                "samples": 64,
+                "qps": 5473.810936451878,
+                "p50_ns": 181583,
+                "p95_ns": 192459,
+                "p99_ns": 202583
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3005665038560411
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1459.718031741751,
+                "p50_ns": 677584,
+                "p95_ns": 764375,
+                "p99_ns": 794583
+              },
+              "qdrant": {
+                "ef": 64,
+                "recall": 0.9703125,
+                "samples": 64,
+                "qps": 8877.742390110196,
+                "p50_ns": 110333,
+                "p95_ns": 127916,
+                "p99_ns": 143292
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.1644244637429305
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1479.1275800462824,
+                "p50_ns": 672875,
+                "p95_ns": 700708,
+                "p99_ns": 718000
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.971875,
+                "samples": 64,
+                "qps": 5929.629748359484,
+                "p50_ns": 168625,
+                "p95_ns": 175292,
+                "p99_ns": 187333
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2494468698413259
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 10378.026086465821,
+                "p50_ns": 92417,
+                "p95_ns": 124833,
+                "p99_ns": 172084
+              },
+              "status": "FAILED",
+              "reason": "missing, invalid or below-target engine cell; no speed comparison"
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "2026-09-30-qdrant-real-1536.json.gz",
+      "sha256": "47cdba456681ac3688d95e501d3b9939c5f59acb30cd1d4bf4fbff0d57862320",
+      "purpose": "paired comparison; forced-HNSW archive is diagnostic",
+      "spec": {
+        "points": 8192,
+        "dimension": 1536,
+        "queries": 64,
+        "seed": 12345,
+        "metric": "cosine",
+        "scalar": "f32",
+        "k": 10,
+        "efs": [
+          32,
+          64,
+          128,
+          256,
+          512,
+          1024
+        ],
+        "target_recall": 0.95,
+        "search_threads": 1,
+        "index_threads": 1,
+        "qdrant_full_scan_threshold_kib": 6144,
+        "query_concurrency": 1,
+        "update_percent": 10,
+        "warm_read_write_mix": "100% reads after replacements/deletes"
+      },
+      "source_sha256": "32fefb65170ee401611b88e1ae603a2ee5eef727e76a9a55ac50e3c8b7b6d27d",
+      "workload_sha256": "1d1572212d5f703e74cc842dcc44693f198680594eab9438e72e9d014143b091",
+      "trials": [
+        {
+          "trial": 0,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.990625,
+                "samples": 64,
+                "qps": 1135.788099137761,
+                "p50_ns": 880209,
+                "p95_ns": 1006541,
+                "p99_ns": 1059375
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 0.9703125,
+                "samples": 64,
+                "qps": 2714.682269981684,
+                "p50_ns": 365375,
+                "p95_ns": 423166,
+                "p99_ns": 456541
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.41838712091541536
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.953125,
+                "samples": 64,
+                "qps": 1077.0142969272547,
+                "p50_ns": 921208,
+                "p95_ns": 1067291,
+                "p99_ns": 1135208
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.965625,
+                "samples": 64,
+                "qps": 2827.495056743408,
+                "p50_ns": 349500,
+                "p95_ns": 453959,
+                "p99_ns": 476584
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3809075790808686
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 64,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 643.4136051455555,
+                "p50_ns": 1529458,
+                "p95_ns": 1830625,
+                "p99_ns": 1909333
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9625,
+                "samples": 64,
+                "qps": 2692.3184033340326,
+                "p50_ns": 361833,
+                "p95_ns": 437417,
+                "p99_ns": 458583
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.23898124543842372
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2545.659384251135,
+                "p50_ns": 391917,
+                "p95_ns": 407708,
+                "p99_ns": 429583
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 5142.730457202398,
+                "p50_ns": 138000,
+                "p95_ns": 197459,
+                "p99_ns": 3588000
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.4950015182471672
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        },
+        {
+          "trial": 1,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.990625,
+                "samples": 64,
+                "qps": 1134.9285522576522,
+                "p50_ns": 874334,
+                "p95_ns": 1027375,
+                "p99_ns": 1124500
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 0.96875,
+                "samples": 64,
+                "qps": 2721.1605137329957,
+                "p50_ns": 364875,
+                "p95_ns": 418917,
+                "p99_ns": 493959
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.41707519513456126
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.953125,
+                "samples": 64,
+                "qps": 1042.0305463113787,
+                "p50_ns": 944916,
+                "p95_ns": 1083792,
+                "p99_ns": 1409625
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9671875,
+                "samples": 64,
+                "qps": 2736.0119146478855,
+                "p50_ns": 361791,
+                "p95_ns": 467375,
+                "p99_ns": 483209
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.38085745925762315
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 64,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 678.4356380883817,
+                "p50_ns": 1467667,
+                "p95_ns": 1703958,
+                "p99_ns": 1851667
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 2717.49318726581,
+                "p50_ns": 365917,
+                "p95_ns": 427166,
+                "p99_ns": 440958
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.24965495452483022
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2426.6056072030756,
+                "p50_ns": 404208,
+                "p95_ns": 455541,
+                "p99_ns": 510834
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 9017.471774256612,
+                "p50_ns": 107125,
+                "p95_ns": 138000,
+                "p99_ns": 166625
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2691004383435535
+            }
+          ],
+          "native_binary_sha256": {
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d",
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda"
+          }
+        },
+        {
+          "trial": 2,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.990625,
+                "samples": 64,
+                "qps": 1138.1588839569658,
+                "p50_ns": 875417,
+                "p95_ns": 1022000,
+                "p99_ns": 1088750
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 0.971875,
+                "samples": 64,
+                "qps": 2713.191456312721,
+                "p50_ns": 368500,
+                "p95_ns": 415125,
+                "p99_ns": 426833
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.41949081083416995
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 0.953125,
+                "samples": 64,
+                "qps": 955.2334186739864,
+                "p50_ns": 1011417,
+                "p95_ns": 1259708,
+                "p99_ns": 2341208
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9671875,
+                "samples": 64,
+                "qps": 2773.54979965003,
+                "p50_ns": 358667,
+                "p95_ns": 455208,
+                "p99_ns": 478333
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3444082449121768
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 64,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 655.7175832565384,
+                "p50_ns": 1487792,
+                "p95_ns": 1813000,
+                "p99_ns": 1985792
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9625,
+                "samples": 64,
+                "qps": 2423.8211017031927,
+                "p50_ns": 419083,
+                "p95_ns": 486542,
+                "p99_ns": 508084
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.27053052009315903
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2521.6708054902133,
+                "p50_ns": 395708,
+                "p95_ns": 415791,
+                "p99_ns": 425792
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 7244.770690555694,
+                "p50_ns": 131292,
+                "p95_ns": 175208,
+                "p99_ns": 214709
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3480677185238549
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "2026-09-30-qdrant-uniform-128.json.gz",
+      "sha256": "7823471fcbe522f729e4ab49d20a3602a369a8dd8ecb41842f5bf3c0bc94159c",
+      "purpose": "paired comparison; forced-HNSW archive is diagnostic",
+      "spec": {
+        "points": 8192,
+        "dimension": 128,
+        "queries": 64,
+        "seed": 12345,
+        "metric": "dot",
+        "scalar": "f32",
+        "k": 10,
+        "efs": [
+          32,
+          64,
+          128,
+          256,
+          512,
+          1024
+        ],
+        "target_recall": 0.95,
+        "search_threads": 1,
+        "index_threads": 1,
+        "qdrant_full_scan_threshold_kib": 512,
+        "query_concurrency": 1,
+        "update_percent": 10,
+        "warm_read_write_mix": "100% reads after replacements/deletes"
+      },
+      "source_sha256": "32fefb65170ee401611b88e1ae603a2ee5eef727e76a9a55ac50e3c8b7b6d27d",
+      "workload_sha256": "9cf402d6b6917046a9422f0800dddf740ecc9e50505abb41c11a25a2cd8e97a0",
+      "trials": [
+        {
+          "trial": 0,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1326.5118841474264,
+                "p50_ns": 752458,
+                "p95_ns": 772542,
+                "p99_ns": 867000
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.96875,
+                "samples": 64,
+                "qps": 7256.439040866564,
+                "p50_ns": 138167,
+                "p95_ns": 145166,
+                "p99_ns": 148958
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.1828047995272643
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1432.445682554996,
+                "p50_ns": 673333,
+                "p95_ns": 829875,
+                "p99_ns": 1188916
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.96875,
+                "samples": 64,
+                "qps": 5088.941174225467,
+                "p50_ns": 193542,
+                "p95_ns": 211459,
+                "p99_ns": 236208
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2814820673915558
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1528.2108803027156,
+                "p50_ns": 652458,
+                "p95_ns": 681833,
+                "p99_ns": 726292
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 5106.399411551298,
+                "p50_ns": 193917,
+                "p95_ns": 212750,
+                "p99_ns": 249959
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.29927366763471663
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 17774.869611610768,
+                "p50_ns": 54875,
+                "p95_ns": 64709,
+                "p99_ns": 68917
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 27584.69687219708,
+                "p50_ns": 35666,
+                "p95_ns": 43084,
+                "p99_ns": 51708
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.6443742954277759
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        },
+        {
+          "trial": 1,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1149.1467100881327,
+                "p50_ns": 825083,
+                "p95_ns": 1061167,
+                "p99_ns": 1127583
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.9703125,
+                "samples": 64,
+                "qps": 6761.518087589128,
+                "p50_ns": 144333,
+                "p95_ns": 174125,
+                "p99_ns": 233625
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.16995395045935163
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1144.0523506915154,
+                "p50_ns": 784417,
+                "p95_ns": 1186500,
+                "p99_ns": 2242292
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.96875,
+                "samples": 64,
+                "qps": 5010.959516536363,
+                "p50_ns": 193958,
+                "p95_ns": 223458,
+                "p99_ns": 251875
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2283100366139654
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1424.1922282097144,
+                "p50_ns": 696125,
+                "p95_ns": 765292,
+                "p99_ns": 804666
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 4818.24851396558,
+                "p50_ns": 201625,
+                "p95_ns": 235875,
+                "p99_ns": 285500
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2955829746186247
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 18002.635698382717,
+                "p50_ns": 53875,
+                "p95_ns": 66792,
+                "p99_ns": 75458
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 26134.47083617648,
+                "p50_ns": 37708,
+                "p95_ns": 48459,
+                "p99_ns": 57125
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.6888463826657122
+            }
+          ],
+          "native_binary_sha256": {
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d",
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda"
+          }
+        },
+        {
+          "trial": 2,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 1193.2581288612505,
+                "p50_ns": 826167,
+                "p95_ns": 911125,
+                "p99_ns": 1073542
+              },
+              "qdrant": {
+                "ef": 128,
+                "recall": 0.971875,
+                "samples": 64,
+                "qps": 6787.7811878129205,
+                "p50_ns": 143791,
+                "p95_ns": 162125,
+                "p99_ns": 185833
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.17579501988126522
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9640625,
+                "samples": 64,
+                "qps": 1263.7253905770394,
+                "p50_ns": 728833,
+                "p95_ns": 1161583,
+                "p99_ns": 1180417
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.96875,
+                "samples": 64,
+                "qps": 3189.162905530716,
+                "p50_ns": 326667,
+                "p95_ns": 391709,
+                "p99_ns": 426750
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.39625614244586227
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 128,
+                "recall": 0.9546875,
+                "samples": 64,
+                "qps": 1227.146858435974,
+                "p50_ns": 830500,
+                "p95_ns": 901625,
+                "p99_ns": 922833
+              },
+              "qdrant": {
+                "ef": 256,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 4355.285104448583,
+                "p50_ns": 224958,
+                "p95_ns": 264584,
+                "p99_ns": 292666
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.28176039662306823
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 9547.784123407497,
+                "p50_ns": 100333,
+                "p95_ns": 133625,
+                "p99_ns": 148416
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 23882.7981534119,
+                "p50_ns": 39125,
+                "p95_ns": 60750,
+                "p99_ns": 85791
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.39977661168833767
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "2026-09-30-qdrant-uniform-1536.json.gz",
+      "sha256": "c6f3fcbe8f2770303c13b9d2e4144002b332ad4cbb976646521eb5683faee64c",
+      "purpose": "paired comparison; forced-HNSW archive is diagnostic",
+      "spec": {
+        "points": 8192,
+        "dimension": 1536,
+        "queries": 64,
+        "seed": 12345,
+        "metric": "dot",
+        "scalar": "f32",
+        "k": 10,
+        "efs": [
+          32,
+          64,
+          128,
+          256,
+          512,
+          1024
+        ],
+        "target_recall": 0.95,
+        "search_threads": 1,
+        "index_threads": 1,
+        "qdrant_full_scan_threshold_kib": 6144,
+        "query_concurrency": 1,
+        "update_percent": 10,
+        "warm_read_write_mix": "100% reads after replacements/deletes"
+      },
+      "source_sha256": "32fefb65170ee401611b88e1ae603a2ee5eef727e76a9a55ac50e3c8b7b6d27d",
+      "workload_sha256": "7b23e99079bb26134339ac2866df5ad6042776b2bc8f09a035198ce7d77d5c41",
+      "trials": [
+        {
+          "trial": 0,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 145.30391614986868,
+                "p50_ns": 6776375,
+                "p95_ns": 7359500,
+                "p99_ns": 8025542
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 425.25353499476125,
+                "p50_ns": 2350500,
+                "p95_ns": 2421500,
+                "p99_ns": 2476333
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3416877325938248
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 153.963244373916,
+                "p50_ns": 6375000,
+                "p95_ns": 6932083,
+                "p99_ns": 7680292
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.978125,
+                "samples": 64,
+                "qps": 1081.1321061335225,
+                "p50_ns": 790667,
+                "p95_ns": 1146084,
+                "p99_ns": 1166875
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.14240927958798513
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 156.67132231004845,
+                "p50_ns": 6311083,
+                "p95_ns": 6835583,
+                "p99_ns": 7313459
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.9796875,
+                "samples": 64,
+                "qps": 999.7214369939701,
+                "p50_ns": 1048792,
+                "p95_ns": 1261542,
+                "p99_ns": 1357000
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.1567149773052165
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2922.119044025102,
+                "p50_ns": 341375,
+                "p95_ns": 353625,
+                "p99_ns": 361958
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 9832.853776860591,
+                "p50_ns": 98833,
+                "p95_ns": 122292,
+                "p99_ns": 158208
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.2971791415124724
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        },
+        {
+          "trial": 1,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 145.12828190432234,
+                "p50_ns": 6816708,
+                "p95_ns": 7480625,
+                "p99_ns": 8070917
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 427.66265878596647,
+                "p50_ns": 2327583,
+                "p95_ns": 2509375,
+                "p99_ns": 2614708
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3393522415922572
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 156.89117085571567,
+                "p50_ns": 6380875,
+                "p95_ns": 6503500,
+                "p99_ns": 6600500
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.9765625,
+                "samples": 64,
+                "qps": 948.1545815525682,
+                "p50_ns": 1097417,
+                "p95_ns": 1242459,
+                "p99_ns": 1343500
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.16547003400944618
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 153.50938156994667,
+                "p50_ns": 6426666,
+                "p95_ns": 6913083,
+                "p99_ns": 7492167
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.9796875,
+                "samples": 64,
+                "qps": 1011.5425220549461,
+                "p50_ns": 873042,
+                "p95_ns": 1239125,
+                "p99_ns": 1322166
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.15175771479986105
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2872.0589723458866,
+                "p50_ns": 346625,
+                "p95_ns": 364500,
+                "p99_ns": 373875
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 8055.755900526519,
+                "p50_ns": 121666,
+                "p95_ns": 174083,
+                "p99_ns": 186084
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.3565225917729422
+            }
+          ],
+          "native_binary_sha256": {
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d",
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda"
+          }
+        },
+        {
+          "trial": 2,
+          "matched": [
+            {
+              "mode": "all",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.99375,
+                "samples": 64,
+                "qps": 150.2116906364977,
+                "p50_ns": 6597708,
+                "p95_ns": 7111458,
+                "p99_ns": 7305834
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.9921875,
+                "samples": 64,
+                "qps": 378.3737682263679,
+                "p50_ns": 2568500,
+                "p95_ns": 2822542,
+                "p99_ns": 4964000
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.39699287648987147
+            },
+            {
+              "mode": "correlated",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9859375,
+                "samples": 64,
+                "qps": 156.18846380438632,
+                "p50_ns": 6292917,
+                "p95_ns": 7096041,
+                "p99_ns": 7153792
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.978125,
+                "samples": 64,
+                "qps": 939.0428685247693,
+                "p50_ns": 1093625,
+                "p95_ns": 1255333,
+                "p99_ns": 2572834
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.16632729882689748
+            },
+            {
+              "mode": "independent",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 512,
+                "recall": 0.9828125,
+                "samples": 64,
+                "qps": 158.74192224676293,
+                "p50_ns": 6197000,
+                "p95_ns": 7030750,
+                "p99_ns": 7390500
+              },
+              "qdrant": {
+                "ef": 512,
+                "recall": 0.978125,
+                "samples": 64,
+                "qps": 870.8450875308849,
+                "p50_ns": 1187458,
+                "p95_ns": 1355916,
+                "p99_ns": 2712500
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.18228491441209752
+            },
+            {
+              "mode": "selective",
+              "target_recall": 0.95,
+              "akasha": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 2781.0719720133775,
+                "p50_ns": 354000,
+                "p95_ns": 394084,
+                "p99_ns": 412584
+              },
+              "qdrant": {
+                "ef": 32,
+                "recall": 1.0,
+                "samples": 64,
+                "qps": 6316.932339732517,
+                "p50_ns": 134875,
+                "p95_ns": 190625,
+                "p99_ns": 1354709
+              },
+              "status": "PASSED",
+              "qps_ratio_akasha_over_qdrant": 0.4402567294445865
+            }
+          ],
+          "native_binary_sha256": {
+            "akasha": "b18a97e790dc2311bfd9c838503043ae65c7ba5dd1ad2c52480dc874c3c93cda",
+            "qdrant": "746ce4acdbb56db68aaba805bddf52961a083c5ed5da19f16b5ba500114c788d"
+          }
+        }
+      ]
+    }
+  ]
+}

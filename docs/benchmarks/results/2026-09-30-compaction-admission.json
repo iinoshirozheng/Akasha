@@ -1,0 +1,18 @@
+[
+  {
+    "busy_processes": 0,
+    "cases": 12,
+    "exit_code": 0,
+    "seconds": 5.093519249930978,
+    "stdout": "12 repeated public flush/compaction race cases passed\n",
+    "stderr": ""
+  },
+  {
+    "busy_processes": 6,
+    "cases": 12,
+    "exit_code": 0,
+    "seconds": 5.11073745880276,
+    "stdout": "12 repeated public flush/compaction race cases passed\n",
+    "stderr": ""
+  }
+]

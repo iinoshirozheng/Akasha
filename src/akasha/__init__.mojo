@@ -17,7 +17,12 @@ from .compute import (
     simd_dot_product,
     simd_l2_squared_distance,
 )
-from .document import DocumentField, DocumentRecord, FieldProjection, PayloadValue
+from .document import (
+    DocumentField,
+    DocumentRecord,
+    FieldProjection,
+    PayloadValue,
+)
 from .index import (
     Bitmap,
     FlatIndex,
@@ -32,4 +37,19 @@ from .index import (
     SparseIndex,
     SparseRecord,
 )
-from .query import CancellationToken, FilterCondition, FilterExpression, QueryControl
+from .query import (
+    CancellationToken,
+    FilterCondition,
+    FilterExpression,
+    QueryControl,
+)
+
+from .document.point_state import FieldUpdate, PointMutation, PointState
+from .document.vector_schema import (
+    FieldCatalog,
+    VectorFieldSpec,
+    legacy_vector_fields,
+)
+from .document.vector_value import VectorValue
+from .query.field_fusion import FieldQuery
+from .index.field_ivf import IvfOptions

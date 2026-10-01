@@ -3,7 +3,12 @@
 ## Version 1 (frozen F32)
 
 Status: frozen. Multi-byte integers and `Float32` bit patterns are little
-endian. A committed file is named `hnsw-<checkpoint-sequence>.bin`.
+endian. The [manifest version](manifest-format.md) determines its filename:
+v3 uses `hnsw-<checkpoint-sequence>.bin`; v4/v5 use
+`hnsw-<checkpoint-sequence>-<creation-generation>-<claim>.bin`.
+For manifest v5, the filename sequence identifies the immutable graph base and
+may precede the manifest's authoritative checkpoint. Recovery applies the
+current default-dense projection above that base sequence; graph bytes remain v1/v2.
 
 The sidecar is an immutable derived index. Dense segments, the WAL, collection
 identity, and manifest remain authoritative. Version 1 stores the packed HNSW
@@ -324,15 +329,46 @@ not reinterpret or edit either v1 or v2 in place.
 ## Publication and compatibility
 
 Writing a sidecar synchronously writes the requested path. The checkpoint
-publisher supplies a temporary filename, fsyncs dense, sparse, and HNSW files,
-renames all three, syncs the directory, and then commits their reference through
-manifest v3. The filename sequence, header sequence, and manifest sequence must
-agree. WAL rotation follows the manifest commit; cleanup removes only a prior
-valid manifest's explicitly named, superseded sidecar.
+publisher exclusively creates a new v4 job filename and fsyncs the sidecar and
+directory before committing the manifest. Dense and sparse files retain their
+temp/fsync/rename publication. The filename sequence, header sequence, and
+manifest sequence must agree. WAL rotation follows the manifest commit; cleanup
+retires the prior manifest's explicitly named sidecar behind generation pins.
+Same-sequence rebuilds never overwrite a captured file. If manifest publication
+raises after an uncertain commit, its output stays in place and a retry claims
+another name. Open removes only unpublished outputs from future generations;
+older unreferenced outputs retain the existing conservative orphan policy.
 
 The legacy `hnsw.cache` envelope and payload remain readable and rebuildable for
-older manifests without a sidecar. Once a v3 manifest commits a sidecar,
+older manifests without a sidecar. Once a v3 or v4 manifest commits a sidecar,
 recovery does not open or prefer the legacy cache. Missing files and stale
 identity/checksum/count metadata rebuild from authoritative records. A sidecar
 whose committed identity matches but whose internal CRC or layout is corrupt is
 a storage error. Newer WAL mutations replay incrementally into the owned graph.
+
+
+## Rebuildable overlay cache
+
+`hnsw-overlay.cache` uses the existing AKIC v1 envelope with kind **3**. Its
+payload is an unmodified HNSW snapshot v1/v2 containing only the mutable delta,
+including replaced/deleted traversal slots. The inner snapshot sequence is the
+retained base sequence; its configuration fingerprint is the collection identity.
+The outer latest sequence binds the current authority version. For kind 3, the
+`source_checksum` field stores the retained base snapshot CRC32. The artifact
+generation must be no newer than the recovered generation; compaction may advance
+the generation or reorder physical rows while preserving the same vectors. The cache reader bounds the file to the
+existing 512 MiB payload limit plus the 40-byte envelope before materialization.
+
+Publication is best-effort atomic replacement after authority checkpoint commit.
+This is not referenced by the manifest and is not required in backups. Older
+readers reject the unknown cache kind and recover from authority. Recovery fully
+validates the nested snapshot, then requires its current IDs and prepared native
+vector bits to match exactly the authoritative rows newer than the retained base.
+It derives base deletions and source bindings from that same authority. Any
+missing/stale/invalid cache is a miss; it cannot reject an otherwise valid database.
+A newer WAL sequence invalidates the cache. No overlay cache is written during recovery preflight.
+
+Within one open collection, a successful publication records its latest sequence,
+base sequence and base CRC. Repeated flush or compaction with that same key reuses
+the artifact instead of serializing/fsyncing it again. Failed publication does not
+record a key, so another flush of the same authority state can retry.

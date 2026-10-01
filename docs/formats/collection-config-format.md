@@ -4,6 +4,12 @@
 collection. The v1 record is exactly 60 bytes. Every integer is unsigned and
 little-endian unless its size is one byte.
 
+The named/typed vector work defines a separate
+[v2 field-catalog contract](field-catalog-format.md). Its metadata codec is
+reader-first; current collection open/publication continues to use v1 until the
+field-aware record readers and migration integration are complete. V1 readers
+must keep rejecting v2 rather than discarding its additional identity.
+
 | Offset | Size | Type | Field |
 | ---: | ---: | --- | --- |
 | 0 | 4 | bytes | Magic ASCII `AKCF` |

@@ -1,0 +1,160 @@
+{
+  "date": "2026-09-24",
+  "source": "09fe0ff",
+  "hardware": "Apple M4 Pro",
+  "mojo": "1.0.0 (ed45d567)",
+  "max": "26.5.0",
+  "checks": [
+    {
+      "command": "pixi run test",
+      "exit_code": 0,
+      "mojo_files": 84,
+      "mojo_tests": 664,
+      "mojo_passed": 664,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/bounded-head-48/test.log",
+      "python_passed": 66,
+      "python_warnings": [
+        "Starlette/httpx deprecation",
+        "Collection missing __module__"
+      ]
+    },
+    {
+      "command": "pixi run test-crash",
+      "exit_code": 0,
+      "mojo_files": 5,
+      "mojo_tests": 9,
+      "mojo_passed": 9,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/bounded-head-48/test-crash.log"
+    },
+    {
+      "command": "pixi run test-gpu",
+      "exit_code": 0,
+      "mojo_files": 4,
+      "mojo_tests": 10,
+      "mojo_passed": 10,
+      "mojo_failed": 0,
+      "mojo_skipped": 0,
+      "log": ".build/bounded-head-48/test-gpu.log"
+    },
+    {
+      "command": "pixi run test-c",
+      "exit_code": 0,
+      "log": ".build/bounded-head-48/test-c.log"
+    },
+    {
+      "command": "pixi run build-mojo",
+      "exit_code": 0,
+      "log": ".build/bounded-head-48/build-mojo.log"
+    },
+    {
+      "command": "pixi run check-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/bounded-head-48/check-hnsw-quality.log"
+    },
+    {
+      "command": "pixi run check-post-hnsw-quality",
+      "exit_code": 0,
+      "log": ".build/bounded-head-48/check-post-hnsw-quality.log"
+    },
+    {
+      "command": "pixi run python benchmarks/snapshot_cost.py --binary .build/bounded-head-48/phase11-bench --source 09fe0ff --output docs/benchmarks/results/2026-09-24-bounded-head-cost.json",
+      "exit_code": 0,
+      "log": ".build/bounded-head-48/cost.log"
+    }
+  ],
+  "build_note": "Python shared library built and exercised by pixi run test; build-mojo builds all three examples. batch_query, gpu_pipeline and phase12 benchmarks also compile against the publisher after ReadSnapshot.capture removal.",
+  "hnsw_smoke": {
+    "cells": 6,
+    "min_recall": 1.0
+  },
+  "post_hnsw_smoke": [
+    {
+      "cell": "cell-000.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-001.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-002.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-003.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-004.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-005.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-006.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-007.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-008.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-009.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    },
+    {
+      "cell": "cell-010.json",
+      "exit_code": 0,
+      "query_count": 48,
+      "min_final_recall": 1.0,
+      "fallback_query_count": 12
+    }
+  ],
+  "readonly_view_negative_probe": {
+    "expected_exit_code": 1,
+    "observed_exit_code": 1,
+    "diagnostic": "invalid use of mutating method on rvalue of type 'MemTable'",
+    "source": "from akasha import PersistentCollection\n\n\ndef main() raises:\n    var collection = PersistentCollection.open(\"/tmp/akasha-48-probe\", 1)\n    collection.upsert(1, [1.0])\n    var snapshot = collection.snapshot()\n    snapshot._view().run(0).memtable.apply_upsert(2, 9, [2.0])\n"
+  },
+  "durable_formats_changed": false
+}

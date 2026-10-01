@@ -348,8 +348,7 @@ def test_corrupt_legacy_segment_fails_before_config_publication() raises:
     _assert_lock_released(path)
 
 
-def test_corrupt_legacy_sparse_snapshot_fails_before_config_publication(
-) raises:
+def test_corrupt_legacy_sparse_snapshot_fails_before_config_publication() raises:
     var path = _test_directory("legacy-corrupt-sparse-snapshot")
     _reset(path)
     var legacy = PersistentCollection.open(path, 2)
@@ -447,9 +446,7 @@ def test_late_sparse_delta_failure_does_not_repair_dense_wal() raises:
 
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_dense_delta = read_file_bytes(path + "/segment-delta-4.bin")
-    var corrupt_sparse_delta = _corrupt_last_byte(
-        path + "/sparse-delta-4.bin"
-    )
+    var corrupt_sparse_delta = _corrupt_last_byte(path + "/sparse-delta-4.bin")
     # This is an accepted torn dense-WAL suffix. Recovery may identify it
     # during preflight, but must not repair it before later sparse validation.
     var torn_wal = read_file_bytes(path + "/wal.bin")
@@ -517,8 +514,7 @@ def test_late_legacy_preflight_failure_preserves_every_source() raises:
     _assert_lock_released(path)
 
 
-def test_non_default_config_is_rejected_for_legacy_data_without_mutation(
-) raises:
+def test_non_default_config_is_rejected_for_legacy_data_without_mutation() raises:
     var path = _test_directory("legacy-incompatible")
     _reset(path)
     var legacy = PersistentCollection.open(path, 2)
@@ -528,9 +524,7 @@ def test_non_default_config_is_rejected_for_legacy_data_without_mutation(
     var before_wal = read_file_bytes(path + "/wal.bin")
 
     with assert_raises():
-        _ = PersistentCollection.open_with_config(
-            path, _non_default_config(2)
-        )
+        _ = PersistentCollection.open_with_config(path, _non_default_config(2))
 
     assert_equal(collection_config_exists(path), False)
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)

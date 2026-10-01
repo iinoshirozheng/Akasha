@@ -83,7 +83,10 @@ def test_legacy_constructor_is_l2_only_and_rejects_metric_mismatch() raises:
         message = String(error)
     assert_equal(
         message,
-        "HNSW metric mismatch: graph is bound to l2 but search requested cosine",
+        (
+            "HNSW metric mismatch: graph is bound to l2 but search requested"
+            " cosine"
+        ),
     )
 
 
@@ -157,9 +160,7 @@ def test_tiny_graph_caps_large_legal_ef_before_scratch_reserve() raises:
     for id in range(1, 5):
         index.add(id, [Float32(id)])
 
-    var results = index.search(
-        [2.5], 10, ef_search=4_294_967_295
-    )
+    var results = index.search([2.5], 10, ef_search=4_294_967_295)
     assert_equal(len(results), 4)
     assert_equal(index.last_search_effective_ef(), 4)
     assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
@@ -171,9 +172,7 @@ def test_empty_graph_with_maximum_ef_returns_without_scratch_reserve() raises:
     var index = HnswIndex(config)
     var starting_epoch = index.scratch.epoch
 
-    var results = index.search(
-        [0.0], 10, ef_search=4_294_967_295
-    )
+    var results = index.search([0.0], 10, ef_search=4_294_967_295)
     assert_equal(len(results), 0)
     assert_equal(index.last_search_effective_ef(), 0)
     assert_equal(index.scratch.epoch, starting_epoch)

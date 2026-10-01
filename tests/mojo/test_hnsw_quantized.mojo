@@ -7,7 +7,11 @@ from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.storage.memtable import MemTable
 from akasha.storage.checksum import crc32_range
-from akasha.storage.filesystem import ensure_directory, remove_file_if_exists, write_file_sync
+from akasha.storage.filesystem import (
+    ensure_directory,
+    remove_file_if_exists,
+    write_file_sync,
+)
 from akasha.storage.hnsw_store import (
     decode_hnsw_snapshot_owned,
     encode_hnsw_snapshot,
@@ -184,9 +188,7 @@ def _quality_vector(
     return values^
 
 
-def _quality_config(
-    metric: MetricKind, scalar: ScalarKind
-) -> CollectionConfig:
+def _quality_config(metric: MetricKind, scalar: ScalarKind) -> CollectionConfig:
     var config = CollectionConfig.defaults(_QUALITY_DIMENSION)
     config.ann_metric = metric.copy()
     config.scalar_kind = scalar.copy()
@@ -254,15 +256,11 @@ def _measure_production_quality_cell(
     var rng = _SplitMix64(_QUALITY_SEED)
     var exact = FlatIndex(_QUALITY_DIMENSION)
     var table = MemTable(_QUALITY_DIMENSION)
-    var baseline_graph = HnswIndex(
-        _quality_config(metric, ScalarKind.f32())
-    )
+    var baseline_graph = HnswIndex(_quality_config(metric, ScalarKind.f32()))
     var compact_graph = HnswIndex(_quality_config(metric, scalar))
     for point_id in range(_QUALITY_POINT_COUNT):
         var values = _quality_vector(rng, point_id, clustered)
-        table.apply_upsert(
-            point_id, UInt64(point_id + 1), values.copy()
-        )
+        table.apply_upsert(point_id, UInt64(point_id + 1), values.copy())
         baseline_graph.add(point_id, values.copy())
         compact_graph.add(point_id, values.copy())
         exact.add(point_id, values^)
@@ -302,7 +300,9 @@ def _measure_production_quality_cell(
 
 def test_compact_scalars_write_v2_with_exact_vector_widths() raises:
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
         var config = _config(MetricKind.dot(), scalar)
@@ -329,18 +329,24 @@ def test_compact_scalars_write_v2_with_exact_vector_widths() raises:
             assert_equal(vector_bytes_per_point, 32)
             assert_equal(scale_bytes_per_point, 0)
         print(
-            "compact-size scalar=", scalar.name(),
-            " raw-vector-bytes/point=", vector_bytes_per_point,
-            " scale-bytes/point=", scale_bytes_per_point,
+            "compact-size scalar=",
+            scalar.name(),
+            " raw-vector-bytes/point=",
+            vector_bytes_per_point,
+            " scale-bytes/point=",
+            scale_bytes_per_point,
             " actual-compact-payload-bytes/point=",
             vector_bytes_per_point + scale_bytes_per_point,
-            " f32-vector-bytes/point=", 64,
+            " f32-vector-bytes/point=",
+            64,
         )
 
 
 def test_compact_graphs_are_sidecar_eligible() raises:
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
         var graph = _graph(_config(MetricKind.dot(), scalar), 12)
@@ -356,7 +362,9 @@ def test_compact_owned_and_mapped_queries_are_equivalent() raises:
     var directory = String("/tmp/akasha-hnsw-v2-query")
     ensure_directory(directory)
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
         var path = directory + "/" + scalar.name() + ".bin"
@@ -366,9 +374,7 @@ def test_compact_owned_and_mapped_queries_are_equivalent() raises:
         var query = _vector(177)
         var expected = graph.search(query, 10, ef_search=64)
         var bytes = encode_hnsw_snapshot(graph, UInt64(11))
-        var owned = decode_hnsw_snapshot_owned(
-            bytes^, config, UInt64(11)
-        )
+        var owned = decode_hnsw_snapshot_owned(bytes^, config, UInt64(11))
         var owned_results = owned.search(query, 10, ef_search=64)
         _ = write_hnsw_snapshot(path, graph, UInt64(11))
         var mapped = open_hnsw_snapshot_view(path, config, UInt64(11))
@@ -426,14 +432,10 @@ def test_segmented_base_and_delta_prepare_once_for_all_scalar_backends() raises:
             var lookup = _quality_lookup(table)
             var query = _vector(177)
             var expected = exact.search_dot(query.copy(), 10)
-            var actual = segmented.search(
-                query.copy(), 10, 64, table, lookup
-            )
+            var actual = segmented.search(query.copy(), 10, 64, table, lookup)
             _assert_same_results(expected, actual, 1.0e-6)
             assert_equal(segmented.last_search_query_preparations(), 1)
-            assert_true(
-                segmented.last_search_stats().distance_evaluations > 1
-            )
+            assert_true(segmented.last_search_stats().distance_evaluations > 1)
 
             var bitmap = Bitmap(table.slot_count())
             for ordinal in range(table.slot_count()):
@@ -444,9 +446,7 @@ def test_segmented_base_and_delta_prepare_once_for_all_scalar_backends() raises:
             )
             _assert_same_results(expected, filtered, 1.0e-6)
             assert_equal(segmented.last_search_query_preparations(), 1)
-            assert_true(
-                segmented.last_search_stats().distance_evaluations > 1
-            )
+            assert_true(segmented.last_search_stats().distance_evaluations > 1)
             segmented.close()
 
 
@@ -465,24 +465,22 @@ def test_compact_mapped_distance_requires_bound_dispatcher_identity() raises:
     )
     var wrong_metric_query = wrong_metric.prepare_query(_vector(177))
     with assert_raises():
-        _ = mapped.distance_to_slot(
-            wrong_metric, wrong_metric_query, UInt32(0)
-        )
+        _ = mapped.distance_to_slot(wrong_metric, wrong_metric_query, UInt32(0))
 
     var wrong_scalar = MetricDispatcher(
         MetricKind.dot(), ScalarKind.f32(), config.dimension
     )
     var wrong_scalar_query = wrong_scalar.prepare_query(_vector(177))
     with assert_raises():
-        _ = mapped.distance_to_slot(
-            wrong_scalar, wrong_scalar_query, UInt32(0)
-        )
+        _ = mapped.distance_to_slot(wrong_scalar, wrong_scalar_query, UInt32(0))
     mapped.close()
 
 
 def test_compact_owned_graphs_keep_only_compact_vector_tapes() raises:
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
         var config = _config(MetricKind.dot(), scalar)
@@ -518,9 +516,7 @@ def test_i8_cosine_uses_fixed_scale_without_owned_or_durable_scale_tape() raises
     assert_equal(_u64_at(bytes, 168), UInt64(0))
     var query = _vector(177)
     var expected = graph.search(query.copy(), 10, ef_search=64)
-    var owned = decode_hnsw_snapshot_owned(
-        bytes.copy(), config, UInt64(41)
-    )
+    var owned = decode_hnsw_snapshot_owned(bytes.copy(), config, UInt64(41))
     assert_equal(len(owned.graph.vector_scales), 0)
     _assert_same_results(
         expected, owned.search(query.copy(), 10, ef_search=64), 1.0e-6
@@ -617,9 +613,7 @@ def test_i8_dot_subnormal_vectors_round_trip_with_finite_search_scores() raises:
     for result in expected:
         assert_true(isfinite(result.score))
     var bytes = encode_hnsw_snapshot(graph, UInt64(43))
-    var owned = decode_hnsw_snapshot_owned(
-        bytes.copy(), config, UInt64(43)
-    )
+    var owned = decode_hnsw_snapshot_owned(bytes.copy(), config, UInt64(43))
     _assert_same_results(
         expected, owned.search(positive.copy(), 2, ef_search=16), 0.0
     )
@@ -693,9 +687,7 @@ def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
     )
 
     var bad_scale_length = valid_i8.copy()
-    _put_u64(
-        bad_scale_length, 168, _u64_at(bad_scale_length, 168) + UInt64(4)
-    )
+    _put_u64(bad_scale_length, 168, _u64_at(bad_scale_length, 168) + UInt64(4))
     _seal(bad_scale_length)
     _assert_owned_and_mapped_reject(
         directory + "/bad-scale-length.bin",
@@ -750,12 +742,12 @@ def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
 
 def test_direct_compact_graph_quality_matrix_is_diagnostic() raises:
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
-        for metric in [
-            MetricKind.dot(), MetricKind.l2(), MetricKind.cosine()
-        ]:
+        for metric in [MetricKind.dot(), MetricKind.l2(), MetricKind.cosine()]:
             if scalar == ScalarKind.i8() and metric == MetricKind.l2():
                 continue
             for clustered in [False, True]:
@@ -766,22 +758,27 @@ def test_direct_compact_graph_quality_matrix_is_diagnostic() raises:
                 print(
                     "compact-quality dataset=",
                     "eight-cluster" if clustered else "uniform",
-                    " metric=", metric.name(),
-                    " scalar=", scalar.name(),
-                    " f32-recall@10=", cell.f32_recall,
-                    " compact-recall@10=", cell.compact_recall,
-                    " recall-loss=", loss,
+                    " metric=",
+                    metric.name(),
+                    " scalar=",
+                    scalar.name(),
+                    " f32-recall@10=",
+                    cell.f32_recall,
+                    " compact-recall@10=",
+                    cell.compact_recall,
+                    " recall-loss=",
+                    loss,
                 )
 
 
 def test_production_rerank_compact_scalar_recall_loss_gate() raises:
     var kinds: List[ScalarKind] = [
-        ScalarKind.bf16(), ScalarKind.f16(), ScalarKind.i8()
+        ScalarKind.bf16(),
+        ScalarKind.f16(),
+        ScalarKind.i8(),
     ]
     for scalar in kinds:
-        for metric in [
-            MetricKind.dot(), MetricKind.l2(), MetricKind.cosine()
-        ]:
+        for metric in [MetricKind.dot(), MetricKind.l2(), MetricKind.cosine()]:
             if scalar == ScalarKind.i8() and metric == MetricKind.l2():
                 continue
             for clustered in [False, True]:
@@ -792,11 +789,16 @@ def test_production_rerank_compact_scalar_recall_loss_gate() raises:
                 print(
                     "compact-production-quality dataset=",
                     "eight-cluster" if clustered else "uniform",
-                    " metric=", metric.name(),
-                    " scalar=", scalar.name(),
-                    " f32-recall@10=", cell.f32_recall,
-                    " compact-recall@10=", cell.compact_recall,
-                    " recall-loss=", loss,
+                    " metric=",
+                    metric.name(),
+                    " scalar=",
+                    scalar.name(),
+                    " f32-recall@10=",
+                    cell.f32_recall,
+                    " compact-recall@10=",
+                    cell.compact_recall,
+                    " recall-loss=",
+                    loss,
                 )
                 assert_true(loss <= 0.02)
 

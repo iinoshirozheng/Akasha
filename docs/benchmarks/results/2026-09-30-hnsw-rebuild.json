@@ -1,0 +1,631 @@
+{
+  "source_base": "31f27e5e7f919d748f5e87ba3bdf600c387dac01",
+  "source_sha256": {
+    "src/akasha/api/collection.mojo": "5d34f4fb4b98eb25f22ec8058fa5b6649b066ba636282b19e45a625e31f42dde",
+    "src/akasha/index/hnsw_rebuild.mojo": "0453c947c4830a92c23c16cceea3c4b546f23541a603a4b0ed83dbdce70c7709",
+    "src/akasha/index/segmented_hnsw.mojo": "06f48c968e78b1b0add031421202e3b5b16854e5e7fecddcd60bff62e6f6c060",
+    "benchmarks/mojo/hnsw_rebuild_bench.mojo": "4db53fd003e8146c95ee7456bb878708b0910d7cbb5b1ecf1907a1693fd7bf75"
+  },
+  "host": "macOS-26.5.2-arm64-arm-64bit",
+  "machine": "arm64",
+  "mojo": "Mojo 1.0.0 (ed45d567)",
+  "runs": [
+    {
+      "process": 0,
+      "rows": [
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 0,
+          "build_ns": 125245000,
+          "detach_ns": 3000,
+          "catchup_ns": 0,
+          "publish_ns": 21000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 122085000,
+          "detach_ns": 1000,
+          "catchup_ns": 1000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 0,
+          "build_ns": 121605000,
+          "detach_ns": 1000,
+          "catchup_ns": 0,
+          "publish_ns": 38000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 0,
+          "build_ns": 126473000,
+          "detach_ns": 0,
+          "catchup_ns": 221000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 0,
+          "build_ns": 122404000,
+          "detach_ns": 1000,
+          "catchup_ns": 214000,
+          "publish_ns": 68000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 121720000,
+          "detach_ns": 1000,
+          "catchup_ns": 213000,
+          "publish_ns": 81000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 121514000,
+          "detach_ns": 2000,
+          "catchup_ns": 123119000,
+          "publish_ns": 18000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 124900000,
+          "detach_ns": 1000,
+          "catchup_ns": 119519000,
+          "publish_ns": 9000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 121286000,
+          "detach_ns": 2000,
+          "catchup_ns": 122048000,
+          "publish_ns": 7000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 578267000,
+          "detach_ns": 4000,
+          "catchup_ns": 1000,
+          "publish_ns": 160000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 571109000,
+          "detach_ns": 2000,
+          "catchup_ns": 1000,
+          "publish_ns": 5000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 571867000,
+          "detach_ns": 4000,
+          "catchup_ns": 0,
+          "publish_ns": 4000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 564168000,
+          "detach_ns": 1000,
+          "catchup_ns": 229000,
+          "publish_ns": 124000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 564637000,
+          "detach_ns": 0,
+          "catchup_ns": 218000,
+          "publish_ns": 155000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 0,
+          "build_ns": 570995000,
+          "detach_ns": 1000,
+          "catchup_ns": 230000,
+          "publish_ns": 6000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 575394000,
+          "detach_ns": 3000,
+          "catchup_ns": 120732000,
+          "publish_ns": 11000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 576575000,
+          "detach_ns": 4000,
+          "catchup_ns": 119657000,
+          "publish_ns": 10000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 571882000,
+          "detach_ns": 2000,
+          "catchup_ns": 122726000,
+          "publish_ns": 309000
+        }
+      ],
+      "stdout": "points,dimension,tail_points,round,capture_ns,build_ns,detach_ns,catchup_ns,publish_ns\n1024,128,0,0,0,125245000,3000,0,21000\n1024,128,0,1,1000,122085000,1000,1000,4000\n1024,128,0,2,0,121605000,1000,0,38000\n1024,128,16,0,0,126473000,0,221000,4000\n1024,128,16,1,0,122404000,1000,214000,68000\n1024,128,16,2,1000,121720000,1000,213000,81000\n1024,128,1024,0,1000,121514000,2000,123119000,18000\n1024,128,1024,1,1000,124900000,1000,119519000,9000\n1024,128,1024,2,1000,121286000,2000,122048000,7000\n4096,128,0,0,1000,578267000,4000,1000,160000\n4096,128,0,1,1000,571109000,2000,1000,5000\n4096,128,0,2,1000,571867000,4000,0,4000\n4096,128,16,0,1000,564168000,1000,229000,124000\n4096,128,16,1,1000,564637000,0,218000,155000\n4096,128,16,2,0,570995000,1000,230000,6000\n4096,128,1024,0,1000,575394000,3000,120732000,11000\n4096,128,1024,1,1000,576575000,4000,119657000,10000\n4096,128,1024,2,1000,571882000,2000,122726000,309000\n",
+      "stderr": ""
+    },
+    {
+      "process": 1,
+      "rows": [
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 0,
+          "build_ns": 121935000,
+          "detach_ns": 2000,
+          "catchup_ns": 1000,
+          "publish_ns": 13000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 0,
+          "build_ns": 121755000,
+          "detach_ns": 1000,
+          "catchup_ns": 0,
+          "publish_ns": 5000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 128839000,
+          "detach_ns": 2000,
+          "catchup_ns": 0,
+          "publish_ns": 47000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 0,
+          "build_ns": 123005000,
+          "detach_ns": 0,
+          "catchup_ns": 223000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 121132000,
+          "detach_ns": 1000,
+          "catchup_ns": 221000,
+          "publish_ns": 71000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 121699000,
+          "detach_ns": 0,
+          "catchup_ns": 219000,
+          "publish_ns": 77000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 122123000,
+          "detach_ns": 3000,
+          "catchup_ns": 119815000,
+          "publish_ns": 15000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 0,
+          "build_ns": 120528000,
+          "detach_ns": 1000,
+          "catchup_ns": 119815000,
+          "publish_ns": 10000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 121753000,
+          "detach_ns": 2000,
+          "catchup_ns": 119429000,
+          "publish_ns": 7000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 577330000,
+          "detach_ns": 1000,
+          "catchup_ns": 0,
+          "publish_ns": 137000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 575997000,
+          "detach_ns": 2000,
+          "catchup_ns": 0,
+          "publish_ns": 9000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 0,
+          "build_ns": 572058000,
+          "detach_ns": 2000,
+          "catchup_ns": 0,
+          "publish_ns": 4000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 569089000,
+          "detach_ns": 2000,
+          "catchup_ns": 233000,
+          "publish_ns": 127000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 574400000,
+          "detach_ns": 1000,
+          "catchup_ns": 227000,
+          "publish_ns": 162000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 577657000,
+          "detach_ns": 1000,
+          "catchup_ns": 220000,
+          "publish_ns": 7000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 595300000,
+          "detach_ns": 2000,
+          "catchup_ns": 119513000,
+          "publish_ns": 10000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 569047000,
+          "detach_ns": 3000,
+          "catchup_ns": 119646000,
+          "publish_ns": 10000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 578868000,
+          "detach_ns": 1000,
+          "catchup_ns": 118477000,
+          "publish_ns": 265000
+        }
+      ],
+      "stdout": "points,dimension,tail_points,round,capture_ns,build_ns,detach_ns,catchup_ns,publish_ns\n1024,128,0,0,0,121935000,2000,1000,13000\n1024,128,0,1,0,121755000,1000,0,5000\n1024,128,0,2,1000,128839000,2000,0,47000\n1024,128,16,0,0,123005000,0,223000,4000\n1024,128,16,1,1000,121132000,1000,221000,71000\n1024,128,16,2,1000,121699000,0,219000,77000\n1024,128,1024,0,1000,122123000,3000,119815000,15000\n1024,128,1024,1,0,120528000,1000,119815000,10000\n1024,128,1024,2,1000,121753000,2000,119429000,7000\n4096,128,0,0,1000,577330000,1000,0,137000\n4096,128,0,1,1000,575997000,2000,0,9000\n4096,128,0,2,0,572058000,2000,0,4000\n4096,128,16,0,1000,569089000,2000,233000,127000\n4096,128,16,1,1000,574400000,1000,227000,162000\n4096,128,16,2,1000,577657000,1000,220000,7000\n4096,128,1024,0,1000,595300000,2000,119513000,10000\n4096,128,1024,1,1000,569047000,3000,119646000,10000\n4096,128,1024,2,1000,578868000,1000,118477000,265000\n",
+      "stderr": ""
+    },
+    {
+      "process": 2,
+      "rows": [
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 0,
+          "build_ns": 121542000,
+          "detach_ns": 2000,
+          "catchup_ns": 0,
+          "publish_ns": 13000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 128592000,
+          "detach_ns": 4000,
+          "catchup_ns": 0,
+          "publish_ns": 4000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 0,
+          "build_ns": 123753000,
+          "detach_ns": 1000,
+          "catchup_ns": 1000,
+          "publish_ns": 37000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 122152000,
+          "detach_ns": 0,
+          "catchup_ns": 223000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 122314000,
+          "detach_ns": 1000,
+          "catchup_ns": 216000,
+          "publish_ns": 66000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 130560000,
+          "detach_ns": 1000,
+          "catchup_ns": 231000,
+          "publish_ns": 92000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 125427000,
+          "detach_ns": 1000,
+          "catchup_ns": 120115000,
+          "publish_ns": 14000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 121901000,
+          "detach_ns": 2000,
+          "catchup_ns": 125265000,
+          "publish_ns": 9000
+        },
+        {
+          "points": 1024,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 120616000,
+          "detach_ns": 1000,
+          "catchup_ns": 120493000,
+          "publish_ns": 9000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 567872000,
+          "detach_ns": 2000,
+          "catchup_ns": 0,
+          "publish_ns": 111000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 570032000,
+          "detach_ns": 2000,
+          "catchup_ns": 1000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 0,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 568165000,
+          "detach_ns": 2000,
+          "catchup_ns": 1000,
+          "publish_ns": 4000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 577280000,
+          "detach_ns": 0,
+          "catchup_ns": 224000,
+          "publish_ns": 117000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 574018000,
+          "detach_ns": 1000,
+          "catchup_ns": 223000,
+          "publish_ns": 156000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 16,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 577396000,
+          "detach_ns": 1000,
+          "catchup_ns": 226000,
+          "publish_ns": 5000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 0,
+          "capture_ns": 1000,
+          "build_ns": 570922000,
+          "detach_ns": 2000,
+          "catchup_ns": 122277000,
+          "publish_ns": 9000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 1,
+          "capture_ns": 1000,
+          "build_ns": 573833000,
+          "detach_ns": 2000,
+          "catchup_ns": 121263000,
+          "publish_ns": 11000
+        },
+        {
+          "points": 4096,
+          "dimension": 128,
+          "tail_points": 1024,
+          "round": 2,
+          "capture_ns": 1000,
+          "build_ns": 675586000,
+          "detach_ns": 3000,
+          "catchup_ns": 124540000,
+          "publish_ns": 312000
+        }
+      ],
+      "stdout": "points,dimension,tail_points,round,capture_ns,build_ns,detach_ns,catchup_ns,publish_ns\n1024,128,0,0,0,121542000,2000,0,13000\n1024,128,0,1,1000,128592000,4000,0,4000\n1024,128,0,2,0,123753000,1000,1000,37000\n1024,128,16,0,1000,122152000,0,223000,4000\n1024,128,16,1,1000,122314000,1000,216000,66000\n1024,128,16,2,1000,130560000,1000,231000,92000\n1024,128,1024,0,1000,125427000,1000,120115000,14000\n1024,128,1024,1,1000,121901000,2000,125265000,9000\n1024,128,1024,2,1000,120616000,1000,120493000,9000\n4096,128,0,0,1000,567872000,2000,0,111000\n4096,128,0,1,1000,570032000,2000,1000,4000\n4096,128,0,2,1000,568165000,2000,1000,4000\n4096,128,16,0,1000,577280000,0,224000,117000\n4096,128,16,1,1000,574018000,1000,223000,156000\n4096,128,16,2,1000,577396000,1000,226000,5000\n4096,128,1024,0,1000,570922000,2000,122277000,9000\n4096,128,1024,1,1000,573833000,2000,121263000,11000\n4096,128,1024,2,1000,675586000,3000,124540000,312000\n",
+      "stderr": ""
+    }
+  ],
+  "elapsed_seconds": 44.05386018753052,
+  "scope": "Steady-state capture; detached journal transfer; build/catch-up outside writer; final publish includes old-graph release outside writer. Timings are phase calls, not p99 writer lock holds. Nearest-point oracle and structure validation outside timed phases."
+}

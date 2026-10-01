@@ -1,9 +1,10 @@
 from akasha.document.value import PayloadValue
 from akasha.index.bitmap import Bitmap
+from akasha.index.sorted_postings import insert_posting, remove_posting
 from akasha.query.filter_ast import FilterCondition
 
 
-struct _IntEntry(Movable):
+struct _IntEntry(Comparable, Copyable, Movable):
     var name: String
     var value: Int64
     var ordinal: Int
@@ -13,8 +14,26 @@ struct _IntEntry(Movable):
         self.value = value
         self.ordinal = ordinal
 
+    def __lt__(self, other: Self) -> Bool:
+        return _int_after(other, self)
 
-struct _FloatEntry(Movable):
+    def __gt__(self, other: Self) -> Bool:
+        return _int_after(self, other)
+
+    def __eq__(self, other: Self) -> Bool:
+        return not (_int_after(self, other) or _int_after(other, self))
+
+    def __ne__(self, other: Self) -> Bool:
+        return not self.__eq__(other)
+
+    def __le__(self, other: Self) -> Bool:
+        return not _int_after(self, other)
+
+    def __ge__(self, other: Self) -> Bool:
+        return not _int_after(other, self)
+
+
+struct _FloatEntry(Comparable, Copyable, Movable):
     var name: String
     var value: Float64
     var ordinal: Int
@@ -23,6 +42,24 @@ struct _FloatEntry(Movable):
         self.name = String(copy=name)
         self.value = value
         self.ordinal = ordinal
+
+    def __lt__(self, other: Self) -> Bool:
+        return _float_after(other, self)
+
+    def __gt__(self, other: Self) -> Bool:
+        return _float_after(self, other)
+
+    def __eq__(self, other: Self) -> Bool:
+        return not (_float_after(self, other) or _float_after(other, self))
+
+    def __ne__(self, other: Self) -> Bool:
+        return not self.__eq__(other)
+
+    def __le__(self, other: Self) -> Bool:
+        return not _float_after(self, other)
+
+    def __ge__(self, other: Self) -> Bool:
+        return not _float_after(other, self)
 
 
 struct SortedBlockIndex:
@@ -61,8 +98,11 @@ struct SortedBlockIndex:
     def finish_bulk(mut self) raises:
         if not self._bulk_loading:
             raise Error("sorted block bulk load is not active")
-        _sort_int_entries(self._integers)
-        _sort_float_entries(self._floats)
+        # Bound sorting work with the official merge sort. Each call moves
+        # entries through temporary descriptors; field strings are not copied.
+        # Integer and float buffers are allocated and released sequentially.
+        sort[stable=True](Span(self._integers))
+        sort[stable=True](Span(self._floats))
         self._bulk_loading = False
 
     def add(mut self, name: String, value: PayloadValue, ordinal: Int) raises:
@@ -98,70 +138,24 @@ struct SortedBlockIndex:
         raise Error("sorted block index requires Int64 or Float64 values")
 
     def _add_int(mut self, name: String, value: Int64, ordinal: Int):
-        if not self._bulk_loading:
-            for index in range(len(self._integers)):
-                if (
-                    self._integers[index].name == name
-                    and self._integers[index].value == value
-                    and self._integers[index].ordinal == ordinal
-                ):
-                    return
-        self._integers.append(_IntEntry(name, value, ordinal))
-        if self._bulk_loading:
-            return
-        var cursor = len(self._integers) - 1
-        while cursor > 0 and _int_after(
-            self._integers[cursor - 1], self._integers[cursor]
-        ):
-            self._integers.swap_elements(cursor - 1, cursor)
-            cursor -= 1
+        insert_posting(
+            self._integers, _IntEntry(name, value, ordinal), self._bulk_loading
+        )
 
     def _add_float(mut self, name: String, value: Float64, ordinal: Int):
-        if not self._bulk_loading:
-            for index in range(len(self._floats)):
-                if (
-                    self._floats[index].name == name
-                    and self._floats[index].value == value
-                    and self._floats[index].ordinal == ordinal
-                ):
-                    return
-        self._floats.append(_FloatEntry(name, value, ordinal))
-        if self._bulk_loading:
-            return
-        var cursor = len(self._floats) - 1
-        while cursor > 0 and _float_after(
-            self._floats[cursor - 1], self._floats[cursor]
-        ):
-            self._floats.swap_elements(cursor - 1, cursor)
-            cursor -= 1
+        insert_posting(
+            self._floats, _FloatEntry(name, value, ordinal), self._bulk_loading
+        )
 
     def _remove_int(mut self, name: String, value: Int64, ordinal: Int):
-        for index in range(len(self._integers)):
-            if (
-                self._integers[index].name == name
-                and self._integers[index].value == value
-                and self._integers[index].ordinal == ordinal
-            ):
-                var cursor = index
-                while cursor + 1 < len(self._integers):
-                    self._integers.swap_elements(cursor, cursor + 1)
-                    cursor += 1
-                _ = self._integers.pop()
-                return
+        remove_posting(
+            self._integers, _IntEntry(name, value, ordinal), self._bulk_loading
+        )
 
     def _remove_float(mut self, name: String, value: Float64, ordinal: Int):
-        for index in range(len(self._floats)):
-            if (
-                self._floats[index].name == name
-                and self._floats[index].value == value
-                and self._floats[index].ordinal == ordinal
-            ):
-                var cursor = index
-                while cursor + 1 < len(self._floats):
-                    self._floats.swap_elements(cursor, cursor + 1)
-                    cursor += 1
-                _ = self._floats.pop()
-                return
+        remove_posting(
+            self._floats, _FloatEntry(name, value, ordinal), self._bulk_loading
+        )
 
     def _evaluate_int(self, condition: FilterCondition) raises -> Bitmap:
         var result = Bitmap(self._size)
@@ -346,51 +340,3 @@ def _float_upper_bound(
         else:
             high = middle
     return low
-
-
-def _sort_int_entries(mut entries: List[_IntEntry]):
-    var start = len(entries) // 2
-    while start > 0:
-        start -= 1
-        _sift_int(entries, start, len(entries))
-    var end = len(entries)
-    while end > 1:
-        end -= 1
-        entries.swap_elements(0, end)
-        _sift_int(entries, 0, end)
-
-
-def _sift_int(mut entries: List[_IntEntry], root: Int, end: Int):
-    var current = root
-    while current * 2 + 1 < end:
-        var child = current * 2 + 1
-        if child + 1 < end and _int_after(entries[child + 1], entries[child]):
-            child += 1
-        if not _int_after(entries[child], entries[current]):
-            return
-        entries.swap_elements(current, child)
-        current = child
-
-
-def _sort_float_entries(mut entries: List[_FloatEntry]):
-    var start = len(entries) // 2
-    while start > 0:
-        start -= 1
-        _sift_float(entries, start, len(entries))
-    var end = len(entries)
-    while end > 1:
-        end -= 1
-        entries.swap_elements(0, end)
-        _sift_float(entries, 0, end)
-
-
-def _sift_float(mut entries: List[_FloatEntry], root: Int, end: Int):
-    var current = root
-    while current * 2 + 1 < end:
-        var child = current * 2 + 1
-        if child + 1 < end and _float_after(entries[child + 1], entries[child]):
-            child += 1
-        if not _float_after(entries[child], entries[current]):
-            return
-        entries.swap_elements(current, child)
-        current = child

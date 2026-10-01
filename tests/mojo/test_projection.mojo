@@ -61,9 +61,7 @@ def test_projection_is_snapshot_stable_and_validates_names() raises:
     var projection = FieldProjection.all(True)
     var old = snapshot.get_projected(1, projection)
     assert_equal(old.value().vector[0], Float32(4.0))
-    assert_equal(
-        old.value().get_field("chunk").value().as_string(), "hello"
-    )
+    assert_equal(old.value().get_field("chunk").value().as_string(), "hello")
 
     var invalid = List[String]()
     invalid.append("")

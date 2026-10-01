@@ -342,7 +342,9 @@ def test_owned_and_mapped_filtered_widening_share_prepare_once_core() raises:
     assert_equal(len(mapped), len(owned))
     for index in range(len(owned)):
         assert_equal(mapped[index].id, owned[index].id)
-        assert_almost_equal(mapped[index].score, owned[index].score, atol=1.0e-6)
+        assert_almost_equal(
+            mapped[index].score, owned[index].score, atol=1.0e-6
+        )
     _assert_search_stats_equal(
         view.last_search_stats(), original.last_search_stats
     )

@@ -21,7 +21,7 @@ def test_memtable_keeps_latest_live_value_in_id_order() raises:
     assert_equal(entries[0].id, 10)
     assert_equal(entries[1].id, 20)
     assert_equal(entries[1].sequence, UInt64(3))
-    assert_equal(entries[1].values[0], Float32(2.0))
+    assert_equal(entries[1].values()[0], Float32(2.0))
     assert_equal(table.last_sequence, UInt64(3))
 
 
@@ -89,11 +89,11 @@ def test_empty_vector_clones_preserve_identity_and_ownership() raises:
     assert_equal(copied.id, -7)
     assert_equal(copied.sequence, UInt64(11))
     assert_true(copied.tombstone)
-    assert_equal(len(copied.values), 0)
-    assert_equal(len(copied.fields), 0)
-    copied.values.append(9.0)
-    assert_equal(len(tombstone.values), 0)
-    assert_equal(len(table.entry_ref_at(0).values), 0)
+    assert_equal(len(copied.values()), 0)
+    assert_equal(len(copied.fields()), 0)
+    # Accepted dense owners are immutable and shared by clones.
+    assert_equal(copied.dense_address(), tombstone.dense_address())
+    assert_equal(copied.dense_address(), table.entry_ref_at(0).dense_address())
 
     # Metadata-only projections legitimately carry an empty owned vector.
     var projected = DocumentRecord(
@@ -162,7 +162,7 @@ def test_memtable_entries_after_returns_changed_latest_states_in_id_order() rais
     assert_equal(changed[0].sequence, UInt64(3))
     assert_true(changed[0].tombstone)
     assert_equal(changed[1].id, 30)
-    assert_equal(changed[1].values[0], Float32(3.0))
+    assert_equal(changed[1].values()[0], Float32(3.0))
     assert_equal(len(table.entries_after(4)), 0)
 
 
@@ -190,9 +190,9 @@ def test_memtable_linearly_merges_ordered_recovered_segments() raises:
     assert_equal(table.entry_at(0).id, 1)
     assert_true(table.entry_at(0).tombstone)
     assert_equal(table.entry_at(1).id, 2)
-    assert_equal(table.entry_at(1).values[0], Float32(2.0))
+    assert_equal(table.entry_at(1).values()[0], Float32(2.0))
     assert_equal(table.entry_at(2).id, 3)
-    assert_equal(table.entry_at(2).values[0], Float32(3.0))
+    assert_equal(table.entry_at(2).values()[0], Float32(3.0))
     assert_equal(table.last_sequence, UInt64(5))
 
 

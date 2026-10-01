@@ -73,8 +73,7 @@ def test_ef_construction_changes_recorded_work() raises:
         high.add(id, high_values^)
 
     assert_true(
-        high.build_distance_evaluations()
-        > low.build_distance_evaluations()
+        high.build_distance_evaluations() > low.build_distance_evaluations()
     )
 
 
@@ -282,9 +281,7 @@ def test_cache_rejects_asymmetry_and_target_level_mismatch() raises:
 
     var upper: List[UInt32] = [UInt32(1)]
     var reciprocal: List[UInt32] = [UInt32(0)]
-    var wrong_level = _two_node_cache(
-        1, 0, 0, one, upper, reciprocal
-    )
+    var wrong_level = _two_node_cache(1, 0, 0, one, upper, reciprocal)
     assert_equal(
         _decode_error(wrong_level^),
         "HNSW edge target does not own graph level",
@@ -301,18 +298,14 @@ def test_cache_rejects_nonhighest_entry_duplicate_and_self_edges() raises:
 
     var duplicates: List[UInt32] = [UInt32(1), UInt32(1)]
     var reciprocal: List[UInt32] = [UInt32(0)]
-    var duplicate = _two_node_cache(
-        0, 0, 0, duplicates, none, reciprocal
-    )
+    var duplicate = _two_node_cache(0, 0, 0, duplicates, none, reciprocal)
     assert_equal(
         _decode_error(duplicate^),
         "HNSW cache neighbor list contains a duplicate",
     )
 
     var self_edge: List[UInt32] = [UInt32(0)]
-    var self_payload = _two_node_cache(
-        0, 0, 0, self_edge, none, none
-    )
+    var self_payload = _two_node_cache(0, 0, 0, self_edge, none, none)
     assert_equal(
         _decode_error(self_payload^),
         "HNSW cache self edges are not allowed",
@@ -343,8 +336,8 @@ def test_post_append_internal_failure_quarantines_and_preserves_stats() raises:
         index.add(id, values^)
     var entry = index.entry_slot.value()
     assert_true(index.graph.neighbor_count(entry, 0) > 0)
-    index.graph.neighbor_slots[index.graph.neighbor_bases[Int(entry)]] = (
-        UInt32(999)
+    index.graph.neighbor_slots[index.graph.neighbor_bases[Int(entry)]] = UInt32(
+        999
     )
     var before_slots = index.build_stats.slot_count
     var before_edges = index.build_stats.directed_edges

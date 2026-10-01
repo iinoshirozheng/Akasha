@@ -1,0 +1,38 @@
+{
+  "combined-wal-v4.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 240,
+    "crc32": "31d734ca",
+    "sha256": "c9108ef7c24f3675066842b05e807dd14764eb2ca30a72ddec77b0f51b7cdd60"
+  },
+  "last-sequence-wal-v4.bin": {
+    "catalog": "type-matrix-v2.bin",
+    "bytes": 64,
+    "crc32": "79916e6a",
+    "sha256": "46c7c0364b09a169b22a25354af9bde534e0e80b866a73c107927fbcf7fd1f29"
+  },
+  "base-v4.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 323,
+    "crc32": "c2a3ba34",
+    "sha256": "782b28a21a302d388174b1c016fc8aea28e6bf7a4aba1bab6c982076c8c5b08d"
+  },
+  "delta-v4.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 319,
+    "crc32": "82b88d0f",
+    "sha256": "d3871ea702acacce3d78149fd4cdb03e8f818913aaa8afdbd2dce7ed678161dd"
+  },
+  "typed-base-v4.bin": {
+    "catalog": "type-matrix-v2.bin",
+    "bytes": 327,
+    "crc32": "ca3b3095",
+    "sha256": "3fade01deb320555eaaf9ebc2206ffde8038644fe184943a90a8e774bddc0506"
+  },
+  "empty-base-v4.bin": {
+    "catalog": "type-matrix-v2.bin",
+    "bytes": 52,
+    "crc32": "8ff5f094",
+    "sha256": "252951db419d2684ea1ba2149d707ad58c454ef27ff1c13d9992e44ad8886bc6"
+  }
+}

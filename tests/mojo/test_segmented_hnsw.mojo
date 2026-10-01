@@ -48,7 +48,9 @@ def _lookup(table: MemTable) raises -> HnswIdOrdinalLookup:
     return HnswIdOrdinalLookup(ordinals^, table.slot_count())
 
 
-def _chain_base(config: CollectionConfig, mut table: MemTable) raises -> HnswIndex:
+def _chain_base(
+    config: CollectionConfig, mut table: MemTable
+) raises -> HnswIndex:
     var index = HnswIndex(config)
     for ordinal in range(4):
         var id = 10 + ordinal
@@ -99,9 +101,7 @@ def test_base_only_and_delta_only_fast_paths() raises:
     var base = _base(config.copy(), base_table)
     var base_only = SegmentedHnsw.from_owned(base^)
     var base_lookup = _lookup(base_table)
-    var base_result = base_only.search(
-        [4.0], 2, 16, base_table, base_lookup
-    )
+    var base_result = base_only.search([4.0], 2, 16, base_table, base_lookup)
     assert_equal(base_result[0].id, 4)
     assert_equal(base_only.last_search_stats().base_candidates, 4)
     assert_equal(base_only.last_search_stats().delta_candidates, 0)
@@ -166,7 +166,9 @@ def test_owned_overlay_admits_current_base_nodes_during_search() raises:
     var index = SegmentedHnsw.from_owned(base^)
     for ordinal in range(4):
         var id = 20 + ordinal
-        table.apply_upsert(id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)])
+        table.apply_upsert(
+            id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)]
+        )
         index.upsert(id, [100.0 + Float32(ordinal)])
 
     var lookup = _lookup(table)
@@ -191,7 +193,9 @@ def test_mapped_overlay_admits_current_base_nodes_during_filtered_search() raise
     var index = SegmentedHnsw.from_mapped(view^)
     for ordinal in range(4):
         var id = 20 + ordinal
-        table.apply_upsert(id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)])
+        table.apply_upsert(
+            id, UInt64(100 + ordinal), [100.0 + Float32(ordinal)]
+        )
         index.upsert(id, [100.0 + Float32(ordinal)])
     var lookup = _lookup(table)
     var allowed_bitmap = Bitmap(table.slot_count())
@@ -199,9 +203,7 @@ def test_mapped_overlay_admits_current_base_nodes_during_filtered_search() raise
         allowed_bitmap.set(ordinal)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [0.0], 2, 2, 6, allowed, table, lookup
-    )
+    var results = index.search_allowed([0.0], 2, 2, 6, allowed, table, lookup)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 24)
@@ -287,9 +289,7 @@ def test_filtered_base_only_widens_from_initial_ef_once_per_source() raises:
     allowed_bitmap.set(3)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [0.0], 2, 2, 4, allowed, table, lookup
-    )
+    var results = index.search_allowed([0.0], 2, 2, 4, allowed, table, lookup)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
@@ -313,9 +313,7 @@ def test_filtered_saturation_uses_source_exact_fallback_and_final_stats() raises
     allowed_bitmap.set(3)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [0.0], 2, 2, 2, allowed, table, lookup
-    )
+    var results = index.search_allowed([0.0], 2, 2, 2, allowed, table, lookup)
 
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
@@ -347,9 +345,7 @@ def test_filtered_merge_reranks_max_k_or_ef_candidates_from_each_source() raises
         allowed_bitmap.set(ordinal)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [6.0], 2, 4, 4, allowed, table, lookup
-    )
+    var results = index.search_allowed([6.0], 2, 4, 4, allowed, table, lookup)
 
     assert_equal(len(results), 2)
     assert_equal(index.last_search_stats().base_candidates, 4)
@@ -443,9 +439,7 @@ def test_filtered_source_exhaustion_does_not_pollute_complete_merge() raises:
     allowed_bitmap.set(1)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [1.0], 2, 2, 4, allowed, table, lookup
-    )
+    var results = index.search_allowed([1.0], 2, 2, 4, allowed, table, lookup)
 
     assert_equal(len(results), 2)
     assert_equal(index.last_search_stats().base_candidates, 2)
@@ -464,9 +458,7 @@ def test_filtered_candidate_pool_expands_with_final_widened_ef() raises:
         allowed_bitmap.set(ordinal)
     var allowed = HnswEligibility(allowed_bitmap^, lookup)
 
-    var results = index.search_allowed(
-        [0.0], 3, 3, 6, allowed, table, lookup
-    )
+    var results = index.search_allowed([0.0], 3, 3, 6, allowed, table, lookup)
 
     assert_equal(len(results), 3)
     assert_equal(index.last_search_stats().effective_ef, 6)

@@ -1,0 +1,1354 @@
+{
+  "command": ".build/checked-distance-bench",
+  "binary_sha256": "603f994d2d8b61edf2ca2b758ca702b4ea9ec7279d4e4d1802ecfa24829b736b",
+  "benchmark_sha256": "943bdbb18b0ea3abefdd12917e5a2f0a7050b195b8628252cb6842bf73524181",
+  "returncode": 0,
+  "stdout": "metric= 0 fused= False dimension= 31 sample= 0 ns= 17.4 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 0 ns= 7.3 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 1 ns= 7.2 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 1 ns= 16.75 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 2 ns= 16.65 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 2 ns= 7.2 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 3 ns= 7.15 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 3 ns= 16.75 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 4 ns= 17.55 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 4 ns= 7.35 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 5 ns= 7.35 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 5 ns= 17.05 checksum= 6054.6875\nmetric= 0 fused= False dimension= 31 sample= 6 ns= 16.85 checksum= 6054.6875\nmetric= 0 fused= True dimension= 31 sample= 6 ns= 7.15 checksum= 6054.6875\nmetric= 1 fused= False dimension= 31 sample= 0 ns= 16.15 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 0 ns= 8.2 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 1 ns= 8.2 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 1 ns= 16.75 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 2 ns= 16.2 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 2 ns= 7.35 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 3 ns= 7.35 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 3 ns= 16.25 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 4 ns= 16.05 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 4 ns= 7.35 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 5 ns= 7.25 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 5 ns= 15.75 checksum= 375372.06\nmetric= 1 fused= False dimension= 31 sample= 6 ns= 15.8 checksum= 375372.06\nmetric= 1 fused= True dimension= 31 sample= 6 ns= 7.25 checksum= 375372.06\nmetric= 2 fused= False dimension= 31 sample= 0 ns= 27.35 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 0 ns= 8.8 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 1 ns= 8.9 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 1 ns= 26.3 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 2 ns= 26.45 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 2 ns= 8.85 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 3 ns= 8.9 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 3 ns= 26.25 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 4 ns= 26.65 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 4 ns= 8.85 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 5 ns= 9.05 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 5 ns= 26.55 checksum= 625.0442\nmetric= 2 fused= False dimension= 31 sample= 6 ns= 26.3 checksum= 625.0442\nmetric= 2 fused= True dimension= 31 sample= 6 ns= 9.0 checksum= 625.0442\nmetric= 0 fused= False dimension= 64 sample= 0 ns= 9.85 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 0 ns= 8.25 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 1 ns= 8.15 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 1 ns= 10.05 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 2 ns= 10.1 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 2 ns= 8.15 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 3 ns= 8.15 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 3 ns= 10.45 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 4 ns= 9.95 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 4 ns= 8.2 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 5 ns= 8.15 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 5 ns= 9.85 checksum= 12814.941\nmetric= 0 fused= False dimension= 64 sample= 6 ns= 9.95 checksum= 12814.941\nmetric= 0 fused= True dimension= 64 sample= 6 ns= 7.95 checksum= 12814.941\nmetric= 1 fused= False dimension= 64 sample= 0 ns= 9.1 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 0 ns= 8.95 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 1 ns= 9.0 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 1 ns= 10.05 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 2 ns= 9.85 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 2 ns= 8.85 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 3 ns= 9.0 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 3 ns= 10.05 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 4 ns= 10.25 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 4 ns= 8.95 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 5 ns= 8.95 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 5 ns= 9.65 checksum= 784782.4\nmetric= 1 fused= False dimension= 64 sample= 6 ns= 10.0 checksum= 784782.4\nmetric= 1 fused= True dimension= 64 sample= 6 ns= 9.05 checksum= 784782.4\nmetric= 2 fused= False dimension= 64 sample= 0 ns= 15.4 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 0 ns= 11.3 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 1 ns= 11.25 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 1 ns= 15.35 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 2 ns= 15.35 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 2 ns= 11.8 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 3 ns= 11.2 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 3 ns= 16.35 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 4 ns= 15.75 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 4 ns= 11.75 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 5 ns= 11.4 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 5 ns= 15.4 checksum= 569.07623\nmetric= 2 fused= False dimension= 64 sample= 6 ns= 15.0 checksum= 569.07623\nmetric= 2 fused= True dimension= 64 sample= 6 ns= 12.0 checksum= 569.07623\nmetric= 0 fused= False dimension= 384 sample= 0 ns= 49.15 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 0 ns= 39.8 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 1 ns= 44.25 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 1 ns= 50.7 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 2 ns= 50.5 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 2 ns= 43.85 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 3 ns= 45.05 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 3 ns= 50.85 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 4 ns= 52.3 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 4 ns= 43.65 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 5 ns= 44.05 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 5 ns= 50.7 checksum= 75060.38\nmetric= 0 fused= False dimension= 384 sample= 6 ns= 51.05 checksum= 75060.38\nmetric= 0 fused= True dimension= 384 sample= 6 ns= 43.75 checksum= 75060.38\nmetric= 1 fused= False dimension= 384 sample= 0 ns= 56.55 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 0 ns= 43.5 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 1 ns= 45.45 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 1 ns= 50.85 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 2 ns= 51.35 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 2 ns= 47.45 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 3 ns= 47.65 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 3 ns= 51.65 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 4 ns= 52.0 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 4 ns= 47.85 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 5 ns= 50.25 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 5 ns= 53.95 checksum= 4651994.5\nmetric= 1 fused= False dimension= 384 sample= 6 ns= 53.85 checksum= 4651994.5\nmetric= 1 fused= True dimension= 384 sample= 6 ns= 48.8 checksum= 4651994.5\nmetric= 2 fused= False dimension= 384 sample= 0 ns= 83.95 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 0 ns= 59.9 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 1 ns= 58.65 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 1 ns= 85.85 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 2 ns= 84.3 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 2 ns= 57.5 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 3 ns= 58.45 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 3 ns= 84.8 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 4 ns= 85.5 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 4 ns= 56.95 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 5 ns= 59.25 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 5 ns= 83.6 checksum= 625.01904\nmetric= 2 fused= False dimension= 384 sample= 6 ns= 85.35 checksum= 625.01904\nmetric= 2 fused= True dimension= 384 sample= 6 ns= 57.75 checksum= 625.01904\nmetric= 0 fused= False dimension= 1536 sample= 0 ns= 227.45 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 0 ns= 170.15 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 1 ns= 172.6 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 1 ns= 222.65 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 2 ns= 222.05 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 2 ns= 172.4 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 3 ns= 175.35 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 3 ns= 217.65 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 4 ns= 229.15 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 4 ns= 174.75 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 5 ns= 168.15 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 5 ns= 216.75 checksum= 299985.06\nmetric= 0 fused= False dimension= 1536 sample= 6 ns= 224.2 checksum= 299985.06\nmetric= 0 fused= True dimension= 1536 sample= 6 ns= 167.6 checksum= 299985.06\nmetric= 1 fused= False dimension= 1536 sample= 0 ns= 240.0 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 0 ns= 192.6 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 1 ns= 197.6 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 1 ns= 240.7 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 2 ns= 240.0 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 2 ns= 195.15 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 3 ns= 200.15 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 3 ns= 235.65 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 4 ns= 238.85 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 4 ns= 196.0 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 5 ns= 197.05 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 5 ns= 239.2 checksum= 18599952.0\nmetric= 1 fused= False dimension= 1536 sample= 6 ns= 244.15 checksum= 18599952.0\nmetric= 1 fused= True dimension= 1536 sample= 6 ns= 199.95 checksum= 18599952.0\nmetric= 2 fused= False dimension= 1536 sample= 0 ns= 358.2 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 0 ns= 217.6 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 1 ns= 217.5 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 1 ns= 372.6 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 2 ns= 361.45 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 2 ns= 214.9 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 3 ns= 218.5 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 3 ns= 374.35 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 4 ns= 382.65 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 4 ns= 226.15 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 5 ns= 227.45 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 5 ns= 372.9 checksum= 625.647\nmetric= 2 fused= False dimension= 1536 sample= 6 ns= 375.55 checksum= 625.647\nmetric= 2 fused= True dimension= 1536 sample= 6 ns= 223.75 checksum= 625.647\n",
+  "stderr": "",
+  "timings": [
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 17.4,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 7.3,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 7.2,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 16.75,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 16.65,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 7.2,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 7.15,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 16.75,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 17.55,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 7.35,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 7.35,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 17.05,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 16.85,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 7.15,
+      "checksum": "6054.6875"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 16.15,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 8.2,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 8.2,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 16.75,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 16.2,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 7.35,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 7.35,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 16.25,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 16.05,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 7.35,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 7.25,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 15.75,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 15.8,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 7.25,
+      "checksum": "375372.06"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 27.35,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 0,
+      "ns": 8.8,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 8.9,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 1,
+      "ns": 26.3,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 26.45,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 2,
+      "ns": 8.85,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 8.9,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 3,
+      "ns": 26.25,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 26.65,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 4,
+      "ns": 8.85,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 9.05,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 5,
+      "ns": 26.55,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 26.3,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 31,
+      "sample": 6,
+      "ns": 9.0,
+      "checksum": "625.0442"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 9.85,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 8.25,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 8.15,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 10.05,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 10.1,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 8.15,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 8.15,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 10.45,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 9.95,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 8.2,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 8.15,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 9.85,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 9.95,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 7.95,
+      "checksum": "12814.941"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 9.1,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 8.95,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 9.0,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 10.05,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 9.85,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 8.85,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 9.0,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 10.05,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 10.25,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 8.95,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 8.95,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 9.65,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 10.0,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 9.05,
+      "checksum": "784782.4"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 15.4,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 0,
+      "ns": 11.3,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 11.25,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 1,
+      "ns": 15.35,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 15.35,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 2,
+      "ns": 11.8,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 11.2,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 3,
+      "ns": 16.35,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 15.75,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 4,
+      "ns": 11.75,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 11.4,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 5,
+      "ns": 15.4,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 15.0,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 64,
+      "sample": 6,
+      "ns": 12.0,
+      "checksum": "569.07623"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 49.15,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 39.8,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 44.25,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 50.7,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 50.5,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 43.85,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 45.05,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 50.85,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 52.3,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 43.65,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 44.05,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 50.7,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 51.05,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 43.75,
+      "checksum": "75060.38"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 56.55,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 43.5,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 45.45,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 50.85,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 51.35,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 47.45,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 47.65,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 51.65,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 52.0,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 47.85,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 50.25,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 53.95,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 53.85,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 48.8,
+      "checksum": "4651994.5"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 83.95,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 0,
+      "ns": 59.9,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 58.65,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 1,
+      "ns": 85.85,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 84.3,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 2,
+      "ns": 57.5,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 58.45,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 3,
+      "ns": 84.8,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 85.5,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 4,
+      "ns": 56.95,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 59.25,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 5,
+      "ns": 83.6,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 85.35,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 384,
+      "sample": 6,
+      "ns": 57.75,
+      "checksum": "625.01904"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 227.45,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 170.15,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 172.6,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 222.65,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 222.05,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 172.4,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 175.35,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 217.65,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 229.15,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 174.75,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 168.15,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 216.75,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 224.2,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 0,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 167.6,
+      "checksum": "299985.06"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 240.0,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 192.6,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 197.6,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 240.7,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 240.0,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 195.15,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 200.15,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 235.65,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 238.85,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 196.0,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 197.05,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 239.2,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 244.15,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 1,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 199.95,
+      "checksum": "18599952.0"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 358.2,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 0,
+      "ns": 217.6,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 217.5,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 1,
+      "ns": 372.6,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 361.45,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 2,
+      "ns": 214.9,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 218.5,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 3,
+      "ns": 374.35,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 382.65,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 4,
+      "ns": 226.15,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 227.45,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 5,
+      "ns": 372.9,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": false,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 375.55,
+      "checksum": "625.647"
+    },
+    {
+      "metric": 2,
+      "fused": true,
+      "dimension": 1536,
+      "sample": 6,
+      "ns": 223.75,
+      "checksum": "625.647"
+    }
+  ]
+}

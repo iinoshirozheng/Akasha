@@ -20,6 +20,7 @@ from akasha.storage.manifest import (
     load_manifest,
     Manifest,
     publish_manifest,
+    parse_hnsw_job_name,
     SegmentDescriptor,
 )
 from akasha.index.hnsw import HnswIndex
@@ -70,9 +71,7 @@ def _reset(directory: String) raises:
         remove_file_if_exists(
             directory + "/sparse-delta-" + String(sequence) + ".bin"
         )
-        remove_file_if_exists(
-            directory + "/hnsw-" + String(sequence) + ".bin"
-        )
+        remove_file_if_exists(directory + "/hnsw-" + String(sequence) + ".bin")
         remove_file_if_exists(
             directory + "/hnsw-" + String(sequence) + ".bin.tmp"
         )
@@ -139,9 +138,7 @@ def test_large_collection_updates_hnsw_incrementally_after_reopen() raises:
     var updated = reopened.search_l2_approx([80.0], 2, 80)
     assert_equal(updated[0].id, 78)
     assert_equal(updated[1].id, 77)
-    assert_equal(
-        reopened.hnsw_build_distance_evaluations(), build_distances
-    )
+    assert_equal(reopened.hnsw_build_distance_evaluations(), build_distances)
     assert_equal(reopened.last_dense_plan_reason(), "ann")
 
 
@@ -174,9 +171,7 @@ def test_highly_selective_filter_records_selectivity_exact_plan() raises:
     var collection = PersistentCollection.open_with_config(path, config)
     for id in range(1, 81):
         var fields = List[DocumentField]()
-        fields.append(
-            DocumentField("keep", PayloadValue.boolean(id <= 5))
-        )
+        fields.append(DocumentField("keep", PayloadValue.boolean(id <= 5)))
         collection.upsert_document(id, [Float32(id)], fields^)
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
@@ -233,9 +228,7 @@ def test_hnsw_filter_candidate_shortfall_falls_back_to_exact_bitmap() raises:
     var result = collection.search_dot_approx_where([1.0], 2, 8, expression)
     assert_equal(result[0].id, 40)
     assert_equal(result[1].id, 39)
-    assert_equal(
-        collection.last_dense_plan_reason(), "filtered_ann_exhausted"
-    )
+    assert_equal(collection.last_dense_plan_reason(), "filtered_ann_exhausted")
     assert_equal(collection.hnsw_available(), True)
 
 
@@ -257,17 +250,15 @@ def _build_checkpoint(path: String) raises -> CollectionConfig:
     return config^
 
 
-def test_flush_commits_v3_hnsw_and_reopen_uses_mapped_sidecar() raises:
+def test_flush_commits_v4_hnsw_and_reopen_uses_mapped_sidecar() raises:
     var path = String("/tmp/akasha-task22-owned-sidecar")
     var config = _build_checkpoint(path)
     var manifest = load_manifest(path, 1)
-    assert_equal(manifest.format_version, 3)
+    assert_equal(manifest.format_version, 4)
     assert_true(Bool(manifest.hnsw_name))
-    assert_equal(manifest.hnsw_name.value(), "hnsw-80.bin")
+    assert_equal(parse_hnsw_job_name(manifest.hnsw_name.value())[0], UInt64(80))
     assert_true(path_exists(path + "/" + manifest.hnsw_name.value()))
-    assert_equal(
-        manifest.hnsw_config_fingerprint.value(), config.fingerprint()
-    )
+    assert_equal(manifest.hnsw_config_fingerprint.value(), config.fingerprint())
     assert_equal(manifest.hnsw_point_count.value(), UInt64(80))
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
@@ -341,6 +332,7 @@ def test_queries_match_ids_and_scores_before_and_after_sidecar_reopen() raises:
 def test_reopen_replays_newer_wal_mutations_into_mapped_base_delta() raises:
     var path = String("/tmp/akasha-task22-sidecar-wal-replay")
     var config = _build_checkpoint(path)
+    var original_sidecar = load_manifest(path, 1).hnsw_name.value().copy()
     var collection = PersistentCollection.open_with_config(path, config.copy())
     collection.upsert(80, [1.0])
     collection.delete(79)
@@ -363,16 +355,16 @@ def test_reopen_replays_newer_wal_mutations_into_mapped_base_delta() raises:
     assert_equal(reopened.hnsw_inactive_count(), 2)
     assert_equal(reopened.search_l2_approx([80.0], 1, 80)[0].id, 78)
     reopened.flush()
-    # Below the delta threshold, the authoritative segment commits as v2 and
-    # the in-memory mapped-base overlay remains intact without rebuilding.
+    # Below the delta threshold, v5 retains the immutable base and recovers the
+    # overlay from current authority without forcing a full graph rebuild.
     assert_false(reopened._hnsw.checkpoint_ready())
     assert_true(reopened._hnsw.base_is_mapped())
     assert_equal(reopened._hnsw.base_slot_count(), 80)
     assert_equal(reopened._hnsw.delta_slot_count(), 1)
     var below_threshold = load_manifest(path, 1)
-    assert_equal(below_threshold.format_version, 2)
-    assert_false(Bool(below_threshold.hnsw_name))
-    assert_false(path_exists(path + "/hnsw-80.bin"))
+    assert_equal(below_threshold.format_version, 5)
+    assert_equal(below_threshold.hnsw_name.value(), original_sidecar)
+    assert_true(path_exists(path + "/" + original_sidecar))
     var mutation_count = reopened._hnsw_mutations_since_rebuild
     reopened.flush()
     assert_equal(reopened._hnsw_mutations_since_rebuild, mutation_count)
@@ -434,7 +426,7 @@ def test_true_v1_manifest_rebuilds_from_authoritative_segment() raises:
     reopened.close()
 
 
-def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v3() raises:
+def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v4() raises:
     var path = String("/tmp/akasha-task22-non-f32-checkpoint")
     _reset(path)
     var config = CollectionConfig.defaults(1)
@@ -444,7 +436,7 @@ def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v3() raises:
     collection.close()
     var manifest = load_manifest(path, 1)
     assert_true(Bool(manifest.hnsw_name))
-    assert_equal(manifest.format_version, 3)
+    assert_equal(manifest.format_version, 4)
     var sidecar = read_file_bytes(path + "/" + manifest.hnsw_name.value())
     assert_equal(sidecar[4], UInt8(2))
     assert_equal(sidecar[5], UInt8(0))
@@ -549,6 +541,7 @@ def test_stale_manifest_config_fingerprint_rebuilds_safely() raises:
         current.hnsw_checksum.value(),
         current.hnsw_config_fingerprint.value() + UInt64(1),
         current.hnsw_point_count.value(),
+        format_version=current.format_version,
     )
     publish_manifest(stale_path, stale)
     var rebuilt = PersistentCollection.open_with_config(
@@ -572,6 +565,7 @@ def test_stale_manifest_point_count_rebuilds_safely() raises:
         current.hnsw_checksum.value(),
         current.hnsw_config_fingerprint.value(),
         current.hnsw_point_count.value() + UInt64(1),
+        format_version=current.format_version,
     )
     publish_manifest(path, stale)
     var rebuilt = PersistentCollection.open_with_config(path, config.copy())
@@ -596,6 +590,7 @@ def test_stale_manifest_checksum_rebuilds_valid_sidecar() raises:
         current.hnsw_checksum.value() + UInt32(1),
         current.hnsw_config_fingerprint.value(),
         current.hnsw_point_count.value(),
+        format_version=current.format_version,
     )
     publish_manifest(path, stale)
     var rebuilt = PersistentCollection.open_with_config(path, config.copy())
@@ -606,7 +601,8 @@ def test_stale_manifest_checksum_rebuilds_valid_sidecar() raises:
 def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     var sequence_path = String("/tmp/akasha-task22-stale-header-sequence")
     var config = _build_checkpoint(sequence_path)
-    var old_bytes = read_file_bytes(sequence_path + "/hnsw-80.bin")
+    var old_name = load_manifest(sequence_path, 1).hnsw_name.value().copy()
+    var old_bytes = read_file_bytes(sequence_path + "/" + old_name)
     var collection = PersistentCollection.open_with_config(
         sequence_path, config.copy()
     )
@@ -618,8 +614,10 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     collection.close()
     # The filename and manifest describe sequence 81, but these internally
     # valid bytes describe sequence 80.
-    write_file_sync(sequence_path + "/hnsw-81.bin", old_bytes)
     var sequence_manifest = load_manifest(sequence_path, 1)
+    write_file_sync(
+        sequence_path + "/" + sequence_manifest.hnsw_name.value(), old_bytes
+    )
     var stale_sequence = Manifest.with_hnsw(
         1,
         sequence_manifest.generation,
@@ -629,6 +627,7 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
         _stored_hnsw_checksum(old_bytes),
         sequence_manifest.hnsw_config_fingerprint.value(),
         sequence_manifest.hnsw_point_count.value(),
+        format_version=sequence_manifest.format_version,
     )
     publish_manifest(sequence_path, stale_sequence)
     var rebuilt_sequence = PersistentCollection.open_with_config(
@@ -644,10 +643,10 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
     var wrong = HnswIndex(alternate.copy())
     for id in range(1, 81):
         wrong.add(id, [Float32(id)])
-    var wrong_info = write_hnsw_snapshot(
-        config_path + "/hnsw-80.bin", wrong, UInt64(80)
-    )
     var config_manifest = load_manifest(config_path, 1)
+    var wrong_info = write_hnsw_snapshot(
+        config_path + "/" + config_manifest.hnsw_name.value(), wrong, UInt64(80)
+    )
     var stale_config = Manifest.with_hnsw(
         1,
         config_manifest.generation,
@@ -657,6 +656,7 @@ def test_stale_sidecar_header_sequence_and_config_rebuild_safely() raises:
         wrong_info.checksum,
         config_manifest.hnsw_config_fingerprint.value(),
         config_manifest.hnsw_point_count.value(),
+        format_version=config_manifest.format_version,
     )
     publish_manifest(config_path, stale_config)
     var rebuilt_config = PersistentCollection.open_with_config(
@@ -695,6 +695,7 @@ def test_stale_manifest_checksum_precedes_corrupt_file_validation() raises:
         current.hnsw_checksum.value() + UInt32(1),
         current.hnsw_config_fingerprint.value(),
         current.hnsw_point_count.value(),
+        format_version=current.format_version,
     )
     publish_manifest(path, stale)
     var rebuilt = PersistentCollection.open_with_config(path, config.copy())
@@ -742,6 +743,7 @@ def test_valid_crc_with_unsafe_committed_layout_fails_open() raises:
         checksum,
         manifest.hnsw_config_fingerprint.value(),
         manifest.hnsw_point_count.value(),
+        format_version=manifest.format_version,
     )
     publish_manifest(path, matching)
     with assert_raises():

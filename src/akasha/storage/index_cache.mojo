@@ -1,22 +1,25 @@
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
-    crc32,
     crc32_range,
+    crc32_update,
+    CRC32_INITIAL,
 )
 from akasha.document.codec import encode_payload
 from akasha.storage.memtable import MemTable
 from akasha.storage.filesystem import (
     atomic_replace,
     path_exists,
-    read_file_bytes,
+    read_file_bytes_bounded,
     sync_directory,
     write_file_sync,
 )
+from std.sys.info import is_little_endian
 
 
 comptime CACHE_HNSW_KIND = UInt8(1)
 comptime CACHE_METADATA_KIND = UInt8(2)
+comptime CACHE_HNSW_OVERLAY_KIND = UInt8(3)
 comptime _VERSION = UInt16(1)
 comptime _FIXED_BYTES = 40
 comptime _MAX_PAYLOAD_BYTES = 512 * 1024 * 1024
@@ -51,11 +54,14 @@ struct CacheArtifact(Movable):
         self.source_checksum = source_checksum
         self.payload = payload^
 
+    def take_payload(mut self) -> List[UInt8]:
+        var payload = self.payload^
+        self.payload = List[UInt8]()
+        return payload^
+
 
 def encode_cache(artifact: CacheArtifact) raises -> List[UInt8]:
-    _validate_header(
-        artifact.kind, artifact.dimension, len(artifact.payload)
-    )
+    _validate_header(artifact.kind, artifact.dimension, len(artifact.payload))
     var writer = BinaryWriter()
     writer.write_u8(UInt8(0x41))  # A
     writer.write_u8(UInt8(0x4B))  # K
@@ -140,6 +146,20 @@ def publish_cache(
     sync_directory(directory)
 
 
+def load_cache_artifact(path: String) -> Optional[CacheArtifact]:
+    """Bound and validate one optional derived artifact before using its key."""
+    if not path_exists(path):
+        return None
+    try:
+        return Optional(
+            decode_cache_bytes(
+                read_file_bytes_bounded(path, _MAX_PAYLOAD_BYTES + _FIXED_BYTES)
+            )
+        )
+    except:
+        return None
+
+
 def load_cache_payload(
     path: String,
     expected_kind: UInt8,
@@ -149,45 +169,63 @@ def load_cache_payload(
     expected_source_checksum: UInt32,
 ) -> Optional[List[UInt8]]:
     """Return a current payload; all derived-cache failures are safe misses."""
-    if not path_exists(path):
-        return Optional[List[UInt8]]()
-    try:
-        var artifact = decode_cache_bytes(read_file_bytes(path))
-        if (
-            artifact.kind != expected_kind
-            or artifact.dimension != expected_dimension
-            or artifact.generation != expected_generation
-            or artifact.sequence != expected_sequence
-            or artifact.source_checksum != expected_source_checksum
-        ):
-            return Optional[List[UInt8]]()
-        return Optional(artifact.payload.copy())
-    except:
-        return Optional[List[UInt8]]()
+    var loaded = load_cache_artifact(path)
+    if not loaded:
+        return None
+    var artifact = loaded.take()
+    if (
+        artifact.kind != expected_kind
+        or artifact.dimension != expected_dimension
+        or artifact.generation != expected_generation
+        or artifact.sequence != expected_sequence
+        or artifact.source_checksum != expected_source_checksum
+    ):
+        return None
+    return Optional(artifact.take_payload())
 
 
 def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
-    """Fingerprint dense vectors, sequences, tombstones, and typed fields."""
+    """Fingerprint unchanged bytes with at most one row/payload encoded at once.
+    """
     var writer = BinaryWriter()
     writer.write_u32(UInt32(memtable.dimension))
     writer.write_u32(UInt32(memtable.slot_count()))
+    var register = writer.update_crc32_and_clear(CRC32_INITIAL)
     for ordinal in range(memtable.slot_count()):
-        var entry = memtable.entry_at(ordinal)
+        ref entry = memtable.entry_ref_at(ordinal)
         writer.write_i64(Int64(entry.id))
         writer.write_u64(entry.sequence)
         writer.write_u8(UInt8(1) if entry.tombstone else UInt8(0))
         writer.write_u8(UInt8(0))
         writer.write_u16(UInt16(0))
-        for value in entry.values:
-            writer.write_f32(value)
-        var fields = encode_payload(entry.fields)
+        register = writer.update_crc32_and_clear(register)
+        comptime if is_little_endian():
+            # The immutable row stays borrowed for this synchronous call. Its
+            # native F32 representation is exactly the writer's little-endian
+            # encoding; neither pointer nor Span escapes.
+            ref values = entry.values()
+            var bytes = Span(
+                unsafe_ptr=values.unsafe_ptr().unsafe_bitcast[UInt8](),
+                length=len(values) * 4,
+            )
+            register = crc32_update(register, bytes)
+        else:
+            for value in entry.values():
+                writer.write_f32(value)
+            register = writer.update_crc32_and_clear(register)
+        var fields = encode_payload(entry.fields())
         writer.write_u32(UInt32(len(fields)))
-        writer.write_bytes(fields)
-    return crc32(writer.take_bytes())
+        register = writer.update_crc32_and_clear(register)
+        register = crc32_update(register, Span(fields))
+    return ~register
 
 
 def _validate_header(kind: UInt8, dimension: Int, payload_length: Int) raises:
-    if kind != CACHE_HNSW_KIND and kind != CACHE_METADATA_KIND:
+    if (
+        kind != CACHE_HNSW_KIND
+        and kind != CACHE_METADATA_KIND
+        and kind != CACHE_HNSW_OVERLAY_KIND
+    ):
         raise Error("unknown derived index cache kind")
     if dimension <= 0:
         raise Error("derived index cache dimension must be positive")

@@ -25,10 +25,9 @@ def validate_i8_decoded_component_bound(
         raise Error("I8 maximum code is outside the symmetric domain")
     if not isfinite(scale) or scale < 0.0:
         raise Error("I8 graph scale must be finite and non-negative")
-    if (
-        Float64(maximum_code) * Float64(scale)
-        > f32_accumulation_component_limit(dimension)
-    ):
+    if Float64(maximum_code) * Float64(
+        scale
+    ) > f32_accumulation_component_limit(dimension):
         raise Error("I8 decoded component exceeds safe F32 accumulation")
 
 
@@ -162,12 +161,8 @@ def i8_dot_f32(
         if rhs_magnitude > rhs_maximum:
             rhs_maximum = rhs_magnitude
         accumulator += Int32(lhs[index]) * Int32(rhs[index])
-    validate_i8_decoded_component_bound(
-        lhs_maximum, lhs_scale, len(lhs)
-    )
-    validate_i8_decoded_component_bound(
-        rhs_maximum, rhs_scale, len(rhs)
-    )
+    validate_i8_decoded_component_bound(lhs_maximum, lhs_scale, len(lhs))
+    validate_i8_decoded_component_bound(rhs_maximum, rhs_scale, len(rhs))
     return scaled_i8_accumulator(accumulator, lhs_scale, rhs_scale)
 
 

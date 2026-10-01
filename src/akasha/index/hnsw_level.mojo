@@ -36,9 +36,7 @@ def _uniform_open01_from_hash(hash: UInt64) -> Float64:
     return (Float64(top_53) + 0.5) / _TWO_TO_53
 
 
-def _sample_level_from_hash(
-    hash: UInt64, m: Int, maximum: Int
-) raises -> Int:
+def _sample_level_from_hash(hash: UInt64, m: Int, maximum: Int) raises -> Int:
     """Classify a hash using exact centered-bucket integer thresholds.
 
     The centered 53-bit uniform is (2*top53+1)/2^54. Therefore level >= k
@@ -65,6 +63,4 @@ def _sample_level_from_hash(
 
 def sample_level(id: Int, seed: UInt64, m: Int, maximum: Int) raises -> Int:
     """Sample a deterministic geometric HNSW level for an ID and seed."""
-    return _sample_level_from_hash(
-        splitmix64(_id_bits(id) ^ seed), m, maximum
-    )
+    return _sample_level_from_hash(splitmix64(_id_bits(id) ^ seed), m, maximum)

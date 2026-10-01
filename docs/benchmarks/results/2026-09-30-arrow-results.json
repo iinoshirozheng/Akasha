@@ -1,0 +1,457 @@
+{
+  "label": "direct-arrow-results",
+  "mode": "results",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "pyarrow": "21.0.0",
+  "numpy": "2.4.6",
+  "cells": [
+    {
+      "points": 4096,
+      "dimension": 16,
+      "k": 32,
+      "python_rows": {
+        "runs": [
+          {
+            "query_and_export_ns": 153709,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 134292,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 117917,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 122875,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 121292,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 154334,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 132916,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 121667,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 110292,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 384,
+            "result_column_bytes": 384
+          }
+        ],
+        "median_ns": 122875,
+        "allocation_probe": {
+          "query_and_export_ns": 227917,
+          "python_traced_peak_bytes": 16691,
+          "arrow_allocated_delta_bytes": 384,
+          "result_column_bytes": 384
+        }
+      },
+      "direct_columns": {
+        "runs": [
+          {
+            "query_and_export_ns": 132125,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 195834,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 165375,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 125459,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 118167,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 107583,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 130416,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 146542,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          },
+          {
+            "query_and_export_ns": 119834,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 384
+          }
+        ],
+        "median_ns": 130416,
+        "allocation_probe": {
+          "query_and_export_ns": 152083,
+          "python_traced_peak_bytes": 2991,
+          "arrow_allocated_delta_bytes": 0,
+          "result_column_bytes": 384
+        }
+      },
+      "native_columnization_bytes": 384,
+      "ownership_probe": {
+        "native_output_buffer_allocations": 2,
+        "native_output_buffer_bytes": 384,
+        "arrow_pointer_identity": [
+          true,
+          true
+        ],
+        "last_slice_released_numpy_owners": true
+      },
+      "copy_scope": "Native AoS to NumPy I64/F32 columns: one pass, 12 bytes/result. Arrow reuses those buffers. Counts exclude native query allocations, input conversion and Python wrapper objects; tracemalloc excludes Mojo memory."
+    },
+    {
+      "points": 4096,
+      "dimension": 16,
+      "k": 1024,
+      "python_rows": {
+        "runs": [
+          {
+            "query_and_export_ns": 861541,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 925375,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 825417,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 789417,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 835541,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 847833,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 983125,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 837375,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 805958,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 12288,
+            "result_column_bytes": 12288
+          }
+        ],
+        "median_ns": 837375,
+        "allocation_probe": {
+          "query_and_export_ns": 3384791,
+          "python_traced_peak_bytes": 428971,
+          "arrow_allocated_delta_bytes": 12288,
+          "result_column_bytes": 12288
+        }
+      },
+      "direct_columns": {
+        "runs": [
+          {
+            "query_and_export_ns": 264375,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 243667,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 207416,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 192750,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 210000,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 194625,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 185834,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 189459,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          },
+          {
+            "query_and_export_ns": 201167,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 12288
+          }
+        ],
+        "median_ns": 201167,
+        "allocation_probe": {
+          "query_and_export_ns": 249125,
+          "python_traced_peak_bytes": 14625,
+          "arrow_allocated_delta_bytes": 0,
+          "result_column_bytes": 12288
+        }
+      },
+      "native_columnization_bytes": 12288,
+      "ownership_probe": {
+        "native_output_buffer_allocations": 2,
+        "native_output_buffer_bytes": 12288,
+        "arrow_pointer_identity": [
+          true,
+          true
+        ],
+        "last_slice_released_numpy_owners": true
+      },
+      "copy_scope": "Native AoS to NumPy I64/F32 columns: one pass, 12 bytes/result. Arrow reuses those buffers. Counts exclude native query allocations, input conversion and Python wrapper objects; tracemalloc excludes Mojo memory."
+    },
+    {
+      "points": 4096,
+      "dimension": 16,
+      "k": 4096,
+      "python_rows": {
+        "runs": [
+          {
+            "query_and_export_ns": 2947875,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 2990208,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 2965459,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 2990250,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 2954000,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 2984833,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 3014666,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 3210542,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 3065084,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 49152,
+            "result_column_bytes": 49152
+          }
+        ],
+        "median_ns": 2990208,
+        "allocation_probe": {
+          "query_and_export_ns": 13023708,
+          "python_traced_peak_bytes": 1663247,
+          "arrow_allocated_delta_bytes": 49152,
+          "result_column_bytes": 49152
+        }
+      },
+      "direct_columns": {
+        "runs": [
+          {
+            "query_and_export_ns": 373583,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 329834,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 325875,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 294583,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 334000,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 396208,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 316709,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 309834,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          },
+          {
+            "query_and_export_ns": 352791,
+            "python_traced_peak_bytes": null,
+            "arrow_allocated_delta_bytes": 0,
+            "result_column_bytes": 49152
+          }
+        ],
+        "median_ns": 329834,
+        "allocation_probe": {
+          "query_and_export_ns": 441750,
+          "python_traced_peak_bytes": 51978,
+          "arrow_allocated_delta_bytes": 0,
+          "result_column_bytes": 49152
+        }
+      },
+      "native_columnization_bytes": 49152,
+      "ownership_probe": {
+        "native_output_buffer_allocations": 2,
+        "native_output_buffer_bytes": 49152,
+        "arrow_pointer_identity": [
+          true,
+          true
+        ],
+        "last_slice_released_numpy_owners": true
+      },
+      "copy_scope": "Native AoS to NumPy I64/F32 columns: one pass, 12 bytes/result. Arrow reuses those buffers. Counts exclude native query allocations, input conversion and Python wrapper objects; tracemalloc excludes Mojo memory."
+    }
+  ],
+  "base_commit": "31f27e5",
+  "source_sha256": "347477be49e24eb6280f8ad7869d4be58231a459a3299cfc5c24225ddd99c414",
+  "compiler": "Mojo 1.0.0 (ed45d567)",
+  "benchmark_sha256": "0b2b89eac2b7f45ce8ed07330651eb6d9d5c304e022dab2b4b3c33f7734ff3e1",
+  "validation": {
+    "build_python_exit_code": 0,
+    "arrow_tests": 46,
+    "python_tests": 92,
+    "python_exit_code": 0
+  }
+}

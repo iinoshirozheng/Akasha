@@ -1,0 +1,81 @@
+{
+  "scope": "Catalog metadata codec and file reader only; runtime collection migration and field data paths are not enabled.",
+  "toolchain": "Mojo 1.0.0 (ed45d567), MAX 26.5.0",
+  "checks": [
+    {
+      "command": "pixi run mojo run -I src tests/mojo/test_field_catalog.mojo",
+      "chunk_id": "c90c3f",
+      "wall_time_seconds": 1.0167e-05,
+      "exit_code": 0,
+      "original_token_count": 267,
+      "output": "\nRunning 10 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog.mojo \n    PASS [ 0.209 ] test_named_catalog_decodes_independent_bytes_and_stable_noncontiguous_ids\n    PASS [ 0.170 ] test_legacy_mapping_preserves_original_bytes_and_old_reader_rejects_v2\n    PASS [ 0.331 ] test_type_metadata_fixture_does_not_confuse_authority_with_graph_encoding\n    PASS [ 0.520 ] test_catalog_rejects_every_truncation_byte_flip_and_trailing_data\n    PASS [ 0.388 ] test_crc_valid_invalid_header_fields_and_nested_identity_are_rejected\n    PASS [ 0.091 ] test_catalog_model_rejects_duplicate_names_ids_and_schema_mismatches\n    PASS [ 0.002 ] test_field_model_rejects_invalid_kind_dtype_metric_index_combinations\n    PASS [ 0.501 ] test_catalog_owns_decoded_names_and_accepts_inclusive_wire_boundaries\n    PASS [ 0.504 ] test_catalog_count_limits_include_default_fields\n    PASS [ 0.756 ] test_file_reader_ignores_unpublished_identity_and_never_repairs_sources\n--------\nSummary [ 3.472 ] 10 tests run: 10 passed , 0 failed , 0 skipped \n\n"
+    },
+    {
+      "command": "pixi run mojo run -I src tests/mojo/test_collection_config_storage.mojo",
+      "chunk_id": "280fc1",
+      "wall_time_seconds": 0.494459708,
+      "exit_code": 0,
+      "original_token_count": 278,
+      "output": "\nRunning 12 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_collection_config_storage.mojo \n    PASS [ 0.026 ] test_round_trips_every_valid_metric_scalar_combination_deterministically\n    PASS [ 0.002 ] test_round_trips_default_and_inclusive_boundary_configurations\n    PASS [ 0.001 ] test_default_config_matches_and_decodes_independent_golden_vector\n    PASS [ 0.009 ] test_rejects_every_truncation_and_extra_bytes\n    PASS [ 0.020 ] test_rejects_magic_version_flags_reserved_tags_and_checksum\n    PASS [ 0.003 ] test_decode_revalidates_cross_field_constraints\n    PASS [ 0.001 ] test_encode_validates_before_narrowing\n    PASS [ 0.369 ] test_publish_load_exists_and_idempotent_republish\n    PASS [ 0.584 ] test_incompatible_publish_preserves_original_and_removes_temp\n    PASS [ 0.058 ] test_invalid_first_publish_creates_no_files\n    PASS [ 0.565 ] test_retry_after_rename_and_sync_failure_syncs_existing_file_again\n    PASS [ 0.199 ] test_cleanup_failure_does_not_mask_primary_publication_error\n--------\nSummary [ 1.836 ] 12 tests run: 12 passed , 0 failed , 0 skipped \n\n"
+    },
+    {
+      "command": "pixi run mojo run -I src tests/mojo/test_collection_config_migration.mojo",
+      "session_id": 7001,
+      "chunk_id": "c27285",
+      "wall_time_seconds": 1.3792e-05,
+      "exit_code": 0,
+      "original_token_count": 376,
+      "output": "\nRunning 16 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_collection_config_migration.mojo \n    PASS [ 1.884 ] test_new_two_argument_open_publishes_default_identity_immediately\n    PASS [ 1.432 ] test_open_with_config_persists_every_field_and_reopens\n    PASS [ 3.000 ] test_existing_identity_rejects_every_immutable_field_mismatch\n    PASS [ 1.293 ] test_config_mismatch_reports_field_and_both_fingerprints\n    PASS [ 1.740 ] test_wal_only_legacy_migration_preserves_wal_and_recovers_records\n    PASS [ 2.897 ] test_snapshot_legacy_migration_preserves_all_authoritative_bytes\n    PASS [ 1.528 ] test_wrong_dimension_does_not_poison_wal_only_legacy_identity\n    PASS [ 2.778 ] test_wrong_dimension_does_not_poison_snapshot_legacy_identity\n    PASS [ 2.037 ] test_corrupt_legacy_segment_fails_before_config_publication\n    PASS [ 1.899 ] test_corrupt_legacy_sparse_snapshot_fails_before_config_publication\n    PASS [ 1.245 ] test_corrupt_legacy_sparse_wal_fails_before_config_publication\n    PASS [ 2.733 ] test_corrupt_legacy_dense_delta_blocks_identity_publication\n    PASS [ 2.910 ] test_late_sparse_delta_failure_does_not_repair_dense_wal\n    PASS [ 2.315 ] test_late_legacy_preflight_failure_preserves_every_source\n    PASS [ 1.888 ] test_non_default_config_is_rejected_for_legacy_data_without_mutation\n    PASS [ 0.842 ] test_invalid_config_has_no_side_effect_and_does_not_hold_lock\n--------\nSummary [ 32.421 ] 16 tests run: 16 passed , 0 failed , 0 skipped \n\n"
+    }
+  ],
+  "red_green_evidence": {
+    "catalog_decoder_missing": {
+      "chunk_id": "b59803",
+      "wall_time_seconds": 9.25e-06,
+      "exit_code": 1,
+      "original_token_count": 378,
+      "output": "/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.pixi/envs/default/bin/mojo: error: execution exited with a non-zero result: 1\nstack trace was not collected. Enable stack trace collection with environment variable `MODULAR_DEBUG=stack-trace-on-error`\nUnhandled exception caught during execution: \nRunning 8 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog.mojo \n    FAIL [ 0.175 ] test_named_catalog_decodes_independent_bytes_and_stable_noncontiguous_ids\n      field catalog decoding not implemented\n    FAIL [ 0.145 ] test_legacy_mapping_preserves_original_bytes_and_old_reader_rejects_v2\n      field catalog decoding not implemented\n    FAIL [ 0.114 ] test_type_metadata_fixture_does_not_confuse_authority_with_graph_encoding\n      field catalog decoding not implemented\n    PASS [ 0.120 ] test_catalog_rejects_every_truncation_byte_flip_and_trailing_data\n    PASS [ 0.316 ] test_crc_valid_invalid_header_fields_and_nested_identity_are_rejected\n    PASS [ 0.083 ] test_catalog_model_rejects_duplicate_names_ids_and_schema_mismatches\n    PASS [ 0.001 ] test_field_model_rejects_invalid_kind_dtype_metric_index_combinations\n    FAIL [ 0.014 ] test_catalog_owns_decoded_names_and_accepts_inclusive_wire_boundaries\n      field catalog decoding not implemented\n--------\nSummary [ 0.968 ] 8 tests run: 4 passed , 4 failed , 0 skipped \nTest suite' /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog.mojo 'failed! \n\n"
+    },
+    "file_reader_missing": {
+      "chunk_id": "d0e33d",
+      "wall_time_seconds": 1.5708e-05,
+      "exit_code": 1,
+      "original_token_count": 383,
+      "output": "stack trace was not collected. Enable stack trace collection with environment variable `MODULAR_DEBUG=stack-trace-on-error`\nUnhandled exception caught during execution: \nRunning 10 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog.mojo \n    PASS [ 0.208 ] test_named_catalog_decodes_independent_bytes_and_stable_noncontiguous_ids\n    PASS [ 0.175 ] test_legacy_mapping_preserves_original_bytes_and_old_reader_rejects_v2\n    PASS [ 0.435 ] test_type_metadata_fixture_does_not_confuse_authority_with_graph_encoding\n    PASS [ 0.533 ] test_catalog_rejects_every_truncation_byte_flip_and_trailing_data\n    PASS [ 0.309 ] test_crc_valid_invalid_header_fields_and_nested_identity_are_rejected\n    PASS [ 0.080 ] test_catalog_model_rejects_duplicate_names_ids_and_schema_mismatches\n    PASS [ 0.001 ] test_field_model_rejects_invalid_kind_dtype_metric_index_combinations\n    PASS [ 0.491 ] test_catalog_owns_decoded_names_and_accepts_inclusive_wire_boundaries\n    PASS [ 0.502 ] test_catalog_count_limits_include_default_fields\n    FAIL [ 0.878 ] test_file_reader_ignores_unpublished_identity_and_never_repairs_sources\n      catalog file reader not implemented\n--------\nSummary [ 3.612 ] 10 tests run: 9 passed , 1 failed , 0 skipped \nTest suite' /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog.mojo 'failed! \n\n/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.pixi/envs/default/bin/mojo: error: execution exited with a non-zero result: 1\n"
+    }
+  },
+  "total_targeted_tests": 38,
+  "unchanged_paths_not_rerun": [
+    "full CPU suite",
+    "Python binding suite",
+    "crash suite",
+    "C ABI",
+    "GPU",
+    "query quality and performance"
+  ],
+  "source_sha256": {
+    "src/akasha/document/vector_schema.mojo": "2296b06f1c53478a21efb69c40f27680fa6d82afe954d7d0dbb13baf95302d0b",
+    "src/akasha/storage/field_catalog.mojo": "3dbaa3f66ab579fdd046cbc0c49a30c934270b1a06477a9e863b6c0d34c15886",
+    "tests/mojo/test_field_catalog.mojo": "9f13316f2302acc3d5b338aea9e48fd6e7e931757feaffd895c60f355317e24c",
+    "docs/formats/field-catalog-format.md": "eaf37daa0bb4c7b611ed5e6100ee8f7e71224e0e4960b51d42c5cdfa4036e370",
+    "tests/fixtures/field-catalog/generate.py": "32b1c50c182bba8a183d40ed2ca833385ce814757f0eb8c22cadd73e983fbae5"
+  },
+  "fixtures": {
+    "legacy-v1.bin": {
+      "bytes": 60,
+      "sha256": "50c3bf07cd88684c8cdfcaec53ae9f99573210d286b0fc46d98ef9d364c3920c",
+      "crc32": "5ddb917e"
+    },
+    "named-f32-v2.bin": {
+      "bytes": 288,
+      "sha256": "26b124b166245c67ce04578170f4ad1ffea5b27cc4c69520f2f4fbf665ca31c3",
+      "crc32": "13d993dd"
+    },
+    "type-matrix-v2.bin": {
+      "bytes": 352,
+      "sha256": "03cd679d7a53a1b23ad2dabedb0806e911c1a4f91e5b0b8922debd621eb90401",
+      "crc32": "b25e9757"
+    }
+  },
+  "fixture_reproduction": "python3 tests/fixtures/field-catalog/generate.py; all three binary SHA-256 values unchanged"
+}
