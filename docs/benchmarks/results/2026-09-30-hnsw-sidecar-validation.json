@@ -1,0 +1,563 @@
+{
+  "base_commit": "31f27e5",
+  "compiler": "Mojo 1.0.0 (ed45d567)",
+  "platform": "macOS arm64",
+  "cpu_python_source_sha256": "a81dcba21b11be72e114a30714afdfbdb08f363c22bf620bc041026251f1bcbe",
+  "final_source_sha256": "5e798ea74a91f77fb150aca3fc240dc39dbaa43bfb6f8cdee48fc749c55ec348",
+  "source_delta": "Only tests/crash/test_checkpoint_order.mojo changed after CPU/Python: assert v4 sequence and creation generation rather than the legacy filename.",
+  "mojo": {
+    "invocation": "pixi run mojo run -I src <file>",
+    "files": 93,
+    "tests": 752,
+    "results": [
+      {
+        "file": "tests/mojo/test_arrow_c_data.mojo",
+        "exit_code": 0,
+        "summary": "3 tests run: 3 passed, 0 failed; direct invocation after wrapper compiler crash"
+      },
+      {
+        "file": "tests/mojo/test_collection_lock.mojo",
+        "exit_code": 0,
+        "summary": "2 tests run: 2 passed, 0 failed"
+      },
+      {
+        "file": "tests/mojo/test_background_publication.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 18976.115 ] 20 tests run: 20 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_backup_bounded_memory.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1000.539 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_backup_compaction.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 12.056 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_batch_query.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 32.426 ] 4 tests run: 4 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_bitmap.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.049 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_collection_config_migration.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 40.841 ] 16 tests run: 16 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_collection_config_storage.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.409 ] 12 tests run: 12 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_collection_hnsw_incremental.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 440.938 ] 17 tests run: 17 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_compact_load.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.134 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_compaction.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.011 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_compaction_publish.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 612.673 ] 11 tests run: 11 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_concurrency.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 362.890 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_crc32_table.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.583 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_database_config.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.001 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_distance.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.007 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_distance_dispatch.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 6.893 ] 13 tests run: 13 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_document_codec.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.851 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_document_value.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.018 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_filesystem.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.344 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_filter_ast.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.003 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_filter_evaluator.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.046 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_filter_expression.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.299 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_flat_index.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.037 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_generation_close.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 43.811 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_generation_delta.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 6673.132 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_generation_fields.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1342.903 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_gpu_fallback.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 2.053 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_gpu_planner.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.005 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.152 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_checkpoint_cleanup.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 125.686 ] 4 tests run: 4 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_config.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.014 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_filtered.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.202 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_heap.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 2.245 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_invariants.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 30.765 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_level.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.186 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_links.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 3.969 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_mutation.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 13.158 ] 12 tests run: 12 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_neighbor_selection.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.703 ] 15 tests run: 15 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_quality_gate.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 26206.808 ] 4 tests run: 4 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_quantized.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 10229.203 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_rebuild.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 59.197 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_rebuild_publication.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 3190.123 ] 18 tests run: 18 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_scratch.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.044 ] 11 tests run: 11 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_search_layer.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.087 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_sidecar_publication.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 43.702 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_stats.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.002 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_storage.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.101 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_store.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 4.363 ] 18 tests run: 18 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_store_v1_compat.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.613 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_view.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 9.517 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_hnsw_widening.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.101 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_index_cache.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.653 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_maintenance.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 36.259 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_manifest.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 3.389 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_manifest_v1_v2_compat.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.455 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_manifest_v4.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.328 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_mapped_file.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.940 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_memtable.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.639 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_metadata_field_indexes.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.301 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_metadata_index.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.560 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_metric_dispatch.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 2.194 ] 22 tests run: 22 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_native_worker.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 3.653 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_parallel_scan.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 37.911 ] 3 tests run: 3 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persisted_index_cache.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 59.020 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_batch.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 7.058 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_collection.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 59.936 ] 17 tests run: 17 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_documents.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 14.645 ] 7 tests run: 7 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_filters.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 32.662 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_hnsw.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 839.491 ] 26 tests run: 26 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_persistent_sparse.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 26.563 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_product_quantization.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 343.750 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_projection.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 2.723 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_public_api.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.259 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_quantization.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.028 ] 11 tests run: 11 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_quantized_search.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 286.636 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_query_control.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 2.869 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_query_executor.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.037 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_query_planner.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.001 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_rank_fusion.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.148 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_segment.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.822 ] 8 tests run: 8 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_segment_v1_compat.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.013 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_segmented_hnsw.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.067 ] 18 tests run: 18 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_simd_distance.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.056 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_snapshot.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 29.551 ] 10 tests run: 10 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_sparse_index.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.175 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_sparse_storage.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.846 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_storage_checksum.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.054 ] 5 tests run: 5 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_storage_operations.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 125.954 ] 9 tests run: 9 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_topk.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.005 ] 4 tests run: 4 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_wal.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 1.581 ] 14 tests run: 14 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "tests/mojo/test_wal_v1_compat.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 0.029 ] 2 tests run: 2 passed , 0 failed , 0 skipped "
+      }
+    ]
+  },
+  "python": {
+    "command": "pixi run test-python",
+    "exit_code": 0,
+    "tests": 66,
+    "warnings": [
+      "Starlette httpx deprecation",
+      "Collection extension type missing __module__"
+    ]
+  },
+  "crash": {
+    "files": 6,
+    "tests": 19,
+    "results": [
+      {
+        "file": "test_backup_publication.mojo",
+        "tests": 3,
+        "exit_code": 0
+      },
+      {
+        "file": "test_batch_atomicity.mojo",
+        "tests": 1,
+        "exit_code": 0
+      },
+      {
+        "file": "test_checkpoint_order.mojo",
+        "tests": 7,
+        "exit_code": 0,
+        "note": "Initial legacy filename assertion failed; corrected v4 carry-forward assertion passed."
+      },
+      {
+        "file": "test_hnsw_checkpoint_order.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 420.188 ] 6 tests run: 6 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "test_sparse_checkpoint_order.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 4.191 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      },
+      {
+        "file": "test_wal_tail.mojo",
+        "exit_code": 0,
+        "summary": "Summary [ 6.210 ] 1 tests run: 1 passed , 0 failed , 0 skipped "
+      }
+    ]
+  },
+  "build": {
+    "command": "pixi run build",
+    "exit_code": 0
+  },
+  "c_abi": {
+    "command": "pixi run test-c",
+    "exit_code": 0
+  },
+  "examples": {
+    "exit_code": 0,
+    "executables": [
+      ".build/akasha-smoke",
+      ".build/akasha-persistent",
+      ".build/akasha-configured-hnsw"
+    ]
+  },
+  "quality": {
+    "hnsw": {
+      "command": "pixi run check-hnsw-quality",
+      "exit_code": 0,
+      "output": "dataset=uniform metric=dot scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=1070171 local_build_ns=156057000 directed_edges=11888 avg_visited=252.0 avg_search_distances=252.0 packed_size_estimate_bytes=74848 serialized_bytes=75396 local_ann_search_ns_per_query=42416.666666666664\ndataset=eight-cluster metric=dot scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=787218 local_build_ns=154090000 directed_edges=11926 avg_visited=135.0 avg_search_distances=135.0 packed_size_estimate_bytes=74848 serialized_bytes=75548 local_ann_search_ns_per_query=38500.0\ndataset=uniform metric=l2 scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=1202671 local_build_ns=148528000 directed_edges=10910 avg_visited=249.16666666666666 avg_search_distances=249.16666666666666 packed_size_estimate_bytes=74848 serialized_bytes=71484 local_ann_search_ns_per_query=41750.0\ndataset=eight-cluster metric=l2 scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=979659 local_build_ns=149997000 directed_edges=11528 avg_visited=140.33333333333334 avg_search_distances=140.33333333333334 packed_size_estimate_bytes=74848 serialized_bytes=73956 local_ann_search_ns_per_query=38250.0\ndataset=uniform metric=cosine scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=1041991 local_build_ns=157816000 directed_edges=12084 avg_visited=250.83333333333334 avg_search_distances=250.83333333333334 packed_size_estimate_bytes=74848 serialized_bytes=76180 local_ann_search_ns_per_query=42416.666666666664\ndataset=eight-cluster metric=cosine scalar=f32 backend=portable-simd-4 points=256 dimension=16 k=5 ef=32 recall=1.0 build_distances=890680 local_build_ns=157930000 directed_edges=11906 avg_visited=133.16666666666666 avg_search_distances=133.16666666666666 packed_size_estimate_bytes=74848 serialized_bytes=75468 local_ann_search_ns_per_query=39000.0\n"
+    },
+    "post_hnsw": {
+      "command": "pixi run check-post-hnsw-quality",
+      "exit_code": 0,
+      "output": "[1/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 0, 'scalar_tag': 0, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[2/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 0, 'scalar_tag': 1, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[3/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 0, 'scalar_tag': 2, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[4/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 0, 'scalar_tag': 3, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[5/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 1, 'scalar_tag': 0, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[6/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 1, 'scalar_tag': 1, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[7/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 1, 'scalar_tag': 2, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[8/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 2, 'scalar_tag': 0, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[9/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 2, 'scalar_tag': 1, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[10/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 2, 'scalar_tag': 2, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n[11/11] {'points': 512, 'dimension': 32, 'queries': 12, 'seed': 12345, 'metric_tag': 2, 'scalar_tag': 3, 'base_percent': 75, 'update_percent': 10, 'ef': 128, 'clustered': 1, 'min_recall': 0.95}\n  all: recall=1.0 fallback=0.0, correlated: recall=1.0 fallback=0.0, independent: recall=1.0 fallback=0.0, selective: recall=1.0 fallback=1.0\n"
+    }
+  },
+  "tooling": "File-redirected pixi run test and a redirected collection-lock test caused a compiler trap before execution. Direct invocations passed; all CPU files were run. Formatter exited zero despite sandbox Crashpad initialization warning.",
+  "remaining": [
+    "File retirement across collection close and unreferenced non-future job outputs",
+    "Matched-recall Qdrant comparison (#59)",
+    "Arrow results and scanner (#57/#58)",
+    "Sort/heap/WAL/read-only-copy work (#60–#63)",
+    "Named/native scalar/binary/multivector support",
+    "Branch integration"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "benchmark": "benchmarks/mojo/finite_validation_bench.mojo",
+  "benchmark_sha256": "89a9fd46f54958f2276eb1960a187611d88fdcb90ddecb160eefe7fe5bc31c89",
+  "binary_sha256": "d6944cfb131d625c4d7ea76d9029d96965e61df44fe041c29f27c055dfb8038c",
+  "command": ".build/finite-validation-bench",
+  "host": "Apple M4 Pro macOS ARM64",
+  "compiler": "Mojo 1.0.0 (ed45d567)",
+  "iterations_per_sample": 100000,
+  "rows": 32,
+  "order": "alternating current/aggregate by sample",
+  "timings_ns_per_call": {
+    "31": {
+      "current": [
+        30.36,
+        26.27,
+        23.25,
+        21.76,
+        20.13,
+        18.14,
+        18.2
+      ],
+      "aggregate": [
+        27.39,
+        26.09,
+        22.85,
+        22.56,
+        19.27,
+        18.06,
+        18.02
+      ]
+    },
+    "64": {
+      "current": [
+        8.98,
+        9.29,
+        8.94,
+        9.07,
+        8.78,
+        8.43,
+        8.31
+      ],
+      "aggregate": [
+        9.14,
+        9.13,
+        9.02,
+        9.14,
+        8.5,
+        8.54,
+        8.04
+      ]
+    },
+    "384": {
+      "current": [
+        45.14,
+        39.48,
+        38.12,
+        36.84,
+        37.1,
+        37.0,
+        37.0
+      ],
+      "aggregate": [
+        41.8,
+        39.76,
+        35.89,
+        36.14,
+        36.11,
+        36.02,
+        36.08
+      ]
+    },
+    "1536": {
+      "current": [
+        150.37,
+        148.62,
+        148.88,
+        148.96,
+        148.85,
+        149.31,
+        149.26
+      ],
+      "aggregate": [
+        144.06,
+        144.98,
+        143.75,
+        142.36,
+        143.53,
+        143.77,
+        142.92
+      ]
+    }
+  },
+  "checksum_every_cell": -2929.6875,
+  "invalid_lane_tests": "NaN, +Inf, -Inf in each lhs/rhs position for dimensions 1,15,16,17,31,32,63,64,65,384,1536; passed",
+  "decision": "Keep production implementation. About 3.5% isolated D1536 validation gain, no complete-query gain established; short cases have visible frequency warmup."
+}

@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-01",
+  "toolchain": "Mojo 1.0.0 (ed45d567), MAX 26.5.0",
+  "probes": [
+    {
+      "cmd": "pixi run mojo run -I src docs/research/2026-10-01-borrowed-wal-api-probe.mojo",
+      "chunk_id": "3f993a",
+      "wall_time_seconds": 0.31226375,
+      "exit_code": 0,
+      "original_token_count": 37,
+      "output": "PASS bounded read/EOF, descriptor truncate/fsync, append after repair\nPASS origin-tracked reader, borrowed subspan, direct UTF-8, overflow bounds\n"
+    },
+    {
+      "cmd": "pixi run mojo build .build/borrowed-wal/reader_escape_rejected.mojo -o .build/borrowed-wal/reader-escape",
+      "chunk_id": "4c7c38",
+      "wall_time_seconds": 0.083664959,
+      "exit_code": 1,
+      "original_token_count": 181,
+      "output": "/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.build/borrowed-wal/reader_escape_rejected.mojo:49:26: error: cannot implicitly convert 'BorrowedReader[origin_of(owner)]' value to 'BorrowedReader[ImmStaticOrigin]'\n    return BorrowedReader(Span(owner))\n           ~~~~~~~~~~~~~~^~~~~~~~~~~~~\n/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.build/borrowed-wal/reader_escape_rejected.mojo:49:26: note: .origin of the first value is 'origin_of(owner)' but the second value is 'ImmStaticOrigin'\n    return BorrowedReader(Span(owner))\n                         ^\n/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/.pixi/envs/default/bin/mojo: error: failed to parse the provided Mojo source module\n"
+    },
+    {
+      "cmd": "pixi run mojo build .build/borrowed-wal/reader_mutation_not_rejected.mojo -o .build/borrowed-wal/reader-invalid",
+      "chunk_id": "ea5622",
+      "wall_time_seconds": 0.975895375,
+      "exit_code": 0,
+      "original_token_count": 0,
+      "output": ""
+    }
+  ],
+  "sources": {
+    "docs/research/2026-10-01-borrowed-wal-api-probe.mojo": {
+      "sha256": "2588b1164a59938308cf0102110e374b7dba602d74f95c116ae7e218bc454155",
+      "text": "\"\"\"Pinned Mojo capability probe for #62; this is not the WAL decoder.\n\nBorrowed spans retain source origins but do not freeze an owning List against\nall future method calls. Production decoding must finish before buffer reuse.\n\"\"\"\n\nfrom akasha.storage.filesystem import (\n    append_file_sync,\n    read_file_bytes,\n    remove_file_if_exists,\n    sync_file,\n)\nfrom std.ffi import c_int, c_long, external_call\nfrom std.os import SEEK_END\nfrom std.sys import size_of\nfrom std.testing import assert_equal, assert_raises\n\n\nstruct BorrowedReader[origin: ImmOrigin](Movable):\n    var data: Span[UInt8, Self.origin]\n    var offset: Int\n\n    def __init__(out self, data: Span[UInt8, Self.origin]):\n        self.data = data\n        self.offset = 0\n\n    def remaining(self) -> Int:\n        return len(self.data) - self.offset\n\n    def read_span(mut self, count: Int) raises -> Span[UInt8, Self.origin]:\n        if count < 0 or count > self.remaining():\n            raise Error(\"truncated binary value\")\n        var start = self.offset\n        self.offset += count\n        return self.data[start : self.offset]\n\n    def read_u32(mut self) raises -> UInt32:\n        var bytes = self.read_span(4)\n        var result = UInt32(0)\n        for i in range(4):\n            result |= UInt32(bytes[i]) << UInt32(i * 8)\n        return result\n\n\ndef check(bytes: List[UInt8]) raises:\n    var reader = BorrowedReader(Span(bytes))\n    assert_equal(reader.read_u32(), UInt32(0x04030201))\n    var suffix = reader.read_span(3)\n    assert_equal(Int(suffix.unsafe_ptr()), Int(bytes.unsafe_ptr()) + 4)\n    assert_equal(String(from_utf8=suffix), \"abc\")\n    assert_equal(reader.remaining(), 0)\n    with assert_raises():\n        _ = reader.read_span(1)\n    with assert_raises():\n        _ = reader.read_span(Int.MAX)\n    with assert_raises():\n        _ = reader.read_span(-1)\n    assert_equal(len(reader.read_span(0)), 0)\n\n\ndef check_file_io() raises:\n    comptime assert size_of[c_long]() == 8, \"64-bit POSIX off_t required\"\n    var path = (\n        \"/tmp/akasha-wal-api-probe-\"\n        + String(Int(external_call[\"getpid\", c_int]()))\n        + \".bin\"\n    )\n    var bytes: List[UInt8] = [1, 2, 3, 4, 5, 6, 7, 8]\n    with open(path, \"w\") as output:\n        output.write_all(Span(bytes))\n        sync_file(output)\n    # Mojo 1.0 accepts rw, not Python's r+. It does not expose truncate.\n    with open(path, \"rw\") as file:\n        assert_equal(Int(file.seek(0, SEEK_END)), 8)\n        assert_equal(\n            external_call[\"ftruncate\", c_int](c_int(file.handle), c_long(4)),\n            c_int(0),\n        )\n        sync_file(file)\n        _ = file.seek(0)\n        var buffer = List[UInt8](length=8, fill=0)\n        assert_equal(file.read(Span(buffer)), 4)\n        assert_equal(file.read(Span(buffer)[4:]), 0)\n        for i in range(4):\n            assert_equal(buffer[i], UInt8(i + 1))\n    append_file_sync(path, [UInt8(9)])\n    var result = read_file_bytes(path)\n    assert_equal(len(result), 5)\n    for i in range(4):\n        assert_equal(result[i], UInt8(i + 1))\n    assert_equal(result[4], UInt8(9))\n    remove_file_if_exists(path)\n    print(\n        \"PASS bounded read/EOF, descriptor truncate/fsync, append after repair\"\n    )\n\n\ndef main() raises:\n    var owner: List[UInt8] = [1, 2, 3, 4, 97, 98, 99]\n    check(owner)\n    check_file_io()\n    assert_equal(owner[0], UInt8(1))\n    print(\n        \"PASS origin-tracked reader, borrowed subspan, direct UTF-8, overflow\"\n        \" bounds\"\n    )\n"
+    },
+    ".build/borrowed-wal/reader_escape_rejected.mojo": {
+      "sha256": "e36402ad0b1022f4592d8f452054286dc25a9f2a4ff4c071649a365038617359",
+      "text": "from std.memory import bitcast\nfrom std.testing import assert_equal, assert_raises\n\n\nstruct BorrowedReader[origin: ImmOrigin](Movable):\n    var data: Span[UInt8, Self.origin]\n    var offset: Int\n\n    def __init__(out self, data: Span[UInt8, Self.origin]):\n        self.data = data\n        self.offset = 0\n\n    def remaining(self) -> Int:\n        return len(self.data) - self.offset\n\n    def read_span(mut self, count: Int) raises -> Span[UInt8, Self.origin]:\n        if count < 0 or count > self.remaining():\n            raise Error(\"truncated binary value\")\n        var start = self.offset\n        self.offset += count\n        return self.data[start:self.offset]\n\n    def read_u32(mut self) raises -> UInt32:\n        var bytes = self.read_span(4)\n        var result = UInt32(0)\n        for i in range(4):\n            result |= UInt32(bytes[i]) << UInt32(i * 8)\n        return result\n\n\ndef check(bytes: List[UInt8]) raises:\n    var reader = BorrowedReader(Span(bytes))\n    assert_equal(reader.read_u32(), UInt32(0x04030201))\n    var suffix = reader.read_span(3)\n    assert_equal(Int(suffix.unsafe_ptr()), Int(bytes.unsafe_ptr()) + 4)\n    assert_equal(String(from_utf8=suffix), \"abc\")\n    assert_equal(reader.remaining(), 0)\n    with assert_raises():\n        _ = reader.read_span(1)\n    with assert_raises():\n        _ = reader.read_span(Int.MAX)\n    with assert_raises():\n        _ = reader.read_span(-1)\n    assert_equal(len(reader.read_span(0)), 0)\n\n\ndef escaped_reader() -> BorrowedReader[ImmStaticOrigin]:\n    var owner: List[UInt8] = [1, 2, 3, 4]\n    return BorrowedReader(Span(owner))\n\n\ndef main() raises:\n    var reader = escaped_reader()\n    print(reader.read_u32())\n"
+    },
+    ".build/borrowed-wal/reader_mutation_not_rejected.mojo": {
+      "sha256": "bfd4e7dc4e0cbeebbb61abbd1bb37013c7cffe4808b69ca1e9a4e70f1e49be92",
+      "text": "from std.memory import bitcast\nfrom std.testing import assert_equal, assert_raises\n\n\nstruct BorrowedReader[origin: ImmOrigin](Movable):\n    var data: Span[UInt8, Self.origin]\n    var offset: Int\n\n    def __init__(out self, data: Span[UInt8, Self.origin]):\n        self.data = data\n        self.offset = 0\n\n    def remaining(self) -> Int:\n        return len(self.data) - self.offset\n\n    def read_span(mut self, count: Int) raises -> Span[UInt8, Self.origin]:\n        if count < 0 or count > self.remaining():\n            raise Error(\"truncated binary value\")\n        var start = self.offset\n        self.offset += count\n        return self.data[start:self.offset]\n\n    def read_u32(mut self) raises -> UInt32:\n        var bytes = self.read_span(4)\n        var result = UInt32(0)\n        for i in range(4):\n            result |= UInt32(bytes[i]) << UInt32(i * 8)\n        return result\n\n\ndef check(bytes: List[UInt8]) raises:\n    var reader = BorrowedReader(Span(bytes))\n    assert_equal(reader.read_u32(), UInt32(0x04030201))\n    var suffix = reader.read_span(3)\n    assert_equal(Int(suffix.unsafe_ptr()), Int(bytes.unsafe_ptr()) + 4)\n    assert_equal(String(from_utf8=suffix), \"abc\")\n    assert_equal(reader.remaining(), 0)\n    with assert_raises():\n        _ = reader.read_span(1)\n    with assert_raises():\n        _ = reader.read_span(Int.MAX)\n    with assert_raises():\n        _ = reader.read_span(-1)\n    assert_equal(len(reader.read_span(0)), 0)\n\n\ndef borrow(data: List[UInt8]) -> BorrowedReader[origin_of(data)]:\n    return BorrowedReader(Span(data))\n\n\ndef main() raises:\n    var owner: List[UInt8] = [1, 2, 3, 4]\n    var reader = borrow(owner)\n    owner.clear()\n    print(reader.read_u32())\n"
+    }
+  },
+  "expected_results": [
+    "run exits 0; pointer, scalar, UTF-8, bounds, short read/EOF, truncate/fsync, repaired append verified",
+    "compile exits 1: local owner cannot escape as static origin",
+    "compile exits 0: List.clear is not prevented by this origin; binary deliberately not executed"
+  ],
+  "official_sources": {
+    "mojo-1.0-file.mojo": {
+      "url": "https://raw.githubusercontent.com/modular/modular/mojo/v1.0.0/mojo/stdlib/std/io/file.mojo",
+      "sha256": "d675231d27a08bcba6f0ca8ecfaf7ef49b1388bf9f045da7870d54cf6ad8341a"
+    },
+    "mojo-1.0-list.mojo": {
+      "url": "https://raw.githubusercontent.com/modular/modular/mojo/v1.0.0/mojo/stdlib/std/collections/list.mojo",
+      "sha256": "3925f93c02fdb5a8a0e2c1f929a42d13fc4269d4bd47796349e12787ec4bffe8"
+    },
+    "mojo-1.0-tuple.mojo": {
+      "url": "https://raw.githubusercontent.com/modular/modular/mojo/v1.0.0/mojo/stdlib/std/builtin/tuple.mojo",
+      "sha256": "aa6017f908c1376e26488100f00d1236fc9ae9143f201a58336b581285bfb5cf"
+    }
+  },
+  "reference": {
+    "repository": "RocksDB",
+    "commit": "6dbb6f30e604e0047db29f06fe1c28c348074c98",
+    "files": [
+      "db/log_reader.h:77",
+      "env/io_posix.cc:1755"
+    ],
+    "use": "Buffer-backed view expires before reader/scratch mutation; retain Akasha CRC-32/ISO-HDLC and v1/v2/v3 WAL formats."
+  }
+}

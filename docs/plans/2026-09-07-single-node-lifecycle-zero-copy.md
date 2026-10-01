@@ -132,7 +132,9 @@ update/delete、base/delta；效能檢查包含 prepare、搜尋、rerank、payl
 - QPS、p50/p95/p99、candidate／final recall、filter correctness、RAM/disk、ingest，
   以及持續寫入／compaction 下的延遲與 snapshot／Arrow lease 記憶體。
 
-先約定目標 workload 與容許差距，再跑 repeated trials、記錄離散程度並保留原始資料。
+使用者於 2026-10-02 確認採用目前完整矩陣：每格在相同 recall 目標下，
+Akasha QPS ≥ Qdrant 且 p95 ≤ Qdrant，不設容許差距，也不跨格抵銷；沿用固定
+workload 與 repeated trials、記錄離散程度並保留原始資料。
 「同等速度」只能限定於通過門檻的 cells；不能外推所有維度、資料量或所有向量型別。
 Qdrant 沒有直接對應的型別／metric，採適合的獨立 oracle／reference，列為不可直接比較。
 

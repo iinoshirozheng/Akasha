@@ -80,3 +80,8 @@ hold the writer lock. HNSW sidecar retirement and bounded mutation catch-up rema
 separate work. The previously documented orphan-output crash leak is unchanged;
 job admission prevents normal competing builders but is not a replacement for
 durable recovery and reclamation.
+
+Follow-up on the same date: the in-memory HNSW builder and bounded mutation
+catch-up now run outside writer. See
+[HNSW rebuild measurements](2026-09-30-hnsw-rebuild.md). Sidecar publication,
+retirement and file I/O remain separate work.

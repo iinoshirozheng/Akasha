@@ -1,0 +1,214 @@
+{
+  "status": "in-progress: storage authority checkpoint, public API integration pending",
+  "toolchain": "Mojo 1.0.0 (ed45d567)",
+  "records": [
+    {
+      "key": "resume-result-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "ae2b14",
+          "wall_time_seconds": 0.000005291,
+          "exit_code": 0,
+          "original_token_count": 196,
+          "output": "\nRunning 8 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_persistent_sparse.mojo \n    PASS [ 2.217 ] test_sparse_mutation_search_and_validation\n    PASS [ 4.390 ] test_sparse_wal_and_checkpoint_recover_then_delete\n    PASS [ 1.969 ] test_filtered_sparse_and_hybrid_search\n    PASS [ 4.073 ] test_later_checkpoint_appends_sparse_delta_and_preserves_base\n    PASS [ 5.909 ] test_full_compaction_rewrites_sparse_state_and_reclaims_inputs\n    PASS [ 9.224 ] test_reinsert_does_not_inherit_sparse_after_reopen\n    PASS [ 1.565 ] test_sparse_existence_errors_preserve_validation_order_and_wal\n    PASS [ 4.728 ] test_sparse_failed_append_preserves_large_document_and_sequence\n--------\nSummary [ 34.075 ] 8 tests run: 8 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "resume-result-1",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "783eef",
+          "wall_time_seconds": 0.000017417,
+          "exit_code": 0,
+          "original_token_count": 376,
+          "output": "\nRunning 16 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_collection_config_migration.mojo \n    PASS [ 5.039 ] test_new_two_argument_open_publishes_default_identity_immediately\n    PASS [ 1.769 ] test_open_with_config_persists_every_field_and_reopens\n    PASS [ 2.966 ] test_existing_identity_rejects_every_immutable_field_mismatch\n    PASS [ 1.334 ] test_config_mismatch_reports_field_and_both_fingerprints\n    PASS [ 1.963 ] test_wal_only_legacy_migration_preserves_wal_and_recovers_records\n    PASS [ 3.370 ] test_snapshot_legacy_migration_preserves_all_authoritative_bytes\n    PASS [ 2.332 ] test_wrong_dimension_does_not_poison_wal_only_legacy_identity\n    PASS [ 3.564 ] test_wrong_dimension_does_not_poison_snapshot_legacy_identity\n    PASS [ 2.312 ] test_corrupt_legacy_segment_fails_before_config_publication\n    PASS [ 2.658 ] test_corrupt_legacy_sparse_snapshot_fails_before_config_publication\n    PASS [ 1.491 ] test_corrupt_legacy_sparse_wal_fails_before_config_publication\n    PASS [ 3.752 ] test_corrupt_legacy_dense_delta_blocks_identity_publication\n    PASS [ 4.241 ] test_late_sparse_delta_failure_does_not_repair_dense_wal\n    PASS [ 3.033 ] test_late_legacy_preflight_failure_preserves_every_source\n    PASS [ 2.356 ] test_non_default_config_is_rejected_for_legacy_data_without_mutation\n    PASS [ 0.845 ] test_invalid_config_has_no_side_effect_and_does_not_hold_lock\n--------\nSummary [ 43.025 ] 16 tests run: 16 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "resume-result-2",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "b9749d",
+          "wall_time_seconds": 0.000005417,
+          "exit_code": 0,
+          "original_token_count": 25,
+          "output": ".                                                                        [100%]\n1 passed in 1.41s\n"
+        }
+      }
+    },
+    {
+      "key": "crash-result-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "9bde41",
+          "wall_time_seconds": 0.000004208,
+          "exit_code": 0,
+          "original_token_count": 164,
+          "output": "\nRunning 6 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/crash/test_hnsw_checkpoint_order.mojo \n    PASS [ 44.082 ] test_old_manifest_ignores_unreferenced_data_temporaries\n    PASS [ 43.590 ] test_old_manifest_ignores_renamed_unreferenced_data_files\n    PASS [ 43.366 ] test_new_manifest_with_old_wal_recovers_once\n    PASS [ 46.414 ] test_rotated_wal_with_old_sidecar_present_uses_new_commit\n    PASS [ 50.354 ] test_cleanup_boundary_keeps_new_commit_recoverable\n    PASS [ 199.605 ] test_same_sequence_rebuild_recovers_at_every_publication_boundary\n--------\nSummary [ 427.411 ] 6 tests run: 6 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "crash-result-1",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "c580bb",
+          "wall_time_seconds": 0.000004,
+          "exit_code": 0,
+          "original_token_count": 71,
+          "output": "\nRunning 1 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/crash/test_sparse_checkpoint_order.mojo \n    PASS [ 4.833 ] test_sparse_manifest_commit_before_wal_rotation_recovers_once\n--------\nSummary [ 4.833 ] 1 tests run: 1 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "crash-result-2",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "6890d6",
+          "wall_time_seconds": 0.000005292,
+          "exit_code": 0,
+          "original_token_count": 64,
+          "output": "\nRunning 1 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/crash/test_wal_tail.mojo \n    PASS [ 3.900 ] test_reopen_repairs_torn_tail_before_next_append\n--------\nSummary [ 3.900 ] 1 tests run: 1 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "publication-read-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "e33896",
+          "wall_time_seconds": 0.0000115,
+          "exit_code": 0,
+          "original_token_count": 172,
+          "output": "\nRunning 6 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_field_catalog_publication.mojo \n    PASS [ 0.428 ] test_new_identity_and_retry_ignore_stale_temporary_bytes\n    PASS [ 0.924 ] test_upgrade_preserves_default_identity_and_authoritative_sources\n    PASS [ 0.958 ] test_preflight_identity_mismatch_does_not_touch_files\n    PASS [ 0.076 ] test_invalid_transition_is_rejected_before_any_filesystem_mutation\n    PASS [ 1.822 ] test_each_publication_failure_preserves_one_identity_and_retry_syncs\n    PASS [ 0.420 ] test_cleanup_failure_keeps_the_primary_publication_error\n--------\nSummary [ 4.628 ] 6 tests run: 6 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "legacy-check-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "ecc289",
+          "wall_time_seconds": 0.00001825,
+          "exit_code": 0,
+          "original_token_count": 115,
+          "output": "\nRunning 3 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_legacy_recovery.mojo \n    PASS [ 3.628 ] test_preflight_replays_checkpoint_and_both_wals_without_repair_or_publication\n    PASS [ 1.453 ] test_late_corrupt_sparse_source_leaves_dense_tail_and_identity_untouched\n    PASS [ 0.157 ] test_empty_preflight_does_not_create_identity_lock_or_wal\n--------\nSummary [ 5.238 ] 3 tests run: 3 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "legacy-result-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "057128",
+          "wall_time_seconds": 0.000006333,
+          "exit_code": 0,
+          "original_token_count": 376,
+          "output": "\nRunning 16 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_collection_config_migration.mojo \n    PASS [ 1.994 ] test_new_two_argument_open_publishes_default_identity_immediately\n    PASS [ 1.642 ] test_open_with_config_persists_every_field_and_reopens\n    PASS [ 2.525 ] test_existing_identity_rejects_every_immutable_field_mismatch\n    PASS [ 1.317 ] test_config_mismatch_reports_field_and_both_fingerprints\n    PASS [ 1.826 ] test_wal_only_legacy_migration_preserves_wal_and_recovers_records\n    PASS [ 3.096 ] test_snapshot_legacy_migration_preserves_all_authoritative_bytes\n    PASS [ 2.120 ] test_wrong_dimension_does_not_poison_wal_only_legacy_identity\n    PASS [ 3.283 ] test_wrong_dimension_does_not_poison_snapshot_legacy_identity\n    PASS [ 2.229 ] test_corrupt_legacy_segment_fails_before_config_publication\n    PASS [ 2.238 ] test_corrupt_legacy_sparse_snapshot_fails_before_config_publication\n    PASS [ 1.324 ] test_corrupt_legacy_sparse_wal_fails_before_config_publication\n    PASS [ 3.381 ] test_corrupt_legacy_dense_delta_blocks_identity_publication\n    PASS [ 3.426 ] test_late_sparse_delta_failure_does_not_repair_dense_wal\n    PASS [ 2.634 ] test_late_legacy_preflight_failure_preserves_every_source\n    PASS [ 2.124 ] test_non_default_config_is_rejected_for_legacy_data_without_mutation\n    PASS [ 1.029 ] test_invalid_config_has_no_side_effect_and_does_not_hold_lock\n--------\nSummary [ 36.188 ] 16 tests run: 16 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "legacy-result-1",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "3f7d03",
+          "wall_time_seconds": 0.000004125,
+          "exit_code": 0,
+          "original_token_count": 367,
+          "output": "\nRunning 17 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_persistent_collection.mojo \n    PASS [ 1.777 ] test_collection_upsert_replace_delete_and_exact_search\n    PASS [ 1.744 ] test_wal_only_recovery\n    PASS [ 2.927 ] test_flush_and_reopen_restores_complete_live_snapshot\n    PASS [ 2.353 ] test_reopen_combines_snapshot_with_newer_wal_records\n    PASS [ 2.371 ] test_existing_collection_rejects_dimension_mismatch\n    PASS [ 1.742 ] test_mutated_public_dimension_cannot_change_wal_identity\n    PASS [ 2.350 ] test_mutated_public_path_cannot_redirect_mutation_or_flush\n    PASS [ 1.225 ] test_close_releases_lock_when_public_identity_copies_diverge\n    PASS [ 1.340 ] test_collection_rejects_second_live_owner_and_reopens_after_close\n    PASS [ 0.865 ] test_closed_collection_rejects_data_operations\n    PASS [ 2.291 ] test_flush_rotates_wal_and_reopen_uses_snapshot\n    PASS [ 4.342 ] test_later_flush_appends_delta_and_preserves_referenced_base\n    PASS [ 2.563 ] test_recovery_skips_retained_pre_checkpoint_wal\n    PASS [ 4.528 ] test_flush_preserves_base_delta_bytes_and_noop_checkpoint\n    PASS [ 1.959 ] test_recovery_applies_base_and_deltas_in_manifest_sequence_order\n    PASS [ 6.971 ] test_full_compaction_replaces_segments_and_preserves_query_results\n    PASS [ 7.633 ] test_flush_automatically_compacts_at_default_level_zero_threshold\n--------\nSummary [ 48.981 ] 17 tests run: 17 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "migration-regression-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "86043d",
+          "wall_time_seconds": 0.000006625,
+          "exit_code": 0,
+          "original_token_count": 255,
+          "output": "\nRunning 10 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_wal_stream.mojo \n    PASS [ 0.250 ] test_stream_returns_complete_envelopes_and_owns_returned_values\n    PASS [ 0.001 ] test_recovered_mutation_transfers_owned_buffers_without_copying\n    PASS [ 35.470 ] test_stream_and_span_match_owned_decoder_at_every_torn_boundary\n    PASS [ 0.170 ] test_stream_rejects_file_shrinking_during_preflight\n    PASS [ 0.147 ] test_failed_stream_cannot_resume_past_corrupt_envelope\n    PASS [ 1.712 ] test_envelopes_cross_read_boundaries_and_grow_beyond_read_ahead\n    PASS [ 0.327 ] test_preflight_defers_repair_and_truncate_preserves_prefix_and_append\n    PASS [ 0.239 ] test_repair_rejects_changed_length_or_missing_file_without_overwriting\n    PASS [ 0.315 ] test_stream_rejects_complete_corruption_and_invalid_header_lengths\n    PASS [ 0.088 ] test_stream_missing_and_empty_files_have_no_mutations_or_repair\n--------\nSummary [ 38.719 ] 10 tests run: 10 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "migration-regression-1",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "6385f5",
+          "wall_time_seconds": 0.000005,
+          "exit_code": 0,
+          "original_token_count": 212,
+          "output": "\nRunning 8 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_wal_stream.mojo \n    PASS [ 0.661 ] test_mixed_reader_keeps_legacy_and_field_batches_owned_and_distinct\n    PASS [ 24.973 ] test_every_mixed_wal_cut_emits_only_whole_envelopes_without_repair\n    PASS [ 0.203 ] test_late_corruption_poisoning_preserves_accepted_prefix\n    PASS [ 0.577 ] test_cutover_and_shared_sequence_order_reject_invalid_mixed_logs\n    PASS [ 0.746 ] test_torn_header_validation_and_unknown_version_do_not_allocate_claimed_body\n    PASS [ 18.780 ] test_buffer_growth_is_bounded_and_decoded_payload_survives_refills\n    PASS [ 0.367 ] test_deferred_repair_then_append_preserves_complete_v4_batch\n    PASS [ 0.219 ] test_missing_empty_and_changed_files\n--------\nSummary [ 46.526 ] 8 tests run: 8 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "migration-regression-2",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "5474f3",
+          "wall_time_seconds": 0.000004834,
+          "exit_code": 0,
+          "original_token_count": 196,
+          "output": "\nRunning 8 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_persistent_sparse.mojo \n    PASS [ 2.733 ] test_sparse_mutation_search_and_validation\n    PASS [ 3.696 ] test_sparse_wal_and_checkpoint_recover_then_delete\n    PASS [ 1.319 ] test_filtered_sparse_and_hybrid_search\n    PASS [ 3.713 ] test_later_checkpoint_appends_sparse_delta_and_preserves_base\n    PASS [ 4.831 ] test_full_compaction_rewrites_sparse_state_and_reclaims_inputs\n    PASS [ 8.098 ] test_reinsert_does_not_inherit_sparse_after_reopen\n    PASS [ 1.563 ] test_sparse_existence_errors_preserve_validation_order_and_wal\n    PASS [ 3.907 ] test_sparse_failed_append_preserves_large_document_and_sequence\n--------\nSummary [ 29.860 ] 8 tests run: 8 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "migration-regression-3",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "47b3c3",
+          "wall_time_seconds": 0.000004166,
+          "exit_code": 0,
+          "original_token_count": 161,
+          "output": "\nRunning 5 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_migration.mojo \n    PASS [ 4.365 ] test_legacy_cutover_preserves_document_versions_and_publishes_reopenable_identity\n    PASS [ 1.927 ] test_mixed_replay_finishes_sparse_at_cutover_then_applies_atomic_fields\n    PASS [ 7.844 ] test_every_torn_new_batch_preserves_only_legacy_state_and_source_bytes\n    PASS [ 2.152 ] test_wrong_cutover_and_late_new_patch_fail_before_any_repair\n    PASS [ 2.492 ] test_published_upgrade_combined_write_and_reopen_use_one_wal_commit\n--------\nSummary [ 18.780 ] 5 tests run: 5 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "point-store-check-0",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "ff55fe",
+          "wall_time_seconds": 0.000016666,
+          "exit_code": 0,
+          "original_token_count": 158,
+          "output": "\nRunning 5 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_store.mojo \n    PASS [ 2.832 ] test_new_store_atomic_typed_batch_wal_reopen_and_close_ownership\n    PASS [ 3.032 ] test_base_delta_checkpoint_and_compaction_reopen_complete_point_states\n    PASS [ 3.414 ] test_legacy_upgrade_first_checkpoint_replaces_legacy_segments_and_keeps_versions\n    PASS [ 1.264 ] test_schema_mismatch_and_corrupt_recovery_never_repair_sources\n    PASS [ 0.763 ] test_noop_flush_preserves_manifest_and_empty_collection_can_reopen\n--------\nSummary [ 11.305 ] 5 tests run: 5 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    },
+    {
+      "key": "point-store-check-1",
+      "result": {
+        "status": "fulfilled",
+        "value": {
+          "chunk_id": "d120bd",
+          "wall_time_seconds": 0.000014791,
+          "exit_code": 0,
+          "original_token_count": 213,
+          "output": "\nRunning 7 tests for /Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan/tests/mojo/test_point_table.mojo \n    PASS [ 0.448 ] test_durable_batch_repeated_ids_and_replay_share_exact_atomic_boundary\n    PASS [ 0.210 ] test_invalid_later_mutation_never_appends_or_publishes_earlier_changes\n    PASS [ 0.223 ] test_append_failure_keeps_state_and_requires_reopen_before_another_write\n    PASS [ 0.199 ] test_old_point_handles_keep_owners_through_partial_update_delete_and_reinsert\n    PASS [ 0.207 ] test_checkpoint_watermark_skips_covered_batches_but_rejects_partial_and_repeated_replay\n    PASS [ 0.034 ] test_replay_preconditions_are_atomic_and_sequence_exhaustion_cannot_append\n    PASS [ 0.190 ] test_delta_capture_includes_sparse_only_changes_and_tombstones_in_id_order\n--------\nSummary [ 1.511 ] 7 tests run: 7 passed , 0 failed , 0 skipped \n\n"
+        }
+      }
+    }
+  ]
+}

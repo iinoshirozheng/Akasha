@@ -1,0 +1,163 @@
+{
+  "source_sha256": "1c95194649df7532688d65e0adcf2243605bbe0612e1cb9ad3f0cdcd8a8fc110",
+  "benchmark_sha256": "cefa494346b0f5a3e9c138684ae1ab0350b2f56d9444cdc1e25d7633ab1e9390",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "mojo": "Mojo 1.0.0 (ed45d567)",
+  "python": "3.11.0 | packaged by conda-forge | (main, Jan 14 2023, 12:26:40) [Clang 14.0.6 ]",
+  "cells": [
+    {
+      "rows": 4096,
+      "dimension": 128,
+      "batch_size": 1,
+      "data_sha256": "f09d6ed20c2b0c0eb2d2f50fd8959c6d049dc388218a6756ab9c1b2b29fbd8db",
+      "elapsed_ns": [
+        25579208,
+        25287792,
+        24898166,
+        24878500,
+        24830041
+      ],
+      "median_ns": 24898166,
+      "stats": {
+        "rows": 4096,
+        "batches": 4096,
+        "materialized_bytes": 32768,
+        "borrowed_bytes": 2097152,
+        "visited_slots": 4096
+      },
+      "max_batch_materialized_bytes": 8,
+      "setup_peak_rss_bytes": 95305728,
+      "final_peak_rss_bytes": 97959936,
+      "peak_increase_bytes": 2654208,
+      "numpy": "2.4.6",
+      "pyarrow": "21.0.0"
+    },
+    {
+      "rows": 4096,
+      "dimension": 128,
+      "batch_size": 128,
+      "data_sha256": "f09d6ed20c2b0c0eb2d2f50fd8959c6d049dc388218a6756ab9c1b2b29fbd8db",
+      "elapsed_ns": [
+        1211125,
+        1174333,
+        1150792,
+        1140250,
+        1129333
+      ],
+      "median_ns": 1150792,
+      "stats": {
+        "rows": 4096,
+        "batches": 32,
+        "materialized_bytes": 2129920,
+        "borrowed_bytes": 0,
+        "visited_slots": 4096
+      },
+      "max_batch_materialized_bytes": 66560,
+      "setup_peak_rss_bytes": 93224960,
+      "final_peak_rss_bytes": 93274112,
+      "peak_increase_bytes": 49152,
+      "numpy": "2.4.6",
+      "pyarrow": "21.0.0"
+    },
+    {
+      "rows": 4096,
+      "dimension": 128,
+      "batch_size": 1024,
+      "data_sha256": "f09d6ed20c2b0c0eb2d2f50fd8959c6d049dc388218a6756ab9c1b2b29fbd8db",
+      "elapsed_ns": [
+        1004709,
+        945959,
+        963708,
+        939834,
+        943833
+      ],
+      "median_ns": 945959,
+      "stats": {
+        "rows": 4096,
+        "batches": 4,
+        "materialized_bytes": 2129920,
+        "borrowed_bytes": 0,
+        "visited_slots": 4096
+      },
+      "max_batch_materialized_bytes": 532480,
+      "setup_peak_rss_bytes": 90783744,
+      "final_peak_rss_bytes": 90800128,
+      "peak_increase_bytes": 16384,
+      "numpy": "2.4.6",
+      "pyarrow": "21.0.0"
+    },
+    {
+      "rows": 4096,
+      "dimension": 128,
+      "batch_size": 4096,
+      "data_sha256": "f09d6ed20c2b0c0eb2d2f50fd8959c6d049dc388218a6756ab9c1b2b29fbd8db",
+      "elapsed_ns": [
+        1208500,
+        1171292,
+        963333,
+        998042,
+        996834
+      ],
+      "median_ns": 998042,
+      "stats": {
+        "rows": 4096,
+        "batches": 1,
+        "materialized_bytes": 2129920,
+        "borrowed_bytes": 0,
+        "visited_slots": 4096
+      },
+      "max_batch_materialized_bytes": 2129920,
+      "setup_peak_rss_bytes": 90849280,
+      "final_peak_rss_bytes": 94502912,
+      "peak_increase_bytes": 3653632,
+      "numpy": "2.4.6",
+      "pyarrow": "21.0.0"
+    }
+  ],
+  "validation": {
+    "base_commit": "31f27e5e7f919d748f5e87ba3bdf600c387dac01",
+    "uncommitted": true,
+    "python": {
+      "command": "pixi run env PYTHONPATH=python:. pytest tests/python -q",
+      "passed": 111,
+      "warnings": 3
+    },
+    "mojo": [
+      {
+        "file": "tests/mojo/test_scanner.mojo",
+        "passed": 4
+      },
+      {
+        "file": "tests/mojo/test_arrow_export.mojo",
+        "passed": 6
+      },
+      {
+        "file": "tests/mojo/test_snapshot.mojo",
+        "passed": 10
+      },
+      {
+        "file": "tests/mojo/test_concurrency.mojo",
+        "passed": 6
+      },
+      {
+        "file": "tests/mojo/test_file_retirement.mojo",
+        "passed": 9
+      }
+    ],
+    "mojo_command_pattern": "pixi run mojo run -I src <file>",
+    "build": "pixi run build: passed",
+    "c_abi": "pixi run test-c: passed",
+    "examples": [
+      ".build/akasha-smoke",
+      ".build/akasha-persistent",
+      ".build/akasha-configured-hnsw"
+    ],
+    "examples_passed": true,
+    "unchanged_gates_not_rerun": [
+      "full CPU suite",
+      "crash suite",
+      "HNSW quality gates",
+      "GPU actual-device"
+    ]
+  }
+}
