@@ -16,30 +16,37 @@ query + indexes
 storage + compute + document + common
 ```
 
-## Initial write path
+## Write and checkpoint paths
 
 ```text
-validate vector + flat typed fields
-   -> assign sequence
-   -> append atomic vector-plus-payload WAL v2 record + fsync
-   -> latest complete document in MemTable
-   -> exact SIMD search
+validate/stage complete point changes
+   -> assign a contiguous accepted sequence range
+   -> append one combined point WAL v4 envelope + fsync
+   -> publish immutable native vector/payload owners and current point descriptors
+   -> exact native scoring or per-field derived retrieval + authoritative rerank
 
 flush
-   -> changed dense/sparse records plus HNSW sidecar into temporary files + fsync
+   -> changed point records into temporary v4 base/delta files + fsync
+   -> retain a valid default HNSW base or prepare a replacement sidecar
    -> atomic data-file renames + directory fsync
-   -> atomic Manifest v3 generation publish + directory fsync
+   -> atomic manifest generation publish + directory fsync
    -> atomic empty WAL replacement + directory fsync
    -> threshold signal coalesces into one background maintenance request
-   -> worker locks the same writer boundary and may publish one full base
+   -> worker pins inputs, builds outside writer, conditionally publishes a base
 ```
 
-## Initial read path
+Collections opened without a field catalog retain their documented dense/sparse
+WAL v2/v3 and paired Segment v3 paths. Opting into named fields (or an empty named
+catalog) preflights all legacy sources, publishes catalog v2, and switches future
+writes to combined point WAL/Segment v4. Old sources remain readable across the
+cutover; migration never reinterprets legacy F32 bytes as another scalar type.
+
+## Read path
 
 ```text
-manifest -> ordered v1/v2/v3 base+deltas -> newer WAL replay -> MemTable
+manifest -> ordered versioned base+deltas -> newer WAL replay -> MemTable
                                                                |
-query -> immutable read snapshot -> typed filter -> SIMD -> bounded Top-K IDs
+query -> immutable read root -> field presence + typed filter -> scoring -> Top-K
                                                                |
                                     get(ID) -> owned document <-+
 ```
@@ -52,31 +59,53 @@ generation-stamped visited scratch. The planner keeps small, selective,
 metric-mismatched, or unavailable queries on exact scan. A filter restricts
 result admission, not graph traversal; bounded widening may gather more eligible
 candidates before exact filtered fallback. Every public result is reranked
-against authoritative F32 vectors.
+against authoritative F32 vectors for default dense queries. Native named fields
+rerank their own F32/F16/BF16/I8/U8 buffers with Float64 accumulation and scores.
 
 The mutable graph uses append-only packed slots. Replacement and deletion mark
 old slots non-current, so they remain safe traversal bridges but cannot be
-returned. Manifest v3 commits a versioned CRC32
-`hnsw-<sequence>.bin` sidecar. Reopen validates identity, all section bounds,
+returned. Manifest v4 commits a job-unique, versioned CRC32 HNSW sidecar;
+legacy v3 descriptors retain their `hnsw-<sequence>.bin` naming contract. Manifest
+v5 can retain a base captured at an earlier sequence, with later complete point
+states recovered into its bounded overlay. Advancing a v3 checkpoint copies its
+verified base to a unique v5 filename before publishing, without rebuilding it.
+Reopen validates identity, all section bounds,
 checksum, and graph structure before exposing it as an immutable mmap base;
 mapping acquisition failure may use the same validated owned decoder. Newer WAL
 mutations replay into a bounded owned delta and queries merge base/delta
 candidates through the current ID-to-source mapping. `flush()` rebuilds when
 inactive slots or delta mutations cross their configured limits, while
-`rebuild_hnsw()` provides explicit maintenance. Queries never rebuild.
+`rebuild_hnsw()` provides explicit maintenance. Default dense queries never rebuild.
 Missing/stale derived state rebuilds from authoritative records; corruption of a
 matching committed sidecar fails recovery. Legacy `hnsw.cache` is read only for
 pre-v3 manifests and is never preferred over a manifest-referenced sidecar.
 
-Sparse vectors are a companion durable state keyed by the same point IDs. A
-checksummed sparse WAL shares the collection sequence space. Every v2/v3
+In the legacy collection format, sparse vectors are a companion durable state
+keyed by the same point IDs. A
+checksummed sparse WAL shares the collection sequence space. Every v2/v3/v4
 manifest descriptor pairs its dense base/delta with a sparse base/delta.
 Both are fsynced before manifest publication. Open replays paired descriptors
-in sequence order, then newer sparse WAL records, and removes sparse records
-whose dense point is not live.
+in sequence order, then merges newer dense and sparse WAL mutations by sequence.
+Dense deletes remove sparse state before a later reinsert can inherit it. Recovery
+also removes sparse records whose final dense point is not live.
 The in-memory inverted index accumulates only query posting lists. Hybrid search
 runs dense and sparse retrieval independently and fuses ranks with RRF; raw
 scores from the two modalities are never compared.
+
+In point mode, all named/default vectors and payload changes share one WAL commit
+and visibility boundary. A point may lack the default dense field and still exist
+in named search/scans. Point sequence covers every mutation; document sequence
+covers only the default dense/payload projection. Present empty sparse vectors,
+empty multivectors, absent fields, and zero-valued vectors remain distinct.
+
+Each named HNSW or sparse index is an immutable-root artifact keyed by field ID.
+The first request builds outside the collection writer lock; a complete artifact
+is shared by sibling snapshots, and failed/cancelled builds publish nothing.
+HNSW protects mutable query scratch with its own lock. Named graph artifacts have
+no persistent sidecars yet and rebuild on a new root's first approximate request.
+Native binary Hamming/Jaccard and ragged MaxSim use exact kernels; sparse postings
+use F64 sums and include present zero-score rows. Multi-field RRF executes all
+branches against one captured root and combines Float64 rank contributions.
 
 ## Implemented storage boundary
 
@@ -88,6 +117,16 @@ segment, manifest, CRC32, and the filesystem durability boundary are all Mojo
 modules under `src/akasha/storage` and `src/akasha/api`. Recovery accepts only an
 incomplete final WAL record; it truncates that tail before another append.
 Complete checksum corruption fails open.
+
+Dense-WAL recovery borrows encoded spans from a 64 KiB read-ahead buffer that can
+grow to one complete validated envelope. It transfers decoded vector/payload
+allocations into the MemTable without retaining the complete dense history. A
+matching committed HNSW sidecar replays a second bounded pass under the collection
+lock. The owned replay API still returns the complete owned mutation list; sparse
+WAL and segment decoding have separate memory costs. All authoritative sources
+and matching sidecars pass preflight before identity publication or tail repair.
+Repair truncates the existing descriptor to the accepted length and fsyncs it,
+preserving the accepted prefix. See the [recovery measurement](benchmarks/2026-10-01-borrowed-wal.md).
 
 WAL writers emit version 2 records and incremental segment writers emit version
 3 base/delta records that store vectors and encoded payloads as one checksummed
@@ -113,8 +152,10 @@ behind the active callback. Failure is stored and surfaced by the next public
 data operation, explicit wait, later scheduling, or close. If the shared
 library cannot load, flush uses the same synchronous compaction path.
 
-`PersistentCollection.snapshot()` captures owned MemTable, metadata, and
-sparse index state at one accepted sequence. Exact, Boolean-filtered, sparse,
+`PersistentCollection.snapshot()` shares an immutable base/sealed-run chain and
+captures bounded head descriptors at one accepted sequence. Repeated unchanged
+captures share a root; native vector and payload owners are retained rather than
+deep-copied. Exact, Boolean-filtered, sparse,
 hybrid, batch, `get`, and payload results remain stable after live mutations.
 Snapshots pin their manifest generation. Both foreground and background
 compaction publish before retiring files and reclaim only after the final
@@ -132,7 +173,9 @@ contiguous ranges, scores one bounded local heap per range, then merges ranges
 in ordinal order. SQ8 stores one affine byte per dimension. Product
 quantization stores one centroid byte per configured subvector. Both preserve
 the scalar/SIMD implementation as the correctness oracle and optionally exact
-rerank an expanded candidate set against owned Float32 vectors.
+rerank an expanded candidate set against authoritative Float32 vectors. SQ8 and
+PQ builds are cached per immutable root/configuration and shared across snapshots;
+queries do not retrain an already-ready artifact.
 
 Phase 13 device batch execution flattens owned snapshot vectors and queries,
 then launches one Mojo GPU scoring thread per query/candidate pair. A second
@@ -166,6 +209,21 @@ four bytes per dimension for F32, two for BF16/F16, or one for I8 plus an F32
 scale per dot vector. IDs, slot flags/levels, section offsets, and bounded
 neighbor cells add graph overhead proportional to M0/M. Authoritative F32
 storage exists separately. The owned delta consumes heap memory until rebuild.
+A small delta can use bounded exact candidate scoring alongside base HNSW when
+its physical history, vector component count and initial search breadth fit the measured
+limits. Both paths preserve current-source filtering and authoritative rerank;
+the combined result remains approximate. Execution stats identify delta scans.
+
+After a durable checkpoint, an optional `hnsw-overlay.cache` retains the mutable
+graph, including inactive slots. Recovery verifies its envelope, retained-base
+identity, graph structure and exact current-vector coverage before adoption.
+Missing or invalid cache data is rebuilt from authority. This avoids replaying
+graph insertion after small updates at the cost of additional flush work. F32
+owned decoding and mapped validation use bounded bulk reads; checksums and
+prepared-vector validation remain mandatory. See the
+[cache format](formats/hnsw-format.md) and measured
+[reopen tradeoff](benchmarks/2026-10-02-hnsw-overlay-cache.md).
+
 A flush that crosses rebuild policy can pay full graph construction plus a new
 sidecar write; crash ordering keeps the previous manifest generation usable
 until the new data files and sidecar are durable and the new manifest publishes.
@@ -176,11 +234,15 @@ Current durable contracts are
 [`manifest.bin`](../formats/manifest-format.md),
 [`segments`](../formats/segment-format.md), and
 [`WAL`](../formats/wal-format.md). Readers preserve documented older versions.
-Writers publish collection config v1 and Segment v3; a checkpoint with an HNSW
-sidecar uses Manifest v3, while a sidecar-ineligible checkpoint remains a valid
-Manifest v2. Single WAL mutations use v2 records and atomic batches use v3
-envelopes. The HNSW sidecar v2 layout and v1 sidecar compatibility are specified
-in the production HNSW design and locked by checked-in fixtures.
+Legacy writers retain collection config v1, Segment v3, single WAL v2 and atomic
+batch WAL v3. Point-mode writers publish catalog v2 and WAL/Segment v4. HNSW
+checkpoints use manifest v4 for a complete current base, or v5 for a retained
+earlier base with recoverable overlay; a checkpoint without a sidecar remains
+valid manifest v2. Readers retain the documented older formats. HNSW sidecar v2
+layout and v1 compatibility are locked by checked-in fixtures. See also the
+[field catalog](formats/field-catalog-format.md),
+[point records](formats/point-record-format.md), and
+[field envelopes](formats/field-envelopes-format.md).
 
 Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
@@ -194,7 +256,7 @@ Missing fields and type mismatches do not match, including inequality.
 Document writes incrementally remove old postings and add new postings after
 the authoritative WAL and MemTable mutation succeeds. Deletes clear the live
 universe bit. Recovery may load a checksummed `metadata.cache`; otherwise it
-bulk-loads and heap-sorts the complete derived index from stable MemTable slots
+bulk-loads and stable-sorts the complete derived index from stable MemTable slots
 after Segment and WAL replay. WAL, Segment, and Manifest formats remain
 unchanged. Exact filtered execution scans bitmap words
 and scores only selected ordinals. Approximate

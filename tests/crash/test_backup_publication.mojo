@@ -8,6 +8,7 @@ from akasha.storage.filesystem import (
     write_file_sync,
 )
 from akasha.storage.operations import inspect_storage, restore_storage
+from akasha.storage.manifest import load_manifest
 from std.os import listdir
 from std.testing import (
     assert_equal,
@@ -33,6 +34,7 @@ def _source(path: String) raises -> PersistentCollection:
     collection.flush()
     for id in range(11, 21):
         collection.upsert(id, [Float32(id)])
+    collection.rebuild_hnsw()
     return collection^
 
 
@@ -49,6 +51,7 @@ def _assert_restores_all(target: String, restored: String) raises:
     _reset(restored)
     _ = restore_storage(target, restored, 1)
     var reopened = PersistentCollection.open(restored, 1)
+    assert_true(reopened._hnsw_checkpoint_was_hit)
     for id in range(1, 21):
         assert_equal(reopened.get(id).value().vector[0], Float32(id))
     for id in range(1, 11):
@@ -100,6 +103,28 @@ def test_crash_before_manifest_rename_leaves_no_backup() raises:
     assert_equal(collection.backup_to(target).generation, report.generation)
     assert_true(path_exists(target + "/manifest.bin"))
     collection.close()
+    _assert_restores_all(target, restored)
+
+
+def test_crash_during_hnsw_copy_leaves_no_backup_and_retry_completes() raises:
+    var source = String("/tmp/akasha-56-crash-backup-hnsw-source")
+    var target = String("/tmp/akasha-56-crash-backup-hnsw-target")
+    var restored = String("/tmp/akasha-56-crash-backup-hnsw-restored")
+    var collection = _source(source)
+    _reset(target)
+    var report = collection.backup_to(target)
+    var manifest = load_manifest(target, 1)
+    var name = manifest.hnsw_name.value().copy()
+    var bytes = read_file_bytes(target + "/" + name)
+    _ = bytes.pop()
+    remove_file_if_exists(target + "/manifest.bin")
+    write_file_sync(target + "/" + name + ".tmp", bytes)
+    remove_file_if_exists(target + "/" + name)
+    _assert_not_a_backup(target, restored)
+    assert_equal(collection.backup_to(target).generation, report.generation)
+    assert_false(path_exists(target + "/" + name + ".tmp"))
+    collection.close()
+    _reset(source)
     _assert_restores_all(target, restored)
 
 

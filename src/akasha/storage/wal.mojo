@@ -5,18 +5,26 @@ from akasha.document.codec import (
 )
 from akasha.document.record import DocumentField
 from akasha.storage.checksum import (
-    BinaryReader,
+    BorrowedBinaryReader,
     BinaryWriter,
     crc32_range,
+    crc32_update,
+    CRC32_INITIAL,
 )
 from akasha.storage.filesystem import (
     append_file_sync,
     atomic_replace,
     path_exists,
-    read_file_bytes,
+    sync_file,
     sync_directory,
     write_file_sync,
 )
+from akasha.storage.wal_buffer import WalReadBuffer
+from std.ffi import c_int, c_long, external_call
+from std.io.file import FileHandle, O_CLOEXEC, O_WRONLY
+from std.os import SEEK_END
+from std.sys import size_of
+from std.sys._libc_errno import get_errno
 
 
 comptime _MAGIC_0 = UInt8(0x41)  # A
@@ -89,24 +97,33 @@ struct WalRecord(Movable):
     ) -> WalRecord:
         return WalRecord.with_fields(sequence, id, False, values^, fields^)
 
+    def take_values(mut self) -> List[Float32]:
+        """Transfer decoded vectors without copying their allocation."""
+        var values = self.values^
+        self.values = List[Float32]()
+        return values^
+
+    def take_fields(mut self) -> List[DocumentField]:
+        """Transfer decoded payload fields without copying their allocation."""
+        var fields = self.fields^
+        self.fields = List[DocumentField]()
+        return fields^
+
 
 struct WalReplayState(Movable):
-    """One read-only WAL decode plus optional accepted-tail repair bytes."""
+    """Owned replay results and lengths for deferred accepted-tail repair."""
 
     var records: List[WalRecord]
-    var valid_prefix: List[UInt8]
     var valid_length: Int
     var source_length: Int
 
     def __init__(
         out self,
         var records: List[WalRecord],
-        var valid_prefix: List[UInt8],
         valid_length: Int,
         source_length: Int,
     ):
         self.records = records^
-        self.valid_prefix = valid_prefix^
         self.valid_length = valid_length
         self.source_length = source_length
 
@@ -115,6 +132,83 @@ struct WalReplayState(Movable):
 
     def take_records(deinit self) -> List[WalRecord]:
         return self.records^
+
+
+trait LegacyWalSource(Movable):
+    """Owned legacy envelopes for ordinary or migration-prefix recovery."""
+
+    def read_next(mut self) raises -> List[WalRecord]:
+        ...
+
+    def accepted_length(self) -> Int:
+        ...
+
+    def total_length(self) -> Int:
+        ...
+
+
+struct WalReader(LegacyWalSource):
+    """Read and validate one complete WAL envelope at a time.
+
+    The input buffer is bounded by the largest accepted envelope or 64 KiB,
+    independent of total WAL length. Returned mutations own their values; no view survives
+    the next buffer refill. The caller must hold collection write exclusion
+    while consuming the WAL and applying a deferred repair.
+    """
+
+    var _input: WalReadBuffer
+    var _dimension: Int
+    var _previous_sequence: UInt64
+    var _done: Bool
+    var _failed: Bool
+    var valid_length: Int
+    var source_length: Int
+
+    def __init__(out self, path: String, dimension: Int) raises:
+        var source_exists = path_exists(path)
+        if source_exists:
+            _validate_dimension(dimension)
+        self._input = WalReadBuffer(path, source_exists)
+        self._dimension = dimension
+        self._previous_sequence = 0
+        self._done = not source_exists
+        self._failed = False
+        self.valid_length = 0
+        self.source_length = self._input.source_length
+
+    def read_next(mut self) raises -> List[WalRecord]:
+        if self._failed:
+            raise Error("cannot resume a failed WAL reader")
+        var remaining = self.source_length - self.valid_length
+        if self._done or remaining < _HEADER_SIZE:
+            self._done = True
+            return List[WalRecord]()
+        # An exception may leave the descriptor past a corrupt envelope. Do
+        # not let a caught error turn a later read into accepted recovery.
+        self._failed = True
+        self._input.ensure_available(_HEADER_SIZE, self.valid_length)
+        var record_size = _envelope_size(self._input.bytes(), self._dimension)
+        if remaining < record_size:
+            self._done = True
+            self._failed = False
+            return List[WalRecord]()
+        self._input.ensure_available(record_size, self.valid_length)
+        var records = _decode_envelope(
+            self._input.bytes()[:record_size],
+            self._dimension,
+            self._previous_sequence,
+        )
+        self._previous_sequence = records[len(records) - 1].sequence
+        self._input.consume(record_size)
+        self.valid_length += record_size
+        self._failed = False
+        return records^
+
+    def accepted_length(self) -> Int:
+        return self.valid_length
+
+    def total_length(self) -> Int:
+        return self.source_length
 
 
 def encode_upsert(
@@ -264,86 +358,134 @@ def recover_wal(path: String, dimension: Int) raises -> List[WalRecord]:
 
 
 def preflight_wal(path: String, dimension: Int) raises -> WalReplayState:
-    """Decode once without modifying a missing file or accepted torn tail."""
-    if not path_exists(path):
-        return WalReplayState(List[WalRecord](), List[UInt8](), 0, 0)
-    var bytes = read_file_bytes(path)
-    var decode_copy = _copy_range(bytes, 0, len(bytes))
-    var records = decode_wal_bytes(decode_copy^, dimension)
-    var valid_length = _valid_prefix_length(bytes)
-    var valid_prefix = List[UInt8]()
-    if valid_length < len(bytes):
-        valid_prefix = _copy_range(bytes, 0, valid_length)
-    return WalReplayState(records^, valid_prefix^, valid_length, len(bytes))
+    """Decode without modifying a missing file or accepted torn tail.
+
+    This owned-result API retains decoded records, but never the complete
+    encoded WAL or a copied repair prefix. Recovery can consume WalReader
+    directly when it does not need to retain the complete history.
+    """
+    var reader = WalReader(path, dimension)
+    var records = List[WalRecord]()
+    while True:
+        var batch = reader.read_next()
+        if len(batch) == 0:
+            break
+        for var record in batch^:
+            records.append(record^)
+    return WalReplayState(records^, reader.valid_length, reader.source_length)
 
 
 def repair_wal_tail(path: String, replay: WalReplayState) raises:
     """Apply only the tail repair established by ``preflight_wal``."""
-    if replay.needs_repair():
-        write_file_sync(path, replay.valid_prefix)
+    repair_wal_tail(path, replay.valid_length, replay.source_length)
+
+
+def repair_wal_tail(path: String, valid_length: Int, source_length: Int) raises:
+    """Truncate a preflighted WAL under the caller's collection exclusion.
+
+    Never create a missing WAL or rewrite accepted bytes. Length changes since
+    preflight are rejected before the first mutation. Complete all other source
+    validation before calling this function.
+    """
+    comptime assert size_of[c_long]() == 8, "64-bit POSIX off_t required"
+    if valid_length < 0 or valid_length > source_length:
+        raise Error("invalid WAL repair length")
+    if valid_length == source_length:
+        return
+    var file_path = path.copy()
+    var descriptor = external_call["open", c_int, num_fixed_args=2](
+        file_path.as_c_string_slice(), c_int(O_WRONLY | O_CLOEXEC)
+    )
+    if descriptor < 0:
+        raise Error("open WAL for repair failed: " + String(get_errno()))
+    var file = FileHandle()
+    file.handle = Int(descriptor)
+    if file.seek(0, SEEK_END) != UInt64(source_length):
+        raise Error("WAL changed after preflight")
+    if external_call["ftruncate", c_int](descriptor, c_long(valid_length)) != 0:
+        raise Error("WAL tail truncate failed: " + String(get_errno()))
+    sync_file(file)
 
 
 def decode_wal_bytes(
     var bytes: List[UInt8], dimension: Int
 ) raises -> List[WalRecord]:
-    if dimension <= 0:
-        raise Error("WAL dimension must be positive")
+    return decode_wal_bytes(Span(bytes), dimension)
 
+
+def decode_wal_bytes(
+    bytes: Span[UInt8, _], dimension: Int
+) raises -> List[WalRecord]:
+    _validate_dimension(dimension)
     var records = List[WalRecord]()
     var offset = 0
     var previous_sequence = UInt64(0)
-    var maximum_record_size = 40 + dimension * 4 + MAX_PAYLOAD_BYTES
-
-    while offset < len(bytes):
-        var remaining = len(bytes) - offset
-        if remaining < _HEADER_SIZE:
+    while len(bytes) - offset >= _HEADER_SIZE:
+        var record_size = _envelope_size(bytes[offset:], dimension)
+        if len(bytes) - offset < record_size:
             break
-        if not _has_magic(bytes, offset):
-            raise Error("invalid WAL record magic")
-
-        var version = UInt16(bytes[offset + 4]) | (
-            UInt16(bytes[offset + 5]) << UInt16(8)
+        var batch = _decode_envelope(
+            bytes[offset : offset + record_size], dimension, previous_sequence
         )
-        var maximum_size = maximum_record_size
-        if version == _VERSION_V3:
-            maximum_size = _MAX_BATCH_BYTES
-        var record_size = _read_u32_at(bytes, offset + 8)
-        if record_size < _MIN_RECORD_SIZE or record_size > maximum_size:
-            raise Error("invalid WAL record length")
-        if remaining < record_size:
-            break
+        previous_sequence = batch[len(batch) - 1].sequence
+        for var record in batch^:
+            records.append(record^)
+        offset += record_size
+    return records^
 
-        var encoded = _copy_range(bytes, offset, offset + record_size)
-        if version == _VERSION_V3:
-            if bytes[offset + 6] != _BATCH:
-                raise Error("invalid WAL v3 operation")
-            previous_sequence = _decode_batch(
-                encoded^, dimension, previous_sequence, records
-            )
-            offset += record_size
-            continue
-        var record = _decode_record(encoded^, dimension)
+
+def _validate_dimension(dimension: Int) raises:
+    if dimension <= 0 or dimension > Int(UInt32.MAX):
+        raise Error("WAL dimension must be positive and fit UInt32")
+
+
+def _envelope_size(bytes: Span[UInt8, _], dimension: Int) raises -> Int:
+    # Both callers guarantee a complete 32-byte header. Preserve validation
+    # order: bad magic/length fail even at EOF; other fields wait for a whole
+    # envelope, so a torn final v3 batch yields none of its mutations.
+    if not _has_magic(bytes):
+        raise Error("invalid WAL record magic")
+    var version = UInt16(bytes[4]) | (UInt16(bytes[5]) << UInt16(8))
+    var maximum_size = 40 + dimension * 4 + MAX_PAYLOAD_BYTES
+    if version == _VERSION_V3:
+        maximum_size = _MAX_BATCH_BYTES
+    var record_size = _read_u32_at(bytes, 8)
+    if record_size < _MIN_RECORD_SIZE or record_size > maximum_size:
+        raise Error("invalid WAL record length")
+    return record_size
+
+
+def _decode_envelope(
+    bytes: Span[UInt8, _], dimension: Int, previous_sequence: UInt64
+) raises -> List[WalRecord]:
+    var records = List[WalRecord]()
+    var version = UInt16(bytes[4]) | (UInt16(bytes[5]) << UInt16(8))
+    if version == _VERSION_V3:
+        if bytes[6] != _BATCH:
+            raise Error("invalid WAL v3 operation")
+        _ = _decode_batch(bytes, dimension, previous_sequence, records)
+    else:
+        var record = _decode_record(bytes, dimension)
         if record.sequence <= previous_sequence:
             raise Error("WAL sequence must increase")
-        previous_sequence = record.sequence
         records.append(record^)
-        offset += record_size
-
     return records^
 
 
 def _decode_batch(
-    var bytes: List[UInt8],
+    bytes: Span[UInt8, _],
     expected_dimension: Int,
     previous_sequence: UInt64,
     mut records: List[WalRecord],
 ) raises -> UInt64:
     var encoded_size = len(bytes)
     var stored_checksum = _read_u32_at(bytes, encoded_size - 4)
-    if crc32_range(bytes, 4, encoded_size - 4) != UInt32(stored_checksum):
+    if ~crc32_update(CRC32_INITIAL, bytes[4 : encoded_size - 4]) != UInt32(
+        stored_checksum
+    ):
         raise Error("WAL checksum mismatch")
 
-    var reader = BinaryReader(bytes^)
+    var reader = BorrowedBinaryReader(bytes)
     if (
         reader.read_u8() != _MAGIC_0
         or reader.read_u8() != _MAGIC_1
@@ -389,14 +531,12 @@ def _decode_batch(
 
         if mutation_size < dimension * 4 + 4:
             raise Error("WAL batch upsert body is truncated")
-        var values = List[Float32](capacity=dimension)
-        for _ in range(dimension):
-            values.append(reader.read_f32())
+        var values = reader.read_f32s(dimension)
         var payload_length = Int(reader.read_u32())
         if mutation_size != dimension * 4 + 4 + payload_length:
             raise Error("WAL batch mutation length mismatch")
-        var payload = reader.read_bytes(payload_length)
-        var fields = decode_payload(payload^)
+        var payload = reader.read_span(payload_length)
+        var fields = decode_payload(payload)
         records.append(
             WalRecord.document_upsert(sequence, id, values^, fields^)
         )
@@ -452,14 +592,16 @@ def _encode_record(
 
 
 def _decode_record(
-    var bytes: List[UInt8], expected_dimension: Int
+    bytes: Span[UInt8, _], expected_dimension: Int
 ) raises -> WalRecord:
     var encoded_size = len(bytes)
     var stored_checksum = _read_u32_at(bytes, len(bytes) - 4)
-    if crc32_range(bytes, 4, len(bytes) - 4) != UInt32(stored_checksum):
+    if ~crc32_update(CRC32_INITIAL, bytes[4 : len(bytes) - 4]) != UInt32(
+        stored_checksum
+    ):
         raise Error("WAL checksum mismatch")
 
-    var reader = BinaryReader(bytes^)
+    var reader = BorrowedBinaryReader(bytes)
     if (
         reader.read_u8() != _MAGIC_0
         or reader.read_u8() != _MAGIC_1
@@ -486,18 +628,17 @@ def _decode_record(
     if dimension != expected_dimension:
         raise Error("WAL dimension mismatch")
 
-    var values = List[Float32](capacity=dimension)
+    var values = List[Float32]()
     if operation == _UPSERT:
-        for _ in range(dimension):
-            values.append(reader.read_f32())
+        values = reader.read_f32s(dimension)
     var fields = List[DocumentField]()
     if version == _VERSION_V2:
         var payload_length = Int(reader.read_u32())
         if operation == _DELETE and payload_length != 0:
             raise Error("WAL delete cannot contain payload")
-        var payload = reader.read_bytes(payload_length)
+        var payload = reader.read_span(payload_length)
         if operation == _UPSERT:
-            fields = decode_payload(payload^)
+            fields = decode_payload(payload)
     _ = reader.read_u32()
     if reader.remaining() != 0:
         raise Error("unexpected WAL payload")
@@ -506,39 +647,19 @@ def _decode_record(
     )
 
 
-def _has_magic(bytes: List[UInt8], offset: Int) -> Bool:
+def _has_magic(bytes: Span[UInt8, _]) -> Bool:
     return (
-        bytes[offset] == _MAGIC_0
-        and bytes[offset + 1] == _MAGIC_1
-        and bytes[offset + 2] == _MAGIC_2
-        and bytes[offset + 3] == _MAGIC_3
+        bytes[0] == _MAGIC_0
+        and bytes[1] == _MAGIC_1
+        and bytes[2] == _MAGIC_2
+        and bytes[3] == _MAGIC_3
     )
 
 
-def _read_u32_at(bytes: List[UInt8], offset: Int) -> Int:
+def _read_u32_at(bytes: Span[UInt8, _], offset: Int) -> Int:
     return Int(
         UInt32(bytes[offset])
         | (UInt32(bytes[offset + 1]) << UInt32(8))
         | (UInt32(bytes[offset + 2]) << UInt32(16))
         | (UInt32(bytes[offset + 3]) << UInt32(24))
     )
-
-
-def _copy_range(bytes: List[UInt8], start: Int, end: Int) -> List[UInt8]:
-    var result = List[UInt8](capacity=end - start)
-    for index in range(start, end):
-        result.append(bytes[index])
-    return result^
-
-
-def _valid_prefix_length(bytes: List[UInt8]) -> Int:
-    var offset = 0
-    while offset < len(bytes):
-        var remaining = len(bytes) - offset
-        if remaining < _HEADER_SIZE:
-            break
-        var record_size = _read_u32_at(bytes, offset + 8)
-        if remaining < record_size:
-            break
-        offset += record_size
-    return offset

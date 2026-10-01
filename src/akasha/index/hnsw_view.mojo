@@ -413,6 +413,17 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         slot: UInt32,
     ) raises -> Float32:
         """Specialized mapped query/member kernel selected before traversal."""
+        comptime width = simd_width_of[DType.float32]()
+        comptime if backend_tag <= DISTANCE_COSINE_F32:
+            if self._config.dimension >= 64:
+                return self._distance_to_slot_width[backend_tag, width * 4](
+                    query, slot
+                )
+        return self._distance_to_slot_width[backend_tag, width](query, slot)
+
+    def _distance_to_slot_width[
+        backend_tag: Int, width: Int
+    ](self, query: List[Float32], slot: UInt32) raises -> Float32:
         var expected_query = self._config.dimension
         comptime if (
             backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
@@ -421,7 +432,6 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         if len(query) != expected_query:
             raise Error("prepared query dimension does not match graph")
         _ = self._slot_index(slot)
-        comptime width = simd_width_of[DType.float32]()
         var scalar_base = Int(slot) * self._config.dimension
         comptime if (
             backend_tag == DISTANCE_DOT_I8 or backend_tag == DISTANCE_COSINE_I8
@@ -546,6 +556,40 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             self._edge_offset + Int(edge_ordinal + UInt64(index)) * 4
         )
 
+    def neighbor_range(
+        self, slot: UInt32, level: Int
+    ) raises -> Tuple[Int, Int]:
+        """Locate one level once; individual reads retain mapping validation."""
+        var count = self.neighbor_count(slot, level)
+        var capacity = self._config.m0 if level == 0 else self._config.m
+        if count > capacity:
+            raise Error("HNSW neighbor count exceeds level capacity")
+        var edge_ordinal = self._read_u64(self._node_record(slot) + 24)
+        for prior_level in range(level):
+            var prior_count = UInt64(self.neighbor_count(slot, prior_level))
+            if edge_ordinal > UInt64.MAX - prior_count:
+                raise Error("HNSW neighbor offset overflow")
+            edge_ordinal += prior_count
+        var length = self._mapping.byte_length()
+        if (
+            self._edge_offset < 0
+            or self._edge_offset > length
+            or self._edge_offset % 4 != 0
+        ):
+            raise Error("HNSW edge section offset is invalid")
+        var remaining = (length - self._edge_offset) // 4
+        if edge_ordinal > UInt64(remaining) or count > remaining - Int(
+            edge_ordinal
+        ):
+            raise Error("HNSW neighbor range exceeds mapping")
+        return (self._edge_offset // 4 + Int(edge_ordinal), count)
+
+    @always_inline
+    def neighbor_at_offset(self, offset: Int) raises -> UInt32:
+        if offset < 0 or offset > Int.MAX // 4:
+            raise Error("HNSW neighbor offset out of bounds")
+        return self._mapping.load_scalars[DType.uint32, 1](offset * 4)
+
     def validate_structure(self) raises:
         var stats = HnswValidationStats()
         self.validate_structure_with_stats(stats)
@@ -625,6 +669,29 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                         self._read_u32(self._scale_offset + slot_index * 4)
                     )
                 prepared.append(vector_scale)
+            elif self._config.scalar_kind == ScalarKind.f32():
+                comptime width = simd_width_of[DType.float32]() * 4
+                var component = 0
+                # Copy checked chunks into the same owned validation buffer.
+                # The mapped owner never exposes a pointer or a borrowed row.
+                var base = (
+                    self._vector_offset + slot_index * self._config.dimension * 4
+                )
+                while component + width <= self._config.dimension:
+                    prepared.extend(
+                        self._mapping.load_scalars[DType.float32, width](
+                            base + component * 4
+                        ),
+                        count=width,
+                    )
+                    component += width
+                while component < self._config.dimension:
+                    prepared.append(
+                        self._mapping.load_scalars[DType.float32, 1](
+                            base + component * 4
+                        )
+                    )
+                    component += 1
             else:
                 for component in range(self._config.dimension):
                     prepared.append(self.vector_value(slot, component))
@@ -652,8 +719,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             var source = UInt32(source_index)
             for level in range(self.level(source) + 1):
                 var seen = Dict[Int, Bool]()
-                for edge_index in range(self.neighbor_count(source, level)):
-                    var neighbor = self.neighbor_at(source, level, edge_index)
+                var edges = self.neighbor_range(source, level)
+                for edge_index in range(edges[1]):
+                    var neighbor = self.neighbor_at_offset(edges[0] + edge_index)
                     if UInt64(neighbor) >= UInt64(self._slots):
                         raise Error("HNSW snapshot neighbor ordinal is invalid")
                     if neighbor == source:
@@ -1174,22 +1242,10 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             raise Error("HNSW graph level out of bounds")
 
     def _read_u16(self, offset: Int) raises -> UInt16:
-        return UInt16(self._mapping.byte_at(offset)) | (
-            UInt16(self._mapping.byte_at(offset + 1)) << UInt16(8)
-        )
+        return self._mapping.load_scalars[DType.uint16, 1](offset)
 
     def _read_u32(self, offset: Int) raises -> UInt32:
-        var value = UInt32(0)
-        for index in range(4):
-            value |= UInt32(self._mapping.byte_at(offset + index)) << UInt32(
-                index * 8
-            )
-        return value
+        return self._mapping.load_scalars[DType.uint32, 1](offset)
 
     def _read_u64(self, offset: Int) raises -> UInt64:
-        var value = UInt64(0)
-        for index in range(8):
-            value |= UInt64(self._mapping.byte_at(offset + index)) << UInt64(
-                index * 8
-            )
-        return value
+        return self._mapping.load_scalars[DType.uint64, 1](offset)

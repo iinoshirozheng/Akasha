@@ -1,15 +1,23 @@
-struct TopKEntry(TrivialRegisterPassable, Writable):
+struct TopKEntry[score_type: DType = DType.float32](
+    TrivialRegisterPassable, Writable
+):
     """A point ID and metric score retained by a bounded Top-K heap."""
 
     var id: Int
-    var score: Float32
+    var score: Scalar[Self.score_type]
 
-    def __init__(out self, id: Int, score: Float32):
+    def __init__(out self, id: Int, score: Scalar[Self.score_type]):
         self.id = id
         self.score = score
 
 
-def _is_better(lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool) -> Bool:
+def _is_better[
+    score_type: DType
+](
+    lhs: TopKEntry[score_type],
+    rhs: TopKEntry[score_type],
+    smaller_is_better: Bool,
+) -> Bool:
     if lhs.score == rhs.score:
         return lhs.id < rhs.id
     if smaller_is_better:
@@ -17,41 +25,49 @@ def _is_better(lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool) -> Bool:
     return lhs.score > rhs.score
 
 
-def _is_worse(lhs: TopKEntry, rhs: TopKEntry, smaller_is_better: Bool) -> Bool:
-    return _is_better(rhs, lhs, smaller_is_better)
+def _is_worse[
+    score_type: DType
+](
+    lhs: TopKEntry[score_type],
+    rhs: TopKEntry[score_type],
+    smaller_is_better: Bool,
+) -> Bool:
+    return _is_better[score_type](rhs, lhs, smaller_is_better)
 
 
-struct BoundedTopK:
+struct BoundedTopK[score_type: DType = DType.float32]:
     """A fixed-capacity heap whose root is the worst retained entry."""
 
     var capacity: Int
     var smaller_is_better: Bool
-    var _heap: List[TopKEntry]
+    var _heap: List[TopKEntry[Self.score_type]]
 
     def __init__(out self, capacity: Int, *, smaller_is_better: Bool) raises:
         if capacity <= 0:
             raise Error("top-k capacity must be positive")
         self.capacity = capacity
         self.smaller_is_better = smaller_is_better
-        self._heap = List[TopKEntry](capacity=capacity)
+        self._heap = List[TopKEntry[Self.score_type]](capacity=capacity)
 
-    def offer(mut self, id: Int, score: Float32):
+    def offer(mut self, id: Int, score: Scalar[Self.score_type]):
         """Retain the candidate only when it belongs in the current Top-K."""
-        var candidate = TopKEntry(id, score)
+        var candidate = TopKEntry[Self.score_type](id, score)
         if len(self._heap) < self.capacity:
             self._heap.append(candidate)
             self._sift_up(len(self._heap) - 1)
             return
 
-        if _is_better(candidate, self._heap[0], self.smaller_is_better):
+        if _is_better[Self.score_type](
+            candidate, self._heap[0], self.smaller_is_better
+        ):
             self._heap[0] = candidate
             self._sift_down(0)
 
-    def sorted_entries(mut self) -> List[TopKEntry]:
+    def sorted_entries(mut self) -> List[TopKEntry[Self.score_type]]:
         """Drain retained entries into best-first deterministic order."""
         var result_count = len(self._heap)
-        var results = List[TopKEntry](
-            length=result_count, fill=TopKEntry(0, 0.0)
+        var results = List[TopKEntry[Self.score_type]](
+            length=result_count, fill=TopKEntry[Self.score_type](0, 0.0)
         )
         var output_index = result_count - 1
 
@@ -69,7 +85,7 @@ struct BoundedTopK:
         var index = start_index
         while index > 0:
             var parent = (index - 1) // 2
-            if not _is_worse(
+            if not _is_worse[Self.score_type](
                 self._heap[index], self._heap[parent], self.smaller_is_better
             ):
                 break
@@ -85,14 +101,14 @@ struct BoundedTopK:
 
             var worst_child = left
             var right = left + 1
-            if right < len(self._heap) and _is_worse(
+            if right < len(self._heap) and _is_worse[Self.score_type](
                 self._heap[right],
                 self._heap[left],
                 self.smaller_is_better,
             ):
                 worst_child = right
 
-            if not _is_worse(
+            if not _is_worse[Self.score_type](
                 self._heap[worst_child],
                 self._heap[index],
                 self.smaller_is_better,

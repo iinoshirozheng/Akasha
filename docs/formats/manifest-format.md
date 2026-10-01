@@ -2,8 +2,9 @@
 
 `manifest.bin` is the commit point for a checkpoint generation. All integer
 fields are little-endian. Writers emit v1 for the legacy single-segment API, v2
-for ordinary multi-segment checkpoints, and v3 only when publishing an HNSW
-sidecar reference. Readers retain byte-for-byte compatibility with v1 and v2.
+for ordinary multi-segment checkpoints, and v4 for new HNSW sidecar references.
+Readers retain byte-for-byte compatibility with v1–v3. Copying an existing
+checkpoint or carrying its sidecar through compaction preserves its version.
 
 ## Version 1: single segment
 
@@ -99,6 +100,62 @@ encoded as v2. The sidecar filename is exactly
 `hnsw-<checkpoint last sequence>.bin`; generation-based names, control-file
 names, and names for any other sequence are invalid.
 
+## Version 4: immutable job-named HNSW sidecars
+
+V4 uses exactly the v3 header, descriptors, flags and CRC coverage, with version
+`4` at offset 4. Its HNSW filename is
+`hnsw-<checkpoint sequence>-<creation generation>-<claim>.bin`. Each component
+is a canonical unsigned decimal UInt64 (no sign, whitespace or leading zeroes,
+except `0` itself). Sequence equals the manifest's checkpoint sequence; creation
+generation is in `1..manifest.generation`; claim may be zero. Compaction may carry
+a sidecar forward to a newer manifest generation without rewriting its bytes.
+V4 rejects legacy sequence-only names. V3 continues to require its exact legacy
+name and rejects v4 names. An unknown manifest version remains a hard error.
+
+The producer exclusively creates a fresh path for each attempt. A file named by
+a committed manifest is immutable: same-sequence rebuilds get a new generation
+and filename. The file and its directory entry reach durable storage before
+manifest publication; after publication the previous sidecar retires through
+generation pins. A failed manifest publication leaves its output in place because
+the rename may already have committed. A new attempt never overwrites that path.
+
+Migration is reader-first: accept v4 and test independent bytes before switching
+checkpoint writers. Readers preserve v1–v3 contracts and frozen fixtures. A
+checkpoint without a sidecar continues to use v2. V4 flag `0` is readable, like
+v3 flag `0`; the normal writer emits v2 for that case. The sidecar's own v1/v2
+byte layout and sequence/config identity checks do not change.
+
+## Version 5: retained immutable HNSW base
+
+V5 has the same header, descriptors, flags and CRC coverage as v4, with version
+`5` at offset 4. Its canonical job filename contains the **base sequence**, which
+may be less than or equal to `manifest.last_sequence`. The creation generation
+must still be in `1..manifest.generation`. The HNSW checksum and point count refer
+to the immutable base file; the count can differ from the current authority.
+
+Recovery first validates that exact base file, then reconciles its source map
+against fully recovered default-dense authority. Missing/deleted default fields
+remove base IDs; document versions newer than the base are inserted into the
+mutable delta in sequence/ID order. An unchanged live default ID missing from
+the base is a derived-cache miss. The final graph source map must cover exactly
+the current default-dense points. Named-only mutations use their point version
+without altering an unchanged default document version.
+
+Flush and compaction can carry the same immutable file forward. Backup and
+restore validate/copy its base sequence, not the newer manifest sequence. A
+fresh complete rebuild publishes a fresh job filename before replacing this
+reference, using the captured base sequence even if catch-up has already added
+newer vectors to a mutable overlay. Retirement excludes files still named by
+the current manifest. On the first newer checkpoint of a v3 base, the writer
+copies its exact bytes into an exclusively claimed canonical job filename using
+the existing bounded CRC/header-verified copy primitive. It syncs that output
+before publishing v5, then retires the old sequence-only name through leases.
+Unpublished copied outputs are reclaimable jobs; a retry never overwrites a
+claimed name. A no-write v3 checkpoint can remain v3.
+V1–v4 bytes and validation contracts are unchanged: v4 still rejects any base
+sequence different from its checkpoint sequence. Readers accept v5 before writers
+emit it. A checkpoint without an HNSW reference continues to use v2.
+
 ## Validation and authority
 
 Dense, sparse, and HNSW names pass the same filename validator. Strict mode
@@ -130,7 +187,7 @@ segment before applying it. Unreferenced files are harmless orphans and are
 never selected by directory scanning.
 
 `load_manifest` bounds reads at 134,318,143 bytes. This is derived from the
-largest representable v3 file: the 36-byte header, 1,024 descriptors each with
+largest representable v3/v4 file: the 36-byte header, 1,024 descriptors each with
 a 28-byte dense prefix, a 65,535-byte dense name, an 8-byte sparse prefix, and
 a 65,535-byte sparse name, followed by the 24-byte HNSW prefix, a 65,535-byte
 HNSW name, and the 4-byte manifest checksum.

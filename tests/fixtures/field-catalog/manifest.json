@@ -1,0 +1,17 @@
+{
+  "legacy-v1.bin": {
+    "bytes": 60,
+    "sha256": "50c3bf07cd88684c8cdfcaec53ae9f99573210d286b0fc46d98ef9d364c3920c",
+    "crc32": "5ddb917e"
+  },
+  "named-f32-v2.bin": {
+    "bytes": 288,
+    "sha256": "26b124b166245c67ce04578170f4ad1ffea5b27cc4c69520f2f4fbf665ca31c3",
+    "crc32": "13d993dd"
+  },
+  "type-matrix-v2.bin": {
+    "bytes": 352,
+    "sha256": "03cd679d7a53a1b23ad2dabedb0806e911c1a4f91e5b0b8922debd621eb90401",
+    "crc32": "b25e9757"
+  }
+}

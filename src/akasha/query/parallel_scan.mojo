@@ -108,7 +108,7 @@ def execute_parallel_scan(
     var result_count = min(k, len(ordinals))
     var range_count = 8 if num_workers == 0 else num_workers
     range_count = min(max(range_count, 1), len(ordinals))
-    var heaps = List[BoundedTopK](capacity=range_count)
+    var heaps = List[BoundedTopK[]](capacity=range_count)
     for _ in range(range_count):
         heaps.append(
             BoundedTopK(

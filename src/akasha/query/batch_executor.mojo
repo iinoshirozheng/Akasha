@@ -187,7 +187,7 @@ def execute_exact_ordinal_batch(
             output.append(List[SearchResult]())
         return output^
 
-    var heaps = List[BoundedTopK](capacity=len(queries))
+    var heaps = List[BoundedTopK[]](capacity=len(queries))
     for _ in range(len(queries)):
         heaps.append(
             BoundedTopK(
@@ -279,7 +279,7 @@ def execute_exact_candidate_batch(
     if len(queries) == 0:
         return List[List[SearchResult]]()
 
-    var heaps = List[BoundedTopK](capacity=len(queries))
+    var heaps = List[BoundedTopK[]](capacity=len(queries))
     for _ in range(len(queries)):
         heaps.append(
             BoundedTopK(

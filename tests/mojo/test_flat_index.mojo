@@ -1,4 +1,5 @@
 from akasha.index.flat import FlatIndex
+from std.math import inf, nan
 from std.testing import (
     assert_almost_equal,
     assert_equal,
@@ -112,6 +113,45 @@ def test_search_rejects_wrong_query_dimension() raises:
 
     with assert_raises():
         _ = index.search_dot(query, 1)
+
+
+def test_each_search_reprepares_the_callers_query() raises:
+    var index = FlatIndex(2)
+    index.add(1, [1.0, 0.0])
+    index.add(2, [0.0, 1.0])
+    var query: List[Float32] = [3.0, 4.0]
+    var first = index.search_cosine(query, 2)
+    assert_equal(first[0].id, 2)
+    assert_almost_equal(first[0].score, 0.8, atol=1.0e-6)
+    query[0] = 4.0
+    query[1] = 3.0
+    var second = index.search_cosine(query, 2)
+    assert_equal(second[0].id, 1)
+    assert_almost_equal(second[0].score, 0.8, atol=1.0e-6)
+    var product = index.search_dot(query, 2)
+    assert_equal(product[0].score, Float32(4.0))
+    query[0] = 0.0
+    query[1] = 0.0
+    with assert_raises(contains="non-zero"):
+        _ = index.search_cosine(query, 2)
+    var zero = index.search_dot(query, 2)
+    assert_equal(zero[0].id, 1)
+    assert_equal(zero[0].score, Float32(0.0))
+
+
+def test_empty_search_and_later_invalid_candidate_keep_validation() raises:
+    var index = FlatIndex(2)
+    var invalid_query: List[Float32] = [nan[DType.float32](), 0.0]
+    assert_equal(len(index.search_cosine(invalid_query, 1)), 0)
+    index.add(1, [1.0, 0.0])
+    index.add(2, [inf[DType.float32](), 1.0])
+    var query: List[Float32] = [1.0, 1.0]
+    with assert_raises(contains="finite"):
+        _ = index.search_dot(query, 1)
+    with assert_raises(contains="finite"):
+        _ = index.search_l2(query, 1)
+    with assert_raises(contains="finite"):
+        _ = index.search_cosine(query, 1)
 
 
 def main() raises:

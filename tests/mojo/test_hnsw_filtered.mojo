@@ -278,5 +278,27 @@ def test_search_allowed_tiny_graph_caps_large_ef_before_heap_reserve() raises:
     assert_equal(index.scratch.filtered_result_reserved_capacity() <= 4, True)
 
 
+def test_eligibility_distinguishes_missing_ids_from_zero_ordinals() raises:
+    var ordinals = Dict[Int, Int]()
+    ordinals[-1] = 0
+    ordinals[0] = 1
+    ordinals[-9] = 2
+    var lookup = HnswIdOrdinalLookup(ordinals^, 3)
+    var bitmap = Bitmap(3)
+    bitmap.set(0)
+    bitmap.set(2)
+    var allowed = HnswEligibility(bitmap^, lookup)
+    assert_equal(lookup.ordinal_for(-1), 0)
+    assert_equal(lookup.ordinal_for(0), 1)
+    assert_equal(lookup.ordinal_for(-9), 2)
+    assert_equal(lookup.ordinal_for(-2), -1)
+    assert_equal(lookup.ordinal_for(9), -1)
+    assert_equal(allowed.allows(-1), True)
+    assert_equal(allowed.allows(-9), True)
+    assert_equal(allowed.allows(0), False)
+    assert_equal(allowed.allows(-2), False)
+    assert_equal(allowed.allows(9), False)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

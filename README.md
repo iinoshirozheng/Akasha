@@ -4,7 +4,15 @@ AkashaDB is an experimental embedded vector database kernel written in Mojo. It
 provides validated CPU-SIMD exact search, metric-bound production HNSW with
 compact graph vectors, and a crash-recoverable single-writer storage engine
 built from a binary WAL, latest-state MemTable, immutable base/delta segments,
-generation manifests, and crash-safe compaction.
+generation manifests, and crash-safe compaction. Named fields support native
+F32/F16/BF16/I8/U8, sparse vectors, packed binary Hamming/Jaccard, and ragged
+multivector MaxSim through atomic point batches and Python/Arrow APIs. Dense
+named fields can use independent HNSW or IVF candidates with native Float64
+scoring. Multi-field RRF and optional binary/MaxSim candidate reranking share
+one read view. See the
+[named-vector API](docs/python-api.md#native-named-vectors-and-atomic-point-batches).
+Typed NDJSON export/import preserves the complete point schema and native values;
+see [operations and format compatibility](docs/operations.md).
 
 ## Requirements
 
@@ -142,9 +150,14 @@ The runnable cosine/BF16 configuration is in
 Acknowledged writes update a bounded owned delta only after WAL, MemTable, and
 metadata mutation succeeds. Replacements and deletes tombstone old graph slots;
 they remain traversable but can never be returned. `flush()` writes a
-versioned, checksummed `hnsw-<sequence>.bin` sidecar and rebuilds first when the
+versioned, checksummed `hnsw-<sequence>-<generation>-<claim>.bin` sidecar and rebuilds first when the
 inactive-slot or delta threshold requires it. `rebuild_hnsw()` is the explicit
-operator control for an immediate rebuild; queries never rebuild. Reopen
+operator control for an immediate rebuild; queries never rebuild. Building and
+bounded mutation catch-up run outside the writer lock; publication checks that
+the graph covers all accepted writes. Previous sidecars retire behind exact file
+leases that survive collection close and replacement writers; the last reader
+release reclaims obsolete files. Captured backups copy their sidecar with the
+authoritative files. Reopen
 validates and memory-maps the immutable base, then overlays newer WAL mutations
 in owned memory. Mapping acquisition failure uses validated owned loading;
 committed checksum or layout corruption fails recovery rather than serving an
@@ -186,15 +199,15 @@ var device = snapshot.search_device_l2_batch[use_accelerator=True](
 )
 ```
 
-Repeated `PersistentCollection.snapshot()` calls now share one immutable
-read-generation root while collection state is unchanged. Writes and manifest
-publications invalidate the cache. Each handle keeps independent GPU state and a
-strong owner of the generation pin, so closing a sibling snapshot or the
-collection does not invalidate surviving readers. On the recorded Apple M4 Pro
-harness, eight unchanged captures built one base and copied 3.094 MiB of
-authoritative content total versus 24.750 MiB in the pre-sharing baseline;
-captures after a write still rebuild the full read base. See
-[`docs/benchmarks/2026-09-17-shared-snapshot.md`](docs/benchmarks/2026-09-17-shared-snapshot.md).
+Repeated `PersistentCollection.snapshot()` calls share one immutable read root
+while collection state is unchanged. New roots share immutable dense, payload and
+sparse fields and copy a bounded head of descriptors. Background maintenance
+consolidates sealed runs with write backpressure. Each query keeps its own strong
+root owner; closing a sibling snapshot or the collection preserves acquired
+readers. GPU, SQ8 and parameter-bound PQ artifacts belong to the root and are
+shared across handles. See
+[`ADR 0007`](docs/adr/0007-generation-field-ownership.md) for the implemented
+ownership and publication boundaries.
 
 SQ8 uses per-dimension affine byte codes. PQ uses deterministically trained
 subvector centroids. `rerank_k=0` returns approximate scores; a value at least
@@ -359,6 +372,22 @@ The adapter imports Arrow C Data capsules and does not materialize intermediate
 Python lists. Arrow owns input buffers through the synchronous call; accepted
 values are then copied once into Akasha's durable WAL/MemTable ownership domain.
 
+For direct Arrow search output, use
+`search_record_batch(collection, SearchRequest(...))`. Exact, approximate,
+sparse, hybrid and filtered requests produce owned `int64` ID / `float32` score
+columns without per-result Python objects. PyArrow shares the native-filled NumPy
+buffers, and batches/slices remain valid after collection close. Columnizing the
+native result list still copies 12 bytes per result. See
+[`docs/python-api.md`](docs/python-api.md) for the ownership contract.
+
+`scan_record_batches(collection, batch_size=1024, columns=("id", "vector"))`
+captures a stable view and streams RecordBatches with projection, typed payload
+columns, filters and resource limits. Native C Data owners keep borrowed one-row
+vectors alive through collection close; multi-row gathers own their output.
+Use its context manager when stopping early. See the
+[scanner API](docs/python-api.md#snapshot-batch-scanning) and
+[ownership/memory measurements](docs/benchmarks/2026-09-30-arrow-scanner.md).
+
 ## Architecture
 
 The Mojo kernel under `src/akasha` never depends on Python or FastAPI. Language
@@ -404,7 +433,9 @@ Implemented:
   approximate dot/L2/cosine scoring, and optional exact rerank.
 - Fixed-range single-query parallel exact scan with deterministic local-heap
   merge for unfiltered and Boolean-filtered snapshots.
-- Manifest v3 HNSW sidecars with strict checksums, bounds, graph validation,
+- Manifest v4/v5 HNSW sidecars with immutable job filenames, retained-base overlay
+  recovery after small writes, and retained v3 readers,
+  strict checksums, bounds, graph validation,
   mmap/owned open paths, and a bounded mutable delta; tombstone or delta policy
   triggers explicit/flush-time rebuild while graph failure keeps exact search
   available.

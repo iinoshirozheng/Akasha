@@ -2,6 +2,7 @@ from akasha.document.value import PayloadValue
 from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
+from std.memory import bitcast
 from std.testing import (
     assert_equal,
     assert_false,
@@ -152,6 +153,251 @@ def test_sorted_block_bulk_load_sorts_unsorted_numeric_entries() raises:
         FilterCondition.greater_or_equal("page", PayloadValue.integer(990))
     )
     assert_equal(result.count(), 10)
+
+
+def test_bulk_keyword_order_matches_incremental_with_type_and_ordinal_ties() raises:
+    # Includes empty strings, UTF-8, heap-backed names/values and both value
+    # families under the same field name. Reverse ordinals exercise the last key.
+    var names: List[String] = ["", "same", "欄位", "field-" * 20]
+    var values: List[String] = ["", "false", "值", "value-" * 40]
+    var bulk = KeywordIndex(128)
+    var incremental = KeywordIndex(128)
+    bulk.begin_bulk()
+    for ordinal in range(127, -1, -1):
+        var name = names[(ordinal // 8) % len(names)]
+        var value = PayloadValue.string(values[(ordinal // 2) % len(values)])
+        if ordinal % 3 == 0:
+            value = PayloadValue.boolean(ordinal % 2 == 0)
+        bulk.add(name, value, ordinal)
+        incremental.add(name, value, ordinal)
+    bulk.finish_bulk()
+    assert_equal(bulk.entry_count(), incremental.entry_count())
+    for i in range(bulk.entry_count()):
+        assert_equal(bulk._entries[i].name, incremental._entries[i].name)
+        assert_equal(bulk._entries[i].kind, incremental._entries[i].kind)
+        assert_equal(
+            bulk._entries[i].string_value, incremental._entries[i].string_value
+        )
+        assert_equal(
+            bulk._entries[i].bool_value, incremental._entries[i].bool_value
+        )
+        assert_equal(bulk._entries[i].ordinal, incremental._entries[i].ordinal)
+    # Sorting must leave incremental add/remove and duplicate suppression valid.
+    bulk.remove(names[0], PayloadValue.boolean(True), 0)
+    bulk.add(names[0], PayloadValue.boolean(True), 0)
+    bulk.add(names[0], PayloadValue.boolean(True), 0)
+    assert_equal(bulk.entry_count(), 128)
+    for name in names:
+        if name == "":
+            continue
+        for text in values:
+            for unequal in [False, True]:
+                var condition = FilterCondition.equal(
+                    name, PayloadValue.string(text)
+                )
+                if unequal:
+                    condition = FilterCondition.not_equal(
+                        name, PayloadValue.string(text)
+                    )
+                var actual = bulk.evaluate(condition)
+                var expected = incremental.evaluate(condition)
+                for ordinal in range(128):
+                    assert_equal(
+                        actual.contains(ordinal), expected.contains(ordinal)
+                    )
+
+
+def test_bulk_numeric_order_matches_incremental_at_extremes_and_signed_zero() raises:
+    var names: List[String] = ["", "same", "欄位", "field-" * 20]
+    var integers: List[Int64] = [Int64.MIN, -1, 0, 1, Int64.MAX]
+    var floats: List[Float64] = [-1.0e300, -0.0, 0.0, 1.0e-300, 1.0e300]
+    var bulk = SortedBlockIndex(160)
+    var incremental = SortedBlockIndex(160)
+    bulk.begin_bulk()
+    for ordinal in range(159, -1, -1):
+        var name = names[(ordinal // 10) % len(names)]
+        var integer = PayloadValue.integer(
+            integers[(ordinal // 2) % len(integers)]
+        )
+        var floating = PayloadValue.floating(
+            floats[(ordinal // 2) % len(floats)]
+        )
+        bulk.add(name, integer, ordinal)
+        bulk.add(name, floating, ordinal)
+        incremental.add(name, integer, ordinal)
+        incremental.add(name, floating, ordinal)
+    bulk.finish_bulk()
+    for i in range(160):
+        assert_equal(bulk._integers[i].name, incremental._integers[i].name)
+        assert_equal(bulk._integers[i].value, incremental._integers[i].value)
+        assert_equal(
+            bulk._integers[i].ordinal, incremental._integers[i].ordinal
+        )
+        assert_equal(bulk._floats[i].name, incremental._floats[i].name)
+        assert_equal(
+            bitcast[DType.uint64](bulk._floats[i].value),
+            bitcast[DType.uint64](incremental._floats[i].value),
+        )
+        assert_equal(bulk._floats[i].ordinal, incremental._floats[i].ordinal)
+    for name in names:
+        if name == "":
+            continue
+        for operator_kind in range(1, 7):
+            for value_index in range(5):
+                var integer = FilterCondition(
+                    name,
+                    UInt8(operator_kind),
+                    PayloadValue.integer(integers[value_index]),
+                )
+                var floating = FilterCondition(
+                    name,
+                    UInt8(operator_kind),
+                    PayloadValue.floating(floats[value_index]),
+                )
+                var actual_int = bulk.evaluate(integer)
+                var expected_int = incremental.evaluate(integer)
+                var actual_float = bulk.evaluate(floating)
+                var expected_float = incremental.evaluate(floating)
+                for ordinal in range(160):
+                    assert_equal(
+                        actual_int.contains(ordinal),
+                        expected_int.contains(ordinal),
+                    )
+                    assert_equal(
+                        actual_float.contains(ordinal),
+                        expected_float.contains(ordinal),
+                    )
+
+
+def test_bulk_empty_singleton_duplicates_and_state_validation() raises:
+    for count in [0, 1, 2, 3, 31, 32, 33]:
+        var keyword = KeywordIndex(max(count, 1))
+        var numbers = SortedBlockIndex(max(count, 1))
+        with assert_raises():
+            keyword.finish_bulk()
+        with assert_raises():
+            numbers.finish_bulk()
+        keyword.begin_bulk()
+        numbers.begin_bulk()
+        with assert_raises():
+            keyword.begin_bulk()
+        with assert_raises():
+            numbers.begin_bulk()
+        for _ in range(count):
+            keyword.add("x", PayloadValue.string("same"), 0)
+            numbers.add("x", PayloadValue.integer(0), 0)
+            numbers.add("x", PayloadValue.floating(0.0), 0)
+        with assert_raises():
+            _ = keyword.evaluate(
+                FilterCondition.equal("x", PayloadValue.string("same"))
+            )
+        with assert_raises():
+            _ = numbers.evaluate(
+                FilterCondition.equal("x", PayloadValue.integer(0))
+            )
+        keyword.finish_bulk()
+        numbers.finish_bulk()
+        assert_equal(keyword.entry_count(), count)
+        assert_equal(len(numbers._integers), count)
+        assert_equal(len(numbers._floats), count)
+        assert_equal(
+            keyword.evaluate(
+                FilterCondition.equal("x", PayloadValue.string("same"))
+            ).count(),
+            1 if count else 0,
+        )
+        assert_equal(
+            numbers.evaluate(
+                FilterCondition.equal("x", PayloadValue.integer(0))
+            ).count(),
+            1 if count else 0,
+        )
+        assert_equal(
+            numbers.evaluate(
+                FilterCondition.equal("x", PayloadValue.floating(0.0))
+            ).count(),
+            1 if count else 0,
+        )
+
+
+def test_ordered_posting_updates_deduplicate_and_remove_boundary_ties() raises:
+    var keywords = KeywordIndex(96)
+    var numbers = SortedBlockIndex(96)
+    for step in range(96):
+        var ordinal = (step * 53) % 96
+        var string_value = PayloadValue.string("字串" * 40 + String(ordinal % 3))
+        var integer = PayloadValue.integer(Int64(ordinal % 3 - 1))
+        var floating = PayloadValue.floating(-0.0 if ordinal % 2 == 0 else 0.0)
+        keywords.add("key", string_value, ordinal)
+        keywords.add("key", string_value, ordinal)
+        numbers.add("key", integer, ordinal)
+        numbers.add("key", integer, ordinal)
+        numbers.add("key", floating, ordinal)
+        numbers.add("key", PayloadValue.floating(0.0), ordinal)
+    assert_equal(keywords.entry_count(), 96)
+    assert_equal(len(numbers._integers), 96)
+    assert_equal(len(numbers._floats), 96)
+    for ordinal in range(96):
+        if ordinal % 2 == 0:
+            var string_value = PayloadValue.string(
+                "字串" * 40 + String(ordinal % 3)
+            )
+            keywords.remove("key", string_value, ordinal)
+            keywords.remove("key", string_value, ordinal)
+            numbers.remove(
+                "key", PayloadValue.integer(Int64(ordinal % 3 - 1)), ordinal
+            )
+            numbers.remove("key", PayloadValue.floating(0.0), ordinal)
+    assert_equal(keywords.entry_count(), 48)
+    assert_equal(len(numbers._integers), 48)
+    assert_equal(len(numbers._floats), 48)
+    var floats = numbers.evaluate(
+        FilterCondition.equal("key", PayloadValue.floating(-0.0))
+    )
+    for ordinal in range(96):
+        assert_equal(floats.contains(ordinal), ordinal % 2 != 0)
+    for value in range(3):
+        var strings = keywords.evaluate(
+            FilterCondition.equal(
+                "key", PayloadValue.string("字串" * 40 + String(value))
+            )
+        )
+        var integers = numbers.evaluate(
+            FilterCondition.equal("key", PayloadValue.integer(Int64(value - 1)))
+        )
+        for ordinal in range(96):
+            var expected = ordinal % 2 != 0 and ordinal % 3 == value
+            assert_equal(strings.contains(ordinal), expected)
+            assert_equal(integers.contains(ordinal), expected)
+
+
+def test_bulk_posting_removal_works_before_sorting() raises:
+    var keywords = KeywordIndex(4)
+    var numbers = SortedBlockIndex(4)
+    keywords.begin_bulk()
+    numbers.begin_bulk()
+    for ordinal in [3, 1, 2, 0]:
+        keywords.add("key", PayloadValue.boolean(True), ordinal)
+        numbers.add("key", PayloadValue.integer(1), ordinal)
+        numbers.add("key", PayloadValue.floating(1), ordinal)
+    keywords.remove("key", PayloadValue.boolean(True), 1)
+    numbers.remove("key", PayloadValue.integer(1), 1)
+    numbers.remove("key", PayloadValue.floating(1), 1)
+    keywords.finish_bulk()
+    numbers.finish_bulk()
+    var strings = keywords.evaluate(
+        FilterCondition.equal("key", PayloadValue.boolean(True))
+    )
+    var integers = numbers.evaluate(
+        FilterCondition.equal("key", PayloadValue.integer(1))
+    )
+    var floats = numbers.evaluate(
+        FilterCondition.equal("key", PayloadValue.floating(1))
+    )
+    for ordinal in range(4):
+        assert_equal(strings.contains(ordinal), ordinal != 1)
+        assert_equal(integers.contains(ordinal), ordinal != 1)
+        assert_equal(floats.contains(ordinal), ordinal != 1)
 
 
 def main() raises:

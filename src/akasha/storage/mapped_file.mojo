@@ -1,4 +1,5 @@
 from std.ffi import c_int, c_long, c_size_t, external_call
+from akasha.storage.checksum import CRC32_INITIAL, crc32_update
 from std.io.file import O_RDONLY
 from std.memory.alloc import alloc, Layout
 from std.stat import S_ISREG
@@ -200,6 +201,19 @@ struct MappedFile(Movable):
         if length > file_length - offset:
             raise Error("mapped slice length is out of bounds")
         return MappedBytes(Pointer(to=self), Int(offset), Int(length))
+
+    def checksum(self, offset: UInt64, length: UInt64) raises -> UInt32:
+        """Checksum a checked range synchronously without exporting a borrow."""
+        _ = self.checked_slice(offset, length)
+        if length == 0:
+            return 0
+        # The owner remains borrowed until this call returns. Range validation
+        # above bounds the complete Span; neither it nor its pointer escapes.
+        var bytes = Span(
+            unsafe_ptr=self._base.value().unsafe_offset(Int(offset)),
+            length=Int(length),
+        )
+        return ~crc32_update(CRC32_INITIAL, bytes)
 
     def close(mut self):
         """Releases mapping and descriptor ownership; safe to call repeatedly.

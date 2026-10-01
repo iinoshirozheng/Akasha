@@ -4,7 +4,14 @@ from akasha.index.metadata import MetadataIndex
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.query.evaluator import matches_expression
-from std.testing import assert_equal, assert_false, assert_true, TestSuite
+from std.memory import bitcast
+from std.testing import (
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+    TestSuite,
+)
 
 
 def _fields(
@@ -242,6 +249,95 @@ def test_metadata_bulk_load_preserves_slot_order_and_query_results() raises:
     )
     assert_equal(result.count(), 1)
     assert_true(index.contains_id(result, 10_731))
+
+
+def test_bulk_and_incremental_cache_bytes_round_trip_after_mutations() raises:
+    var bulk = MetadataIndex()
+    var incremental = MetadataIndex()
+    bulk.begin_bulk()
+    for ordinal in range(96):
+        var id = (ordinal * 53) % 96 - 48
+        var value = "長字串-" * 20 + String(id % 4)
+        var score = Float64(id % 5)
+        if id % 7 == 0:
+            score = -0.0
+        bulk.upsert(id, _fields(value, Int64(id % 3), score, id % 2 == 0))
+        incremental.upsert(
+            id, _fields(value, Int64(id % 3), score, id % 2 == 0)
+        )
+    bulk.finish_bulk()
+    var bulk_bytes = bulk.encode_cache_payload()
+    var expected_bytes = incremental.encode_cache_payload()
+    assert_equal(len(bulk_bytes), len(expected_bytes))
+    for i in range(len(bulk_bytes)):
+        assert_equal(bulk_bytes[i], expected_bytes[i])
+    var restored = MetadataIndex.decode_cache_payload(bulk_bytes^)
+    for id in range(-48, 48, 3):
+        restored.delete(id)
+        incremental.delete(id)
+    for id in range(-48, 48, 6):
+        restored.upsert(id, _fields("new", Int64.MIN, -0.0, True))
+        incremental.upsert(id, _fields("new", Int64.MIN, -0.0, True))
+    var actual_bytes = restored.encode_cache_payload()
+    expected_bytes = incremental.encode_cache_payload()
+    assert_equal(len(actual_bytes), len(expected_bytes))
+    for i in range(len(actual_bytes)):
+        assert_equal(actual_bytes[i], expected_bytes[i])
+    for value in [Int64.MIN, Int64(-2), Int64(0), Int64(2), Int64.MAX]:
+        for operator_kind in range(1, 7):
+            var condition = FilterCondition(
+                "page", UInt8(operator_kind), PayloadValue.integer(value)
+            )
+            var actual = restored.evaluate_condition(condition)
+            var expected = incremental.evaluate_condition(condition)
+            for ordinal in range(96):
+                assert_equal(
+                    actual.contains(ordinal), expected.contains(ordinal)
+                )
+
+
+def test_identical_payload_update_preserves_bytes_and_validates_input() raises:
+    var index = MetadataIndex()
+    index.upsert(7, _fields("same", Int64.MAX, -0.0, True))
+    var before = index.encode_cache_payload()
+    index.upsert(7, _fields("same", Int64.MAX, -0.0, True))
+    var after = index.encode_cache_payload()
+    assert_equal(before, after)
+    var invalid = _fields("same", Int64.MAX, -0.0, True)
+    invalid.append(DocumentField("category", PayloadValue.string("same")))
+    with assert_raises():
+        index.upsert(7, invalid^)
+    assert_equal(index.encode_cache_payload(), before)
+    var bulk = MetadataIndex()
+    bulk.begin_bulk()
+    bulk.upsert(7, _fields("same", Int64.MAX, -0.0, True))
+    with assert_raises():
+        bulk.upsert(7, _fields("same", Int64.MAX, -0.0, True))
+    bulk.finish_bulk()
+
+
+def test_payload_update_preserves_signed_zero_type_order_and_resurrection() raises:
+    var index = MetadataIndex()
+    index.upsert(7, _fields("same", 0, -0.0, True))
+    index.upsert(7, _fields("same", 0, 0.0, True))
+    assert_equal(
+        bitcast[DType.uint64](index._fields[0][2].value.as_float()), UInt64(0)
+    )
+    index.upsert(7, [DocumentField("score", PayloadValue.integer(0))])
+    assert_true(index._fields[0][0].value.is_integer())
+    index.upsert(7, [DocumentField("score", PayloadValue.boolean(False))])
+    assert_true(index._fields[0][0].value.is_boolean())
+    index.upsert(7, [DocumentField("score", PayloadValue.string("0"))])
+    assert_true(index._fields[0][0].value.is_string())
+    var fields = _fields("same", 0, 0.0, True)
+    fields.swap_elements(0, 3)
+    index.upsert(7, fields^)
+    assert_equal(index._fields[0][0].name, "active")
+    index.delete(7)
+    index.upsert(7, List[DocumentField]())
+    assert_true(index.is_live_at(0))
+    assert_equal(index.live_count(), 1)
+    assert_equal(index.slot_count(), 1)
 
 
 def main() raises:

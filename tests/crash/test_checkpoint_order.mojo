@@ -7,7 +7,7 @@ from akasha.storage.filesystem import (
     remove_file_if_exists,
     write_file_sync,
 )
-from akasha.storage.manifest import load_manifest
+from akasha.storage.manifest import load_manifest, parse_hnsw_job_name
 from std.os import listdir
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
@@ -246,7 +246,10 @@ def test_compaction_rebase_publish_boundary_recovers_new_generation() raises:
     assert_equal(rebased.segments[0].name, fixture.output_names[0])
     assert_equal(rebased.segments[0].max_sequence, UInt64(80))
     assert_equal(rebased.segments[1].min_sequence, UInt64(81))
-    assert_equal(rebased.hnsw_name.value(), "hnsw-82.bin")
+    assert_equal(rebased.format_version, 4)
+    var sidecar_identity = parse_hnsw_job_name(rebased.hnsw_name.value())
+    assert_equal(sidecar_identity[0], UInt64(82))
+    assert_equal(sidecar_identity[1], fixture.old_generation + 1)
     assert_true(path_exists(path + "/" + rebased.hnsw_name.value()))
     _assert_compaction_recovered(
         path, fixture.old_generation + 2, config, mapped_graph=True

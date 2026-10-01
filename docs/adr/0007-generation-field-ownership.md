@@ -34,7 +34,8 @@ full compaction builders. Synchronous maintenance and the no-worker path now use
 the same unlocked builder; see the [regression evidence](../benchmarks/2026-09-30-compaction-admission.md).
 **#53 is implemented (2026-09-27):** backup holds the writer lock only to checkpoint,
 capture the manifest and config and pin that generation, then copies outside it
-through one 1 MiB buffer; the backup manifest omits the HNSW sidecar (see Backup below).
+through one 1 MiB buffer. The #56 sidecar extension now copies the complete captured
+manifest, including its HNSW reference (see Backup below).
 **#54 is implemented (2026-09-27):** each read root owns one SQ8 artifact state. The
 first SQ8 query on a root builds the artifact once under the root's artifact lock;
 every later query, handle and metric on that root reuses the ready artifact. A failed
@@ -223,12 +224,36 @@ may allocate new buffers; reference those buffers from an export owner and count
 
 Collection close first rejects new operations, then cancels/drains maintenance without
 holding the writer lock, drops collection/cache owners and releases the writer file
-lock. Existing explicitly acquired snapshots/exports keep their own roots and remain
+lock owner. A captured backup or foreground compaction holds another strong
+file-lock owner until its copy, publication, discard or build failure finishes.
+This excludes replacement writers while an acquired operation can still create
+files. Snapshot roots instead retain shared locks on their exact immutable files,
+so they can coexist with a replacement writer's independent pin registry.
+Existing explicitly acquired snapshots/exports keep their own roots and remain
 usable. Snapshot close is idempotent and drops that wrapper's root immediately; an
 already-created export/operation owns an independent lease. Destruction performs the
 same release. Last owner releases mappings/device buffers; last relevant file lease
 allows unlink. Expose pin/retired/cache bytes and oldest retained sequence, with no
 automatic TTL that silently invalidates a user's view.
+
+#56 file lifetime implementation (2026-09-30): the first persistent pin of G opens
+the captured manifest's dense, sparse and HNSW files and takes shared `flock`
+leases. Pins of the same G within one registry share those descriptors. Retirement
+requires an exclusive nonblocking file lock; a different collection or process's
+lease defers unlink. The last pin reads the committed manifest and reclaims only
+its own obsolete files with no remaining lease, even after collection close.
+`openat`/`unlinkat` use an owned directory descriptor, so cleanup stays attached to
+the original directory if its path is renamed or replaced. No vector or payload
+bytes are copied by this file ownership step. First capture does perform metadata
+I/O and opens one descriptor per referenced file plus the directory; live
+generations retain those descriptors until their last pin is released.
+
+Capture failure adds no pin and closes partial descriptors. A destructor cannot
+raise: cleanup I/O or malformed-manifest errors keep files and record a diagnostic
+in the registry. A live collection's retirement queue retries on maintenance;
+reopen also retries allow-listed unreferenced job outputs. Missing or corrupt
+authority never authorizes deletion. This does not promise cleanup despite an
+unrepaired filesystem error or automatic deletion of arbitrary unrecognized files.
 
 #50 implementation notes: a snapshot handle keeps its root in a lock-guarded slot on
 the heap. Each query copies the root owner under that lock, releases the lock and
@@ -283,12 +308,12 @@ is removed and `compact()` recaptures from the newer manifest. After 4 attempts 
 raises "compaction retry budget exhausted". `compaction_attempts()` and
 `compaction_conflicts()` count jobs. Close before finish discards the output. A
 publish error keeps the output, because the manifest may already name it. Open
-removes job outputs whose target generation is above the committed generation. A
-published output always targets at most the committed generation, so a committed or
-pinned file never matches. Known leak: an output whose target is at most the
-committed generation and that was never published stays on disk. This needs a crash
-between a lost race and its discard. Retired inputs still pinned at close also stay,
-as before, because the retire queue lives in memory. The former locked memtable
+removes strictly named unreferenced job outputs at any generation, including
+temporary files, only after obtaining an exclusive file lease. Current manifest
+references and readers surviving an earlier collection instance remain protected.
+The source writer file lock excludes live builders from this open-time cleanup.
+Unknown filenames and legacy sequence-only HNSW names remain untouched. The
+former locked memtable
 compaction used by synchronous maintenance and the no-worker path was removed on
 2026-09-30; all public compaction paths now use the captured-input builder.
 
@@ -302,8 +327,8 @@ append above the committed sequence. The HNSW reference also carries over from t
 current manifest. Compaction changes only the layout of the same live points, and a
 flush during the build may have written a newer sidecar that the captured reference
 predates; `test_flush_during_build_rebases_onto_newer_manifest` reopens and maps it
-with no graph build. Inputs retire at the generation current before publish, so a
-reader pinned at an intervening flush's generation keeps them. Tombstone elision is
+with no graph build. Exact file leases protect retired inputs, including a
+reader pinned at an intervening flush's generation. Tombstone elision is
 unchanged and stays safe: the output is the oldest run, so an elided tombstone has
 nothing older to expose. A conflict now needs another compaction of the same inputs;
 a flush during the build no longer costs an attempt.
@@ -325,9 +350,9 @@ budget is counted (`background_compaction_counts().exhausted`), not a failure: a
 failure closes every operation of the owner, while the next flush request simply
 retries. `compact()` still raises. Close sets a cancel flag under the writer lock
 before joining. A job that finishes after it discards its output and counts neither
-a conflict nor a failure. Output names and the orphan rule are unchanged. The known
-leak widens: a crash after a flush publishes during a worker build, and before the
-rebase publish, leaves an output whose target is at most the committed generation.
+a conflict nor a failure. The #56 cleanup also handles a crash after a flush
+publishes during a worker build and before the rebase publish: the unreferenced
+output is eligible even if its target is at most the committed generation.
 Dropping an open collection without close joins the worker in
 `MaintenanceController.__deinit__`. Mojo destroys a field after its last use, even
 inside a destructor, so the shared worker state is used once more after the join;
@@ -341,15 +366,18 @@ source is closed/deleted; default copy semantics do not introduce shared mutable
 inodes. Optional derived files are either copied with their captured metadata or
 explicitly omitted from the backup's manifest; required data must be complete.
 
-#53 omits the HNSW sidecar. A checkpoint removes or rewrites `hnsw-<sequence>.bin`
-directly instead of retiring it behind generation pins, and the format fixes its
-name, so a pin cannot keep the captured sidecar. The backup manifest is the captured
-one without it (format v2, same generation and last sequence), and opening a backup
-or restore rebuilds the graph. Copying it needs the sidecar to retire behind pins,
-which belongs with HNSW publication (#56) but is not yet in its acceptance.
-Each dense and sparse file streams through `FileHandle.read(Span)`/`write_all` into
-`<name>.tmp`, checks the magic, the CRC-32 of the body and the stored tail against its
-descriptor, rejects a size change, then fsyncs and renames. One directory fsync
+#53 originally omitted HNSW because sequence-only paths could be overwritten.
+#56 adds manifest v4 names containing sequence, creation generation and claim;
+the legacy v3 grammar remains frozen. Every output is exclusively created and
+durable before the manifest commit. Superseded sidecars retire through pins,
+including same-sequence rebuild and disable/re-enable. A backup copies that exact
+captured sidecar and retains the source advisory lock through collection close;
+the writer mutex remains free during the copy.
+Each dense, sparse and HNSW file streams through `FileHandle.read(Span)`/`write_all`
+into `<name>.tmp`, checks magic and stored CRC against its descriptor, rejects a
+size change, then fsyncs and renames. Segment CRC excludes magic; HNSW CRC includes
+it. The HNSW path retains just 64 header bytes to validate version, header size,
+reserved fields, sequence, config fingerprint and live count. One directory fsync
 precedes manifest publication. The backup report comes from the captured manifest,
 the memtable live count and the config, so no decode runs after the copy. Restore
 still strictly decodes the backup before copying (an untrusted source), so its
@@ -369,6 +397,21 @@ mutations using its existing incremental update semantics in a bounded catch-up.
 If catch-up cannot fit the publication budget, reschedule from a newer root; never
 publish a graph missing accepted updates. Disk checkpoint metadata stays tied to
 committed source data, independently of a newer in-memory graph.
+
+The in-memory part is implemented by `index/hnsw_rebuild.mojo` (2026-09-30).
+The job owns a pinned read root, and every accepted write records a latest dense
+descriptor under writer locking, even while the current graph is unavailable.
+A journal holds at most 1,024 distinct IDs; repeated IDs replace descriptors and
+sparse-only mutations advance coverage without repeating covered dense states.
+Graph construction and source-map indexing run outside writer. Publication
+rotates the journal by ownership transfer, applies it outside writer, then checks
+again. At most four catch-up passes and four root captures are allowed. Only an
+empty journal with matching config and complete accepted-sequence coverage can
+publish; the old graph is released after unlocking. A stale/failed candidate
+cannot replace a valid graph. The same path serves explicit rebuild and due
+flush/compaction/maintenance/backup checkpoints. This in-memory rebuild introduces
+no durable format change. The separate #56 manifest v4 migration described above
+changes sidecar naming and lifetime while preserving HNSW v1/v2 bytes.
 
 GPU cache is keyed by root/layout + field/config + device and retains the root owner.
 Keep current budget, one-context reuse, ragged candidates and readback lock semantics.

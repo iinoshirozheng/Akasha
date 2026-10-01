@@ -1,8 +1,10 @@
 """Command-line operations for local Akasha collections."""
 
 import argparse
+from pathlib import Path
 
 from .database import Collection
+from .logical_points import import_schema
 from .operations import (
     backup_collection,
     export_ndjson,
@@ -51,7 +53,16 @@ def main() -> None:
         for path in quarantine_orphans(args.path, args.dimension, args.target):
             print(path)
     else:
-        collection = Collection(args.path, args.dimension)
+        schema = import_schema(args.source) if args.command == "import" else None
+        destination = Path(args.path)
+        existing = destination.exists() and any(destination.iterdir())
+        if schema is not None and not existing:
+            config, vectors = schema
+            if config.dimension != args.dimension:
+                raise ValueError("logical point import dimension does not match target")
+            collection = Collection(args.path, args.dimension, config=config, vectors=vectors)
+        else:
+            collection = Collection(args.path, args.dimension)
         try:
             if args.command == "backup":
                 print(report_json(backup_collection(collection, args.target)))

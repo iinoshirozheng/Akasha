@@ -1,9 +1,18 @@
+from akasha.document.vector_schema import FieldCatalog
+from akasha.storage.field_catalog import load_field_catalog
+from akasha.storage.point_recovery import (
+    is_point_checkpoint,
+    load_point_checkpoint,
+)
+from akasha.storage.point_segment import encode_point_segment
+from akasha.storage.checksum import BorrowedBinaryReader
 from akasha.index.sparse import SparseIndex
 from akasha.storage.filesystem import (
     create_file_exclusive,
     path_exists,
     remove_file_if_exists,
     sync_directory,
+    write_file_sync,
 )
 from akasha.storage.manifest import (
     load_manifest,
@@ -12,6 +21,7 @@ from akasha.storage.manifest import (
     SegmentDescriptor,
 )
 from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.lock import CollectionLock
 from akasha.storage.memtable import MemTable
 from akasha.storage.read_generation import ReadGenerationCache
 from akasha.storage.retired_files import RetiredFileQueue
@@ -30,10 +40,9 @@ from akasha.storage.sparse_store import (
     write_sparse_segment,
 )
 from std.memory import ArcPointer
-from std.os import listdir, remove
 
-# Job outputs are named <prefix><target generation>-<claim>.bin. The target
-# generation lets open() tell unpublished outputs from committed files.
+# Job outputs are named <prefix><target generation>-<claim>.bin. Open-time
+# cleanup checks manifest references and file leases before removing them.
 comptime _SEGMENT_OUTPUT_PREFIX = "segment-compact-"
 comptime _SPARSE_OUTPUT_PREFIX = "sparse-compact-"
 comptime _OUTPUT_SUFFIX = ".bin"
@@ -48,9 +57,13 @@ struct CompactionInputs(Movable):
     """The committed state one compaction job captured under the writer lock."""
 
     var manifest: Manifest
+    var source_lock: Optional[ArcPointer[CollectionLock]]
+    var catalog: Optional[ArcPointer[FieldCatalog]]
 
     def __init__(out self, var manifest: Manifest):
         self.manifest = manifest^
+        self.source_lock = None
+        self.catalog = None
 
 
 struct CompactionOutput(Movable):
@@ -78,6 +91,8 @@ def begin_compaction(
     directory: String,
     dimension: Int,
     pins: ArcPointer[GenerationPinRegistry],
+    *,
+    var source_lock: Optional[ArcPointer[CollectionLock]] = None,
 ) raises -> Optional[CompactionInputs]:
     """Capture the committed inputs and pin them; None when nothing to merge.
 
@@ -87,13 +102,14 @@ def begin_compaction(
     var inputs = capture_compaction_inputs(directory, dimension)
     if inputs:
         pins[].pin(inputs.value().manifest.generation)
+        inputs.value().source_lock = source_lock^
     return inputs^
 
 
 def build_compaction(
     directory: String,
     dimension: Int,
-    inputs: CompactionInputs,
+    mut inputs: CompactionInputs,
     pins: ArcPointer[GenerationPinRegistry],
 ) raises -> CompactionOutput:
     """Merge the pinned inputs without the writer lock; unpin on failure."""
@@ -101,13 +117,14 @@ def build_compaction(
         return build_compaction_output(directory, dimension, inputs)
     except error:
         pins[].unpin(inputs.manifest.generation)
+        inputs.source_lock = None
         raise error^
 
 
 def finish_compaction(
     directory: String,
     dimension: Int,
-    inputs: CompactionInputs,
+    mut inputs: CompactionInputs,
     output: CompactionOutput,
     cancelled: Bool,
     pins: ArcPointer[GenerationPinRegistry],
@@ -122,22 +139,27 @@ def finish_compaction(
     """
     # Release the job's lease first so retirement sees reader pins only.
     pins[].unpin(inputs.manifest.generation)
-    if cancelled:
-        discard_compaction_output(directory, output)
-        return False
-    var replaced = publish_compaction_output(
-        directory, dimension, inputs, output
-    )
-    if not replaced:
-        discard_compaction_output(directory, output)
-        return False
-    read_generations[].publish(replaced.value() + 1)
-    retired[].retire_or_reclaim(
-        directory,
-        replaced.value(),
-        compaction_input_paths(directory, inputs.manifest),
-        pins,
-    )
+    try:
+        if cancelled:
+            discard_compaction_output(directory, output)
+            inputs.source_lock = None
+            return False
+        var replaced = publish_compaction_output(
+            directory, dimension, inputs, output
+        )
+        if not replaced:
+            discard_compaction_output(directory, output)
+            inputs.source_lock = None
+            return False
+        read_generations[].publish(replaced.value() + 1)
+        retired[].retire_or_reclaim(
+            directory,
+            compaction_input_paths(directory, inputs.manifest),
+        )
+    except error:
+        inputs.source_lock = None
+        raise error^
+    inputs.source_lock = None
     return True
 
 
@@ -152,7 +174,18 @@ def capture_compaction_inputs(
         return None
     if manifest.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
-    return CompactionInputs(manifest^)
+    var catalog = Optional[ArcPointer[FieldCatalog]]()
+    if is_point_checkpoint(directory, manifest):
+        var identity = load_field_catalog(directory)
+        if (
+            identity.format_version != 2
+            or identity.field_at(0).dimension != dimension
+        ):
+            raise Error("point compaction requires a matching field catalog")
+        catalog = Optional(ArcPointer(identity^))
+    var inputs = CompactionInputs(manifest^)
+    inputs.catalog = catalog^
+    return Optional(inputs^)
 
 
 def build_compaction_output(
@@ -163,6 +196,8 @@ def build_compaction_output(
     Runs without the writer lock. Inputs are only read; on failure only the
     files this job created are removed.
     """
+    if inputs.catalog:
+        return _build_point_compaction(directory, inputs)
     var memtable = _load_dense(directory, dimension, inputs.manifest)
     var sparse = _load_sparse(directory, memtable, inputs.manifest)
     var sequence = inputs.manifest.last_sequence
@@ -217,7 +252,8 @@ def discard_compaction_output(
 ) raises:
     """Remove one unpublished job's files; never touches any input."""
     remove_file_if_exists(directory + "/" + output.segment_name)
-    remove_file_if_exists(directory + "/" + output.sparse_name)
+    if output.sparse_name.byte_length() > 0:
+        remove_file_if_exists(directory + "/" + output.sparse_name)
 
 
 def publish_compaction_output(
@@ -245,17 +281,28 @@ def publish_compaction_output(
     if current.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
     var descriptors = List[SegmentDescriptor]()
-    descriptors.append(
-        SegmentDescriptor.with_sparse(
-            1,
-            0,
-            captured.last_sequence,
-            output.checksum,
-            output.segment_name,
-            output.sparse_checksum,
-            output.sparse_name,
+    if output.sparse_name.byte_length() == 0:
+        descriptors.append(
+            SegmentDescriptor(
+                1,
+                0,
+                captured.last_sequence,
+                output.checksum,
+                output.segment_name,
+            )
         )
-    )
+    else:
+        descriptors.append(
+            SegmentDescriptor.with_sparse(
+                1,
+                0,
+                captured.last_sequence,
+                output.checksum,
+                output.segment_name,
+                output.sparse_checksum,
+                output.sparse_name,
+            )
+        )
     for index in range(len(captured.segments), len(current.segments)):
         if current.segments[index].min_sequence <= captured.last_sequence:
             raise Error("appended segment overlaps the compaction output")
@@ -271,6 +318,7 @@ def publish_compaction_output(
             current.hnsw_checksum.value(),
             current.hnsw_config_fingerprint.value(),
             current.hnsw_point_count.value(),
+            format_version=current.format_version,
         )
     else:
         compacted = Manifest.with_segments(
@@ -293,24 +341,6 @@ def compaction_input_paths(
         if manifest.segments[index].sparse_name.byte_length() > 0:
             paths.append(directory + "/" + manifest.segments[index].sparse_name)
     return paths^
-
-
-def remove_unpublished_compaction_outputs(
-    directory: String, committed_generation: UInt64
-) raises:
-    """Remove job outputs whose target generation was never published.
-
-    Every published output targets a generation at or below the committed
-    one, so this never removes a committed or pinned file.
-    """
-    var removed = False
-    for name in listdir(directory):
-        var target = _output_target(name)
-        if target and target.value() > committed_generation:
-            remove(directory + "/" + name)
-            removed = True
-    if removed:
-        sync_directory(directory)
 
 
 def _same_segment(
@@ -337,29 +367,6 @@ def _claim_output(
         if create_file_exclusive(directory + "/" + name):
             return name
     raise Error("no free compaction output name")
-
-
-def _output_target(name: String) -> Optional[UInt64]:
-    var rest: String
-    if name.startswith(_SEGMENT_OUTPUT_PREFIX):
-        rest = String(name.removeprefix(_SEGMENT_OUTPUT_PREFIX))
-    elif name.startswith(_SPARSE_OUTPUT_PREFIX):
-        rest = String(name.removeprefix(_SPARSE_OUTPUT_PREFIX))
-    else:
-        return None
-    if not rest.endswith(_OUTPUT_SUFFIX):
-        return None
-    var parts = rest.removesuffix(_OUTPUT_SUFFIX).split("-")
-    if len(parts) != 2:
-        return None
-    try:
-        var target = Int(parts[0])
-        _ = Int(parts[1])
-        if target < 0:
-            return None
-        return UInt64(target)
-    except:
-        return None
 
 
 def _load_dense(
@@ -445,3 +452,33 @@ def _load_sparse(
         if not Bool(memtable.get(records[record_index].id)):
             sparse.delete(records[record_index].id)
     return sparse^
+
+
+def _build_point_compaction(
+    directory: String, inputs: CompactionInputs
+) raises -> CompactionOutput:
+    var table = load_point_checkpoint(
+        directory, inputs.manifest, inputs.catalog.value().copy()
+    )
+    var bytes = encode_point_segment(
+        1,
+        0,
+        inputs.manifest.last_sequence,
+        table.live_points(),
+        inputs.catalog.value()[],
+    )
+    var reader = BorrowedBinaryReader(Span(bytes)[len(bytes) - 4 :])
+    var checksum = reader.read_u32()
+    var name = _claim_output(
+        directory, _SEGMENT_OUTPUT_PREFIX, inputs.manifest.generation + 1
+    )
+    try:
+        write_file_sync(directory + "/" + name, bytes)
+        sync_directory(directory)
+    except error:
+        try:
+            remove_file_if_exists(directory + "/" + name)
+        except:
+            pass
+        raise error^
+    return CompactionOutput(name, checksum, "", 0)

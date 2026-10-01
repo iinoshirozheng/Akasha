@@ -8,10 +8,12 @@ import math
 import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 from .database import Collection, _kernel_module
 from .models import BatchMutation, PayloadField, SparseElement
+from .logical_points import decode_header, decode_line, decode_points, encode_export, is_point_header
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,15 +69,27 @@ def export_ndjson(collection: Collection, target: str | Path) -> int:
     """Atomically publish an owned logical point export."""
     destination = Path(target)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".tmp")
-    rows = collection._export_records()
-    with temporary.open("w", encoding="utf-8") as output:
-        for row in rows:
-            output.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
-            output.write("\n")
-        output.flush()
-        os.fsync(output.fileno())
-    os.replace(temporary, destination)
+    captured = collection._export_points()
+    header = None
+    if captured is None:
+        rows = collection._export_records()
+    else:
+        header, rows = encode_export(captured)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent,
+                                         prefix=destination.name + ".", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            if header is not None:
+                output.write(json.dumps(header, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n")
+            for row in rows:
+                output.write(json.dumps(row, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return len(rows)
 
 
@@ -84,15 +98,23 @@ def import_ndjson(collection: Collection, source: str | Path) -> int:
     rows: list[dict[str, Any]] = []
     with Path(source).open("r", encoding="utf-8") as input_file:
         for line_number, line in enumerate(input_file, start=1):
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError as error:
-                raise ValueError(f"invalid NDJSON at line {line_number}") from error
-            if not isinstance(value, dict):
-                raise ValueError(f"NDJSON line {line_number} must be an object")
-            rows.append(value)
+            rows.append(decode_line(line, line_number))
+            header_rows = int(is_point_header(rows[0]))
+            if len(rows) - header_rows > collection.limits.max_batch_rows:
+                raise ValueError("logical import resource limit exceeded")
     if not rows:
         raise ValueError("logical import cannot be empty")
+    if is_point_header(rows[0]):
+        header = rows.pop(0)
+        config, schema = decode_header(header)
+        if not collection._is_point_collection():
+            raise ValueError("logical point import requires a field-aware target")
+        if config != collection.collection_config() or schema != collection.vector_fields():
+            raise ValueError("logical point import schema does not match target")
+        mutations = decode_points(header, rows, schema)
+        if mutations:
+            collection.apply_point_batch(mutations)
+        return len(mutations)
     if len(rows) > collection.limits.max_batch_rows:
         raise ValueError("logical import resource limit exceeded")
 

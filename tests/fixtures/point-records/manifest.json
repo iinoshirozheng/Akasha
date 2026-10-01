@@ -1,0 +1,32 @@
+{
+  "default-and-named.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 107,
+    "sha256": "0dc5c0dbe5afc92400512d28d4d4996500e5ea4824650a50876be58bd4f0a76e"
+  },
+  "named-only.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 120,
+    "sha256": "5085a0dcdfc5c9b6e93c7c98ade735a7b93a491dec8a527bf0002eec2be82b86"
+  },
+  "payload-only.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 44,
+    "sha256": "b262080f0513c7b9b05442f2f780e30441726b136436b478738ab1fb960d4cad"
+  },
+  "deleted.bin": {
+    "catalog": "named-f32-v2.bin",
+    "bytes": 40,
+    "sha256": "5adc8f500ec4d566a8e00e5b90598c28bef47a75cfd8a1c8c7dfa352e53b44ef"
+  },
+  "type-matrix.bin": {
+    "catalog": "type-matrix-v2.bin",
+    "bytes": 219,
+    "sha256": "49dcc1eecc22d86f2cab99020c52acc2a2de4b7acd50b95b605aef1976369a76"
+  },
+  "empty-multivector.bin": {
+    "catalog": "type-matrix-v2.bin",
+    "bytes": 56,
+    "sha256": "28e111d92d2f7fe8673ac6a7499f0fdd9f78adfaafe39d9a7ca68ba10f72e4e7"
+  }
+}

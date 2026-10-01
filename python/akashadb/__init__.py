@@ -1,7 +1,15 @@
 """Python adapter for the AkashaDB Mojo kernel."""
 
+from .vectors import FieldQuery, IvfOptions, Point, PointMutation, VectorField
 from .database import CancellationToken, Collection, LocalDatabase
-from .arrow import ArrowBatchLease, results_to_record_batch, upsert_record_batch
+from .arrow import (
+    ArrowBatchLease,
+    ArrowScanner,
+    results_to_record_batch,
+    search_record_batch,
+    scan_record_batches,
+    upsert_record_batch,
+)
 from .operations import (
     StorageReport,
     backup_collection,
@@ -40,6 +48,7 @@ __version__ = "0.1.0"
 __all__ = [
     "AkashaError",
     "ArrowBatchLease",
+    "ArrowScanner",
     "BatchMutation",
     "BatchWriteResult",
     "StorageReport",
@@ -53,6 +62,11 @@ __all__ = [
     "DistributedCluster",
     "LocalDatabase",
     "PayloadField",
+    "Point",
+    "PointMutation",
+    "FieldQuery",
+    "IvfOptions",
+    "VectorField",
     "Projection",
     "ProtocolError",
     "QuorumUnavailable",
@@ -65,6 +79,8 @@ __all__ = [
     "TraceRecord",
     "ValidationError",
     "results_to_record_batch",
+    "search_record_batch",
+    "scan_record_batches",
     "upsert_record_batch",
     "backup_collection",
     "export_ndjson",

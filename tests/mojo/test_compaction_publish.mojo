@@ -309,8 +309,7 @@ def test_losing_job_pin_keeps_inputs_until_released() raises:
     assert_true(path_exists(path + "/" + first_output.segment_name))
     assert_true(path_exists(path + "/" + first_output.sparse_name))
 
-    # With the last lease gone, the next checkpoint reclaims the inputs.
-    collection.flush()
+    # The last lease release reclaims the inputs without another checkpoint.
     for index in range(len(captured.segments)):
         assert_false(path_exists(path + "/" + captured.segments[index].name))
         assert_false(
@@ -334,7 +333,6 @@ def test_old_snapshot_keeps_reading_and_leases_replaced_inputs() raises:
     for index in range(len(captured.segments)):
         assert_true(path_exists(path + "/" + captured.segments[index].name))
     snapshot.close()
-    _ = collection.maintenance()
     for index in range(len(captured.segments)):
         assert_false(path_exists(path + "/" + captured.segments[index].name))
     collection.close()
@@ -437,6 +435,7 @@ def test_restart_removes_unpublished_outputs_but_keeps_leased_inputs() raises:
     var inputs = collection._begin_compaction()
     var orphan = collection._build_compaction(inputs.value())
     collection._pins[].unpin(inputs.value().manifest.generation)
+    _ = inputs^  # Simulated crash drops the captured operation's file lock.
     collection.close()
     assert_true(path_exists(path + "/" + orphan.segment_name))
 

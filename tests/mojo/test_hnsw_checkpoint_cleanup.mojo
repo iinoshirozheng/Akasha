@@ -101,7 +101,7 @@ def test_flush_removes_only_prior_manifest_named_hnsw_sidecar() raises:
     collection.close()
 
 
-def test_compaction_preserves_v3_sidecar_and_advances_generation() raises:
+def test_compaction_preserves_versioned_sidecar_and_advances_generation() raises:
     var path = String("/tmp/akasha-task22-compaction-sidecar")
     _reset(path)
     var config = CollectionConfig.defaults(1)
@@ -120,7 +120,7 @@ def test_compaction_preserves_v3_sidecar_and_advances_generation() raises:
     var sidecar_name = before.hnsw_name.value().copy()
     collection.compact()
     var after = load_manifest(path, 1)
-    assert_equal(after.format_version, 3)
+    assert_equal(after.format_version, 4)
     assert_equal(after.generation, before.generation + UInt64(1))
     assert_equal(after.hnsw_name.value(), sidecar_name)
     assert_equal(len(after.segments), 1)
@@ -129,7 +129,7 @@ def test_compaction_preserves_v3_sidecar_and_advances_generation() raises:
     collection.close()
 
 
-def test_same_sequence_v3_downgrade_cleans_exact_sidecar_after_wals() raises:
+def test_same_sequence_sidecar_downgrade_cleans_exact_sidecar_after_wals() raises:
     var path = String("/tmp/akasha-task22-same-sequence-downgrade")
     _reset(path)
     var collection = PersistentCollection.open(path, 1)

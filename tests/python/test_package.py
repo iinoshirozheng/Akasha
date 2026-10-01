@@ -7,6 +7,33 @@ def test_package_exposes_project_version() -> None:
     assert akashadb.__version__ == "0.1.0"
 
 
+def test_failed_batch_io_blocks_public_reads_and_writes_until_reopen(tmp_path) -> None:
+    path = tmp_path / "failed-batch"
+    collection = akashadb.Collection(path, 2)
+    collection.upsert(7, [1.0, 2.0])
+    wal, saved = path / "wal.bin", path / "saved-wal.bin"
+    wal.rename(saved)
+    wal.mkdir()
+    try:
+        with pytest.raises(akashadb.AkashaError):
+            collection.apply_batch([akashadb.BatchMutation.upsert(8, [3.0, 4.0])])
+        with pytest.raises(akashadb.AkashaError, match="requires reopen"):
+            collection.get(7)
+        with pytest.raises(akashadb.AkashaError, match="requires reopen"):
+            collection.upsert(9, [5.0, 6.0])
+    finally:
+        collection.close()
+        wal.rmdir()
+        saved.rename(wal)
+    reopened = akashadb.Collection(path, 2)
+    try:
+        assert reopened.get(7).vector == [1.0, 2.0]
+        assert reopened.get(8) is None
+        assert reopened.get(9) is None
+    finally:
+        reopened.close()
+
+
 def test_collection_config_round_trip_reopen_and_stats_are_owned_primitives(
     tmp_path,
 ) -> None:

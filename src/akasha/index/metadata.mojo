@@ -9,6 +9,7 @@ from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
 from std.collections import Dict
+from std.memory import bitcast
 from akasha.storage.checksum import BinaryReader, BinaryWriter
 
 
@@ -73,6 +74,12 @@ struct MetadataIndex:
         var ordinal = self.ordinal_for(id)
         if self._bulk_loading and ordinal >= 0:
             raise Error("metadata bulk load requires unique point IDs")
+        if (
+            ordinal >= 0
+            and self._live.contains(ordinal)
+            and _same_fields(self._fields[ordinal], fields)
+        ):
+            return
         if ordinal < 0:
             ordinal = self._append_slot(id)
         else:
@@ -202,6 +209,36 @@ struct MetadataIndex:
     def _validate_ordinal(self, ordinal: Int) raises:
         if ordinal < 0 or ordinal >= len(self._ids):
             raise Error("metadata ordinal out of bounds")
+
+
+def _same_fields(
+    left: List[DocumentField], right: List[DocumentField]
+) raises -> Bool:
+    """Compare payload representation, including type, order and signed zero."""
+    if len(left) != len(right):
+        return False
+    for index in range(len(left)):
+        ref a = left[index].value
+        ref b = right[index].value
+        if left[index].name != right[index].name or a.kind() != b.kind():
+            return False
+        if a.is_string():
+            if a.as_string() != b.as_string():
+                return False
+        elif a.is_integer():
+            if a.as_int() != b.as_int():
+                return False
+        elif a.is_floating():
+            if bitcast[DType.uint64](a.as_float()) != bitcast[DType.uint64](
+                b.as_float()
+            ):
+                return False
+        elif a.is_boolean():
+            if a.as_bool() != b.as_bool():
+                return False
+        else:
+            return False
+    return True
 
 
 def build_metadata_index(

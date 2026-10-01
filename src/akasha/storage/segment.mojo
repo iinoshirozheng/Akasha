@@ -215,9 +215,7 @@ def decode_segment_bytes(
             entries.append(MemTableEntry(id, sequence, True, List[Float32]()))
             continue
 
-        var values = List[Float32](capacity=dimension)
-        for _ in range(dimension):
-            values.append(reader.read_f32())
+        var values = reader.read_f32s(dimension)
         var fields = List[DocumentField]()
         if version != _VERSION_V1:
             var payload_length = Int(reader.read_u32())

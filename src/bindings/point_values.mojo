@@ -1,0 +1,193 @@
+"""Python/native point-field conversion, with one owned typed authority buffer."""
+
+from akasha.document.vector_schema import VectorFieldSpec
+from akasha.document.vector_value import VectorValue
+from akasha.index.sparse import SparseElement
+from std.python import Python, PythonObject
+from std.python.numpy import from_numpy_array
+from std.memory import bitcast
+
+
+def vector_from_python(
+    raw: PythonObject, field: VectorFieldSpec
+) raises -> VectorValue:
+    if field.kind == 1:
+        var values = List[SparseElement]()
+        var builtins = Python.import_module("builtins")
+        var numbers = Python.import_module("numbers")
+        for item in raw:
+            var term = _integer(item["term_id"], builtins, numbers)
+            var weight = _real(item["weight"], builtins, numbers)
+            values.append(SparseElement(term, Float32(weight)))
+        return VectorValue.sparse(values^)
+    if field.kind == 3:
+        var values = List[UInt8]()
+        var builtins = Python.import_module("builtins")
+        var numbers = Python.import_module("numbers")
+        for item in raw:
+            var value = _integer(item, builtins, numbers)
+            if value < 0 or value > 255:
+                raise Error("binary bytes must fit UInt8")
+            values.append(UInt8(value))
+        return VectorValue.binary(field.dimension, values^)
+    if field.scalar == 0:
+        return _numeric_from_python[DType.float32](raw, field)
+    if field.scalar == 1:
+        return _numeric_from_python[DType.bfloat16](raw, field)
+    if field.scalar == 2:
+        return _numeric_from_python[DType.float16](raw, field)
+    if field.scalar == 3:
+        return _numeric_from_python[DType.int8](raw, field)
+    if field.scalar == 4:
+        return _numeric_from_python[DType.uint8](raw, field)
+    raise Error("unsupported numeric field scalar")
+
+
+def _integer(
+    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+) raises -> Int:
+    if not Bool(py=builtins.isinstance(raw, numbers.Integral)) or Bool(
+        py=builtins.isinstance(raw, builtins.bool)
+    ):
+        raise Error("integer vector values must be integers")
+    return Int(py=raw)
+
+
+def _real(
+    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+) raises -> Float64:
+    if not Bool(py=builtins.isinstance(raw, numbers.Real)) or Bool(
+        py=builtins.isinstance(raw, builtins.bool)
+    ):
+        raise Error("numeric vector values must be real numbers")
+    return Float64(py=raw)
+
+
+def _component[
+    dtype: DType
+](
+    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+) raises -> Scalar[dtype]:
+    comptime if dtype == DType.int8 or dtype == DType.uint8:
+        var value = _integer(raw, builtins, numbers)
+        comptime if dtype == DType.int8:
+            if value < -128 or value > 127:
+                raise Error("integer vector value exceeds Int8")
+        else:
+            if value < 0 or value > 255:
+                raise Error("integer vector value exceeds UInt8")
+        return Scalar[dtype](value)
+    else:
+        return Scalar[dtype](_real(raw, builtins, numbers))
+
+
+def _numeric_from_python[
+    dtype: DType
+](raw: PythonObject, field: VectorFieldSpec) raises -> VectorValue:
+    var builtins = Python.import_module("builtins")
+    var numbers = Python.import_module("numbers")
+    var values = List[Scalar[dtype]]()
+    var used_array = False
+    if Bool(py=builtins.hasattr(raw, "dtype")):
+        var np = Python.import_module("numpy")
+        if Bool(py=builtins.isinstance(raw, np.ndarray)):
+            var ndim = Int(py=raw.ndim)
+            if (field.kind == 0 and ndim != 1) or (
+                field.kind == 2 and ndim != 2
+            ):
+                raise Error("native array rank does not match vector field")
+            if Int(py=raw.shape[-1]) != field.dimension:
+                raise Error(
+                    "native array dimension does not match vector field"
+                )
+            var name = String(py=raw.dtype.name)
+            comptime if dtype == DType.bfloat16:
+                if name == "bfloat16" and Bool(py=raw.flags.c_contiguous):
+                    var bits = raw.view(np.uint16).reshape(-1)
+                    var view = from_numpy_array[DType.uint16](bits)
+                    values.reserve(len(view))
+                    for element_bits in view:
+                        values.append(bitcast[dtype](element_bits))
+                    used_array = True
+            else:
+                comptime expected = "float32" if dtype == DType.float32 else (
+                    "float16" if dtype
+                    == DType.float16 else (
+                        "int8" if dtype == DType.int8 else "uint8"
+                    )
+                )
+                if name == expected and Bool(py=raw.flags.c_contiguous):
+                    var flat = raw.reshape(-1)
+                    values.extend(from_numpy_array[dtype](flat))
+                    used_array = True
+    if not used_array:
+        if field.kind == 0:
+            if len(raw) != field.dimension:
+                raise Error("vector dimension does not match field")
+            values.reserve(len(raw))
+            for item in raw:
+                values.append(_component[dtype](item, builtins, numbers))
+        else:
+            for row in raw:
+                if len(row) != field.dimension:
+                    raise Error(
+                        "multivector row dimension does not match field"
+                    )
+                for item in row:
+                    values.append(_component[dtype](item, builtins, numbers))
+    if field.kind == 0:
+        return VectorValue.dense[dtype](values^)
+    return VectorValue.multivector[dtype](field.dimension, values^)
+
+
+def vector_to_python(value: VectorValue) raises -> PythonObject:
+    if value.kind() == 1:
+        var values = Python.list()
+        for element in value.sparse_values():
+            values.append(
+                Python.dict(
+                    term_id=PythonObject(element.term_id),
+                    weight=PythonObject(element.weight),
+                )
+            )
+        return values
+    if value.kind() == 3:
+        var values = Python.list()
+        for byte in value.binary_values():
+            values.append(Int(byte))
+        return Python.import_module("builtins").bytes(values)
+    if value.scalar() == 0:
+        return _numeric_to_python[DType.float32](value)
+    if value.scalar() == 1:
+        return _numeric_to_python[DType.bfloat16](value)
+    if value.scalar() == 2:
+        return _numeric_to_python[DType.float16](value)
+    if value.scalar() == 3:
+        return _numeric_to_python[DType.int8](value)
+    return _numeric_to_python[DType.uint8](value)
+
+
+def _python_component[
+    dtype: DType
+](value: Scalar[dtype]) raises -> PythonObject:
+    comptime if dtype == DType.int8 or dtype == DType.uint8:
+        return PythonObject(Int(value))
+    else:
+        return PythonObject(Float64(value))
+
+
+def _numeric_to_python[dtype: DType](value: VectorValue) raises -> PythonObject:
+    var result = Python.list()
+    if value.kind() == 0:
+        for item in value.dense_values[dtype]():
+            result.append(_python_component(item))
+    else:
+        ref values = value.multivector_values[dtype]()
+        for row in range(value.row_count()):
+            var output = Python.list()
+            for column in range(value.dimension()):
+                output.append(
+                    _python_component(values[row * value.dimension() + column])
+                )
+            result.append(output)
+    return result

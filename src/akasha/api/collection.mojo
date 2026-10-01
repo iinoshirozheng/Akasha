@@ -1,3 +1,14 @@
+from akasha.document.point_state import FieldUpdate, PointMutation, PointState
+from akasha.document.vector_schema import (
+    FieldCatalog,
+    VectorFieldSpec,
+    legacy_vector_fields,
+)
+from akasha.document.vector_value import VectorValue
+from akasha.query.field_search import FieldSearchResult
+from akasha.storage.field_catalog import load_field_catalog
+from akasha.storage.point_store import PointStore
+from akasha.storage.point_table import PointCommit
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.dispatch import portable_simd_width
 from akasha.compute.gpu.flat_scan import DeviceBatchResult
@@ -13,9 +24,20 @@ from akasha.document.record import (
     validate_fields,
 )
 from akasha.index.bitmap import Bitmap
-from akasha.index.flat import authoritative_f32_score, SearchResult
+from akasha.compute.simd import _prepare_f32_query, _prepared_f32_score
+from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
-from akasha.index.hnsw_stats import HnswSearchStats
+from akasha.index.hnsw_rebuild import (
+    build_hnsw as _build_hnsw,
+    restore_hnsw_overlay,
+    HnswRebuild,
+    HNSW_REBUILD_ATTEMPTS,
+    HNSW_REBUILD_CATCHUP_PASSES,
+)
+from akasha.index.hnsw_stats import HnswSearchStats, copy_search_stats
+from akasha.query.control import QueryControl
+from akasha.query.field_fusion import FieldQuery
+from akasha.index.field_ivf import IvfOptions
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.metadata import MetadataIndex
@@ -37,13 +59,13 @@ from akasha.storage.committed_compaction import (
     CompactionInputs,
     CompactionOutput,
     finish_compaction,
-    remove_unpublished_compaction_outputs,
 )
 from akasha.storage.compaction import (
     CompactionPolicy,
     LEVEL_ZERO_SEGMENT_LIMIT,
 )
 from akasha.storage.generation_pins import GenerationPinRegistry
+from akasha.storage.file_leases import reclaim_unreferenced_job_files
 from akasha.storage.maintenance import (
     CompactionCounts,
     DEFAULT_MAINTENANCE_LIBRARY,
@@ -62,16 +84,22 @@ from akasha.storage.filesystem import (
     atomic_replace,
     ensure_durable_directory,
     path_exists,
-    remove_file_and_sync_directory_if_exists,
     sync_directory,
 )
 from akasha.storage.hnsw_store import (
     hnsw_snapshot_eligibility,
     hnsw_snapshot_max_bytes,
-    HnswSnapshotInfo,
     try_open_compatible_hnsw_snapshot_view,
     try_read_compatible_hnsw_snapshot_owned,
-    write_hnsw_snapshot,
+)
+from akasha.storage.hnsw_overlay_cache import (
+    load_hnsw_overlay_cache,
+    publish_hnsw_overlay_cache_best_effort,
+)
+from akasha.storage.hnsw_checkpoint import (
+    migrate_hnsw_base_name,
+    HnswCheckpoint,
+    write_hnsw_checkpoint,
 )
 from akasha.storage.collection_config import (
     collection_config_exists,
@@ -80,11 +108,13 @@ from akasha.storage.collection_config import (
 )
 from akasha.storage.manifest import (
     load_manifest,
+    hnsw_base_sequence,
     Manifest,
     publish_manifest,
     SegmentDescriptor,
 )
 from akasha.storage.lock import CollectionLock
+from akasha.storage.legacy_recovery import preflight_legacy_authority
 from akasha.storage.operations import (
     CheckpointCopy,
     copy_checkpoint,
@@ -92,7 +122,6 @@ from akasha.storage.operations import (
 )
 from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.segment import (
-    read_segment,
     SEGMENT_KIND_BASE,
     SEGMENT_KIND_DELTA,
     write_segment_v3,
@@ -100,9 +129,6 @@ from akasha.storage.segment import (
 from akasha.storage.sparse_store import (
     append_sparse_wal,
     latest_sparse_records,
-    preflight_sparse_wal,
-    read_sparse_segment,
-    read_sparse_snapshot,
     repair_sparse_wal_tail,
     rotate_sparse_wal,
     SPARSE_SEGMENT_KIND_BASE,
@@ -113,7 +139,7 @@ from akasha.storage.sparse_store import (
 from akasha.storage.wal import (
     append_wal,
     append_wal_batch,
-    preflight_wal,
+    WalReader,
     repair_wal_tail,
     rotate_wal,
     WalRecord,
@@ -141,26 +167,6 @@ struct _ResolvedCollectionConfig(Movable):
         self.needs_publication = needs_publication
 
 
-struct _HnswRebuildOrdinal(Comparable, Copyable, Movable):
-    """A lightweight deterministic maintenance ordering key."""
-
-    var sequence: UInt64
-    var id: Int
-    var ordinal: Int
-
-    def __init__(out self, sequence: UInt64, id: Int, ordinal: Int):
-        self.sequence = sequence
-        self.id = id
-        self.ordinal = ordinal
-
-    def __lt__(self, other: Self) -> Bool:
-        if self.sequence != other.sequence:
-            return self.sequence < other.sequence
-        if self.id != other.id:
-            return self.id < other.id
-        return self.ordinal < other.ordinal
-
-
 struct PersistentCollection:
     """A durable, single-writer exact vector collection."""
 
@@ -170,10 +176,15 @@ struct PersistentCollection:
     var _config: CollectionConfig
     var _wal_path: String
     var _memtable: MemTable
+    var _point_store: Optional[PointStore]
     var _last_sequence: UInt64
-    var _lock: CollectionLock
+    var _lock: Optional[ArcPointer[CollectionLock]]
     var _closed: Bool
+    var _batch_failed: Bool
     var _hnsw: SegmentedHnsw
+    var _hnsw_rebuild_lock: ArcPointer[BlockingSpinLock]
+    var _hnsw_rebuild: Optional[ArcPointer[HnswRebuild]]
+    var _hnsw_rebuild_delay_for_test: Float64
     var _hnsw_id_lookup: Optional[HnswIdOrdinalLookup]
     var _hnsw_id_lookup_dirty: Bool
     var _hnsw_id_lookup_builds: Int
@@ -201,7 +212,11 @@ struct PersistentCollection:
     var _cache_generation: UInt64
     var _source_checksum: UInt32
     var _hnsw_checkpoint_was_hit: Bool
+    var _hnsw_base_sequence: UInt64
     var _hnsw_sidecar_max_bytes_for_test: UInt64
+    var _overlay_cache_sequence: Optional[UInt64]
+    var _overlay_cache_base_sequence: UInt64
+    var _overlay_cache_base_checksum: UInt32
     var _hnsw_cache_was_hit: Bool
     var _metadata_cache_was_hit: Bool
     var _compaction_attempts: Int
@@ -215,7 +230,7 @@ struct PersistentCollection:
         config: CollectionConfig,
         var memtable: MemTable,
         last_sequence: UInt64,
-        var lock: CollectionLock,
+        var lock: ArcPointer[CollectionLock],
         var hnsw: SegmentedHnsw,
         var sparse: SparseIndex,
         var sparse_pending: List[SparseWalRecord],
@@ -235,10 +250,15 @@ struct PersistentCollection:
         self._config = config.copy()
         self._wal_path = path + "/wal.bin"
         self._memtable = memtable^
+        self._point_store = None
         self._last_sequence = last_sequence
-        self._lock = lock^
+        self._lock = Optional(lock^)
         self._closed = False
+        self._batch_failed = False
         self._hnsw = hnsw^
+        self._hnsw_rebuild_lock = ArcPointer(BlockingSpinLock())
+        self._hnsw_rebuild = Optional[ArcPointer[HnswRebuild]]()
+        self._hnsw_rebuild_delay_for_test = 0.0
         self._hnsw_id_lookup = Optional[HnswIdOrdinalLookup]()
         self._hnsw_id_lookup_dirty = metadata.slot_count() > 0
         self._hnsw_id_lookup_builds = 0
@@ -260,7 +280,7 @@ struct PersistentCollection:
         self._sparse_wal_path = path + "/sparse.wal"
         self._sparse_pending = sparse_pending^
         self._metadata = metadata^
-        self._pins = ArcPointer(GenerationPinRegistry())
+        self._pins = ArcPointer(GenerationPinRegistry(path, config.dimension))
         self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
         self._read_generations = ArcPointer(ReadGenerationCache())
@@ -277,7 +297,11 @@ struct PersistentCollection:
         self._cache_generation = cache_generation
         self._source_checksum = source_checksum
         self._hnsw_checkpoint_was_hit = hnsw_checkpoint_hit
+        self._hnsw_base_sequence = last_sequence
         self._hnsw_sidecar_max_bytes_for_test = hnsw_snapshot_max_bytes()
+        self._overlay_cache_sequence = None
+        self._overlay_cache_base_sequence = 0
+        self._overlay_cache_base_checksum = 0
         self._hnsw_cache_was_hit = hnsw_cache_hit
         self._metadata_cache_was_hit = metadata_cache_hit
         self._compaction_attempts = 0
@@ -307,231 +331,36 @@ struct PersistentCollection:
     ) raises -> PersistentCollection:
         """Create or recover a collection bound to one durable ANN identity."""
         requested.validate()
+        if collection_config_exists(path):
+            var catalog = load_field_catalog(path)
+            if catalog.format_version == 2:
+                if catalog.field_at(0).hnsw.value() != requested:
+                    raise Error(
+                        "requested configuration differs from field catalog"
+                    )
+                return PersistentCollection.open_with_fields(
+                    path,
+                    catalog._fields.copy(),
+                    maintenance_library_path=maintenance_library_path,
+                )
         _ = ensure_durable_directory(path)
         var lock = CollectionLock.acquire(path + "/collection.lock")
         var resolved = _resolve_collection_config(path, requested)
         var config = resolved.config.copy()
         var dimension = config.dimension
 
-        var memtable = MemTable(dimension)
-        var snapshot_sequence = UInt64(0)
-        var cache_generation = UInt64(0)
-        var manifest_path = path + "/manifest.bin"
-        if path_exists(manifest_path):
-            var manifest = load_manifest(path, dimension)
-            cache_generation = manifest.generation
-            for segment_index in range(len(manifest.segments)):
-                var snapshot = read_segment(
-                    path + "/" + manifest.segments[segment_index].name,
-                    dimension,
-                )
-                if (
-                    snapshot.min_sequence
-                    != manifest.segments[segment_index].min_sequence
-                    or snapshot.last_sequence
-                    != manifest.segments[segment_index].max_sequence
-                ):
-                    raise Error("manifest and segment sequence mismatch")
-                if (
-                    snapshot.checksum
-                    != manifest.segments[segment_index].checksum
-                ):
-                    raise Error("manifest and segment checksum mismatch")
-                if (
-                    manifest.segments[segment_index].level == 0
-                    and snapshot.kind != SEGMENT_KIND_DELTA
-                ):
-                    raise Error("level-zero manifest entry must be a delta")
-                if (
-                    manifest.segments[segment_index].level > 0
-                    and snapshot.kind != SEGMENT_KIND_BASE
-                ):
-                    raise Error("compacted manifest entry must be a base")
-                memtable.apply_recovered_entries(snapshot.entries)
-            snapshot_sequence = manifest.last_sequence
-        remove_unpublished_compaction_outputs(path, cache_generation)
-
-        # Preserve the exact committed dense identity before newer WAL replay.
-        # A sidecar describes this checkpoint, not the post-WAL MemTable.
-        var checkpoint_live_ids = Dict[Int, Bool]()
-        for ordinal in range(memtable.slot_count()):
-            if memtable.is_live_at(ordinal):
-                checkpoint_live_ids[memtable.id_at(ordinal)] = True
-
-        var dense_wal = preflight_wal(path + "/wal.bin", dimension)
-        var last_sequence = snapshot_sequence
-        for index in range(len(dense_wal.records)):
-            if dense_wal.records[index].sequence <= snapshot_sequence:
-                continue
-            if dense_wal.records[index].is_delete:
-                memtable.apply_delete(
-                    dense_wal.records[index].id,
-                    dense_wal.records[index].sequence,
-                )
-            else:
-                var values = dense_wal.records[index].values.copy()
-                var fields = clone_fields(dense_wal.records[index].fields)
-                memtable.apply_document_upsert(
-                    dense_wal.records[index].id,
-                    dense_wal.records[index].sequence,
-                    values^,
-                    fields^,
-                )
-            last_sequence = dense_wal.records[index].sequence
-
-        var sparse = SparseIndex()
-        if path_exists(manifest_path):
-            var sparse_manifest = load_manifest(path, dimension)
-            var described_sparse_count = 0
-            for descriptor_index in range(len(sparse_manifest.segments)):
-                if (
-                    sparse_manifest.segments[
-                        descriptor_index
-                    ].sparse_name.byte_length()
-                    > 0
-                ):
-                    described_sparse_count += 1
-            if described_sparse_count == 0:
-                var legacy_path = (
-                    path + "/sparse-" + String(snapshot_sequence) + ".bin"
-                )
-                if path_exists(legacy_path):
-                    var legacy_records = read_sparse_snapshot(
-                        legacy_path, snapshot_sequence
-                    )
-                    for record_index in range(len(legacy_records)):
-                        sparse.upsert(
-                            legacy_records[record_index].id,
-                            legacy_records[record_index].elements,
-                        )
-            else:
-                for descriptor_index in range(len(sparse_manifest.segments)):
-                    if (
-                        sparse_manifest.segments[
-                            descriptor_index
-                        ].sparse_name.byte_length()
-                        == 0
-                    ):
-                        var legacy_path = (
-                            path
-                            + "/sparse-"
-                            + String(
-                                sparse_manifest.segments[
-                                    descriptor_index
-                                ].max_sequence
-                            )
-                            + ".bin"
-                        )
-                        if path_exists(legacy_path):
-                            var legacy_records = read_sparse_snapshot(
-                                legacy_path,
-                                sparse_manifest.segments[
-                                    descriptor_index
-                                ].max_sequence,
-                            )
-                            for record_index in range(len(legacy_records)):
-                                sparse.upsert(
-                                    legacy_records[record_index].id,
-                                    legacy_records[record_index].elements,
-                                )
-                        continue
-                    var sparse_segment = read_sparse_segment(
-                        path
-                        + "/"
-                        + sparse_manifest.segments[descriptor_index].sparse_name
-                    )
-                    if (
-                        sparse_segment.min_sequence
-                        != sparse_manifest.segments[
-                            descriptor_index
-                        ].min_sequence
-                        or sparse_segment.last_sequence
-                        != sparse_manifest.segments[
-                            descriptor_index
-                        ].max_sequence
-                    ):
-                        raise Error(
-                            "manifest and sparse segment sequence mismatch"
-                        )
-                    if (
-                        sparse_segment.checksum
-                        != sparse_manifest.segments[
-                            descriptor_index
-                        ].sparse_checksum
-                    ):
-                        raise Error(
-                            "manifest and sparse segment checksum mismatch"
-                        )
-                    if (
-                        sparse_manifest.segments[descriptor_index].level == 0
-                        and sparse_segment.kind != SPARSE_SEGMENT_KIND_DELTA
-                    ):
-                        raise Error("level-zero sparse entry must be a delta")
-                    if (
-                        sparse_manifest.segments[descriptor_index].level > 0
-                        and sparse_segment.kind != SPARSE_SEGMENT_KIND_BASE
-                    ):
-                        raise Error("compacted sparse entry must be a base")
-                    for record_index in range(len(sparse_segment.records)):
-                        if sparse_segment.records[record_index].is_delete:
-                            sparse.delete(
-                                sparse_segment.records[record_index].id
-                            )
-                        else:
-                            sparse.upsert(
-                                sparse_segment.records[record_index].id,
-                                sparse_segment.records[record_index].elements,
-                            )
-        var sparse_pending = List[SparseWalRecord]()
-        var sparse_wal = preflight_sparse_wal(path + "/sparse.wal")
-        # A dense delete removes the whole point, so replay the dense WAL's
-        # deletes in sequence order with the sparse WAL: a later reinsert must
-        # not inherit an older sparse field.
-        var dense_index = 0
-        for index in range(len(sparse_wal.records) + 1):
-            var bound = UInt64.MAX
-            if index < len(sparse_wal.records):
-                bound = sparse_wal.records[index].sequence
-            while (
-                dense_index < len(dense_wal.records)
-                and dense_wal.records[dense_index].sequence < bound
-            ):
-                ref dense = dense_wal.records[dense_index]
-                dense_index += 1
-                if (
-                    dense.sequence > snapshot_sequence
-                    and dense.is_delete
-                    and sparse.contains(dense.id)
-                ):
-                    sparse.delete(dense.id)
-                    sparse_pending.append(
-                        SparseWalRecord.delete(dense.sequence, dense.id)
-                    )
-            if index == len(sparse_wal.records):
-                break
-            if sparse_wal.records[index].sequence <= snapshot_sequence:
-                continue
-            if sparse_wal.records[index].is_delete:
-                sparse.delete(sparse_wal.records[index].id)
-            else:
-                sparse.upsert(
-                    sparse_wal.records[index].id,
-                    sparse_wal.records[index].elements,
-                )
-            sparse_pending.append(sparse_wal.records[index].clone())
-            if sparse_wal.records[index].sequence > last_sequence:
-                last_sequence = sparse_wal.records[index].sequence
-        var recovered_sparse = sparse.records()
-        for index in range(len(recovered_sparse)):
-            var ordinal = memtable.ordinal_for(recovered_sparse[index].id)
-            if ordinal < 0 or not memtable.is_live_at(ordinal):
-                sparse.delete(recovered_sparse[index].id)
-                continue
-            # The point state owns its sparse field, like dense and payload.
-            memtable.set_sparse(
-                recovered_sparse[index].id,
-                recovered_sparse[index].elements.copy(),
-            )
+        var recovered = preflight_legacy_authority(path, dimension)
+        var snapshot_sequence = recovered.snapshot_sequence
+        var cache_generation = recovered.generation
+        var last_sequence = recovered.last_sequence
+        var wal_valid_length = recovered.wal_valid_length
+        var wal_source_length = recovered.wal_source_length
+        var memtable = recovered.memtable.take()
+        var sparse = recovered.sparse.take()
+        var sparse_pending = recovered.sparse_pending.take()
+        var sparse_wal = recovered.sparse_wal.take()
+        var checkpoint_live_ids = recovered.checkpoint_live_ids.take()
+        reclaim_unreferenced_job_files(path, dimension)
 
         var source_checksum = authoritative_index_checksum(memtable)
         var hnsw_load = _load_or_rebuild_hnsw(
@@ -542,7 +371,6 @@ struct PersistentCollection:
             last_sequence,
             source_checksum,
             checkpoint_live_ids,
-            dense_wal.records,
             memtable,
         )
         var hnsw_cache_hit = hnsw_load.legacy_cache_hit
@@ -568,7 +396,7 @@ struct PersistentCollection:
         # after the complete recovery preflight succeeds.
         if resolved.needs_publication:
             publish_collection_config(path, config)
-        repair_wal_tail(path + "/wal.bin", dense_wal)
+        repair_wal_tail(path + "/wal.bin", wal_valid_length, wal_source_length)
         repair_sparse_wal_tail(path + "/sparse.wal", sparse_wal)
 
         var collection = PersistentCollection(
@@ -576,7 +404,7 @@ struct PersistentCollection:
             config,
             memtable^,
             last_sequence,
-            lock^,
+            ArcPointer(lock^),
             hnsw^,
             sparse^,
             sparse_pending^,
@@ -591,7 +419,217 @@ struct PersistentCollection:
             hnsw_unavailable_reason,
         )
         collection._hnsw_mutations_since_rebuild = hnsw_replayed_mutations
+        if hnsw_load.base_sequence:
+            collection._hnsw_base_sequence = hnsw_load.base_sequence.value()
         return collection^
+
+    @staticmethod
+    def open_with_fields(
+        path: String,
+        var fields: List[VectorFieldSpec],
+        *,
+        maintenance_library_path: String = DEFAULT_MAINTENANCE_LIBRARY,
+    ) raises -> PersistentCollection:
+        """Open or atomically migrate to the immutable typed field catalog."""
+        var store = PointStore.open(path, fields^)
+        var config = store._catalog[].field_at(0).hnsw.value().copy()
+        var table = store._table.read_projection()
+        var metadata = _build_metadata(table)
+        var sparse = SparseIndex()
+        for ordinal in table.live_ordinals():
+            ref entry = table.entry_ref_at(ordinal)
+            if entry.has_sparse() and len(entry.sparse()) > 0:
+                sparse.upsert(entry.id, entry.sparse())
+        var generation = (
+            store._manifest.value().generation if store._manifest else UInt64(0)
+        )
+        var checkpoint_sequence = store._manifest.value().last_sequence if store._manifest else UInt64(
+            0
+        )
+        var hnsw_load = _load_or_rebuild_hnsw(
+            path,
+            config,
+            generation,
+            checkpoint_sequence,
+            store._table.last_sequence(),
+            0,
+            Dict[Int, Bool](),
+            table,
+            point_projection=True,
+        )
+        var available = hnsw_load.available
+        var checkpoint_hit = hnsw_load.sidecar_hit
+        var replayed = hnsw_load.replayed_mutations
+        var hnsw = hnsw_load.take_index()
+        var collection = PersistentCollection(
+            path,
+            config,
+            table^,
+            store._table.last_sequence(),
+            store._lock.value().copy(),
+            hnsw^,
+            sparse^,
+            [],
+            metadata^,
+            maintenance_library_path,
+            generation,
+            0,
+            checkpoint_hit,
+            False,
+            False,
+            available,
+            "rebuild_failed",
+        )
+        collection._point_store = Optional(store^)
+        collection._hnsw_mutations_since_rebuild = replayed
+        if hnsw_load.base_sequence:
+            collection._hnsw_base_sequence = hnsw_load.base_sequence.value()
+        return collection^
+
+    def _field_catalog(self) -> Optional[ArcPointer[FieldCatalog]]:
+        if self._point_store:
+            return Optional(self._point_store.value()._catalog.copy())
+        return None
+
+    def vector_fields(self) raises -> List[VectorFieldSpec]:
+        """Return defensive schema descriptors, including reserved fields 0/1.
+        """
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            if self._point_store:
+                return self._point_store.value()._catalog[]._fields.copy()
+            return legacy_vector_fields(self._config)
+
+    def get_point(self, id: Int) raises -> Optional[PointState]:
+        return self.snapshot().get_point(id)
+
+    def search_field(
+        mut self,
+        name: String,
+        query: VectorValue,
+        k: Int,
+        var expression: Optional[FilterExpression] = None,
+        *,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.snapshot().search_field_reported(
+            name,
+            query,
+            k,
+            expression^,
+            approximate=approximate,
+            ef_search=ef_search,
+            rerank_k=rerank_k,
+            ivf=ivf,
+            control=control,
+        )
+        with BlockingScopedLock(self._writer_lock[]):
+            self._last_search_stats = copy_search_stats(execution.stats)
+            self._last_dense_plan_reason = execution.reason.copy()
+        return execution.take_results()
+
+    def search_fields(
+        mut self,
+        queries: List[FieldQuery],
+        k: Int,
+        *,
+        fetch_k: Int = 100,
+        rank_constant: Int = 60,
+        var expression: Optional[FilterExpression] = None,
+        control: Optional[QueryControl] = None,
+        rerank: Optional[FieldQuery] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.snapshot().search_fields_reported(
+            queries,
+            k,
+            fetch_k=fetch_k,
+            rank_constant=rank_constant,
+            expression=expression^,
+            control=control,
+            rerank=rerank,
+        )
+        with BlockingScopedLock(self._writer_lock[]):
+            self._last_search_stats = copy_search_stats(execution.stats)
+            self._last_dense_plan_reason = execution.reason.copy()
+        return execution.take_results()
+
+    def apply_point_batch(
+        mut self, mutations: List[PointMutation]
+    ) raises -> BatchWriteResult:
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    var committed = self._apply_point_batch_unlocked(mutations)
+                    return BatchWriteResult(
+                        committed.first_sequence,
+                        committed.last_sequence,
+                        committed.mutation_count,
+                    )
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
+
+    def _apply_point_batch_unlocked(
+        mut self, mutations: List[PointMutation]
+    ) raises -> PointCommit:
+        self._ensure_open()
+        if not self._point_store:
+            raise Error("point mutations require a field-aware collection")
+        var ids = List[Int]()
+        var previous_dense = Dict[Int, Int]()
+        for index in range(len(mutations)):
+            var id = mutations[index].id
+            if id in previous_dense:
+                continue
+            var ordinal = self._memtable.ordinal_for(id)
+            previous_dense[id] = (
+                self._memtable.entry_ref_at(ordinal).dense_address() if ordinal
+                >= 0 else 0
+            )
+            ids.append(id)
+        var committed = self._point_store.value().apply_batch(mutations)
+        self._last_sequence = committed.last_sequence
+        var metadata_slots = self._metadata.slot_count()
+        try:
+            for id in ids:
+                var entry = MemTableEntry.from_point(
+                    self._point_store.value()._table.entry(id)
+                )
+                self._memtable.put(entry^)
+                ref current = self._memtable.entry_ref_at(
+                    self._memtable.ordinal_for(id)
+                )
+                if current.tombstone:
+                    self._metadata.delete(id)
+                else:
+                    self._metadata.upsert(id, clone_fields(current.fields()))
+                if current.has_sparse() and len(current.sparse()) > 0:
+                    self._sparse.upsert(id, current.sparse())
+                else:
+                    self._sparse.delete(id)
+        except error:
+            # Authority is committed. Refuse a partial derived read projection
+            # until recovery reconstructs every field from that atomic envelope.
+            self._point_store.value()._io_failed = True
+            raise error^
+        self._record_read_state(ids, committed.last_sequence)
+        self._extend_hnsw_id_lookup(metadata_slots)
+        for id in ids:
+            var current = self._memtable.entry_ref_at(
+                self._memtable.ordinal_for(id)
+            ).dense_address()
+            if current == previous_dense[id]:
+                continue
+            if current == 0:
+                self._update_hnsw_after_delete(id, previous_dense[id] != 0)
+            else:
+                self._update_hnsw_after_upsert(id)
+        self._invalidate_cache_hits()
+        return committed
 
     def collection_config(self) -> CollectionConfig:
         """Return a defensive copy of this collection's durable identity."""
@@ -605,8 +643,10 @@ struct PersistentCollection:
         """Release this collection's single-writer ownership.
 
         New operations fail with "collection is closed"; acquired operations
-        own their root and finish. The cached root is released outside the
-        writer lock, so a last owner frees rows and device state there."""
+        own their root and finish. Captured backups retain the file lock until
+        their copy completes, excluding a replacement writer. The cached root
+        is released outside the writer lock, so a last owner frees rows and
+        device state there."""
         var released = Optional[ArcPointer[ReadGeneration]]()
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
@@ -624,7 +664,9 @@ struct PersistentCollection:
         except error:
             maintenance_error = String(error)
         with BlockingScopedLock(self._writer_lock[]):
-            self._lock.close()
+            if self._point_store:
+                self._point_store.value().close()
+            self._lock = None
         if maintenance_error.byte_length() > 0:
             raise Error(maintenance_error)
 
@@ -685,7 +727,7 @@ struct PersistentCollection:
         """Return an owned copy of the most recent approximate-query stats."""
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
-            return _copy_hnsw_search_stats(self._last_search_stats)
+            return copy_search_stats(self._last_search_stats)
 
     def hnsw_slot_count(self) raises -> Int:
         with BlockingScopedLock(self._writer_lock[]):
@@ -764,6 +806,7 @@ struct PersistentCollection:
                 self._last_sequence,
                 self._memtable,
                 self._pins,
+                self._field_catalog(),
             )
         )
 
@@ -780,6 +823,21 @@ struct PersistentCollection:
     def _upsert_unlocked(mut self, id: Int, var values: List[Float32]) raises:
         self._ensure_open()
         self._validate_vector(values)
+        if self._point_store:
+            var changes: List[PointMutation] = [
+                PointMutation(
+                    id,
+                    1,
+                    [
+                        FieldUpdate.set(
+                            0, VectorValue.dense[DType.float32](values^)
+                        )
+                    ],
+                    Optional(List[DocumentField]()),
+                )
+            ]
+            _ = self._apply_point_batch_unlocked(changes)
+            return
         var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
         var wal_values = values.copy()
@@ -817,6 +875,21 @@ struct PersistentCollection:
     ) raises:
         self._ensure_open()
         self._validate_vector(values)
+        if self._point_store:
+            var changes: List[PointMutation] = [
+                PointMutation(
+                    id,
+                    1,
+                    [
+                        FieldUpdate.set(
+                            0, VectorValue.dense[DType.float32](values^)
+                        )
+                    ],
+                    Optional(fields^),
+                )
+            ]
+            _ = self._apply_point_batch_unlocked(changes)
+            return
         var metadata_slots = self._metadata.slot_count()
         var sequence = self._next_sequence()
         var wal_values = values.copy()
@@ -869,20 +942,52 @@ struct PersistentCollection:
             self._validate_vector(mutations[index].values)
             validate_fields(mutations[index].fields)
 
-        var prior_live_by_id = Dict[Int, Bool]()
-        for index in range(len(mutations)):
-            var id = mutations[index].id
-            if id in prior_live_by_id:
-                continue
-            var ordinal = self._metadata.ordinal_for(id)
-            prior_live_by_id[id] = ordinal >= 0 and self._metadata.is_live_at(
-                ordinal
+        if self._point_store:
+            var changes = List[PointMutation](capacity=len(mutations))
+            for index in range(len(mutations)):
+                ref mutation = mutations[index]
+                if mutation.is_delete:
+                    changes.append(PointMutation.delete(mutation.id))
+                else:
+                    changes.append(
+                        PointMutation(
+                            mutation.id,
+                            1,
+                            [
+                                FieldUpdate.set(
+                                    0,
+                                    VectorValue.dense[DType.float32](
+                                        mutation.values.copy()
+                                    ),
+                                )
+                            ],
+                            Optional(clone_fields(mutation.fields)),
+                        )
+                    )
+            var committed = self._apply_point_batch_unlocked(changes)
+            return BatchWriteResult(
+                committed.first_sequence,
+                committed.last_sequence,
+                committed.mutation_count,
             )
 
+        var prior_live_by_id = Dict[Int, Bool]()
         var first_sequence = self._last_sequence + 1
         var records = List[WalRecord](capacity=len(mutations))
-        var staged_memtable = self._memtable.clone()
+        # Seed only affected IDs, preserving their other field owners. First
+        # appearances define the slot order for IDs newly accepted by this batch.
+        var staged_memtable = MemTable(self._config.dimension)
+        var batch_ids = List[Int](capacity=len(mutations))
         for index in range(len(mutations)):
+            var id = mutations[index].id
+            if id not in prior_live_by_id:
+                var ordinal = self._memtable.ordinal_for(id)
+                prior_live_by_id[
+                    id
+                ] = ordinal >= 0 and self._memtable.is_live_at(ordinal)
+                if ordinal >= 0:
+                    staged_memtable.put(self._memtable.entry_at(ordinal))
+                batch_ids.append(id)
             var sequence = first_sequence + UInt64(index)
             if mutations[index].is_delete:
                 records.append(WalRecord.delete(sequence, mutations[index].id))
@@ -906,17 +1011,25 @@ struct PersistentCollection:
                 staged_values^,
                 staged_fields^,
             )
-        var staged_metadata = _build_metadata(staged_memtable)
-
+        # An append error may leave an accepted durable envelope. Block further
+        # operations until recovery resolves it; publication errors follow the
+        # same rule. Existing immutable roots remain usable.
+        self._batch_failed = True
         append_wal_batch(self._wal_path, self._config.dimension, records)
         var metadata_slots = self._metadata.slot_count()
-        self._memtable = staged_memtable^
-        self._metadata = staged_metadata^
+        if metadata_slots == 0:
+            self._metadata.begin_bulk()
+        for ordinal in range(staged_memtable.slot_count()):
+            ref entry = staged_memtable.entry_ref_at(ordinal)
+            if entry.tombstone:
+                self._metadata.delete(entry.id)
+            else:
+                self._metadata.upsert(entry.id, clone_fields(entry.fields()))
+            self._memtable.put(entry.clone())
+        if metadata_slots == 0:
+            self._metadata.finish_bulk()
         # One envelope: every final state enters the publisher before any
         # capture can run, so readers see all of the batch or none of it.
-        var batch_ids = List[Int](capacity=len(mutations))
-        for index in range(len(mutations)):
-            batch_ids.append(mutations[index].id)
         self._record_read_state(
             batch_ids, first_sequence + UInt64(len(mutations) - 1)
         )
@@ -944,6 +1057,7 @@ struct PersistentCollection:
             else:
                 self._update_hnsw_after_upsert(mutations[index].id)
         self._invalidate_cache_hits()
+        self._batch_failed = False
         return BatchWriteResult(first_sequence, last_sequence, len(mutations))
 
     def get(self, id: Int) raises -> Optional[DocumentRecord]:
@@ -976,8 +1090,19 @@ struct PersistentCollection:
     ) raises:
         self._ensure_open()
         validate_sparse(elements)
-        if not Bool(self._memtable.get(id)):
+        var ordinal = self._memtable.ordinal_for(id)
+        if ordinal < 0 or not self._memtable.is_live_at(ordinal):
             raise Error("sparse vectors require an existing live point")
+        if self._point_store:
+            var changes: List[PointMutation] = [
+                PointMutation(
+                    id,
+                    3,
+                    [FieldUpdate.set(1, VectorValue.sparse(elements.copy()))],
+                )
+            ]
+            _ = self._apply_point_batch_unlocked(changes)
+            return
         var sequence = self._next_sequence()
         var wal_elements = elements.copy()
         var record = SparseWalRecord.upsert(sequence, id, wal_elements^)
@@ -1022,6 +1147,8 @@ struct PersistentCollection:
         here; it cannot reject the committed write, so a failure drops the
         derived state instead.
         """
+        if self._hnsw_rebuild:
+            self._hnsw_rebuild.value()[].record(self._memtable, ids, sequence)
         self._read_generations[].record(self._memtable, ids, sequence)
         if not self._read_generations[].merge_due():
             return
@@ -1035,6 +1162,10 @@ struct PersistentCollection:
 
     def _delete_unlocked(mut self, id: Int) raises:
         self._ensure_open()
+        if self._point_store:
+            var changes: List[PointMutation] = [PointMutation.delete(id)]
+            _ = self._apply_point_batch_unlocked(changes)
+            return
         var metadata_slots = self._metadata.slot_count()
         var metadata_ordinal = self._metadata.ordinal_for(id)
         var was_live = metadata_ordinal >= 0 and self._metadata.is_live_at(
@@ -1468,6 +1599,7 @@ struct PersistentCollection:
 
     def flush(mut self) raises:
         """Atomically append an immutable incremental checkpoint."""
+        self._prepare_hnsw_checkpoint()
         var waited = False
         var inline_compaction: Bool
         while True:
@@ -1481,10 +1613,120 @@ struct PersistentCollection:
             self.compact()
 
     def rebuild_hnsw(mut self) raises:
-        """Explicitly rebuild the derived graph from authoritative live data."""
+        """Build from a pinned root while writes continue; catch up and publish.
+
+        Job admission precedes writer locking. An overflowed journal retries
+        from a newer root, at most four times, without replacing a valid graph.
+        """
+        self._rebuild_hnsw(only_if_due=False)
+
+    def _rebuild_hnsw(mut self, *, only_if_due: Bool) raises:
+        with BlockingScopedLock(self._hnsw_rebuild_lock[]):
+            if only_if_due:
+                with BlockingScopedLock(self._writer_lock[]):
+                    self._ensure_open()
+                    if not self._hnsw_requires_maintenance():
+                        return
+            for _ in range(HNSW_REBUILD_ATTEMPTS):
+                var job = self._begin_hnsw_rebuild()
+                try:
+                    var candidate = job[].build()
+                    if self._finish_hnsw_rebuild(job, candidate^):
+                        return
+                except error:
+                    self._cancel_hnsw_rebuild(job)
+                    raise error^
+        raise Error("HNSW rebuild retry budget exhausted")
+
+    def _begin_hnsw_rebuild(mut self) raises -> ArcPointer[HnswRebuild]:
+        """Capture and register under writer; caller serializes build jobs."""
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
-            self._rebuild_hnsw_unlocked()
+            if self._hnsw_rebuild:
+                raise Error("HNSW rebuild already active")
+            try:
+                var root = self._read_generations[].acquire(
+                    self._config,
+                    self._read_generations[].generation,
+                    self._last_sequence,
+                    self._memtable,
+                    self._pins,
+                    self._field_catalog(),
+                )
+                var job = ArcPointer(HnswRebuild(root^))
+                job[].delay_for_test = self._hnsw_rebuild_delay_for_test
+                self._hnsw_rebuild = Optional(job.copy())
+                return job^
+            except error:
+                if self._config != self._hnsw.config:
+                    self._mark_hnsw_unavailable("rebuild_failed")
+                raise error^
+
+    def _cancel_hnsw_rebuild(mut self, job: ArcPointer[HnswRebuild]):
+        with BlockingScopedLock(self._writer_lock[]):
+            if self._hnsw_rebuild and self._hnsw_rebuild.value() is job:
+                self._hnsw_rebuild = None
+
+    def _finish_hnsw_rebuild(
+        mut self, job: ArcPointer[HnswRebuild], var candidate: SegmentedHnsw
+    ) raises -> Bool:
+        """Rotate and apply bounded journals outside writer, then swap graphs.
+
+        Publication requires an empty journal with complete source coverage.
+        The old graph is also released outside writer; no all-row scan, graph
+        update, validation or source-map reconstruction occurs under that lock.
+        """
+        var staged = Optional(candidate^)
+        try:
+            for catchup_pass in range(HNSW_REBUILD_CATCHUP_PASSES + 1):
+                var released = Optional[SegmentedHnsw]()
+                var tail = Optional[MemTable]()
+                with BlockingScopedLock(self._writer_lock[]):
+                    if not self._hnsw_rebuild or not (
+                        self._hnsw_rebuild.value() is job
+                    ):
+                        return False
+                    self._ensure_open()
+                    if (
+                        job[].invalid
+                        or job[].sequence != self._last_sequence
+                        or job[].root[].config != self._config
+                        or staged.value().config != self._config
+                    ):
+                        self._hnsw_rebuild = None
+                        return False
+                    if job[].tail.slot_count() == 0:
+                        if (
+                            staged.value().current_point_count()
+                            != self._memtable.dense_live_count()
+                        ):
+                            raise Error(
+                                "HNSW rebuild catch-up live count mismatch"
+                            )
+                        released = Optional(self._hnsw^)
+                        self._hnsw = staged.take()
+                        self._hnsw_base_sequence = job[].root[].sequence
+                        self._hnsw_available = True
+                        self._hnsw_unavailable_reason = ""
+                        self._hnsw_mutations_since_rebuild = (
+                            self._hnsw.mutation_count()
+                        )
+                        self._hnsw_checkpoint_was_hit = False
+                        self._hnsw_cache_was_hit = False
+                        self._hnsw_rebuild = None
+                    elif catchup_pass == HNSW_REBUILD_CATCHUP_PASSES:
+                        self._hnsw_rebuild = None
+                        return False
+                    else:
+                        tail = Optional(job[].take_tail())
+                if released:
+                    _ = released.take()
+                    return True
+                job[].catch_up(tail.value(), staged.value())
+        except error:
+            self._cancel_hnsw_rebuild(job)
+            raise error^
+        return False
 
     def backup_to(mut self, target: String) raises -> StorageInspection:
         """Checkpoint, then copy that generation without the writer lock.
@@ -1503,6 +1745,7 @@ struct PersistentCollection:
 
     def _begin_backup(mut self) raises -> CheckpointCopy:
         """Checkpoint, then capture and pin the committed generation."""
+        self._prepare_hnsw_checkpoint()
         var waited = False
         var inline_compaction: Bool
         var captured: CheckpointCopy
@@ -1514,6 +1757,8 @@ struct PersistentCollection:
                         load_manifest(self._path, self._config.dimension),
                         Optional(self._config.copy()),
                         self._memtable.live_count(),
+                        source_lock=self._lock.copy(),
+                        catalog=self._field_catalog(),
                     )
                     self._pins[].pin(checkpoint.manifest.generation)
                     captured = checkpoint^
@@ -1530,9 +1775,10 @@ struct PersistentCollection:
                 raise error^
         return captured^
 
-    def _end_backup(self, checkpoint: CheckpointCopy):
-        """Release the captured files to the next reclaim."""
+    def _end_backup(self, mut checkpoint: CheckpointCopy):
+        """Release the capture, reclaiming obsolete files on the last lease."""
         self._pins[].unpin(checkpoint.manifest.generation)
+        checkpoint._source_lock = None
 
     def _flush_admitted(mut self, waited: Bool) raises -> Bool:
         """Admit a flush unless level-zero segments reached the limit.
@@ -1570,11 +1816,54 @@ struct PersistentCollection:
     def _checkpoint_unlocked(mut self) raises -> Optional[Manifest]:
         """Checkpoint the WAL tail; returns the manifest when one was added."""
         self._ensure_open()
+        if self._point_store:
+            var previous = self._read_generations[].generation
+            var generation = previous + 1
+            if path_exists(self._path + "/manifest.bin"):
+                var current = load_manifest(self._path, self._config.dimension)
+                if current.generation == UInt64.MAX:
+                    raise Error("manifest generation exhausted")
+                generation = current.generation + 1
+            self._ensure_owned_hnsw_checkpoint()
+            var checkpoint = Optional[HnswCheckpoint]()
+            if (
+                self._hnsw_available
+                and self._hnsw.base_is_owned()
+                and not self._hnsw_checkpoint_was_hit
+            ):
+                var eligibility = hnsw_snapshot_eligibility(
+                    self._hnsw.immutable_owned_base(),
+                    self._hnsw_sidecar_max_bytes_for_test,
+                )
+                if not eligibility.graph_usable:
+                    self._mark_hnsw_unavailable("eligibility_failed")
+                if eligibility.eligible:
+                    checkpoint = Optional(
+                        write_hnsw_checkpoint(
+                            self._path,
+                            self._hnsw.immutable_owned_base(),
+                            self._hnsw_base_sequence,
+                            generation,
+                        )
+                    )
+            self._point_store.value().flush(checkpoint^)
+            var manifest = load_manifest(self._path, self._config.dimension)
+            self._hnsw_checkpoint_was_hit = (
+                self._point_store.value()._hnsw_reference_valid
+            )
+            self._read_generations[].publish(manifest.generation)
+            self._publish_index_caches_best_effort()
+            if previous == manifest.generation:
+                return None
+            return Optional(manifest^)
         self._reclaim_retired()
         var previous_sequence = UInt64(0)
         var generation = UInt64(1)
         var has_previous_manifest = False
         var previous_hnsw_name = String()
+        var retained_hnsw = Optional[Manifest]()
+        var migrated_hnsw_name = Optional[String]()
+        var retain_previous_hnsw = False
         var previous_hnsw_metadata_matches = False
         var descriptors = List[SegmentDescriptor]()
         if path_exists(self._path + "/manifest.bin"):
@@ -1593,59 +1882,74 @@ struct PersistentCollection:
                     == UInt64(self._hnsw.current_point_count())
                     and path_exists(self._path + "/" + previous_hnsw_name)
                 )
+                if (
+                    self._hnsw_checkpoint_was_hit
+                    and previous_manifest.format_version >= 4
+                    and previous_manifest.hnsw_config_fingerprint.value()
+                    == self._config.fingerprint()
+                    and path_exists(self._path + "/" + previous_hnsw_name)
+                ):
+                    retain_previous_hnsw = True
             if self._last_sequence < previous_sequence:
                 raise Error("collection sequence precedes checkpoint")
             if previous_manifest.format_version >= 2:
                 if previous_manifest.generation == UInt64.MAX:
                     raise Error("manifest generation exhausted")
                 generation = previous_manifest.generation + 1
+            if (
+                self._hnsw_checkpoint_was_hit
+                and previous_manifest.format_version == 3
+                and previous_manifest.hnsw_name
+                and self._last_sequence > previous_sequence
+                and previous_manifest.hnsw_config_fingerprint.value()
+                == self._config.fingerprint()
+                and path_exists(self._path + "/" + previous_hnsw_name)
+            ):
+                migrated_hnsw_name = Optional(
+                    migrate_hnsw_base_name(
+                        self._path, previous_manifest, generation
+                    )
+                )
+                retain_previous_hnsw = True
             for index in range(len(previous_manifest.segments)):
                 descriptors.append(previous_manifest.segments[index].clone())
+            if retain_previous_hnsw:
+                retained_hnsw = Optional(previous_manifest^)
 
-        # A first delta-only graph is already the complete graph and can become
-        # the checkpoint base by ownership transfer even at the threshold.
-        # Maintenance is evaluated afterwards so only a base+delta overlay
-        # that meets policy, or another rebuild condition, rebuilds fully.
+        # Full graph maintenance runs before checkpoint admission, outside
+        # writer. A first delta-only graph can still transfer its ownership.
         self._ensure_owned_hnsw_checkpoint()
-        self._maintain_hnsw_for_flush()
         if has_previous_manifest and self._last_sequence == previous_sequence:
             var hnsw_to_cleanup = String()
-            if not previous_hnsw_metadata_matches:
+            if not previous_hnsw_metadata_matches and not retained_hnsw:
                 var wrote_hnsw = False
                 if self._hnsw_available:
                     self._ensure_owned_hnsw_checkpoint()
-                    if self._hnsw_available and self._hnsw.checkpoint_ready():
+                    if self._hnsw_available and self._hnsw.base_is_owned():
                         var eligibility = hnsw_snapshot_eligibility(
-                            self._hnsw.checkpoint_base(),
+                            self._hnsw.immutable_owned_base(),
                             self._hnsw_sidecar_max_bytes_for_test,
                         )
                         if not eligibility.graph_usable:
                             self._mark_hnsw_unavailable("eligibility_failed")
                         if eligibility.eligible:
-                            var hnsw_name = (
-                                "hnsw-" + String(self._last_sequence) + ".bin"
+                            var checkpoint = write_hnsw_checkpoint(
+                                self._path,
+                                self._hnsw.immutable_owned_base(),
+                                self._hnsw_base_sequence,
+                                generation,
                             )
-                            var hnsw_temporary = (
-                                self._path + "/" + hnsw_name + ".tmp"
-                            )
-                            var hnsw_info = write_hnsw_snapshot(
-                                hnsw_temporary,
-                                self._hnsw.checkpoint_base(),
-                                self._last_sequence,
-                            )
-                            atomic_replace(
-                                hnsw_temporary, self._path + "/" + hnsw_name
-                            )
-                            sync_directory(self._path)
                             var upgraded = Manifest.with_hnsw(
                                 self._config.dimension,
                                 generation,
                                 self._last_sequence,
                                 _clone_segment_descriptors(descriptors),
-                                hnsw_name,
-                                hnsw_info.checksum,
-                                hnsw_info.config_fingerprint,
-                                hnsw_info.live_point_count,
+                                checkpoint.name,
+                                checkpoint.info.checksum,
+                                checkpoint.info.config_fingerprint,
+                                checkpoint.info.live_point_count,
+                                format_version=4 if checkpoint.info.sequence
+                                == self._last_sequence else 5,
                             )
                             publish_manifest(self._path, upgraded)
                             self._read_generations[].publish(
@@ -1653,6 +1957,7 @@ struct PersistentCollection:
                             )
                             self._hnsw_checkpoint_was_hit = True
                             wrote_hnsw = True
+                            hnsw_to_cleanup = previous_hnsw_name.copy()
                 if not wrote_hnsw and previous_hnsw_name.byte_length() > 0:
                     var downgraded = Manifest.with_segments(
                         self._config.dimension,
@@ -1667,8 +1972,9 @@ struct PersistentCollection:
             rotate_wal(self._path)
             rotate_sparse_wal(self._path)
             if hnsw_to_cleanup.byte_length() > 0:
-                remove_file_and_sync_directory_if_exists(
-                    self._path, self._path + "/" + hnsw_to_cleanup
+                self._retired[].retire_or_reclaim(
+                    self._path,
+                    [self._path + "/" + hnsw_to_cleanup],
                 )
             self._sparse_pending = List[SparseWalRecord]()
             self._publish_index_caches_best_effort()
@@ -1723,22 +2029,25 @@ struct PersistentCollection:
             self._last_sequence,
             entries,
         )
-        var hnsw_name = "hnsw-" + String(self._last_sequence) + ".bin"
-        var hnsw_temporary = self._path + "/" + hnsw_name + ".tmp"
-        var hnsw_info = Optional[HnswSnapshotInfo]()
-        if self._hnsw_available and self._hnsw.checkpoint_ready():
+        var hnsw_checkpoint = Optional[HnswCheckpoint]()
+        if (
+            self._hnsw_available
+            and self._hnsw.base_is_owned()
+            and not retained_hnsw
+        ):
             var eligibility = hnsw_snapshot_eligibility(
-                self._hnsw.checkpoint_base(),
+                self._hnsw.immutable_owned_base(),
                 self._hnsw_sidecar_max_bytes_for_test,
             )
             if not eligibility.graph_usable:
                 self._mark_hnsw_unavailable("eligibility_failed")
             if eligibility.eligible:
-                hnsw_info = Optional(
-                    write_hnsw_snapshot(
-                        hnsw_temporary,
-                        self._hnsw.checkpoint_base(),
-                        self._last_sequence,
+                hnsw_checkpoint = Optional(
+                    write_hnsw_checkpoint(
+                        self._path,
+                        self._hnsw.immutable_owned_base(),
+                        self._hnsw_base_sequence,
+                        generation,
                     )
                 )
 
@@ -1746,8 +2055,6 @@ struct PersistentCollection:
         # point. One directory barrier covers all completed renames.
         atomic_replace(sparse_temporary, self._path + "/" + sparse_name)
         atomic_replace(temporary_path, final_path)
-        if Bool(hnsw_info):
-            atomic_replace(hnsw_temporary, self._path + "/" + hnsw_name)
         sync_directory(self._path)
         descriptors.append(
             SegmentDescriptor.with_sparse(
@@ -1761,16 +2068,31 @@ struct PersistentCollection:
             )
         )
         var manifest: Manifest
-        if Bool(hnsw_info):
+        if hnsw_checkpoint:
             manifest = Manifest.with_hnsw(
                 self._config.dimension,
                 generation,
                 self._last_sequence,
                 descriptors^,
-                hnsw_name,
-                hnsw_info.value().checksum,
-                hnsw_info.value().config_fingerprint,
-                hnsw_info.value().live_point_count,
+                hnsw_checkpoint.value().name,
+                hnsw_checkpoint.value().info.checksum,
+                hnsw_checkpoint.value().info.config_fingerprint,
+                hnsw_checkpoint.value().info.live_point_count,
+                format_version=4 if hnsw_checkpoint.value().info.sequence
+                == self._last_sequence else 5,
+            )
+        elif retained_hnsw:
+            ref retained = retained_hnsw.value()
+            manifest = Manifest.with_hnsw(
+                self._config.dimension,
+                generation,
+                self._last_sequence,
+                descriptors^,
+                migrated_hnsw_name.value() if migrated_hnsw_name else retained.hnsw_name.value(),
+                retained.hnsw_checksum.value(),
+                retained.hnsw_config_fingerprint.value(),
+                retained.hnsw_point_count.value(),
+                format_version=5,
             )
         else:
             manifest = Manifest.with_segments(
@@ -1781,16 +2103,19 @@ struct PersistentCollection:
             )
         publish_manifest(self._path, manifest)
         self._read_generations[].publish(manifest.generation)
-        self._hnsw_checkpoint_was_hit = Bool(hnsw_info)
+        self._hnsw_checkpoint_was_hit = Bool(hnsw_checkpoint) or Bool(
+            retained_hnsw
+        )
         rotate_wal(self._path)
         rotate_sparse_wal(self._path)
         self._sparse_pending = List[SparseWalRecord]()
-        if (
-            previous_hnsw_name.byte_length() > 0
-            and previous_hnsw_name != hnsw_name
+        if previous_hnsw_name.byte_length() > 0 and (
+            not manifest.hnsw_name
+            or manifest.hnsw_name.value() != previous_hnsw_name
         ):
-            remove_file_and_sync_directory_if_exists(
-                self._path, self._path + "/" + previous_hnsw_name
+            self._retired[].retire_or_reclaim(
+                self._path,
+                [self._path + "/" + previous_hnsw_name],
             )
         self._publish_index_caches_best_effort()
         return manifest^
@@ -1821,17 +2146,21 @@ struct PersistentCollection:
 
     def _begin_compaction(mut self) raises -> Optional[CompactionInputs]:
         """Checkpoint, then capture and pin the committed inputs."""
+        self._prepare_hnsw_checkpoint()
         with BlockingScopedLock(self._writer_lock[]):
             _ = self._checkpoint_unlocked()
             var inputs = begin_compaction(
-                self._path, self._config.dimension, self._pins
+                self._path,
+                self._config.dimension,
+                self._pins,
+                source_lock=self._lock.copy(),
             )
             if inputs:
                 self._compaction_attempts += 1
             return inputs^
 
     def _build_compaction(
-        self, inputs: CompactionInputs
+        self, mut inputs: CompactionInputs
     ) raises -> CompactionOutput:
         """Merge the pinned inputs into new files without the writer lock."""
         return build_compaction(
@@ -1839,7 +2168,7 @@ struct PersistentCollection:
         )
 
     def _finish_compaction(
-        mut self, inputs: CompactionInputs, output: CompactionOutput
+        mut self, mut inputs: CompactionInputs, output: CompactionOutput
     ) raises -> Bool:
         """Rebase and publish; False when the inputs were replaced."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -1892,6 +2221,7 @@ struct PersistentCollection:
 
     def maintenance(mut self) raises -> Bool:
         """Run synchronous compaction when the default L0 threshold is met."""
+        self._prepare_hnsw_checkpoint()
         with BlockingScopedLock(self._maintenance.compaction_lock[]):
             with BlockingScopedLock(self._writer_lock[]):
                 _ = self._checkpoint_unlocked()
@@ -1904,7 +2234,7 @@ struct PersistentCollection:
             return True
 
     def _reclaim_retired(mut self) raises:
-        self._retired[].reclaim(self._path, self._pins)
+        self._retired[].reclaim(self._path)
 
     def _search_filtered(
         self,
@@ -1931,7 +2261,7 @@ struct PersistentCollection:
             raise Error("k must be positive")
         if ef_search <= 0:
             raise Error("ef_search must be positive")
-        var count = self._metadata.live_count()
+        var count = self._memtable.dense_live_count()
         var plan = QueryPlanner.plan_dense(
             count,
             count,
@@ -1941,6 +2271,9 @@ struct PersistentCollection:
             False,
             self._metric_compatible(metric),
             self._hnsw_available,
+            dimension=self._config.dimension,
+            m0=self._config.m0,
+            metric=metric,
         )
         self._last_dense_plan_reason = plan.reason.copy()
         if not plan.use_hnsw:
@@ -1977,7 +2310,7 @@ struct PersistentCollection:
                 self._hnsw_id_lookup.value(),
             )
             var segmented_stats = self._hnsw.last_search_stats()
-            self._last_search_stats = _copy_hnsw_search_stats(segmented_stats)
+            self._last_search_stats = copy_search_stats(segmented_stats)
             if segmented_stats.fallback_reason != "":
                 self._last_dense_plan_reason = (
                     segmented_stats.fallback_reason.copy()
@@ -2025,8 +2358,12 @@ struct PersistentCollection:
             raise Error("ef_search must be positive")
         expression.validate()
         var matched = evaluate_expression(self._metadata, expression)
+        if self._memtable.dense_live_count() != self._memtable.live_count():
+            for ordinal in matched.set_ordinals():
+                if not self._memtable.entry_ref_at(ordinal).has_dense():
+                    matched.clear(ordinal)
         var matched_count = matched.count()
-        var total_count = self._metadata.live_count()
+        var total_count = self._memtable.dense_live_count()
         var plan = QueryPlanner.plan_dense(
             total_count,
             matched_count,
@@ -2036,10 +2373,13 @@ struct PersistentCollection:
             True,
             self._metric_compatible(metric),
             self._hnsw_available,
+            dimension=self._config.dimension,
+            m0=self._config.m0,
+            metric=metric,
         )
         self._last_dense_plan_reason = plan.reason.copy()
         if not plan.use_hnsw:
-            var exact = self._search_where(query, k, metric, expression)
+            var exact = self._search_candidates(query, k, metric, matched)
             self._record_exact_fallback_stats(
                 metric,
                 ef_search,
@@ -2051,7 +2391,7 @@ struct PersistentCollection:
             return exact^
         if not self._ensure_hnsw_id_lookup():
             self._last_dense_plan_reason = "graph_unavailable"
-            var exact = self._search_where(query, k, metric, expression)
+            var exact = self._search_candidates(query, k, metric, matched)
             self._record_exact_fallback_stats(
                 metric,
                 ef_search,
@@ -2076,7 +2416,7 @@ struct PersistentCollection:
                 self._hnsw_id_lookup.value(),
             )
             var segmented_stats = self._hnsw.last_search_stats()
-            self._last_search_stats = _copy_hnsw_search_stats(segmented_stats)
+            self._last_search_stats = copy_search_stats(segmented_stats)
             if segmented_stats.fallback_reason != "":
                 self._last_dense_plan_reason = (
                     segmented_stats.fallback_reason.copy()
@@ -2166,9 +2506,14 @@ struct PersistentCollection:
             result_count, smaller_is_better=metric == _L2_METRIC
         )
         var ordinals = candidate_ordinals(self._memtable, candidates)
+        var query_norm = _prepare_f32_query(metric, query)
         for ordinal in ordinals:
             ref entry = self._memtable.entry_ref_at(ordinal)
-            var score = authoritative_f32_score(metric, query, entry.values())
+            if not entry.has_dense():
+                continue
+            var score = _prepared_f32_score(
+                metric, query, entry.values(), query_norm
+            )
             topk.offer(entry.id, score)
 
         var retained = topk.sorted_entries()
@@ -2207,11 +2552,22 @@ struct PersistentCollection:
     def _ensure_open(self) raises:
         if self._closed:
             raise Error("collection is closed")
+        if self._batch_failed:
+            raise Error(
+                "collection requires reopen after uncertain batch publication"
+            )
         if self.path != self._path:
             raise Error("public collection path copy diverged from identity")
         if self.dimension != self._config.dimension:
             raise Error(
                 "public collection dimension copy diverged from identity"
+            )
+        if self._point_store and (
+            self._point_store.value()._io_failed
+            or self._point_store.value()._table._write_failed
+        ):
+            raise Error(
+                "collection requires reopen after uncertain point publication"
             )
         self._maintenance.check()
 
@@ -2306,15 +2662,23 @@ struct PersistentCollection:
             >= self._config.delta_max_points
         )
 
-    def _maintain_hnsw_for_flush(mut self):
-        if not self._hnsw_requires_maintenance():
-            return
+    def _prepare_hnsw_checkpoint(mut self) raises:
+        """Run due graph maintenance before taking the checkpoint writer lock.
+
+        A concurrent build already tracks accepted writes; the checkpoint can
+        proceed using the current graph while that operation finishes. A failed
+        candidate never disables a still-valid graph or rejects durable writes.
+        """
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            self._ensure_owned_hnsw_checkpoint()
+            if self._hnsw_rebuild or not self._hnsw_requires_maintenance():
+                return
         try:
-            self._rebuild_hnsw_unlocked()
+            self._rebuild_hnsw(only_if_due=True)
         except:
-            # The authoritative checkpoint has already committed. A derived
-            # graph failure only disables ANN until later maintenance retries.
-            self._mark_hnsw_unavailable("rebuild_failed")
+            # Graphs are derived; authoritative checkpointing proceeds.
+            pass
 
     def _ensure_owned_hnsw_checkpoint(mut self):
         if not self._hnsw_available or self._hnsw.checkpoint_ready():
@@ -2322,23 +2686,10 @@ struct PersistentCollection:
         try:
             if not self._hnsw.has_base() or self._hnsw.base_slot_count() == 0:
                 self._hnsw.promote_delta_base()
+                self._hnsw_base_sequence = self._last_sequence
                 self._hnsw_mutations_since_rebuild = 0
         except:
             self._mark_hnsw_unavailable("rebuild_failed")
-
-    def _rebuild_hnsw_unlocked(mut self) raises:
-        var staged: HnswIndex
-        try:
-            staged = _build_hnsw(self._memtable, self._config)
-        except error:
-            self._mark_hnsw_unavailable("rebuild_failed")
-            raise Error(String(error))
-        self._hnsw.replace_owned_base(staged^)
-        self._hnsw_available = True
-        self._hnsw_unavailable_reason = ""
-        self._hnsw_mutations_since_rebuild = 0
-        self._hnsw_checkpoint_was_hit = False
-        self._hnsw_cache_was_hit = False
 
     def _metric_compatible(self, metric: Int) -> Bool:
         if metric == _DOT_METRIC:
@@ -2390,6 +2741,50 @@ struct PersistentCollection:
         self._metadata_cache_was_hit = False
 
     def _publish_index_caches_best_effort(mut self):
+        if (
+            self._hnsw_available
+            and self._hnsw.has_base()
+            and self._hnsw.has_delta()
+        ):
+            try:
+                var manifest = load_manifest(self._path, self._config.dimension)
+                if (
+                    manifest.hnsw_name
+                    and hnsw_base_sequence(manifest) == self._hnsw_base_sequence
+                ):
+                    var base_checksum = manifest.hnsw_checksum.value()
+                    var already_published = (
+                        self._overlay_cache_sequence
+                        and self._overlay_cache_sequence.value()
+                        == self._last_sequence
+                        and self._overlay_cache_base_sequence
+                        == self._hnsw_base_sequence
+                        and self._overlay_cache_base_checksum == base_checksum
+                    )
+                    if (
+                        not already_published
+                        and publish_hnsw_overlay_cache_best_effort(
+                            self._path,
+                            self._hnsw._delta,
+                            manifest.generation,
+                            self._last_sequence,
+                            base_checksum,
+                            self._hnsw_base_sequence,
+                        )
+                    ):
+                        # Compaction alone cannot invalidate this verified
+                        # graph key; failed publication must remain retryable.
+                        self._overlay_cache_sequence = Optional(
+                            self._last_sequence
+                        )
+                        self._overlay_cache_base_sequence = (
+                            self._hnsw_base_sequence
+                        )
+                        self._overlay_cache_base_checksum = base_checksum
+            except:
+                pass
+        if self._point_store:
+            return
         try:
             var generation = self._read_generations[].generation
             var checksum = authoritative_index_checksum(self._memtable)
@@ -2426,28 +2821,6 @@ struct PersistentCollection:
         if self._last_sequence == UInt64.MAX:
             raise Error("collection sequence exhausted")
         return self._last_sequence + 1
-
-
-def _copy_hnsw_search_stats(stats: HnswSearchStats) -> HnswSearchStats:
-    var result = HnswSearchStats()
-    result.requested_ef = stats.requested_ef
-    result.effective_ef = stats.effective_ef
-    result.widening_rounds = stats.widening_rounds
-    result.upper_visited = stats.upper_visited
-    result.base_visited = stats.base_visited
-    result.distance_evaluations = stats.distance_evaluations
-    result.retained_candidates = stats.retained_candidates
-    result.reranked_candidates = stats.reranked_candidates
-    result.filtered_rejections = stats.filtered_rejections
-    result.inactive_rejections = stats.inactive_rejections
-    result.base_candidates = stats.base_candidates
-    result.delta_candidates = stats.delta_candidates
-    result.backend_name = stats.backend_name.copy()
-    result.metric_name = stats.metric_name.copy()
-    result.scalar_name = stats.scalar_name.copy()
-    result.storage_name = stats.storage_name.copy()
-    result.fallback_reason = stats.fallback_reason.copy()
-    return result^
 
 
 def _resolve_collection_config(
@@ -2523,32 +2896,6 @@ def _raise_config_mismatch(
     )
 
 
-def _build_hnsw(
-    memtable: MemTable, config: CollectionConfig
-) raises -> HnswIndex:
-    """Stage a deterministic graph while borrowing authoritative vectors."""
-    var order = List[_HnswRebuildOrdinal]()
-    for ordinal in range(memtable.slot_count()):
-        if not memtable.is_live_at(ordinal):
-            continue
-        ref entry = memtable.entry_ref_at(ordinal)
-        order.append(_HnswRebuildOrdinal(entry.sequence, entry.id, ordinal))
-    sort(Span(order))
-
-    var index = HnswIndex(config)
-    for order_index in range(len(order)):
-        ref entry = memtable.entry_ref_at(order[order_index].ordinal)
-        if (
-            entry.tombstone
-            or entry.sequence != order[order_index].sequence
-            or entry.id != order[order_index].id
-        ):
-            raise Error("HNSW rebuild source changed during staging")
-        index.add(entry.id, entry.values())
-    index.validate_structure()
-    return index^
-
-
 def _build_metadata(memtable: MemTable) raises -> MetadataIndex:
     var index = MetadataIndex()
     index.begin_bulk()
@@ -2606,6 +2953,7 @@ struct _HnswRecoveryLoad(Movable):
     var replayed_mutations: Int
     var available: Bool
     var failure_reason: String
+    var base_sequence: Optional[UInt64]
 
     def __init__(
         out self,
@@ -2615,11 +2963,13 @@ struct _HnswRecoveryLoad(Movable):
         replayed_mutations: Int,
         available: Bool,
         failure_reason: String,
+        base_sequence: Optional[UInt64] = None,
     ):
         self.index = index^
         self.sidecar_hit = sidecar_hit
         self.legacy_cache_hit = legacy_cache_hit
         self.replayed_mutations = replayed_mutations
+        self.base_sequence = base_sequence
         self.available = available
         self.failure_reason = String(copy=failure_reason)
 
@@ -2694,8 +3044,9 @@ def _load_or_rebuild_hnsw(
     last_sequence: UInt64,
     source_checksum: UInt32,
     checkpoint_live_ids: Dict[Int, Bool],
-    wal_records: List[WalRecord],
     memtable: MemTable,
+    *,
+    point_projection: Bool = False,
 ) raises -> _HnswRecoveryLoad:
     """Recover the committed graph, then apply authoritative newer WAL."""
     var has_manifest = path_exists(path + "/manifest.bin")
@@ -2704,15 +3055,19 @@ def _load_or_rebuild_hnsw(
         if Bool(manifest.hnsw_name):
             var metadata_matches = (
                 manifest.hnsw_config_fingerprint.value() == config.fingerprint()
-                and manifest.hnsw_point_count.value()
-                == UInt64(len(checkpoint_live_ids))
+                and (
+                    point_projection
+                    or manifest.format_version == 5
+                    or manifest.hnsw_point_count.value()
+                    == UInt64(len(checkpoint_live_ids))
+                )
             )
             var sidecar_path = path + "/" + manifest.hnsw_name.value()
             if metadata_matches and path_exists(sidecar_path):
                 var mapped = try_open_compatible_hnsw_snapshot_view(
                     sidecar_path,
                     config,
-                    checkpoint_sequence,
+                    hnsw_base_sequence(manifest),
                     manifest.hnsw_checksum.value(),
                     manifest.hnsw_point_count.value(),
                 )
@@ -2727,13 +3082,42 @@ def _load_or_rebuild_hnsw(
                     var owned = try_read_compatible_hnsw_snapshot_owned(
                         sidecar_path,
                         config,
-                        checkpoint_sequence,
+                        hnsw_base_sequence(manifest),
                         manifest.hnsw_checksum.value(),
                         manifest.hnsw_point_count.value(),
                     )
                     if Bool(owned):
                         segmented = SegmentedHnsw.from_owned(owned.take())
                         compatible = True
+                if compatible and (
+                    point_projection or manifest.format_version == 5
+                ):
+                    try:
+                        var cached_delta = load_hnsw_overlay_cache(
+                            path,
+                            config,
+                            generation,
+                            last_sequence,
+                            manifest.hnsw_checksum.value(),
+                            hnsw_base_sequence(manifest),
+                        )
+                        var replayed = restore_hnsw_overlay(
+                            segmented,
+                            memtable,
+                            hnsw_base_sequence(manifest),
+                            cached_delta^,
+                        )
+                        return _HnswRecoveryLoad(
+                            segmented^,
+                            True,
+                            False,
+                            replayed,
+                            True,
+                            "",
+                            Optional(hnsw_base_sequence(manifest)),
+                        )
+                    except:
+                        return _rebuild_hnsw_for_recovery(memtable, config)
                 if compatible and _hnsw_matches_ids(
                     segmented, checkpoint_live_ids
                 ):
@@ -2741,13 +3125,19 @@ def _load_or_rebuild_hnsw(
                         var replayed = _replay_hnsw_wal(
                             segmented,
                             checkpoint_sequence,
-                            wal_records,
+                            path + "/wal.bin",
                             config,
                         )
                         if _hnsw_matches_memtable(segmented, memtable):
                             segmented.validate_overlay()
                             return _HnswRecoveryLoad(
-                                segmented^, True, False, replayed, True, ""
+                                segmented^,
+                                True,
+                                False,
+                                replayed,
+                                True,
+                                "",
+                                Optional(hnsw_base_sequence(manifest)),
                             )
                     except:
                         pass
@@ -2755,6 +3145,8 @@ def _load_or_rebuild_hnsw(
             # acceleration misses. They never invalidate authoritative data.
             return _rebuild_hnsw_for_recovery(memtable, config)
 
+    if point_projection:
+        return _rebuild_hnsw_for_recovery(memtable, config)
     # Legacy manifests may still use the optional cache during migration.
     # A miss always rebuilds from the fully recovered authoritative MemTable.
     var legacy = _load_hnsw_cache(
@@ -2802,7 +3194,10 @@ def _hnsw_matches_memtable(
 ) raises -> Bool:
     var ids = Dict[Int, Bool]()
     for ordinal in range(memtable.slot_count()):
-        if memtable.is_live_at(ordinal):
+        if (
+            memtable.is_live_at(ordinal)
+            and memtable.entry_ref_at(ordinal).has_dense()
+        ):
             ids[memtable.id_at(ordinal)] = True
     return _hnsw_matches_ids(index, ids)
 
@@ -2810,19 +3205,27 @@ def _hnsw_matches_memtable(
 def _replay_hnsw_wal(
     mut index: SegmentedHnsw,
     checkpoint_sequence: UInt64,
-    records: List[WalRecord],
+    wal_path: String,
     config: CollectionConfig,
 ) raises -> Int:
+    # The collection lock still excludes writers. Re-read bounded envelopes
+    # instead of retaining historical vectors/payloads through all recovery.
+    var reader = WalReader(wal_path, config.dimension)
     var replayed = 0
-    for record_index in range(len(records)):
-        if records[record_index].sequence <= checkpoint_sequence:
-            continue
-        if records[record_index].is_delete:
-            _ = index.delete(records[record_index].id)
-        else:
-            index.upsert(records[record_index].id, records[record_index].values)
-        if replayed < config.delta_max_points:
-            replayed += 1
+    while True:
+        var records = reader.read_next()
+        if len(records) == 0:
+            break
+        for record_index in range(len(records)):
+            ref record = records[record_index]
+            if record.sequence <= checkpoint_sequence:
+                continue
+            if record.is_delete:
+                _ = index.delete(record.id)
+            else:
+                index.upsert(record.id, record.values)
+            if replayed < config.delta_max_points:
+                replayed += 1
     return replayed
 
 

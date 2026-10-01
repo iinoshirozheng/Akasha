@@ -1,10 +1,12 @@
 import gc
+import weakref
 
 import numpy as np
 import pyarrow as pa
 import pytest
 
 import akashadb
+import akashadb.arrow as arrow
 from akashadb.arrow import (
     ArrowBatchLease,
     _primitive_view,
@@ -240,3 +242,87 @@ def test_kernel_primitive_loop_never_indexes_python_arrays(tmp_path):
     assert collection._call("apply_arrow_batch", descriptor) == 2
     assert collection.get(20).vector == [0.0, 1.0]
     collection.close()
+
+
+@pytest.mark.parametrize("metric", ["dot", "l2", "cosine"])
+@pytest.mark.parametrize("mode", ["exact", "approx", "sparse", "hybrid"])
+@pytest.mark.parametrize("filtered", [False, True])
+def test_direct_result_columns_match_all_search_modes(tmp_path, metric, mode, filtered):
+    collection = akashadb.Collection(tmp_path / "result-columns", 2)
+    for point in range(80):
+        collection.upsert(point - 40, [float(point + 1), 1.0], fields=[
+            akashadb.PayloadField("keep", "bool", point % 2 == 0),
+        ])
+        collection.upsert_sparse(point - 40, [akashadb.SparseElement(7, float(point + 1))])
+    request = akashadb.SearchRequest(
+        metric, 12, vector=[1.0, 0.5], mode=mode,
+        sparse=[akashadb.SparseElement(7, 1.0)], ef_search=96,
+        filter={"kind": "condition", "name": "keep", "operator": "eq", "type": "bool", "value": True}
+        if filtered else None,
+    )
+    expected = collection.search(request)
+    before = collection.metrics().queries
+    actual = arrow.search_record_batch(collection, request)
+    assert collection.metrics().queries == before + 1
+    assert actual.schema == pa.schema([("id", pa.int64()), ("score", pa.float32())])
+    assert actual.column("id").to_pylist() == [row.id for row in expected]
+    np.testing.assert_array_equal(actual.column("score").to_numpy(), np.array([row.score for row in expected], dtype=np.float32))
+    collection.close()
+
+
+def test_direct_result_owns_typed_buffers_through_last_slice(tmp_path, monkeypatch):
+    collection = akashadb.Collection(tmp_path / "result-owner", 2)
+    ids = [-(2**63), -1, 0, 2**63 - 1]
+    for point in reversed(ids):
+        collection.upsert(point, [1.0, 1.0])
+    request = akashadb.SearchRequest("dot", 4, vector=[1.0, 1.0])
+    arrays = []
+    empty = np.empty
+
+    def capture_empty(*args, **kwargs):
+        array = empty(*args, **kwargs)
+        arrays.append(array)
+        return array
+
+    def forbidden_row(*args, **kwargs):
+        raise AssertionError("direct Arrow output constructed a Python SearchResult")
+
+    monkeypatch.setattr(np, "empty", capture_empty)
+    monkeypatch.setattr("akashadb.database.SearchResult", forbidden_row)
+    batch = arrow.search_record_batch(collection, request)
+    assert len(arrays) == 2
+    assert arrays[0].dtype == np.int64 and arrays[1].dtype == np.float32
+    assert sum(array.nbytes for array in arrays) == 12 * len(ids)
+    assert batch.column(0).buffers()[1].address == arrays[0].ctypes.data
+    assert batch.column(1).buffers()[1].address == arrays[1].ctypes.data
+    owners = [weakref.ref(array) for array in arrays]
+    sliced = batch.slice(1, 2)
+    arrays.clear()
+    collection.close()
+    del batch, collection
+    gc.collect()
+    assert all(owner() is not None for owner in owners)
+    assert sliced.column("id").to_pylist() == [-1, 0]
+    assert sliced.column("score").to_pylist() == [2.0, 2.0]
+    del sliced
+    gc.collect()
+    assert all(owner() is None for owner in owners)
+
+
+def test_direct_result_empty_and_validation_match_search(tmp_path):
+    collection = akashadb.Collection(tmp_path / "result-empty", 2)
+    request = akashadb.SearchRequest("dot", 5, vector=[1.0, 0.0])
+    batch = arrow.search_record_batch(collection, request)
+    assert batch.num_rows == 0
+    assert batch.schema == pa.schema([("id", pa.int64()), ("score", pa.float32())])
+    for invalid in [
+        akashadb.SearchRequest("dot", 0, vector=[1.0, 0.0]),
+        akashadb.SearchRequest("dot", 1),
+        akashadb.SearchRequest("dot", 1, vector=[1.0]),
+        akashadb.SearchRequest("dot", 10001, vector=[1.0, 0.0]),
+    ]:
+        with pytest.raises(akashadb.ValidationError):
+            arrow.search_record_batch(collection, invalid)
+    collection.close()
+    with pytest.raises(akashadb.CollectionClosedError):
+        arrow.search_record_batch(collection, request)

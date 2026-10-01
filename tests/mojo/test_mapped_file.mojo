@@ -1,5 +1,6 @@
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
 from akasha.storage.mapped_file import MappedFile
+from akasha.storage.checksum import crc32_range
 from std.ffi import c_int, external_call
 from std.sys.info import platform_map
 from std.sys._libc_errno import get_errno
@@ -41,6 +42,37 @@ def _assert_descriptor_open(descriptor: Int32) raises:
 def _assert_descriptor_closed(descriptor: Int32) raises:
     assert_equal(_fcntl_getfd(descriptor), Int32(-1))
     assert_equal(get_errno().value, Int32(_EBADF))
+
+
+def test_checksum_ranges_are_bounded_and_reject_closed_owner() raises:
+    var path = _fixture_path("checksum")
+    var data = List[UInt8](capacity=_PAGE_BYTES)
+    for i in range(_PAGE_BYTES):
+        data.append(UInt8(i % 251))
+    write_file_sync(path, data)
+    var mapped = MappedFile.open_readonly(path)
+    for offset in range(16):
+        for length in [0, 1, 7, 8, 31, 32, 33, 1024, _PAGE_BYTES - offset]:
+            assert_equal(
+                mapped.checksum(UInt64(offset), UInt64(length)),
+                crc32_range(data, offset, offset + length),
+            )
+    assert_equal(mapped.checksum(UInt64(_PAGE_BYTES), 0), UInt32(0))
+    with assert_raises():
+        _ = mapped.checksum(UInt64.MAX, 0)
+    with assert_raises():
+        _ = mapped.checksum(0, UInt64.MAX)
+    with assert_raises():
+        _ = mapped.checksum(UInt64(_PAGE_BYTES), 1)
+    mapped.close()
+    with assert_raises():
+        _ = mapped.checksum(0, 0)
+    remove_file_if_exists(path)
+    write_file_sync(path, List[UInt8]())
+    mapped = MappedFile.open_readonly(path)
+    assert_equal(mapped.checksum(0, 0), UInt32(0))
+    mapped.close()
+    remove_file_if_exists(path)
 
 
 def test_readonly_page_and_checked_slice() raises:

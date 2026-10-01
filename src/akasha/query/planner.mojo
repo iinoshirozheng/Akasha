@@ -35,6 +35,10 @@ struct QueryPlanner:
         has_filter: Bool,
         metric_compatible: Bool,
         graph_ready: Bool,
+        *,
+        dimension: Int = 0,
+        m0: Int = 0,
+        metric: Int = 0,
     ) -> HnswPlan:
         var normalized_max = max_ef
         if normalized_max < 0:
@@ -110,6 +114,26 @@ struct QueryPlanner:
                     initial_ef,
                     normalized_max,
                     String("selectivity"),
+                )
+        # Paired 128D/1536D uniform and real-embedding measurements show that
+        # scanning can cost less than high-ef traversal plus native reranking.
+        # Estimate work, never sample timing in a query or inspect its answer.
+        # Unknown dimensions/degrees and short vectors retain the existing
+        # policy. Float64 products avoid overflow for large valid counts.
+        if dimension >= 128 and m0 > 0:
+            var scan_work = Float64(matched_count) * Float64(dimension)
+            if metric == 2:
+                # Native cosine also reads both norms; graph rows are already
+                # normalized. Keep low-ef real-embedding ANN advantageous.
+                scan_work *= 2
+            var graph_work = (
+                Float64(initial_ef)
+                * (Float64(m0) / 3)
+                * (Float64(dimension) + 384)
+            )
+            if scan_work <= graph_work:
+                return HnswPlan(
+                    False, initial_ef, normalized_max, String("scan_cost")
                 )
         return HnswPlan(True, initial_ef, normalized_max, String("ann"))
 

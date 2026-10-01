@@ -63,5 +63,12 @@ Integers and IEEE-754 values are little-endian.
 Recovery requires strictly increasing, non-zero sequence numbers and an exact
 dimension match. If EOF occurs before a complete final header or record, that
 tail is ignored and the WAL is fsynced back to its last valid record boundary
-before new writes are accepted. Once a complete record is present, invalid magic, version,
-flags, operation, length, sequence, dimension, or CRC is corruption.
+before new writes are accepted. A complete header is checked for magic and valid
+record length even when its body is torn. Once a complete record is present,
+invalid version, flags, operation, sequence, dimension, or CRC is corruption.
+
+Recovery may decode bounded owner-backed spans; this does not change any durable
+bytes, limits, or checksum coverage. Tail repair is deferred until all collection
+sources and matching committed index sidecars pass preflight. The implementation
+checks the current source length, truncates the existing file to its accepted
+boundary, and fsyncs it without rewriting the accepted prefix.

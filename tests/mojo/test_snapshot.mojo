@@ -77,8 +77,10 @@ def _compact_with_temporary_snapshot(
     collection.upsert(2, [2.0])
     collection.flush()
     collection.compact()
-    assert_true(Bool(snapshot.get(1)))
     assert_true(path_exists(path + "/segment-base-1.bin"))
+    # Keep the owner live through the file assertion: Mojo destroys it after
+    # its last use, which now reclaims the old file immediately.
+    assert_true(Bool(snapshot.get(1)))
 
 
 def test_snapshot_preserves_owned_documents_search_and_filters() raises:
@@ -215,7 +217,6 @@ def test_snapshot_raii_releases_generation_pin() raises:
     collection.flush()
 
     _compact_with_temporary_snapshot(collection, path)
-    _ = collection.maintenance()
 
     assert_false(path_exists(path + "/segment-base-1.bin"))
     assert_false(path_exists(path + "/sparse-base-1.bin"))

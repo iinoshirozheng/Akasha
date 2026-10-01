@@ -212,6 +212,32 @@ def test_validation_visits_only_owned_levels_in_sparse_high_level_graph() raises
     assert_equal(stats.directed_edges, 0)
 
 
+def test_validation_keeps_uneven_node_levels_in_separate_edge_domains() raises:
+    var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
+    var graph = HnswStorage(2, 2, 3)
+    var high = _append(graph, metric, -1, 0.0, 0.0, 2)
+    var base = _append(graph, metric, 0, 1.0, 0.0, 0)
+    var middle = _append(graph, metric, -9, 2.0, 0.0, 1)
+    var peer = _append(graph, metric, 99, 3.0, 0.0, 2)
+    graph.set_neighbors(high, 0, [base])
+    graph.set_neighbors(base, 0, [high])
+    graph.set_neighbors(high, 1, [middle])
+    graph.set_neighbors(middle, 1, [high])
+    graph.set_neighbors(high, 2, [peer])
+    graph.set_neighbors(peer, 2, [high])
+    var stats = HnswValidationStats()
+    validate_bidirectional_links_with_stats(graph, stats)
+    assert_equal(stats.owned_level_cells, 9)
+    assert_equal(stats.directed_edges, 6)
+
+    # A reverse edge on another level must not satisfy the level-1 link.
+    graph.set_neighbors(middle, 1, List[UInt32]())
+    graph.set_neighbors(high, 0, [base, middle])
+    graph.set_neighbors(middle, 0, [high])
+    with assert_raises():
+        validate_bidirectional_links(graph)
+
+
 def test_prewrite_internal_failure_marks_invalid_and_preserves_stats() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 2, 2)

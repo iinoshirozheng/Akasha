@@ -1,9 +1,21 @@
+from akasha.document.point_state import PointState
+from akasha.document.vector_value import VectorValue
+from akasha.query.field_search import (
+    FieldSearchResult,
+    FieldSearchExecution,
+    search_generation_field_reported,
+)
+from akasha.query.field_ann import search_generation_field_approx
+from akasha.query.field_ivf import search_generation_field_ivf
+from akasha.index.field_ivf import IvfOptions
+from akasha.query.field_fusion import FieldQuery, search_generation_fields
 from akasha.compute.simd import (
     simd_cosine_similarity,
     simd_dot_product,
     simd_l2_squared_distance,
 )
 from akasha.common.config import CollectionConfig
+from akasha.api.scanner import ReadScanner
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.gpu.flat_scan import (
     DeviceBatchResult,
@@ -113,9 +125,137 @@ struct ReadSnapshot(Movable):
         var root = self._acquire()
         ref view = root[]
         var location = view.find(id)
-        if location[0] < 0:
+        if (
+            location[0] < 0
+            or not view.run(location[0])
+            .memtable.entry_ref_at(location[1])
+            .has_dense()
+        ):
             return Optional[DocumentRecord]()
         return Optional(self._record_at(view, location))
+
+    def get_point(self, id: Int) raises -> Optional[PointState]:
+        """Return an immutable point descriptor retaining all typed owners."""
+        var root = self._acquire()
+        var location = root[].find(id)
+        if location[0] < 0:
+            return Optional[PointState]()
+        return Optional(
+            root[]
+            .run(location[0])
+            .memtable.entry_ref_at(location[1])
+            .to_point()
+        )
+
+    def search_field(
+        self,
+        name: String,
+        query: VectorValue,
+        k: Int,
+        var expression: Optional[FilterExpression] = None,
+        *,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.search_field_reported(
+            name,
+            query,
+            k,
+            expression^,
+            approximate=approximate,
+            ef_search=ef_search,
+            rerank_k=rerank_k,
+            ivf=ivf,
+            control=control,
+        )
+        return execution.take_results()
+
+    def search_field_reported(
+        self,
+        name: String,
+        query: VectorValue,
+        k: Int,
+        var expression: Optional[FilterExpression] = None,
+        *,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        if not root[].catalog:
+            raise Error("named search requires a field-aware collection")
+        ref catalog = root[].catalog.value()[]
+        var ordinal = catalog.named_ordinal(name)
+        if ordinal < 0:
+            raise Error("unknown named vector field")
+        if ivf:
+            if approximate or ef_search != -1 or rerank_k != 0:
+                raise Error("IVF cannot be combined with HNSW options")
+            return search_generation_field_ivf(
+                root[], catalog.field_at(ordinal), query, k, expression,
+                ivf.value().nlist, ivf.value().nprobe, ivf.value().iterations, control,
+            )
+        if approximate:
+            return search_generation_field_approx(
+                root[],
+                catalog.field_at(ordinal),
+                query,
+                k,
+                expression,
+                ef_search,
+                rerank_k,
+                control,
+            )
+        if ef_search != -1 or rerank_k != 0:
+            raise Error(
+                "ef_search and rerank_k require approximate field search"
+            )
+        return search_generation_field_reported(
+            root[], catalog.field_at(ordinal), query, k, expression, control
+        )
+
+    def search_fields_reported(
+        self,
+        queries: List[FieldQuery],
+        k: Int,
+        *,
+        fetch_k: Int = 100,
+        rank_constant: Int = 60,
+        var expression: Optional[FilterExpression] = None,
+        control: Optional[QueryControl] = None,
+        rerank: Optional[FieldQuery] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        return search_generation_fields(
+            root[], queries, k, fetch_k, rank_constant, expression, control, rerank
+        )
+
+    def search_fields(
+        self,
+        queries: List[FieldQuery],
+        k: Int,
+        *,
+        fetch_k: Int = 100,
+        rank_constant: Int = 60,
+        var expression: Optional[FilterExpression] = None,
+        control: Optional[QueryControl] = None,
+        rerank: Optional[FieldQuery] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.search_fields_reported(
+            queries,
+            k,
+            fetch_k=fetch_k,
+            rank_constant=rank_constant,
+            expression=expression^,
+            control=control,
+            rerank=rerank,
+        )
+        return execution.take_results()
 
     def get_projected(
         self, id: Int, projection: FieldProjection
@@ -132,8 +272,24 @@ struct ReadSnapshot(Movable):
         var locations = view.id_ordered_locations()
         var records = List[DocumentRecord](capacity=len(locations))
         for location in locations:
-            records.append(self._record_at(view, location))
+            if (
+                view.run(location[0])
+                .memtable.entry_ref_at(location[1])
+                .has_dense()
+            ):
+                records.append(self._record_at(view, location))
         return records^
+
+    def scanner(
+        self,
+        batch_size: Int = 1024,
+        var expression: Optional[FilterExpression] = Optional[
+            FilterExpression
+        ](),
+    ) raises -> ReadScanner:
+        """Capture this view for bounded run/slot iteration, independent of close.
+        """
+        return ReadScanner(self._acquire(), batch_size, expression^)
 
     def sparse_records(self) raises -> List[SparseRecord]:
         """Return an owned sparse snapshot for logical export."""
@@ -153,7 +309,7 @@ struct ReadSnapshot(Movable):
         ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
         return DocumentRecord(
             entry.id,
-            entry.sequence,
+            entry.document_sequence,
             entry.values().copy(),
             clone_fields(entry.fields()),
         )
@@ -794,7 +950,11 @@ struct ReadSnapshot(Movable):
             conditions[index].validate()
         var layers = List[List[Int]](capacity=view.layer_count())
         for layer in range(view.layer_count()):
-            layers.append(view.conditioned_ordinals(layer, conditions))
+            layers.append(
+                view.dense_ordinals(
+                    layer, view.conditioned_ordinals(layer, conditions)
+                )
+            )
         return self._scan(view, query, k, metric, layers)
 
     def _search_sq8(
@@ -808,7 +968,7 @@ struct ReadSnapshot(Movable):
         self._validate_query(query, k)
         if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
-        if view.visible_count == 0:
+        if not view.has_dense():
             return List[SearchResult]()
         var sq8 = self._sq8_artifact(view)
         var candidate_count = k if rerank_k == 0 else rerank_k
@@ -872,7 +1032,7 @@ struct ReadSnapshot(Movable):
         if control:
             control.value().validate_candidate_count(view.visible_count)
             control.value().checkpoint(0)
-        if view.visible_count == 0:
+        if not view.has_dense():
             return List[SearchResult]()
         var pq = self._pq_artifact(
             view, subquantizers, centroids, iterations, control
@@ -1075,7 +1235,7 @@ struct ReadSnapshot(Movable):
                 execute_exact_ordinal_batch(
                     view.run(layer).memtable,
                     queries,
-                    view.visible_ordinals(layer),
+                    view.dense_ordinals(layer, view.visible_ordinals(layer)),
                     k,
                     metric,
                     num_workers,
@@ -1101,7 +1261,9 @@ struct ReadSnapshot(Movable):
             var candidates = List[List[Int]](capacity=len(queries))
             for index in range(len(expressions)):
                 candidates.append(
-                    view.filtered_ordinals(layer, expressions[index])
+                    view.dense_ordinals(
+                        layer, view.filtered_ordinals(layer, expressions[index])
+                    )
                 )
             parts.append(
                 execute_exact_candidate_batch(
@@ -1169,9 +1331,11 @@ struct ReadSnapshot(Movable):
                 for ordinal in view.filtered_ordinals(
                     layer, expressions[index]
                 ):
-                    selected.append(
-                        table[].memtable.ordinal_for(source.id_at(ordinal))
+                    var target = table[].memtable.ordinal_for(
+                        source.id_at(ordinal)
                     )
+                    if target >= 0:
+                        selected.append(target)
             sort(Span(selected))
             candidates.append(selected^)
         return execute_snapshot_device_batch[use_accelerator](
@@ -1188,7 +1352,9 @@ struct ReadSnapshot(Movable):
     def _visible_layers(self, view: ReadGeneration) raises -> List[List[Int]]:
         var layers = List[List[Int]](capacity=view.layer_count())
         for layer in range(view.layer_count()):
-            layers.append(view.visible_ordinals(layer))
+            layers.append(
+                view.dense_ordinals(layer, view.visible_ordinals(layer))
+            )
         return layers^
 
     def _where_layers(
@@ -1197,7 +1363,11 @@ struct ReadSnapshot(Movable):
         """Evaluate a filter per run, then drop shadowed rows before Top-K."""
         var layers = List[List[Int]](capacity=view.layer_count())
         for layer in range(view.layer_count()):
-            layers.append(view.filtered_ordinals(layer, expression))
+            layers.append(
+                view.dense_ordinals(
+                    layer, view.filtered_ordinals(layer, expression)
+                )
+            )
         return layers^
 
     def _gather(
@@ -1213,8 +1383,9 @@ struct ReadSnapshot(Movable):
                 control.value().checkpoint(index)
             var location = locations[index]
             ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
-            ids.append(entry.id)
-            vectors.append(entry.values().copy())
+            if entry.has_dense():
+                ids.append(entry.id)
+                vectors.append(entry.values().copy())
 
     def _scan(
         self,

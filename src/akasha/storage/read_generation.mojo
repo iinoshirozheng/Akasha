@@ -9,10 +9,15 @@ tombstone) for its ID. Base and sealed runs carry metadata and sparse indexes
 over their own slots; the small frozen head is evaluated directly.
 """
 
+from akasha.document.vector_schema import FieldCatalog
 from akasha.common.config import CollectionConfig
 from akasha.compute.gpu.context import GpuSnapshotState
 from akasha.document.record import clone_fields
 from akasha.index.artifact_state import ArtifactState, PqArtifacts
+from akasha.index.field_ivf import FieldIvfArtifacts
+from akasha.index.field_artifacts import FieldArtifacts
+from akasha.index.field_hnsw import FieldHnswIndex
+from akasha.index.field_sparse import FieldSparseIndex
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import Sq8Index
@@ -146,6 +151,8 @@ struct ReadGeneration(Movable):
     var revision: UInt64
     var layers: List[ReadLayer]
     var visible_count: Int
+    var dense_count: Int
+    var catalog: Optional[ArcPointer[FieldCatalog]]
     # Device table and cache derived from this root; shared by every handle
     # and operation that owns the root, released with it.
     var device: ArcPointer[GpuSnapshotState]
@@ -153,6 +160,9 @@ struct ReadGeneration(Movable):
     # operation that owns the root, built once and released with it.
     var sq8: ArcPointer[ArtifactState[Sq8Index]]
     var pq: ArcPointer[PqArtifacts]
+    var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
+    var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
+    var field_ivf: ArcPointer[FieldIvfArtifacts]
     var _pins: ArcPointer[GenerationPinRegistry]
 
     def __init__(
@@ -163,17 +173,24 @@ struct ReadGeneration(Movable):
         revision: UInt64,
         var layers: List[ReadLayer],
         visible_count: Int,
+        dense_count: Int,
         var pins: ArcPointer[GenerationPinRegistry],
-    ):
+        var catalog: Optional[ArcPointer[FieldCatalog]],
+    ) raises:
         self.config = config.copy()
+        self.catalog = catalog^
         self.generation = generation
         self.sequence = sequence
         self.revision = revision
         self.layers = layers^
         self.visible_count = visible_count
+        self.dense_count = dense_count
         self.device = ArcPointer(GpuSnapshotState(generation, sequence))
         self.sq8 = ArcPointer(ArtifactState[Sq8Index]())
         self.pq = ArcPointer(PqArtifacts())
+        self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
+        self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
+        self.field_ivf = ArcPointer(FieldIvfArtifacts())
         self._pins = pins^
         self._pins[].pin(generation)
 
@@ -208,6 +225,21 @@ struct ReadGeneration(Movable):
         if not item.is_shadowed():
             return item.run[].memtable.live_ordinals()
         return item.visible(item.run[].memtable.live_ordinals())
+
+    def dense_ordinals(
+        self, layer: Int, candidates: List[Int]
+    ) raises -> List[Int]:
+        """Keep only present default vectors from already-visible candidates."""
+        var selected = List[Int](capacity=len(candidates))
+        ref table = self.run(layer).memtable
+        for ordinal in candidates:
+            if table.entry_ref_at(ordinal).has_dense():
+                selected.append(ordinal)
+        return selected^
+
+    def has_dense(self) -> Bool:
+        """Whether at least one visible point has the default dense field."""
+        return self.dense_count > 0
 
     def candidate_ordinals(
         self, layer: Int, candidates: Bitmap
@@ -303,12 +335,15 @@ struct ReadGeneration(Movable):
         of descriptors that share dense owners and omit payload.
         """
         if len(self.layers) == 1 and not self.layers[0].is_shadowed():
-            return self.layers[0].run.copy()
+            ref source = self.layers[0].run[].memtable
+            if source.dense_live_count() == source.live_count():
+                return self.layers[0].run.copy()
         var table = MemTable(self.config.dimension)
         for layer in range(len(self.layers)):
             ref source = self.layers[layer].run[].memtable
             for ordinal in self.visible_ordinals(layer):
-                table.put(source.entry_ref_at(ordinal).dense_descriptor())
+                if source.entry_ref_at(ordinal).has_dense():
+                    table.put(source.entry_ref_at(ordinal).dense_descriptor())
         table.last_sequence = self.sequence
         return ArcPointer(ReadRun(table^, Optional[RunIndex]()))
 
@@ -515,6 +550,7 @@ struct ReadGenerationCache(Movable):
         sequence: UInt64,
         memtable: MemTable,
         pins: ArcPointer[GenerationPinRegistry],
+        var catalog: Optional[ArcPointer[FieldCatalog]] = None,
     ) raises -> ArcPointer[ReadGeneration]:
         if self.root:
             ref current = self.root.value()[]
@@ -522,6 +558,8 @@ struct ReadGenerationCache(Movable):
                 current.generation == generation
                 and current.sequence == sequence
                 and current.config.fingerprint() == config.fingerprint()
+                and (Bool(current.catalog) == Bool(catalog))
+                and (not catalog or current.catalog.value() is catalog.value())
             ):
                 return self.root.value()
         if self.revision == UInt64.MAX:
@@ -569,7 +607,9 @@ struct ReadGenerationCache(Movable):
                 self.revision + 1,
                 layers^,
                 visible,
+                memtable.dense_live_count(),
                 pins,
+                catalog^,
             )
         )
         self.root = Optional(root)
@@ -659,7 +699,7 @@ def _indexed_run(
         stats.payload_bytes += entry.payload_bytes()
         var fields = clone_fields(entry.fields())
         metadata.upsert(entry.id, fields^)
-        if entry.has_sparse():
+        if entry.has_sparse() and len(entry.sparse()) > 0:
             stats.sparse_bytes += entry.sparse_bytes()
             sparse.upsert(entry.id, entry.sparse())
     metadata.finish_bulk()
@@ -691,7 +731,7 @@ def _union(existing: List[Int], var added: List[Int]) -> List[Int]:
 
 
 def _field_bytes(entry: MemTableEntry) -> Int:
-    return entry.dense_bytes() + entry.payload_bytes() + entry.sparse_bytes()
+    return entry.content_bytes()
 
 
 def _sparse_dot(

@@ -1,4 +1,5 @@
 from std.math import isfinite, sqrt
+from std.sys import simd_width_of
 
 
 def _validate_pair(lhs: List[Float32], rhs: List[Float32]) raises:
@@ -6,9 +7,20 @@ def _validate_pair(lhs: List[Float32], rhs: List[Float32]) raises:
         raise Error("vectors must not be empty")
     if len(lhs) != len(rhs):
         raise Error("vector dimensions must match")
-    for i in range(len(lhs)):
-        if not isfinite(lhs[i]) or not isfinite(rhs[i]):
+    # Validation is part of each authoritative rerank. Check full chunks with
+    # the same finite-value rule, without a scalar branch per component.
+    comptime width = simd_width_of[DType.float32]() * 4
+    var offset = 0
+    while offset + width <= len(lhs):
+        var left = lhs.unsafe_ptr().unsafe_load[width=width](offset)
+        var right = rhs.unsafe_ptr().unsafe_load[width=width](offset)
+        if not (isfinite(left) & isfinite(right)).reduce_and():
             raise Error("vectors must contain only finite values")
+        offset += width
+    while offset < len(lhs):
+        if not isfinite(lhs[offset]) or not isfinite(rhs[offset]):
+            raise Error("vectors must contain only finite values")
+        offset += 1
 
 
 def dot_product(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:

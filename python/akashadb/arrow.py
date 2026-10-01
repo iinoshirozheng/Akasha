@@ -6,8 +6,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .database import Collection
-from .models import PayloadField, SearchResult
+from .vectors import FieldQuery, IvfOptions
+from .database import CancellationToken, Collection
+from .exceptions import ValidationError, map_kernel_error
+from .models import BatchWriteResult, PayloadField, SearchRequest, SearchResult
 
 
 @dataclass(slots=True)
@@ -73,6 +75,84 @@ def upsert_record_batch(
             lease.release()
 
 
+def upsert_point_record_batch(
+    collection: Collection, producer: Any | ArrowBatchLease
+) -> BatchWriteResult:
+    """Commit native vector and payload columns in one atomic WAL batch.
+
+    Columns: id, optional vector/sparse, vectors.<name>, payload.<name>.
+    Omitted vectors remain unchanged, null vectors are removed, and empty
+    sparse/multivector values stay present. Payload columns replace the payload;
+    without payload columns it is preserved. Input buffers are borrowed for this
+    synchronous call and copied into native authority before returning.
+    """
+    from .arrow_points import point_descriptor
+
+    owns_lease = not isinstance(producer, ArrowBatchLease)
+    lease = ArrowBatchLease.from_producer(producer) if owns_lease else producer
+    try:
+        descriptor = point_descriptor(collection, lease.batch)
+        return BatchWriteResult(**collection._call("apply_point_arrow_batch", descriptor))
+    finally:
+        if owns_lease:
+            lease.release()
+
+
+def search_record_batch(collection: Collection, request: SearchRequest) -> Any:
+    """Search directly into owned I64/F32 columns, without Python result rows.
+
+    The native result list is columnized once (12 bytes per result). PyArrow
+    retains those NumPy buffers; the batch and its slices outlive the collection.
+    """
+    import pyarrow as pa
+
+    columns = collection._search_raw(request, columns=True)
+    return pa.record_batch(
+        [
+            pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+            pa.array(columns["scores"], type=pa.float32(), from_pandas=False),
+        ],
+        names=["id", "score"],
+    )
+
+
+def search_field_record_batch(
+    collection: Collection, name: str, vector: Any, k: int,
+    *, filter: Mapping[str, Any] | None = None,
+    mode: str = "exact", ef_search: int | None = None, rerank_k: int = 0,
+    ivf: IvfOptions | None = None,
+    cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
+) -> Any:
+    """Search one named field into owned Int64 IDs and Float64 scores."""
+    import pyarrow as pa
+    columns = collection._search_field_raw(name, vector, k, filter=filter, mode=mode,
+                                           ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, columns=True,
+                                           cancellation=cancellation, timeout_ns=timeout_ns)
+    return pa.record_batch([
+        pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+        pa.array(columns["scores"], type=pa.float64(), from_pandas=False),
+    ], names=["id", "score"])
+
+
+def search_fields_record_batch(
+    collection: Collection, queries: list["FieldQuery"], k: int, *,
+    fetch_k: int = 100, rank_constant: int = 60,
+    filter: Mapping[str, Any] | None = None,
+    rerank: "FieldQuery | None" = None,
+    cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
+) -> Any:
+    """Fuse field rankings from one read view into owned Float64 Arrow scores."""
+    import pyarrow as pa
+    columns = collection._search_fields_raw(
+        queries, k, fetch_k=fetch_k, rank_constant=rank_constant, filter=filter, rerank=rerank,
+        cancellation=cancellation, timeout_ns=timeout_ns, columns=True,
+    )
+    return pa.record_batch([
+        pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+        pa.array(columns["scores"], type=pa.float64(), from_pandas=False),
+    ], names=["id", "score"])
+
+
 def results_to_record_batch(results: Sequence[SearchResult]) -> Any:
     """Export an independently owned Arrow result batch."""
     import pyarrow as pa
@@ -84,6 +164,138 @@ def results_to_record_batch(results: Sequence[SearchResult]) -> Any:
         ],
         names=["id", "score"],
     )
+
+
+class ArrowScanner:
+    """Single-consumer iterator over a captured immutable collection view.
+
+    Close explicitly (or use a context manager) when stopping early. Batches and
+    slices own their buffers independently and remain valid after close. Output
+    follows physical run/slot order, not global point-ID order. Python cancellation
+    is checked between batches; native deadlines are checked during scanning.
+    """
+
+    def __init__(self, native: Any, cancellation: CancellationToken | None) -> None:
+        self._native = native
+        self._cancellation = cancellation
+        self.schema = native.schema()
+        self.closed = False
+        self._exhausted = False
+        self._stats = dict(rows=0, batches=0, materialized_bytes=0, borrowed_bytes=0, visited_slots=0)
+
+    @property
+    def stats(self) -> dict[str, int]:
+        """Cumulative returned rows and logical output bytes (excluding padding).
+
+        Materialized bytes include offsets/validity and gathered primitive data;
+        borrowed bytes retain generation-owned buffers. Neither is peak RSS.
+        """
+        return self._stats.copy()
+
+    def __iter__(self) -> ArrowScanner:
+        return self
+
+    def __next__(self) -> Any:
+        if self.closed:
+            raise RuntimeError("scanner is closed")
+        if self._exhausted:
+            raise StopIteration
+        try:
+            result = self._native.next_batch(
+                self._cancellation is not None and self._cancellation.cancelled
+            )
+        except Exception as error:
+            self.close()
+            raise map_kernel_error(error) from error
+        self._stats["visited_slots"] = result["visited_slots"]
+        if result["batch"] is None:
+            self._exhausted = True
+            self._native.close()
+            raise StopIteration
+        batch = result["batch"]
+        self._stats["rows"] += batch.num_rows
+        self._stats["batches"] += 1
+        for name in ("materialized_bytes", "borrowed_bytes"):
+            self._stats[name] += result[name]
+        return batch
+
+    def close(self) -> None:
+        if not self.closed:
+            self._native.close()
+            self.closed = True
+
+    def __enter__(self) -> ArrowScanner:
+        if self.closed:
+            raise RuntimeError("scanner is closed")
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+
+def scan_record_batches(
+    collection: Collection,
+    *,
+    batch_size: int = 1024,
+    columns: Sequence[str] = ("id", "vector", "sparse_term_ids", "sparse_weights"),
+    vectors: Sequence[str] = (),
+    payload_schema: Mapping[str, str] | None = None,
+    filter: Mapping[str, Any] | None = None,
+    cancellation: CancellationToken | None = None,
+    max_candidates: int | None = None,
+    deadline_ns: int = 0,
+    max_batch_bytes: int = 64 * 1024 * 1024,
+) -> ArrowScanner:
+    """Capture a snapshot and export bounded batches through native Arrow C Data.
+
+    Core projections accept id, sequence, vector, sparse_term_ids, sparse_weights.
+    Payload projections map names to string/int/float/bool; absent values are null,
+    present values of a different type fail the scan. Sparse absence is null;
+    present sparse vectors retain their ragged lengths. No Python row staging is used.
+
+    One-row dense buffers are borrowed; multi-row vectors and other columns are
+    gathered into final owned buffers. The byte cap bounds aligned output buffer
+    allocations per batch; a batch exceeding it fails and closes the scanner.
+    It excludes source generations, selection descriptors and Arrow metadata.
+    """
+    if max_candidates is None:
+        max_candidates = collection.limits.max_candidates
+    for name, value in (("batch_size", batch_size), ("max_candidates", max_candidates),
+                        ("max_batch_bytes", max_batch_bytes)):
+        if type(value) is not int or value <= 0 or value > (1 << 63) - 1:
+            raise ValueError(f"{name} must be a positive signed 64-bit integer")
+    if batch_size > max_batch_bytes // 8:
+        raise ValueError("batch_size selection exceeds max_batch_bytes")
+    if type(deadline_ns) is not int or not 0 <= deadline_ns <= (1 << 63) - 1:
+        raise ValueError("deadline_ns must be a nonnegative signed 64-bit integer")
+    if isinstance(columns, (str, bytes)):
+        raise TypeError("columns must be a sequence of column names")
+    kinds = {"id": 1, "sequence": 2, "vector": 3, "sparse_term_ids": 4, "sparse_weights": 5, "document_sequence": 11}
+    descriptors = []
+    for name in columns:
+        if not isinstance(name, str) or name not in kinds:
+            raise ValueError(f"unknown scanner column: {name!r}")
+        descriptors.append(dict(name=name, kind=kinds[name], payload_name=""))
+    if isinstance(vectors, (str, bytes)):
+        raise TypeError("vectors must be a sequence of field names")
+    for name in vectors:
+        if not isinstance(name, str) or not name or "\0" in name:
+            raise ValueError("vector names must be nonempty strings without NUL")
+        descriptors.append(dict(name=f"vectors.{name}", kind=10, payload_name=name))
+    payload_kinds = {"string": 6, "int": 7, "float": 8, "bool": 9}
+    for name, kind in (payload_schema or {}).items():
+        if not isinstance(name, str) or not name or "\0" in name:
+            raise ValueError("payload names must be nonempty strings without NUL")
+        if not isinstance(kind, str) or kind not in payload_kinds:
+            raise ValueError(f"unsupported scanner payload type: {kind!r}")
+        descriptors.append(dict(name=f"payload.{name}", kind=payload_kinds[kind], payload_name=name))
+    if len({item["name"] for item in descriptors}) != len(descriptors):
+        raise ValueError("scanner column names must be unique")
+    options = dict(batch_size=batch_size, columns=descriptors,
+                   filter=None if filter is None else dict(filter),
+                   max_candidates=max_candidates, deadline_ns=deadline_ns,
+                   max_batch_bytes=max_batch_bytes)
+    return ArrowScanner(collection._call("scanner", options), cancellation)
 
 
 def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:

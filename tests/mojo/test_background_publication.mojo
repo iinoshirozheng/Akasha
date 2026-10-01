@@ -208,12 +208,12 @@ def test_foreground_and_worker_on_the_same_inputs_publish_once() raises:
     assert_true(
         (published.segments[0].name == output.segment_name) == foreground_won
     )
-    # The loser's pin queued the inputs; the next checkpoint reclaims them.
-    for index in range(len(captured.segments)):
-        assert_true(path_exists(path + "/" + captured.segments[index].name))
-    collection.flush()
+    # Both jobs released their pins, so the obsolete inputs are reclaimed.
     for index in range(len(captured.segments)):
         assert_false(path_exists(path + "/" + captured.segments[index].name))
+        assert_false(
+            path_exists(path + "/" + captured.segments[index].sparse_name)
+        )
     _assert_slow_records(collection, [])
     collection.close()
 
