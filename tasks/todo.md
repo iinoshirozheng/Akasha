@@ -16,7 +16,7 @@ Mojo／349 項完整 Python／重建 C ABI 與三個範例**；共用 warm/mixed
 目前唯一未勾選的工作是 **M5/M6 效能矩陣與最終交付**。使用者已確認完整矩陣
 每格須在相同 recall 目標下同時達到 **QPS ≥ Qdrant、p95 ≤ Qdrant**，無容許差距、
 不跨格抵銷。Qdrant 速度仍有差距；受控
-持續 non-resident 查詢／memory limit、sandbox 禁止的網路測試與 Git index 寫入尚未完成。
+持續 non-resident 查詢／memory limit、sandbox 禁止的網路測試尚未完成。
 已補完三組資料的 0% 檔案駐留 cold-open 對照。下方各日期紀錄保留
 當時的結果與限制，不代表較早的功能缺口至今仍存在。
 
@@ -26,8 +26,10 @@ Mojo／349 項完整 Python／重建 C ABI 與三個範例**；共用 warm/mixed
 [門檻](../docs/benchmarks/2026-10-02-qdrant-parity-gate.md)／
 [最新量測](../docs/benchmarks/2026-10-02-prepared-exact.md)。
 
-使用者已要求先交接，並授權將本分支全部交付變更 commit、push、merge 到 main。
-目前未完成新的 staging／commit／push／merge；Git 共用目錄不在 sandbox 可寫範圍。
+Git 交付已於 2026-10-02 完成：交付變更以 `92ff852`／`7bdd566`／`28e6048` 三個
+commit 提交，分支已 push，merge commit `eef8dab` 已合併進 main 並 push，remote
+main 核對為 `eef8dab`。merge 不代表 M5/M6 達標。紀錄見
+[Git 交付](../docs/handoff/2026-10-02-git-delivery.md)。
 交接入口見根目錄 [task.md](../task.md)，本檔仍是唯一工作項目 checklist。
 
 ## #39：移除 incremental flush 被丟棄的全量複製

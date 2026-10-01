@@ -1,8 +1,8 @@
 # AkashaDB 交接狀態與測試文件
 
 記錄日期：2026-10-02。依使用者要求先完成交接，停止新的效能實驗。
-使用者另已授權 commit、push、merge 本分支全部交付變更到 main；目前 Git 寫入
-受環境阻擋，見 [Git 交接](2026-10-02-git-delivery.md)。
+Git 交付其後已完成（merge commit `eef8dab`），見 [Git 交接](2026-10-02-git-delivery.md)；
+本檔其餘內容保留交接當時的狀態。
 
 ## 目標與不可更改的驗收門檻
 
@@ -28,7 +28,7 @@ Qdrant 無對應 dtype／metric 的功能保留獨立 oracle 驗收。
 | 環境 | macOS ARM64／Apple M4 Pro，Mojo 1.0.0 (ed45d567)／MAX 26.5 |
 | Python | 3.11，PyArrow 21，NumPy 2.4.6 |
 | 執行狀態 | 無正在執行的 benchmark、build 或 test |
-| 交付狀態 | 大量 tracked／untracked 修改尚未提交；不可 reset／整批 checkout 覆蓋 |
+| 交付狀態 | 已完成：commits `92ff852`／`7bdd566`／`28e6048`，merge commit `eef8dab` 已 push 到 origin/main |
 
 現行 `python/akashadb/_kernel.so` SHA-256：
 `3ccdc28c64b16c26277649c1d890c552b437ad357fde30b02067f03a115b3401`。
@@ -123,8 +123,8 @@ write-only latency 不能直接當成同語意對照。這次 query preparation 
 - ASan 缺少執行期符號，未通過；Linux 僅有 target assembly 檢查，沒有本輪 Linux
   runtime gate；沒有新 GPU device gate。BF16 native/Arrow bits 已驗證，選用的
   `ml_dtypes` producer 未安裝，不列為已驗收。
-- Git index/objects/refs 在主 checkout `.git`，超出可寫範圍；目前 approval=never。
-  不用 alternate index、另建 repo 或其他方式繞過；環境不變時不反覆重試。
+- Git index/objects/refs 在主 checkout `.git`，交接當時超出可寫範圍；其後已在
+  可寫環境完成交付，見 [Git 交接](2026-10-02-git-delivery.md)。
 
 ## 可重現的測試指令
 
@@ -210,8 +210,7 @@ source/binary identity、測試與 C build logs。Gate snapshot 保留較早 13-
   raw Span adjacency 原型可在 owner 關閉後被 compiler 接受，未執行不安全程式、未採用。
 - Python list→F32 邊界已量測約 1.036 µs（128D）／11.823 µs（1536D），不是未查過的猜測。
 
-下一輪先完成已授權的 Git 交付（環境允許時），保留 M5/M6 未完成狀態；接著以失敗格
-為起點做 profile，再決定最小改動，並補齊剩餘矩陣／環境 gates。
+Git 交付已完成；下一輪保留 M5/M6 未完成狀態，以失敗格為起點做 profile，再決定最小改動，並補齊剩餘矩陣／環境 gates。
 
 可供調查但**尚未驗證的假說**：prepared query 雖已跨 base/delta 共用，
 `compute/metric.mojo` 的 `_validate_prepared_values`、`index/hnsw_core.mojo`

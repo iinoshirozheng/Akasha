@@ -5,7 +5,30 @@
 本次範圍是 `feat/48-bounded-generation-head` 的既有 commits 與全部待交付修改，
 包含交接文件。歷史 backup／未採用原型分支不因「all」而重新納入。
 
-## 已確認狀態
+## 交付紀錄（2026-10-02 完成）
+
+在可寫 Git 目錄與可連線 GitHub 的環境執行，fresh fetch 後 origin/main 仍為
+`b0dd667`，無人更新分支或 main。提交前跑過 `git diff --check`、
+`tests/mojo/test_flat_index.mojo`（12 passed）與
+`tests/python/test_named_vectors.py`（59 passed）作為 compile sanity；完整測試證據沿用
+[測試交接](2026-10-02-status-and-tests.md)。
+
+| 項目 | 結果 |
+|---|---|
+| `92ff852` | feat: 全部 source／bindings／python／tests／fixtures／benchmark drivers／format docs |
+| `7bdd566` | docs: benchmark 報告與 results、plans、research |
+| `28e6048` | docs: handoff 文件與 tasks checklist |
+| Branch push | `origin/feat/48-bounded-generation-head` = `28e6048` |
+| Merge | `eef8dab`，`git merge --no-ff` 於 `/Users/ray/Projects/Akasha` 乾淨 main checkout |
+| Main push | `origin/main` = `eef8dab`，`merge-base --is-ancestor` 通過 |
+| 本紀錄 | 之後的 docs commit，分支與 main fast-forward 同步 |
+
+程式碼未拆成更細的 commit：89 個修改檔與 36 個新 Mojo 模組互相引用，hunk 級拆分會
+產生無法編譯的中間 commit。**M5/M6 效能矩陣仍未達標，merge 不代表結案。**
+
+以下保留交接當時的狀態與規劃，已全部執行完畢。
+
+## 交接時狀態（已過時）
 
 | 項目 | 交接時狀態 |
 |---|---|
@@ -27,7 +50,7 @@
 這是執行環境限制，不是使用者授權不足，也不是等待再次確認。
 在可寫主專案 Git 目錄及可連線 GitHub 的環境接續以下步驟。
 
-## 接續步驟
+## 當時規劃的接續步驟（已執行）
 
 1. 讀 [測試交接](2026-10-02-status-and-tests.md) 與 `tasks/todo.md`，確認仍是本次產物。
    保留所有既有修改，不用 reset／clean／整批 checkout。
