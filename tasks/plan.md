@@ -103,9 +103,12 @@ long-lived worker 仍保留原盤點辨識出的語意差異。
 掃 ef／建圖設定並報 candidate recall、final recall、fallback 與 latency；不盲目
 更動預設值，不靠 exact fallback 通過 ANN-only 品質比較。
 
-Qdrant 先固定版本與 service 邊界，再量 recall 0.95／0.99 曲線作診斷，正式門檻依
-目標 workload 定案。公開真實 embeddings 與合成 stress cells 分開；尚未定義代表性
-production workload 或容許差距，不影響 #39–#46，但完成前不能宣稱全面 parity。
+Qdrant 固定版本與 service 邊界，保留 recall 0.95／0.99 曲線作診斷。使用者於
+2026-10-02 確認正式門檻：目前完整矩陣的每一格，在相同 recall 目標下，
+Akasha QPS 必須 ≥ Qdrant、p95 必須 ≤ Qdrant；不設容許差距，不能用其他格的
+改善抵銷失敗格。沿用目前固定 workload、seeds、filters、K、邊界及 repeated trials，
+保留原始樣本與離散程度。公開真實 embeddings 與合成 stress cells 分開；全部
+適用格通過前，不得宣稱全面 parity。沒有直接對應的型別／metric 仍以獨立 oracle 驗收。
 
 每個工作包先跑 narrow tests，新的 persistence 行為加 crash／compatibility。
 每 2–3 個相關修改設 checkpoint；整合後才跑完整 CPU/Python、crash、C ABI、build
