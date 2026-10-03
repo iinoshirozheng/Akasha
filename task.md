@@ -3,13 +3,32 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新工作包（2026-10-03）
+## 最新採用（2026-10-04）：filtered HNSW inactive radius
+
+已修正 deleted/replaced slots 占用 filtered navigation radius、導致全允許 filter
+也可能提早停止的缺陷。唯一 engine 改動為 `hnsw_core.mojo`，新增三個重現測試。
+119 targeted Mojo／388 完整 Python／C ABI／3 rebuilt examples 通過；採用後同一
+binary 的 3 Mojo／8 server tests／C client／3 examples 再驗證通過，不重複加總。
+[修正、全部矩陣與證據](docs/benchmarks/2026-10-04-live-filtered-radius.md)。
+
+正式 Python kernel SHA-256：
+`609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
+Frozen archive SHA-256：
+`77ae0191f6ebbe08689c184c9f6cc0aa5686480ca0f102e98a5bb29f159c53ce`。
+固定三方 warm 19→22/36、mixed 19→19/36、write+flush 3→3/9；recall 各 36/36。
+有兩個 performance pass→fail，全部保留，**整體 FAILED、M5/M6 未完成**。未重跑
+完整 Mojo／crash／HTTP performance／Linux／GPU／ASan／nonresident gate。
+
+較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
+成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
+
+## 前一採用（2026-10-03）
 
 已採用 Python 向量轉換時每次只查找一次驗證函式／類別；每個 component 的型別、
 bool 排除、數值及範圍檢查保持不變。唯一 source 改動為 `src/bindings/point_values.mojo`。
 [實作、profiles、所有 trial 與證據](docs/benchmarks/2026-10-03-python-vector-validation.md)。
 
-正式 `python/akashadb/_kernel.so` SHA-256：
+該版 `python/akashadb/_kernel.so` SHA-256：
 `53f630ffba1e6e91f20e3abd6e13cc34475797cfd8fa5f0511ff8e61fb013eb6`。
 該工作包 frozen archive SHA-256：
 `de892118a0f539d3e0439a53ca261ddda53751d19080148b19078c80e2a87c57`。
@@ -48,7 +67,7 @@ M5 尚有首次建圖、多 run／更新後重開的 named artifact 生命週期
 無容許差距、不跨格抵銷、不刪慢樣本、不改 fixed corpora/seeds/filters/K/efs/service
 boundaries。`.99` 曲線只作診斷。IVF 低 probe、MaxSim 小候選集的 recall 失敗仍保留。
 
-2026-10-04 現行 binary：warm **22/36**、mixed 查詢 **25/36**、HTTP **18/108**
+2026-10-04 前一 binary 的獨立現況：warm **22/36**、mixed 查詢 **25/36**、HTTP **18/108**
 strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush **3/9** 通過。
 三組量測及 audits 完整結束，assessment exit 1 是正確 FAILED gate。
 [完整逐格結果與證據](docs/benchmarks/2026-10-04-current-parity.md)，archive SHA-256：

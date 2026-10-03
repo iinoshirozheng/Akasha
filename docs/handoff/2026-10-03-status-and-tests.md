@@ -1,5 +1,25 @@
 # 2026-10-03 續作狀態
 
+## 最新採用（2026-10-04）：filtered HNSW inactive radius
+
+已修正 deleted/replaced slots 占用 filtered navigation radius、導致全允許 filter
+也可能提早停止的缺陷。唯一 engine 改動為 `hnsw_core.mojo`，新增三個重現測試。
+119 targeted Mojo／388 完整 Python／C ABI／3 rebuilt examples 通過；採用後同一
+binary 的 3 Mojo／8 server tests／C client／3 examples 再驗證通過，不重複加總。
+[修正、全部矩陣與證據](../benchmarks/2026-10-04-live-filtered-radius.md)。
+
+正式 Python kernel SHA-256：
+`609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
+Frozen archive SHA-256：
+`77ae0191f6ebbe08689c184c9f6cc0aa5686480ca0f102e98a5bb29f159c53ce`。
+固定三方 warm 19→22/36、mixed 19→19/36、write+flush 3→3/9；recall 各 36/36。
+有兩個 performance pass→fail，全部保留，**整體 FAILED、M5/M6 未完成**。未重跑
+完整 Mojo／crash／HTTP performance／Linux／GPU／ASan／nonresident gate。
+
+較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
+成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
+
+
 ## 2026-10-04 named cache reconciliation（未採用）
 
 [Named cache reconciliation 候選](../benchmarks/2026-10-04-named-cache-reconcile.md)

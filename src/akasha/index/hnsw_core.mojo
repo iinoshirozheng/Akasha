@@ -952,8 +952,9 @@ def search_layer[
 
     Every first-seen slot is scored exactly once. Current/filter eligibility
     controls only result admission: rejected and inactive slots can still
-    traverse the graph. Frontier growth follows the standard retained-radius
-    rule and terminates only when its best unexplored distance is strictly
+    traverse the graph. Inactive slots never occupy the retained traversal
+    radius; current slots do, independently of metadata eligibility.
+    Frontier growth follows the standard retained-radius rule and terminates only when its best unexplored distance is strictly
     greater than the worst retained distance. Equal-distance items remain
     traversable regardless of their deterministic result-order ID/slot ties.
     ``base_visited`` and ``distance_evaluations``
@@ -987,8 +988,10 @@ def search_layer[
     stats.distance_evaluations += 1
     scratch.candidates.push(entry_item)
     if is_filtered:
-        # The traversal radius is retained independently of eligibility.
-        scratch.results.offer(entry_item, ef)
+        # Metadata eligibility does not narrow the traversal radius, but
+        # inactive slots cannot consume its live-candidate budget.
+        if graph.is_current(entry):
+            scratch.results.offer(entry_item, ef)
         _consider_result_admission(
             graph, admission, entry_item, ef, scratch.filtered_results, stats
         )
@@ -1050,7 +1053,8 @@ def search_layer[
                 stats.distance_evaluations += 1
 
                 if is_filtered:
-                    scratch.results.offer(item, ef)
+                    if graph.is_current(neighbor):
+                        scratch.results.offer(item, ef)
                     _consider_result_admission(
                         graph,
                         admission,

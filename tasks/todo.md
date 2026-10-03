@@ -803,6 +803,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  已採用 filtered inactive radius 正確性修正：119 targeted Mojo／388 Python／
+  C ABI／3 rebuilt examples；採用後 3 Mojo／8 server tests／C/client/examples 通過。
+  原固定 warm 19→22/36、mixed 19→19/36、write+flush 3→3/9，recall 36/36 全通過；
+  兩個 performance pass→fail 保留，整體 FAILED。沒有新版完整 Mojo/crash/HTTP
+  performance/Linux/nonresident gate；cache reconciliation 仍未採用。
+  [正式修正與精確範圍](../docs/benchmarks/2026-10-04-live-filtered-radius.md)。
   Named cache reconciliation 候選未採用：首查快 6–7 倍，但初版 fixed recall
   132→129/216、28/36 timing 退步。定位 filtered inactive radius 缺陷；隔離修正
   128 targeted Mojo／388 Python 通過，固定圖 recall 129→135/216、無 pass→fail，
