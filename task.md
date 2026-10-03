@@ -22,6 +22,14 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[搜尋修正後的新生命週期比較](docs/benchmarks/2026-10-04-named-cache-final.md)：
+18 workers／28,944 ANN audits／4,824 exact checks 完成，fixed recall 132→135/216、
+無 pass→fail，但 30/36 暖 timing 退步；快取候選仍未採用。另 8 個 native profiles
+通過 53,312 ID／F64 bits／stats audits，同 ef 多 10–13% 距離計算，selective 主要
+成本在 HNSW。無新 source/test/binary 修改；下一步評估降低歷史 slot 遍歷成本，
+不移除檢查或改固定 gate。Frozen archive SHA-256：
+`6d02ac803f9e81b99e44325a044eea38e5bb3a7f1816c462808a63741c603c01`。
+
 ## 前一採用（2026-10-03）
 
 已採用 Python 向量轉換時每次只查找一次驗證函式／類別；每個 component 的型別、

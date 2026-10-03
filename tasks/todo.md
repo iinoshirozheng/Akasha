@@ -803,6 +803,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  新核心上的 cache 生命週期比較完整完成：fixed recall 132→135/216 無新增失敗，
+  首查約快 6–7 倍，仍有 30/36 暖 timing 退步。8 個 profiles／53,312 結果 audits
+  顯示同 ef 多 10–13% 距離計算，selective 主要成本在 HNSW。候選仍未採用，
+  正式 source/binary 保持 cc15f37；下一步評估降低歷史 slot 遍歷成本。
+  [新 cohort、profiles 與全部樣本](../docs/benchmarks/2026-10-04-named-cache-final.md)。
   已採用 filtered inactive radius 正確性修正：119 targeted Mojo／388 Python／
   C ABI／3 rebuilt examples；採用後 3 Mojo／8 server tests／C/client/examples 通過。
   原固定 warm 19→22/36、mixed 19→19/36、write+flush 3→3/9，recall 36/36 全通過；

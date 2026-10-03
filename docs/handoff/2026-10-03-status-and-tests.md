@@ -1,5 +1,16 @@
 # 2026-10-03 續作狀態
 
+## 2026-10-04 新核心的 cache 生命週期診斷
+
+[搜尋修正後的新生命週期比較](../benchmarks/2026-10-04-named-cache-final.md)：
+18 workers／28,944 ANN audits／4,824 exact checks 完成，fixed recall 132→135/216、
+無 pass→fail，但 30/36 暖 timing 退步；快取候選仍未採用。另 8 個 native profiles
+通過 53,312 ID／F64 bits／stats audits，同 ef 多 10–13% 距離計算，selective 主要
+成本在 HNSW。無新 source/test/binary 修改；下一步評估降低歷史 slot 遍歷成本，
+不移除檢查或改固定 gate。Frozen archive SHA-256：
+`6d02ac803f9e81b99e44325a044eea38e5bb3a7f1816c462808a63741c603c01`。
+
+
 ## 最新採用（2026-10-04）：filtered HNSW inactive radius
 
 已修正 deleted/replaced slots 占用 filtered navigation radius、導致全允許 filter
