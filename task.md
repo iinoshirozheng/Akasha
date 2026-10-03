@@ -1,5 +1,10 @@
 # AkashaDB 工作交接入口
 
+後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
+23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
+保留三項 scalar-oracle 回歸與[完整證據](docs/benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為
+`a57f11a` / `b183b880…`。這是獨立實驗，不取代或合併前次通過格。M5/M6 未完成。
+
 更新：2026-10-03。最新採用篩選 exact scan 的兩列 checked F32 計算；全 live set
 保留原順序迴圈。**M5/M6 仍未完成**。99 targeted Mojo／358 Python／C ABI／三個
 範例通過。Warm 19→20/36（兩個 pass→fail）、mixed 29→32/36，整體 FAILED；

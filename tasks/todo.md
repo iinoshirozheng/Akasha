@@ -1,5 +1,10 @@
 # 下一輪工作包 checklist
 
+後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
+23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
+保留三項 scalar-oracle 回歸與[完整證據](../docs/benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為
+`a57f11a` / `b183b880…`。這是獨立實驗，不取代或合併前次通過格。M5/M6 未完成。
+
 依據：[plan.md](plan.md)。基線 `a8895c6`，engine `9b98dbc`。
 使用者於 2026-09-30 已授權完成全部剩餘工作：#54 收尾、#55–#63、compaction
 穩定性與後續向量型別擴充。執行計畫見

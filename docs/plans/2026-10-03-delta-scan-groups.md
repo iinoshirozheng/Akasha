@@ -30,3 +30,8 @@ do not add brittle wall-clock test assertions. Use an isolated copied source and
 binding entry. After targeted tests, compare all fixed warm/mixed trials, preserving
 all samples, efs, recall target, service boundaries and strict parity failures.
 Expected overall ceiling is small because the measured scalar component is small.
+
+Outcome: not adopted. 101 targeted Mojo / 358 Python pass, but warm 23→22/36
+and mixed 28→29/36 include three pass→fail cells and inconsistent affected ANN
+benefit. Keep the scalar production loop and three scalar-oracle regressions.
+[All evidence](../benchmarks/2026-10-03-delta-scan-groups.md).

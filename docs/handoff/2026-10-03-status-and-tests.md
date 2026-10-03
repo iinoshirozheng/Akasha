@@ -1,5 +1,10 @@
 # 2026-10-03 續作狀態
 
+後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
+23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
+保留三項 scalar-oracle 回歸與[完整證據](../benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為
+`a57f11a` / `b183b880…`。這是獨立實驗，不取代或合併前次通過格。M5/M6 未完成。
+
 最新採用[篩選 exact scan 的兩列 checked F32](../benchmarks/2026-10-03-paired-exact.md)：
 99 targeted Mojo（94 個 final isolated source＋5 個 promotion 後 kernel tests）、
 358 完整 Python、C ABI/client、三個範例通過；promoted package 的 3 個新增 Python
