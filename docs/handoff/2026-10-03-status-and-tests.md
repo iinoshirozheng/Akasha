@@ -1,5 +1,14 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 Paired finite validation 兩版候選未採用。Selective profiles 的 125,248
+audits 全通過，paired kernel 占主執行緒約 48–54%。第二版縮小驗證狀態，消除
+第一版 cosine spills；89 unique targeted Mojo／388 Python 通過，但 public warm
+23→24/36、mixed 19→21/36 有五個 pass→fail，write+flush 3→3/9。正式 source/binary
+未改；保留三個基線也通過的 exponent/lane 回歸。沒有新 C ABI／examples／crash／
+完整 Mojo／HTTP／Linux／GPU gate。[完整報告](../benchmarks/2026-10-04-paired-finite-max.md)，
+archive SHA-256：`bfb7c33b31c55cf22b2f3568bd500e4db038b44e28bf7df69e3e9d4aa662b47a`。
+下一步處理 M5 多 run／更新後重開的 named cache 生命週期；不要重跑此原型。
+
 2026-10-04 Segment F32 整段寫入候選未採用：73 targeted Mojo／8 related crash／
 388 Python 通過，完整輸出 bytes 相同。Micro 編碼變快，但 uniform-1536 public
 flush p95 三次慢 4–8%；三方 warm／mixed 皆 19→18/36，write+flush 3→3/9。

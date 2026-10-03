@@ -803,6 +803,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Paired finite validation 候選未採用：89 unique targeted Mojo／388 Python 通過，
+  public warm 23→24/36、mixed 19→21/36，仍有五個 pass→fail；write+flush 3→3/9。
+  保留三個 exponent/lane 回歸、兩版 micro、selective profiles 與所有 samples；
+  正式核心未改。[完整證據](../docs/benchmarks/2026-10-04-paired-finite-max.md)。
+  下一步處理 M5 多 run／更新後重開的 named artifact 生命週期。
   Segment F32 整段寫入候選未採用：73 targeted Mojo／8 related crash／388 Python
   通過，bytes 相同；micro 改善未穩定反映在 public flush。三方 warm／mixed 皆
   19→18/36，write+flush 3→3/9，保留全部失敗；正式來源與 binary 不變。

@@ -74,6 +74,13 @@ binary 不變。首輪原基線 worker 曾停滯於 BlockingScopedLock，124.97 
 write+flush 3→3/9；保留全部退步。正式 source/binary 不變；下一步回到 real ANN／
 selective query 的實際主要成本，不重跑已否決原型。
 
+[Paired finite validation 候選](docs/benchmarks/2026-10-04-paired-finite-max.md)
+未採用：新 selective profiles 確認 paired kernel 約占主執行緒 48–54%；縮小驗證
+狀態解決第一版 cosine register spills，但 public warm 23→24/36、mixed 19→21/36
+仍有五個 pass→fail，write+flush 3→3/9。89 unique targeted Mojo／388 Python
+通過；保留三個已在基線通過的 exponent/lane 回歸。正式 source/binary 未變；
+下一步處理 M5 多 run／更新後重開的 named cache 生命週期，不重跑此原型。
+
 ## 閱讀順序與執行規則
 
 1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。
