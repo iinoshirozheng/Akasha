@@ -56,6 +56,12 @@ strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush **3/
 這是獨立現況矩陣，不與歷史實驗合併或宣稱 A/B 改善；先前 distributed 功能 10/10
 通過，不代表 HTTP 效能達標。接續 profile uniform-128 all、real ANN 與高維維護成本。
 
+後續 [payload buffer 候選與鎖停滯證據](docs/benchmarks/2026-10-04-payload-buffer.md)
+**未採用**：67 targeted Mojo／388 Python／9 related crash／C ABI／3 examples 通過，
+但三方 warm 19→18/36 出現兩個 pass→fail；mixed 24→29/36 不能抵銷。正式來源／
+binary 不變。首輪原基線 worker 曾停滯於 BlockingScopedLock，124.97 秒後終止；
+額外 13 次診斷與後續矩陣未重現，原因仍未查明。下一步優先重現並定位此鎖停滯。
+
 ## 閱讀順序與執行規則
 
 1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。

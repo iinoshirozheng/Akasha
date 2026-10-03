@@ -1,5 +1,15 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 後續 payload buffer 候選保持隔離：67 targeted Mojo、388 Python、
+9 related crash、C ABI/client、3 rebuilt examples 通過，但三方 warm 19→18/36
+有兩個 real-all pass→fail；mixed 24→29/36 無 pass→fail，write+flush 仍 3/9。
+未採用，不把 mixed 收益抵銷 warm 失敗；正式 source/binary 仍為下方現況。
+首輪 unchanged baseline 在 BlockingScopedLock 停滯，124.97 秒後 SIGTERM；
+額外 13 次診斷及後續完整 cohorts 未重現，不能宣稱已修復。下一步優先定位。
+[完整紀錄](../benchmarks/2026-10-04-payload-buffer.md)，archive SHA-256：
+`904472d6e763cd6c2c0dc07f55f4b991bb1e1ca827cbb0b90af59d297766454f`。
+部分資料庫保留於 `.build/2026-10-04-payload-buffer/paired/uniform-128-0-before/database`。
+
 2026-10-04 最新現況矩陣已完成：warm **22/36**、mixed 查詢 **25/36**、HTTP
 **18/108** strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush
 只有 **3/9** 通過。全部 audits、18 mixed reopen、9 Arrow leases 通過；三組仍

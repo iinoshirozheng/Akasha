@@ -803,6 +803,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Payload scratch 候選未採用：67 targeted Mojo／388 Python／9 related crash／C ABI／
+  3 examples 通過；三方 warm 19→18/36 有兩個 pass→fail，mixed 24→29/36 不抵銷。
+  原基線首輪另有 BlockingScopedLock 停滯，124.97 秒後終止；13 次診斷未重現，
+  原因仍未解，保留完整 stack／部分資料庫。正式 source/binary 不變；下一步查此停滯。
+  [候選、全部樣本與未解失敗](../docs/benchmarks/2026-10-04-payload-buffer.md)。
   2026-10-04 現行 binary 的固定三次矩陣：warm 22/36、mixed 查詢 25/36、HTTP
   18/108 strict parity；各自 recall 36/36、36/36、108/108 全通過。Durable write+flush
   3/9 通過；所有 audits／18 mixed reopen／9 Arrow leases 通過，三組整體 FAILED。
