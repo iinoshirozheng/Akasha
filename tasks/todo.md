@@ -6,7 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新採用（2026-10-03）：** compaction 舊檔回收移出 writer lock，保留 durable
+**最新採用（2026-10-03）：** 在鎖外回收基線 `7dd8647` 上重新驗證並採用四列 F32
+HNSW；174 targeted Mojo／355 Python／C ABI／三個範例通過。Warm 18→22/36、mixed
+23→26/36，真實 1536D mixed 九個 ANN 格皆改善，但保留 uniform-1536 independent
+trial 1 的 pass→fail 及所有 QPS/p95 退步，整體 FAILED。正式 binary 為 `7b42e740…`。
+[完整證據](../docs/benchmarks/2026-10-03-batch-after-reclaim.md)。M5/M6 不勾選。
+
+**前一採用包（2026-10-03）：** compaction 舊檔回收移出 writer lock，保留 durable
 publication、lease、錯誤重試及 close/source ownership；81 targeted Mojo／21 related
 crash／355 Python／C ABI／三個範例通過。Warm 嚴格門檻 16→16/36，mixed 27→28/36，
 無 pass→fail，但仍有個別 p95 退步，整體 FAILED。正式 binary 改為 `3610e302…`；

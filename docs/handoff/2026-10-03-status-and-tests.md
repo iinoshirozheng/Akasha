@@ -1,11 +1,19 @@
 # 2026-10-03 續作狀態
 
-最新採用 [compaction 鎖外回收](../benchmarks/2026-10-03-unlocked-reclamation.md)：
+最新採用 [鎖外回收基線上的四列 F32 HNSW](../benchmarks/2026-10-03-batch-after-reclaim.md)：
+174 targeted Mojo／355 Python／C ABI/client／三個範例通過。正式 binary SHA-256：
+`7b42e740846e03d99291b38a4c94c3b0b54fa47ba75a34ab889baada6c68f822`。
+Warm 18→22/36、mixed 23→26/36，仍有一個 mixed pass→fail，整體 FAILED。
+真實 1536D mixed 九個 ANN 格 QPS/p95 皆改善，其他退步完整保留；不是全面 parity。
+Archive SHA-256：`587aab62755ff3643d723c1dc9c5a0f5305ee8bb615f5f681d00ec1e8464a03f`。
+M5/M6 未完成，接續定位 exact scan 成本。此輪未重跑 crash／distributed／完整 Mojo。
+
+前一採用包 [compaction 鎖外回收](../benchmarks/2026-10-03-unlocked-reclamation.md)：
 81 targeted Mojo（74 既有＋7 新增）、21 related crash、355 Python、C ABI/client、
 三個範例皆通過。正式 source 已包含此改動，Python binary SHA-256 為
 `3610e3022391e9d8731178781e2a002d273ba134055cd259e7939bb1e75b0c1c`。
 Warm 16→16/36、mixed 27→28/36，無 pass→fail，仍有 p95 退步且整體 FAILED。
-M5/M6 未完成。四列 F32 候選仍保持隔離；下一步可在此新基線上独立重評。
+該包完成時四列 F32 候選仍保持隔離；後續獨立重評結果見上方最新紀錄。
 本包 archive SHA-256：`83b77cf3ddec1a91101e560d9566b86dbcf6e0cf7a3430fd272fae17901a0f49`。
 以下按時間保留先前結果，不能把早期「正式 source/binary 不變」當成現況。
 

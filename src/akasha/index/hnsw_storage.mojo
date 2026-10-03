@@ -133,6 +133,12 @@ trait HnswGraphAccess:
     ) raises -> Float32:
         ...
 
+    def _distance_to_four_f32[tag: Int](
+        self, _dispatcher: MetricDispatcher, query: List[Float32],
+        slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        ...
+
     def neighbor_range(
         self, slot: UInt32, level: Int
     ) raises -> Tuple[Int, Int]:
@@ -576,6 +582,96 @@ struct HnswStorage(HnswGraphAccess):
                     query, slot
                 )
         return self._distance_to_slot_width[backend_tag, width](query, slot)
+
+    def _distance_to_four_f32[tag: Int](
+        self, _dispatcher: MetricDispatcher, query: List[Float32],
+        slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        """Score four F32 rows with independent, bit-preserving accumulators."""
+        comptime width = simd_width_of[DType.float32]()
+        if self.dimension >= 64:
+            return self._distance_to_four_f32_width[tag, width * 4](query, slots)
+        return self._distance_to_four_f32_width[tag, width](query, slots)
+
+    def _distance_to_four_f32_width[tag: Int, width: Int](
+        self, query: List[Float32], slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        comptime assert tag >= 0 and tag <= 2
+        if len(query) != self.dimension:
+            raise Error("prepared query dimension does not match graph")
+        var base0 = self.vector_offset(slots[0])
+        var acc0 = SIMD[DType.float32, width](0)
+        var base1 = self.vector_offset(slots[1])
+        var acc1 = SIMD[DType.float32, width](0)
+        var base2 = self.vector_offset(slots[2])
+        var acc2 = SIMD[DType.float32, width](0)
+        var base3 = self.vector_offset(slots[3])
+        var acc3 = SIMD[DType.float32, width](0)
+        var offset = 0
+        while offset + width <= len(query):
+            var left = query.unsafe_ptr().unsafe_load[width=width](offset)
+            var right0 = self.vector_scalars.unsafe_ptr().unsafe_load[width=width](base0 + offset)
+            comptime if tag == 1:
+                var diff0 = left - right0
+                acc0 += diff0 * diff0
+            else:
+                acc0 += left * right0
+            var right1 = self.vector_scalars.unsafe_ptr().unsafe_load[width=width](base1 + offset)
+            comptime if tag == 1:
+                var diff1 = left - right1
+                acc1 += diff1 * diff1
+            else:
+                acc1 += left * right1
+            var right2 = self.vector_scalars.unsafe_ptr().unsafe_load[width=width](base2 + offset)
+            comptime if tag == 1:
+                var diff2 = left - right2
+                acc2 += diff2 * diff2
+            else:
+                acc2 += left * right2
+            var right3 = self.vector_scalars.unsafe_ptr().unsafe_load[width=width](base3 + offset)
+            comptime if tag == 1:
+                var diff3 = left - right3
+                acc3 += diff3 * diff3
+            else:
+                acc3 += left * right3
+            offset += width
+        var score0 = acc0.reduce_add()
+        var score1 = acc1.reduce_add()
+        var score2 = acc2.reduce_add()
+        var score3 = acc3.reduce_add()
+        while offset < len(query):
+            var left = query[offset]
+            var right0 = self.vector_scalars[base0 + offset]
+            comptime if tag == 1:
+                var diff0 = left - right0
+                score0 += diff0 * diff0
+            else:
+                score0 += left * right0
+            var right1 = self.vector_scalars[base1 + offset]
+            comptime if tag == 1:
+                var diff1 = left - right1
+                score1 += diff1 * diff1
+            else:
+                score1 += left * right1
+            var right2 = self.vector_scalars[base2 + offset]
+            comptime if tag == 1:
+                var diff2 = left - right2
+                score2 += diff2 * diff2
+            else:
+                score2 += left * right2
+            var right3 = self.vector_scalars[base3 + offset]
+            comptime if tag == 1:
+                var diff3 = left - right3
+                score3 += diff3 * diff3
+            else:
+                score3 += left * right3
+            offset += 1
+        var result = SIMD[DType.float32, 4](0)
+        result[0] = finish_distance[tag](score0, score0)
+        result[1] = finish_distance[tag](score1, score1)
+        result[2] = finish_distance[tag](score2, score2)
+        result[3] = finish_distance[tag](score3, score3)
+        return result
 
     def _distance_to_slot_width[
         backend_tag: Int, width: Int

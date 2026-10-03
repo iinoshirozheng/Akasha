@@ -1006,44 +1006,69 @@ def search_layer[
             break
 
         var edges = graph.neighbor_range(candidate.slot, level)
-        for edge_index in range(edges[1]):
-            var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
-            if graph.level(neighbor) < level:
-                raise Error("HNSW edge targets a node below its graph level")
-            if not scratch.visit(neighbor):
-                continue
+        var group_limit = 1
+        comptime if backend_tag >= 0 and backend_tag <= 2:
+            if level == 0:
+                group_limit = 4
+        var edge_index = 0
+        while edge_index < edges[1]:
+            var slots = SIMD[DType.uint32, 4](0)
+            var count = 0
+            while edge_index < edges[1] and count < group_limit:
+                var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
+                edge_index += 1
+                if graph.level(neighbor) < level:
+                    raise Error("HNSW edge targets a node below its graph level")
+                if scratch.visit(neighbor):
+                    slots[count] = neighbor
+                    count += 1
 
-            var distance: Float32
-            comptime if backend_tag < 0:
-                distance = graph.distance_to_slot(dispatcher, query, neighbor)
+            var distances = SIMD[DType.float32, 4](0)
+            comptime if backend_tag >= 0 and backend_tag <= 2:
+                if count == 4:
+                    distances = graph._distance_to_four_f32[backend_tag](
+                        dispatcher, query, slots
+                    )
+                else:
+                    for lane in range(count):
+                        distances[lane] = graph._distance_to_slot_backend[backend_tag](
+                            dispatcher, query, slots[lane]
+                        )
             else:
-                distance = graph._distance_to_slot_backend[backend_tag](
-                    dispatcher, query, neighbor
-                )
-            var item = HnswHeapItem(neighbor, graph.id_at(neighbor), distance)
-            stats.base_visited += 1
-            stats.distance_evaluations += 1
+                for lane in range(count):
+                    comptime if backend_tag < 0:
+                        distances[lane] = graph.distance_to_slot(dispatcher, query, slots[lane])
+                    else:
+                        distances[lane] = graph._distance_to_slot_backend[backend_tag](
+                            dispatcher, query, slots[lane]
+                        )
+            for lane in range(count):
+                var neighbor = slots[lane]
+                var distance = distances[lane]
+                var item = HnswHeapItem(neighbor, graph.id_at(neighbor), distance)
+                stats.base_visited += 1
+                stats.distance_evaluations += 1
 
-            if is_filtered:
-                scratch.results.offer(item, ef)
-                _consider_result_admission(
-                    graph,
-                    admission,
-                    item,
-                    ef,
-                    scratch.filtered_results,
-                    stats,
-                )
-            else:
-                _consider_result_admission(
-                    graph, admission, item, ef, scratch.results, stats
-                )
+                if is_filtered:
+                    scratch.results.offer(item, ef)
+                    _consider_result_admission(
+                        graph,
+                        admission,
+                        item,
+                        ef,
+                        scratch.filtered_results,
+                        stats,
+                    )
+                else:
+                    _consider_result_admission(
+                        graph, admission, item, ef, scratch.results, stats
+                    )
 
-            if (
-                len(scratch.results) < ef
-                or item.distance <= scratch.results.peek_worst().distance
-            ):
-                scratch.candidates.push(item)
+                if (
+                    len(scratch.results) < ef
+                    or item.distance <= scratch.results.peek_worst().distance
+                ):
+                    scratch.candidates.push(item)
 
     var best: List[HnswHeapItem]
     if is_filtered:

@@ -1,5 +1,11 @@
 # Four independent F32 distances per query load
 
+Latest: adopted after reevaluation on unlocked-reclamation baseline `7dd8647`.
+[New results and all regressions](../benchmarks/2026-10-03-batch-after-reclaim.md):
+174 targeted Mojo, 355 Python, C ABI and three examples pass. Warm 22/36 and mixed
+26/36 remain FAILED, with one mixed pass→fail. The original experiment below is
+preserved and must not be combined with the new trial set.
+
 Experimental continuation of M5/M6 from `4fe68f1`; not adopted or accepted yet.
 The production engine still matches `a710aa5` and the frozen `3ccdc28…` binary.
 
@@ -66,3 +72,14 @@ bit/stat checks passing. It remains unpromoted. Mixed phase tracing identifies
 compaction retirement I/O under the writer lock as a substantial tail cost;
 continue that independent hypothesis before reevaluating adoption.
 [Full evidence](../benchmarks/2026-10-03-four-distance.md).
+
+## Reevaluation after reclamation adoption
+
+`7dd8647` independently adopts unlocked compaction reclamation with 81 targeted
+Mojo, 21 related crash, 355 Python, C ABI and three examples passing. Reevaluate
+the exact saved three-file scoring change on that baseline in a new isolated
+tree and package. Both before and after must contain the adopted reclamation
+change. Re-run the affected scoring tests plus the new reclamation ownership
+and background-publication tests, full saved-package Python, then the unchanged
+serial warm/mixed schedule. Keep the earlier failed trials and all new samples;
+this is an independent experiment, not a replacement assessment.

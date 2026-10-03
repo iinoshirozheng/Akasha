@@ -1,10 +1,12 @@
 # AkashaDB 工作交接入口
 
-更新：2026-10-03。最新採用 compaction 鎖外舊檔回收，保留 lease、durability、
-retry 與來源所有權；**M5/M6 仍未完成**。本包 81 targeted Mojo／21 related crash／
-355 Python／C ABI／三個範例通過，warm 16/36、mixed 28/36 嚴格速度門檻通過，
-整體仍 FAILED。正式 binary 為 `3610e302…`，已不再是 `a710aa5` 的來源／產物。
-[最新改動與完整證據](docs/benchmarks/2026-10-03-unlocked-reclamation.md)。
+更新：2026-10-03。已採用 compaction 鎖外舊檔回收，以及其上重新驗證的四列 F32
+HNSW 距離計算；**M5/M6 仍未完成**。最新 174 targeted Mojo／355 Python／C ABI／
+三個範例通過。Warm 18→22/36、mixed 23→26/36，保留一個 mixed pass→fail 及所有
+退步樣本，整體 FAILED。正式 binary 為 `7b42e740…`。
+[最新 ANN 改動與完整證據](docs/benchmarks/2026-10-03-batch-after-reclaim.md)；
+前一回收包的 81 Mojo／21 related crash 等證據見
+[鎖外回收](docs/benchmarks/2026-10-03-unlocked-reclamation.md)。
 
 本輪先前已補完 distributed 驗證（10/10），新增三種 metric 的
 default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回。
@@ -52,4 +54,5 @@ mixed 為 24/36；都是不同實驗的結果，未達全面 parity。候選與�
 本檔僅作入口，不另設與 `tasks/todo.md` 重複的 checklist。
 
 最新診斷：[四列 F32 與 compaction 持鎖成本](docs/benchmarks/2026-10-03-four-distance.md)。
-四列 distance 候選保持隔離，M5/M6 尚未完成；舊檔回收 I/O 已獨立實作驗證並採用。
+原四列 distance 候選曾保持隔離；鎖外回收獨立採用後，已重新量測並整合四列距離計算。
+不同實驗不合併通過格；M5/M6 尚未完成。

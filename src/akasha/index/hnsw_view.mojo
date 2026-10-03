@@ -421,6 +421,100 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 )
         return self._distance_to_slot_width[backend_tag, width](query, slot)
 
+    def _distance_to_four_f32[tag: Int](
+        self, _dispatcher: MetricDispatcher, query: List[Float32],
+        slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        """Score four F32 rows with independent, bit-preserving accumulators."""
+        comptime width = simd_width_of[DType.float32]()
+        if self._config.dimension >= 64:
+            return self._distance_to_four_f32_width[tag, width * 4](query, slots)
+        return self._distance_to_four_f32_width[tag, width](query, slots)
+
+    def _distance_to_four_f32_width[tag: Int, width: Int](
+        self, query: List[Float32], slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        comptime assert tag >= 0 and tag <= 2
+        if len(query) != self._config.dimension:
+            raise Error("prepared query dimension does not match graph")
+        _ = self._slot_index(slots[0])
+        var base0 = Int(slots[0]) * self._config.dimension
+        var acc0 = SIMD[DType.float32, width](0)
+        _ = self._slot_index(slots[1])
+        var base1 = Int(slots[1]) * self._config.dimension
+        var acc1 = SIMD[DType.float32, width](0)
+        _ = self._slot_index(slots[2])
+        var base2 = Int(slots[2]) * self._config.dimension
+        var acc2 = SIMD[DType.float32, width](0)
+        _ = self._slot_index(slots[3])
+        var base3 = Int(slots[3]) * self._config.dimension
+        var acc3 = SIMD[DType.float32, width](0)
+        var offset = 0
+        while offset + width <= len(query):
+            var left = query.unsafe_ptr().unsafe_load[width=width](offset)
+            var right0 = self._mapping.load_scalars[DType.float32, width](self._vector_offset + (base0 + offset) * 4)
+            comptime if tag == 1:
+                var diff0 = left - right0
+                acc0 += diff0 * diff0
+            else:
+                acc0 += left * right0
+            var right1 = self._mapping.load_scalars[DType.float32, width](self._vector_offset + (base1 + offset) * 4)
+            comptime if tag == 1:
+                var diff1 = left - right1
+                acc1 += diff1 * diff1
+            else:
+                acc1 += left * right1
+            var right2 = self._mapping.load_scalars[DType.float32, width](self._vector_offset + (base2 + offset) * 4)
+            comptime if tag == 1:
+                var diff2 = left - right2
+                acc2 += diff2 * diff2
+            else:
+                acc2 += left * right2
+            var right3 = self._mapping.load_scalars[DType.float32, width](self._vector_offset + (base3 + offset) * 4)
+            comptime if tag == 1:
+                var diff3 = left - right3
+                acc3 += diff3 * diff3
+            else:
+                acc3 += left * right3
+            offset += width
+        var score0 = acc0.reduce_add()
+        var score1 = acc1.reduce_add()
+        var score2 = acc2.reduce_add()
+        var score3 = acc3.reduce_add()
+        while offset < len(query):
+            var left = query[offset]
+            var right0 = bitcast[DType.float32](self._read_u32(self._vector_offset + (base0 + offset) * 4))
+            comptime if tag == 1:
+                var diff0 = left - right0
+                score0 += diff0 * diff0
+            else:
+                score0 += left * right0
+            var right1 = bitcast[DType.float32](self._read_u32(self._vector_offset + (base1 + offset) * 4))
+            comptime if tag == 1:
+                var diff1 = left - right1
+                score1 += diff1 * diff1
+            else:
+                score1 += left * right1
+            var right2 = bitcast[DType.float32](self._read_u32(self._vector_offset + (base2 + offset) * 4))
+            comptime if tag == 1:
+                var diff2 = left - right2
+                score2 += diff2 * diff2
+            else:
+                score2 += left * right2
+            var right3 = bitcast[DType.float32](self._read_u32(self._vector_offset + (base3 + offset) * 4))
+            comptime if tag == 1:
+                var diff3 = left - right3
+                score3 += diff3 * diff3
+            else:
+                score3 += left * right3
+            offset += 1
+        var result = SIMD[DType.float32, 4](0)
+        result[0] = finish_distance[tag](score0, score0)
+        result[1] = finish_distance[tag](score1, score1)
+        result[2] = finish_distance[tag](score2, score2)
+        result[3] = finish_distance[tag](score3, score3)
+        return result
+
     def _distance_to_slot_width[
         backend_tag: Int, width: Int
     ](self, query: List[Float32], slot: UInt32) raises -> Float32:
