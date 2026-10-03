@@ -1,8 +1,9 @@
 # Reconcile named HNSW caches against current authority
 
-Continuation of the authorized M5/M6 goal from `b0d791a`. This is a proposed,
-unimplemented slice until its tests and measurements are recorded. No M5/M6 gate
-is complete merely because the cache can be reused.
+Continuation of the authorized M5/M6 goal from `b0d791a`. The implementation was
+tested in isolated trees and remains unadopted; see the [complete lifecycle and
+filtered-radius evidence](../benchmarks/2026-10-04-named-cache-reconcile.md).
+No M5/M6 gate is complete merely because the cache can be reused.
 
 ## Choice and contracts
 

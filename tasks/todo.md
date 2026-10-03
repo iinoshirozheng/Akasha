@@ -803,6 +803,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Named cache reconciliation 候選未採用：首查快 6–7 倍，但初版 fixed recall
+  132→129/216、28/36 timing 退步。定位 filtered inactive radius 缺陷；隔離修正
+  128 targeted Mojo／388 Python 通過，固定圖 recall 129→135/216、無 pass→fail，
+  仍有 20/36 timing 退步。初版另通過 115 targeted Mojo／11 crash／388 Python／
+  C ABI／3 examples；範圍不混算。正式 source/binary 未變，下一步獨立驗證搜尋修正。
+  [全部樣本與重現](../docs/benchmarks/2026-10-04-named-cache-reconcile.md)。
   Paired finite validation 候選未採用：89 unique targeted Mojo／388 Python 通過，
   public warm 23→24/36、mixed 19→21/36，仍有五個 pass→fail；write+flush 3→3/9。
   保留三個 exponent/lane 回歸、兩版 micro、selective profiles 與所有 samples；

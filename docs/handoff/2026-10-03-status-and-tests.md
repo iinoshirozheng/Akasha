@@ -1,5 +1,16 @@
 # 2026-10-03 續作狀態
 
+## 2026-10-04 named cache reconciliation（未採用）
+
+[Named cache reconciliation 候選](../benchmarks/2026-10-04-named-cache-reconcile.md)
+仍未採用：115 targeted Mojo／11 related crash／388 Python／C ABI／3 examples 通過，
+更新後重開首查約快 6–7 倍，但初版有 3 個 fixed-ef recall 退步與 28/36 暖格退步。
+另定位 filtered HNSW 讓 inactive slots 占用搜尋半徑的既有缺陷；隔離修正通過
+128 targeted Mojo／388 Python，固定圖曲線 129→135/216 recall 通過、無新增失敗，
+但仍有 20/36 timing 退步。兩組完整 18-worker cohort 與全部失敗已凍結；正式來源／
+binary 未變。下一步獨立驗證這項搜尋修正，再決定 cache 候選，M5/M6 保持未完成。
+
+
 2026-10-04 Paired finite validation 兩版候選未採用。Selective profiles 的 125,248
 audits 全通過，paired kernel 占主執行緒約 48–54%。第二版縮小驗證狀態，消除
 第一版 cosine spills；89 unique targeted Mojo／388 Python 通過，但 public warm
