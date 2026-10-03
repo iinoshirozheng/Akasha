@@ -66,3 +66,11 @@ Linux performance。沒有新 ASan runtime、Linux runtime 或 GPU device gate�
 Archive 也保留原型期間的 `production-identity.json`，那是暫時安裝原型時的紀錄；
 以 `restored-identity.json` 為最終來源／binary 狀態。歷史 archive 保持不變。
 所有 benchmark 必須串行且不與 build／test／壓縮重疊；新量測使用新輸出目錄。
+
+## 後續：owned F32 summary（未採用）
+
+隔離候選通過 94 targeted Mojo；Python 354 passed／1 optional dependency skip，
+補入 pinned Qdrant 後該檔 16 項通過（不是 370 個 unique tests）。Warm 21→20/36、
+mixed 25→25/36，均有 pass→fail 格；全部品質與 score-bit audits 通過。候選未採用，
+正式 source/binary 從未替換。初次 Python 未啟用 pixi 的編譯器環境失敗也已保留。
+[完整報告與 immutable archive](../benchmarks/2026-10-03-owned-f32-summary.md)。

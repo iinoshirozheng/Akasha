@@ -1,7 +1,9 @@
 # Owned F32 scoring summary experiment
 
-Continue M5/M6 from `b29eca2`. This is an experimental design, not an adopted
-optimization or a completed performance gate.
+Continue M5/M6 from `b29eca2`. **Evaluated and rejected:** correctness passed,
+but warm speed was 21/36 baseline versus 20/36 candidate and mixed 25/36 for
+both, with pass-to-fail cells. [Results and evidence](../benchmarks/2026-10-03-owned-f32-summary.md).
+This design was not adopted and does not complete the performance gate.
 
 ## Evidence and choice
 

@@ -6,6 +6,11 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**2026-10-03 後續實驗：** immutable F32 finite/norm summary 候選已完成隔離驗證
+（94 targeted Mojo、354 Python＋補跑 pinned Qdrant 測試），但 warm 21→20/36、
+mixed 25→25/36 且有 pass→fail 格，故未採用；正式來源與 binary 從未替換。
+[完整試驗與證據](../docs/benchmarks/2026-10-03-owned-f32-summary.md)。M5/M6 保持未完成。
+
 **最新續作（2026-10-03）：** 正式引擎維持 `a710aa5` 的來源與 binary。
 兩個 default-vector lookup 候選均因公開 latency 退步撤回；保留三種 metric 的
 缺少 default field／更新／刪除／重開回歸測試。還原後 **355 Python、10 distributed、

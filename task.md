@@ -3,6 +3,8 @@
 更新：2026-10-03。本輪已補完 distributed 驗證（10/10），新增三種 metric 的
 default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回。
 正式 Mojo source 與 Python binary 已還原至 `a710aa5` 基線；**M5/M6 仍未完成**。
+後續 immutable F32 summary 候選也因公開速度退步未採用；
+[試驗與證據](docs/benchmarks/2026-10-03-owned-f32-summary.md)。
 最新紀錄見 [10-03 續作狀態](docs/handoff/2026-10-03-status-and-tests.md)。
 
 2026-10-02 的 Git 交付已完成：當時全部交付變更已 commit、push，並以
