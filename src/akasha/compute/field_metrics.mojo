@@ -2,6 +2,7 @@ from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from std.bit import pop_count
 from std.math import sqrt
+from std.iter import zip
 
 
 def validate_field_query(query: VectorValue, field: VectorFieldSpec) raises:
@@ -136,12 +137,15 @@ def _numeric_score[
 ](
     metric: UInt8, lhs: Span[Scalar[dtype], _], rhs: Span[Scalar[dtype], _]
 ) raises -> Float64:
+    # Validate before zip so a malformed pair cannot silently truncate.
+    if len(lhs) != len(rhs):
+        raise Error("native metric dimension mismatch")
     var total = Float64(0)
     var left_norm = Float64(0)
     var right_norm = Float64(0)
-    for index in range(len(lhs)):
-        var left = Float64(lhs[index])
-        var right = Float64(rhs[index])
+    for left_value, right_value in zip(lhs, rhs):
+        var left = Float64(left_value)
+        var right = Float64(right_value)
         if metric == 1:
             var difference = left - right
             total += difference * difference

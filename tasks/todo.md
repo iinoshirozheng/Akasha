@@ -1,6 +1,21 @@
 # 下一輪工作包 checklist
 
-最新採用 named HNSW 的 immutable-run 共享：新快照重用未變動的 base，只建新 run。
+最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
+numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
+正式 Python binary SHA-256：
+`2d5e8e0910d4d81d84699e5bc023ba9824a5f9ab867b613cc6bcefcc7bcc0463`。
+31 targeted Mojo／358 完整 Python／C ABI／三個範例通過；正式 package 再通過
+7 score-bit Mojo／91 Python／C client。沒有重新跑完整 Mojo／crash／Linux／GPU。
+獨立 named 診斷的 4,824 配對樣本 ID／F64 bits／stats 相同，高維 uniform QPS
+提高約 7–13%、real 約 4–20%；首輪 128D all 退步仍保留。另三次完整 128D 曲線
+的 all 均改善，但 selective 仍有 QPS／p95 退步，不能以中位數蓋過。
+[實作、各次樣本與驗證](../docs/benchmarks/2026-10-03-native-metric-loops.md)。Frozen archive SHA-256：
+`1084d5fc6c696fc0b2cd0bce1c116ca993524b0daa47eaf38940d5969fdbbfdb`。
+**M5/M6 仍未完成**：未重跑原 Qdrant gate；named 首次重開建圖、並行與
+nonresident／memory-limit 仍待完成。使用者目前沒有原生 Linux runner。
+以下保留前一採用與獨立實驗，不將其通過格或比例合併。
+
+前一採用 named HNSW 的 immutable-run 共享：新快照重用未變動的 base，只建新 run。
 正式 Python binary SHA-256 為
 `7db8a2d6b20436c5efdc71dd92565d58c4037448c32fbd7bfbee6a81c19910a6`。
 第一版 76 targeted Mojo 通過；slot 版 22 targeted Mojo 通過；最後補上候選 heap
