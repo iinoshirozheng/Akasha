@@ -1,7 +1,10 @@
 # Reclaim compaction inputs outside the writer lock
 
-Continuation of M5/M6 from `92ba72f`. Production remains `a710aa5`; the four-row
-distance candidate stays separate. No performance or completion claim yet.
+Continuation of M5/M6 from `92ba72f`, measured against `a710aa5`. Implemented and
+adopted after independent validation; the four-row distance candidate stays
+separate. [Results and limitations](../benchmarks/2026-10-03-unlocked-reclamation.md):
+81 targeted Mojo, 21 related crash, 355 Python, C ABI and three examples pass.
+Warm is 16/36 and mixed 28/36; M5/M6 is not complete.
 
 ## Measured problem and precedent
 
@@ -28,12 +31,17 @@ queue; add no dependency, alternate lock implementation or persistent format.
    Detach moves the pending list into an owned batch and leaves an empty queue.
    Existing synchronous `retire_or_reclaim` callers keep their behavior.
 2. `finish_compaction` continues to validate/rebase/publish under the writer
-   lock and enqueues replaced paths there. It no longer performs reclamation
-   I/O. Its internal contract becomes publication plus queued retirement.
+   lock and enqueues replaced paths there. It no longer runs the retired queue's
+   reclamation I/O. Existing job-pin release and rejected-output cleanup keep
+   their ordering. Its internal contract becomes publication plus queued retirement.
 3. Both foreground and background compaction detach a batch under the writer
    lock, release that lock, run existing lease-aware reclamation, then restore
    deferred paths under the lock. Restore the entire retained batch before
    propagating an I/O failure. New paths enqueued during I/O must survive.
+   Open the directory before detaching so I/O stays anchored to that directory;
+   an open failure leaves the shared queue intact. Foreground compaction keeps
+   its existing captured source-lock owner alive until reclamation finishes;
+   background close already joins the worker before releasing collection ownership.
 4. Preserve compaction serialization, cancellation, close/drain, source/file
    leases, durable manifest ordering, tail rebasing and recovery cleanup.
    Public foreground compaction still finishes its reclamation attempt before

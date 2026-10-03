@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新採用（2026-10-03）：** compaction 舊檔回收移出 writer lock，保留 durable
+publication、lease、錯誤重試及 close/source ownership；81 targeted Mojo／21 related
+crash／355 Python／C ABI／三個範例通過。Warm 嚴格門檻 16→16/36，mixed 27→28/36，
+無 pass→fail，但仍有個別 p95 退步，整體 FAILED。正式 binary 改為 `3610e302…`；
+四列 F32 仍隔離。原生 Linux runner 目前沒有；M5/M6 不勾選。
+[完整證據](../docs/benchmarks/2026-10-03-unlocked-reclamation.md)。以下為歷史實驗紀錄。
+
 **2026-10-03 四列 F32 實驗：** 隔離候選通過 147 targeted Mojo／355 Python，
 真實 1536D warm ANN 九格 QPS 均提高 20–39%，但 warm 嚴格門檻僅 16→18/36，
 mixed 30→27/36 且有四個 pass→fail，尚未採用。另量出背景 compaction 舊檔回收

@@ -1,8 +1,13 @@
 # AkashaDB 工作交接入口
 
-更新：2026-10-03。本輪已補完 distributed 驗證（10/10），新增三種 metric 的
+更新：2026-10-03。最新採用 compaction 鎖外舊檔回收，保留 lease、durability、
+retry 與來源所有權；**M5/M6 仍未完成**。本包 81 targeted Mojo／21 related crash／
+355 Python／C ABI／三個範例通過，warm 16/36、mixed 28/36 嚴格速度門檻通過，
+整體仍 FAILED。正式 binary 為 `3610e302…`，已不再是 `a710aa5` 的來源／產物。
+[最新改動與完整證據](docs/benchmarks/2026-10-03-unlocked-reclamation.md)。
+
+本輪先前已補完 distributed 驗證（10/10），新增三種 metric 的
 default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回。
-正式 Mojo source 與 Python binary 已還原至 `a710aa5` 基線；**M5/M6 仍未完成**。
 後續 immutable F32 summary 候選也因公開速度退步未採用；
 [試驗與證據](docs/benchmarks/2026-10-03-owned-f32-summary.md)。
 HNSW query 驗證候選也未採用；已補 2 項邊界回歸與 A/A、GC 診斷，
@@ -24,10 +29,10 @@ merge commit `eef8dab` 合併進 `main` 且 push。功能與驗證紀錄已整�
 
 Named/native vector 的遷移、原子提交、查詢、Python／Arrow、F16／BF16／I8／U8、
 Binary／MaxSim、NDJSON 已串接並驗證；retained base／delta cache 已改善更新後重開。
-最新採用 exact scan query preparation；詳細數據見
-[最新量測報告](docs/benchmarks/2026-10-02-prepared-exact.md)。
+先前採用 exact scan query preparation；詳細數據見
+[10-02 量測報告](docs/benchmarks/2026-10-02-prepared-exact.md)。
 
-本輪還原後：**355 Python／10 distributed／重建 C ABI 與 client 全通過**。
+本輪先前還原基線後：**355 Python／10 distributed／重建 C ABI 與 client 全通過**。
 未重跑完整 Mojo／crash／examples；正式引擎未變，沿用仍適用的既有證據。
 先前完整整合：957 Mojo／23 crash／344 Python／C ABI／三個範例。
 最新改動：88 項受影響 Mojo、349 項完整 Python、C ABI／三個範例，另有後續
@@ -47,4 +52,4 @@ mixed 為 24/36；都是不同實驗的結果，未達全面 parity。候選與�
 本檔僅作入口，不另設與 `tasks/todo.md` 重複的 checklist。
 
 最新診斷：[四列 F32 與 compaction 持鎖成本](docs/benchmarks/2026-10-03-four-distance.md)。
-候選保持隔離，M5/M6 尚未完成；下一工作包是安全移出 writer lock 的舊檔回收 I/O。
+四列 distance 候選保持隔離，M5/M6 尚未完成；舊檔回收 I/O 已獨立實作驗證並採用。

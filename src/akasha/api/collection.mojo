@@ -71,7 +71,7 @@ from akasha.storage.maintenance import (
     DEFAULT_MAINTENANCE_LIBRARY,
     MaintenanceController,
 )
-from akasha.storage.retired_files import RetiredFileQueue
+from akasha.storage.retired_files import RetiredFileQueue, reclaim_retired_batch
 from akasha.storage.index_cache import (
     authoritative_index_checksum,
     CACHE_HNSW_KIND,
@@ -2171,6 +2171,7 @@ struct PersistentCollection:
         mut self, mut inputs: CompactionInputs, output: CompactionOutput
     ) raises -> Bool:
         """Rebase and publish; False when the inputs were replaced."""
+        var source_lock = inputs.source_lock
         with BlockingScopedLock(self._writer_lock[]):
             try:
                 self._ensure_open()
@@ -2199,7 +2200,10 @@ struct PersistentCollection:
                 self._compaction_conflicts += 1
                 return False
             self._publish_index_caches_best_effort()
-            return True
+        reclaim_retired_batch(self._path, self._retired, self._writer_lock)
+        # Prevent early owner destruction before the detached I/O completes.
+        _ = source_lock^
+        return True
 
     def compaction_attempts(self) raises -> Int:
         """Foreground compaction jobs that captured inputs."""

@@ -1,5 +1,14 @@
 # 2026-10-03 續作狀態
 
+最新採用 [compaction 鎖外回收](../benchmarks/2026-10-03-unlocked-reclamation.md)：
+81 targeted Mojo（74 既有＋7 新增）、21 related crash、355 Python、C ABI/client、
+三個範例皆通過。正式 source 已包含此改動，Python binary SHA-256 為
+`3610e3022391e9d8731178781e2a002d273ba134055cd259e7939bb1e75b0c1c`。
+Warm 16→16/36、mixed 27→28/36，無 pass→fail，仍有 p95 退步且整體 FAILED。
+M5/M6 未完成。四列 F32 候選仍保持隔離；下一步可在此新基線上独立重評。
+本包 archive SHA-256：`83b77cf3ddec1a91101e560d9566b86dbcf6e0cf7a3430fd272fae17901a0f49`。
+以下按時間保留先前結果，不能把早期「正式 source/binary 不變」當成現況。
+
 本輪補完原先被 sandbox 阻擋的 distributed gate，新增三個 default-vector scan
 回歸案例；兩個效能原型因公開查詢退步撤回。**M5/M6 尚未完成**，唯一 checklist
 仍是 [tasks/todo.md](../../tasks/todo.md)，門檻保持每格相同 recall 下 QPS ≥ Qdrant、
