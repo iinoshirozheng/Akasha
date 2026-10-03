@@ -2509,10 +2509,11 @@ struct PersistentCollection:
         var query_norm = _prepare_f32_query(metric, query)
         for ordinal in ordinals:
             ref entry = self._memtable.entry_ref_at(ordinal)
-            if not entry.has_dense():
+            ref values = entry.values()
+            if len(values) == 0:
                 continue
             var score = _prepared_f32_score(
-                metric, query, entry.values(), query_norm
+                metric, query, values, query_norm
             )
             topk.offer(entry.id, score)
 
