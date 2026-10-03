@@ -57,3 +57,12 @@ IDs, score bits and stats to match because the traversal algorithm is intended
 to remain identical. Measure write/flush/reopen controls as well. Only adopt on
 verified end-to-end benefit; do not substitute the kernel diagnostic for the
 strict per-cell Qdrant goal. Final M5/M6 remains unchecked until all gates pass.
+
+## Measured outcome
+
+The isolated candidate passes 147 targeted Mojo and 355 Python tests. Warm
+strict parity changes 16→18/36; mixed changes 30→27/36, with all quality and
+bit/stat checks passing. It remains unpromoted. Mixed phase tracing identifies
+compaction retirement I/O under the writer lock as a substantial tail cost;
+continue that independent hypothesis before reevaluating adoption.
+[Full evidence](../benchmarks/2026-10-03-four-distance.md).

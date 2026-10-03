@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**2026-10-03 四列 F32 實驗：** 隔離候選通過 147 targeted Mojo／355 Python，
+真實 1536D warm ANN 九格 QPS 均提高 20–39%，但 warm 嚴格門檻僅 16→18/36，
+mixed 30→27/36 且有四個 pass→fail，尚未採用。另量出背景 compaction 舊檔回收
+在 writer lock 內花 256–618 µs，是 mixed 慢查詢等待的主要來源之一；下一包縮短
+此持鎖 I/O，保留同步／lease／crash 保證。原生 Linux runner 使用者確認目前沒有。
+[原始證據](../docs/benchmarks/2026-10-03-four-distance.md)。M5/M6 不勾選。
+
 **2026-10-03 後續查證：** HNSW 重複 prepared-query 驗證已量出呼叫次數與成本；
 候選通過 143 targeted Mojo／355 Python，但 warm 19→17/36、mixed 32→30/36，
 未證明穩定公開收益，故不採用。保留 2 項 public query boundary 回歸。

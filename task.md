@@ -45,3 +45,6 @@ mixed 為 24/36；都是不同實驗的結果，未達全面 parity。候選與�
 `a710aa5`。本輪新增本地 commits `3b10af6`（原型與測試）、`717e240`（撤回原型，
 保留測試）及續作文件；尚未推送或再次合併 main。前次交接完成時沒有進行中的 benchmark／build／test；後續實驗狀態見最新對話。
 本檔僅作入口，不另設與 `tasks/todo.md` 重複的 checklist。
+
+最新診斷：[四列 F32 與 compaction 持鎖成本](docs/benchmarks/2026-10-03-four-distance.md)。
+候選保持隔離，M5/M6 尚未完成；下一工作包是安全移出 writer lock 的舊檔回收 I/O。

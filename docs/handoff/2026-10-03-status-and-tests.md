@@ -84,4 +84,14 @@ binary 仍不變。保留 2 項 public query boundary 回歸，已在 production
 不能把失敗格當成噪音刪除。GC 每資料集影響 5 筆 timed query，但多數最慢樣本沒有 GC。
 後續應檢驗主要 mapped distance 成本，不再憑小幅單格變動採用候選。已詢問是否有
 可用原生 Linux x86-64 runner 以完成受控 memory-limit／持續 nonresident gate；
-本工作包沒有完成該 gate。
+使用者回覆目前沒有可用 runner；本工作包沒有完成該 gate。
+
+## 後續：四列 distance 與 compaction 持鎖成本
+
+[完整量測與凍結證據](../benchmarks/2026-10-03-four-distance.md)。隔離 candidate
+147 targeted Mojo／355 Python 通過，warm 16→18/36、mixed 30→27/36，未放入正式
+source/binary。保留新增 grouped-admission 順序測試（也在 baseline 通過）。所有
+ID、score bits、stats、execution 相同；不排除四個 mixed pass→fail。
+CPU/GC 與 lock trace 將 mixed 慢樣本定位到背景 compaction；publish 內的舊檔回收
+含 directory sync 花 256–618 µs，durable manifest 發布花 181–276 µs。
+下一步獨立驗證鎖外 reclamation；不可省略 manifest durability、file lease 或 error retry。
