@@ -786,6 +786,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  原生 HTTP／並行 1/2/4 clients 的三資料集×三 trial 已完整量測：108/108 recall、
+  16/108 strict parity，整體 FAILED；24,120 query audits 與 33 targeted Python
+  tests／兩個實際 server smoke 通過。沒有新完整 engine 整合；原 binding gate 獨立保留。
+  [完整 HTTP 證據](../docs/benchmarks/2026-10-03-http-parity.md)。
   最新 planner 隔離複核支持 uniform 選 exact／real 低 ef 選 ANN；14,472 exact 與
   14,472 approx audits 保留 57 個低 recall pass cells，未改 production 路由，
   不取代 Qdrant gate。[完整證據](../docs/benchmarks/2026-10-03-planner-recheck.md)。

@@ -1,5 +1,10 @@
 # 2026-10-03 續作狀態
 
+最新補齊原生 HTTP／並行 1/2/4 clients 的完整量測：108/108 recall、16/108 strict
+parity，整體 FAILED；24,120 query audits 全通過。33 targeted Python tests 與
+兩個實際 server smoke 通過，production engine／binary 仍為 `d38bffa`／`2d5e8e09…`。
+[HTTP 工作包與完整證據](../benchmarks/2026-10-03-http-parity.md)。M5/M6 尚未完成。
+
 最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
 numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
 正式 Python binary SHA-256：
