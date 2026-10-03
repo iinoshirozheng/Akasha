@@ -1,6 +1,7 @@
 # 每個受影響中心只修復一次的 private cache 候選
 
-M5/M6 未完成；本方案**尚未實作**，正式 engine 仍為 `cc15f37`。
+M5/M6 未完成；本方案已在 `.build/2026-10-04-batched-cache-repair` 隔離實作，
+完成三 corpora／三 trials 後**未採用**，正式 engine 仍為 `cc15f37`。
 [實測計數](../research/2026-10-04-refresh-work.md)顯示 38,256 neighbor repair jobs
 只有 8,210 個不同 center/level，reciprocal connect 占 47.43% distance calls。
 [retained-base/delta](../benchmarks/2026-10-04-named-overlay.md)雖降低冷查詢成本，
@@ -46,6 +47,17 @@ rerank budget；從複製 binding entry 編譯，saved-package pytest 使用 `-o
 和 import/hash guards。依實際 persistence 變動補相關驗證，沿用未變動的證據。
 
 先比較同一 uniform-1536 原完整 grid 的實際 repair 工作、首查、暖查詢與 recall。
-所有失敗與原 samples 保留。若冷成本或任一既有 quality／selected warm 格失敗，
-不擴大完整 cohort、不採用；若有支持再跑三 corpus／三 trial 與受影響正式 gates。
+所有失敗與原 samples 保留。首輪 79 targeted Mojo／388 Python 通過，native
+distance calls 減少 63.8%；uniform-1536 首查 33.06→19.79 秒、quality 9→9/24，
+但四個選定暖格均退步。這是 named A/B 診斷，尚未執行 Qdrant gate。
+
+2026-10-04 更正：先前「任一 selected warm A/B 退步即不擴大／不採用」是本方案
+自行加入的停止條件，不是使用者要求。正式門檻仍是原固定矩陣逐格 QPS ≥ Qdrant
+且 p95 ≤ Qdrant；不能把兩者混為一談，也不能用冷查詢改善抵銷正式失敗格。
+保留本次全部 A/B 退步，並已完成三 corpus／三 trial 的生命週期曲線：
+28,944 ANN audits／4,824 exact checks 通過，fixed recall 132→129/216，
+三個 uniform-128 independent／ef128 格新增失敗，23/36 選定暖格退步。
+首查三 corpus 均降低，但更新修復成本與品質退步尚未解決；候選未採用，沒有
+新完整 Mojo／crash／C ABI／examples 或 Qdrant gate。原正式矩陣沒有 named adapter，
+不能將 named 曲線拼接到 default-field 的 Qdrant 數字上宣稱 parity。
 不得以一次計數診斷或單格改善宣稱 M5/M6 完成。Linux runner 仍不可用。

@@ -2,12 +2,13 @@
 
 目前正式 engine 為 `cc15f37` 的 filtered inactive radius 修正，Python SHA-256
 `609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
-最新 private cache point-refresh 候選未採用：113 targeted Mojo／388 Python 通過，
-但單次 uniform-1536 更新後重開首查 4.90→53.58 秒；完整 grid quality 9→9/24
-無新增失敗。正式來源未改；既有 retained-base／delta 的三次 primitive 成本探針
-已通過，更新 4.42–4.46→1.33–1.34 秒；不是 named query／recall 或 Qdrant gate。
-下一步依 [接合設計](../docs/plans/2026-10-04-named-overlay-design.md)隔離實作。
-[全部證據](../docs/benchmarks/2026-10-04-cache-point-refresh.md)。**M5/M6 未完成**；
+最新 private batch cache 修復候選未採用：79 targeted Mojo／388 完整 Python 通過，
+完整 named 生命週期 28,944 ANN audits／4,824 exact checks 通過，但 fixed recall
+132→129/216、三個新增品質失敗、23/36 選定暖格退步。三 corpus 首查均降低，
+高維修復 distance calls 減少63.8%，但成本與品質取捨未支持採用；正式來源未改。
+這不是 Qdrant gate；方案先前自行加上的任一 A/B 退步即否決條件已更正。
+[完整實作與證據](../docs/benchmarks/2026-10-04-batched-cache-repair.md)。
+下一步回到原 M6 失敗格及 M5 生命週期，不原樣重跑上述候選。**M5/M6 未完成**；
 最新完整 gates 與唯一未勾選項目見下方 M5/M6 checklist，沒有 Linux runner。
 
 以下保留歷史工作包，當時的「最新」不代表目前版本。
@@ -815,10 +816,17 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  每中心一次的 private batch 修復已完成隔離實作與三 corpora／三 trials，未採用：
+  79 targeted Mojo／388 完整 Python、28,944 ANN audits／4,824 exact checks 通過；
+  fixed recall 132→129/216，三個 uniform-128 independent／ef128 格新增失敗，
+  23/36 選定暖格退步。首查三 corpus 均改善，高維更新 distance calls 減少63.8%，
+  但修復仍昂貴；正式 source/binary 未改。這不是 Qdrant gate，沒有新完整 Mojo／
+  crash／C ABI／examples／Linux 驗收；全部慢樣本、失敗與原型已凍結。
+  [完整證據](../docs/benchmarks/2026-10-04-batched-cache-repair.md)。
   Local repair 計數完成：38,256 jobs／8,210 unique centers-levels，78.54% 重複；
   reciprocal connect 占 47.43% distance calls。只加記錄，最終 graph 與原 frozen
-  結果逐 byte 相同，12,268,032 component bits 通過，沒有新效能達標主張。下一步
-  依 private batch 方案隔離驗證每中心一次修復。[計數與限制](../docs/research/2026-10-04-refresh-work.md)、
+  結果逐 byte 相同，12,268,032 component bits 通過，沒有新效能達標主張。其後
+  private batch 實驗結果見上段。[計數與限制](../docs/research/2026-10-04-refresh-work.md)、
   [實作方案](../docs/plans/2026-10-04-batched-cache-repair.md)。
   Named retained-base／delta 已完成隔離接合，未採用：跨階段 150 unique targeted
   Mojo，空 delta 修正後 23 related Mojo／388 Python／C ABI／3 rebuilt examples

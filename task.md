@@ -22,12 +22,22 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
-[修復重複工作計數](docs/research/2026-10-04-refresh-work.md)已完成：819 updates
-產生 38,256 jobs／8,210 unique center-level，78.54% 重複處理，reciprocal connect
-占 47.43% distance calls。診斷 graph 與舊 frozen 結果逐 byte 相同，7,987 points／
-12,268,032 component bits／205 deleted IDs 通過；instrumented 時間不列效能 gate。
-正式來源未改。下一步依 [每個中心一次的 private batch 方案](docs/plans/2026-10-04-batched-cache-repair.md)
-做隔離實作與窄驗證，不直接移植 Qdrant 單向 pruning，也不把重複 jobs 比例當速度。
+[每中心一次的 private batch 修復](docs/benchmarks/2026-10-04-batched-cache-repair.md)
+已完成隔離實作與完整 named 生命週期曲線，**未採用**。79 targeted Mojo／388 完整
+Python 通過；相同高維更新的 distance calls 減少 63.8%。三 corpus／三 trial 共
+28,944 ANN audits／4,824 exact checks 通過，但 fixed recall 132→129/216，
+uniform-128 independent／ef128 三次新增失敗，23/36 選定暖格退步。首查約
+6.8→6.1 秒／33.1→19.8 秒／17.5→13.2 秒，修復仍昂貴；正式 source/binary 不變。
+本曲線不是 Qdrant gate；已更正方案自行加上的「任一 A/B 退步即否決」限制，
+正式門檻仍是原固定矩陣逐格 QPS／p95 對 Qdrant。沒有新完整 Mojo／crash／C ABI／
+examples／Linux gate。Frozen archive SHA-256：
+`b23fe72b48884f9ebb9113e8dd1dde9194c26e5fcc1282c948b7bfd81ffbeff5`。
+
+[前一修復計數](docs/research/2026-10-04-refresh-work.md)：819 updates 產生
+38,256 jobs／8,210 unique center-level，78.54% 重複，reciprocal connect 占47.43%。
+它支持上述 batch 實驗，不能把去重比例當速度。後續回到 M6 實測失敗格與 M5
+生命週期；不原樣重跑 batch／overlay 候選。正式 real ANN 三次皆無 widening，
+沒有支持為此加入跨輪距離快取；既有 counter 的最後 ANN 輪契約保持不變。
 
 [Named retained-base／delta 接合](docs/benchmarks/2026-10-04-named-overlay.md)
 已完成隔離實作，**未採用**。跨階段 150 unique targeted Mojo；修正空 delta 後
