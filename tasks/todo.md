@@ -786,6 +786,9 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  已採用 HTTP search 單次 worker 排程；41 targeted Python 與 OpenAPI／結果位元
+  檢查通過。獨立三方 strict parity 14→22/108，兩格 pass→fail 仍保留，整體 FAILED；
+  不與前次 16/108 合併。[實作、profile 與全部試跑](../docs/benchmarks/2026-10-03-http-dispatch.md)。
   原生 HTTP／並行 1/2/4 clients 的三資料集×三 trial 已完整量測：108/108 recall、
   16/108 strict parity，整體 FAILED；24,120 query audits 與 33 targeted Python
   tests／兩個實際 server smoke 通過。沒有新完整 engine 整合；原 binding gate 獨立保留。

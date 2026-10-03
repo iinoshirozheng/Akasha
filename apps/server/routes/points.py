@@ -1,6 +1,7 @@
 """Point mutation, lookup, and search routes."""
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from akashadb import PayloadField, SearchRequest, SparseElement
 from apps.server.schemas import SearchRequestBody, UpsertRequest
@@ -51,11 +52,12 @@ def get_point(name: str, point_id: int, request: Request) -> dict[str, object]:
 
 
 @router.post("/{name}/search")
-def search_points(
+async def search_points(
     name: str, body: SearchRequestBody, request: Request
 ) -> list[dict[str, object]]:
     collection = request.app.state.database.collection(name)
-    results = collection.search(
+    results = await run_in_threadpool(
+        collection.search,
         SearchRequest(
             metric=body.metric,
             k=body.k,

@@ -1,5 +1,10 @@
 # AkashaDB 工作交接入口
 
+最新採用 HTTP search 的單次 worker 排程，保留原 response validation。正式 package
+41 targeted Python 通過；native binary 仍為 `2d5e8e09…`。三方對照的 strict parity
+為前版 14/108 → 採用版 22/108，兩版各 108/108 recall；有 2 格 pass→fail，整體 FAILED。
+[HTTP 排程實作與完整樣本](docs/benchmarks/2026-10-03-http-dispatch.md)。M5/M6 未完成。
+
 最新補齊原生 HTTP／並行 1/2/4 clients 的完整量測：108/108 recall、16/108 strict
 parity，整體 FAILED；24,120 query audits 全通過。33 targeted Python tests 與
 兩個實際 server smoke 通過，production engine／binary 仍為 `d38bffa`／`2d5e8e09…`。
