@@ -11,6 +11,10 @@
 下一步回到原 M6 失敗格及 M5 生命週期，不原樣重跑上述候選。**M5/M6 未完成**；
 最新完整 gates 與唯一未勾選項目見下方 M5/M6 checklist，沒有 Linux runner。
 
+後續 mapped F32 雙區塊探針未採用：3 metric tests／1,646,592 score-bit 比對
+通過，42 筆 kernel 微量測中，高維 Dot／Cosine 分別有 2／3 次退步；沒有 public
+query／Qdrant gate，正式來源未改。[完整樣本](../docs/benchmarks/2026-10-04-mapped-chunks.md)。
+
 以下保留歷史工作包，當時的「最新」不代表目前版本。
 
 2026-10-03 採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
@@ -816,6 +820,9 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Mapped F32 雙區塊 kernel 探針未採用：3 metric tests／1,646,592 score-bit 比對
+  通過，42 筆微量測保留；高維結果不一致，没有新 public query／Qdrant 驗收。
+  正式 source/binary 不變。[證據](../docs/benchmarks/2026-10-04-mapped-chunks.md)。
   每中心一次的 private batch 修復已完成隔離實作與三 corpora／三 trials，未採用：
   79 targeted Mojo／388 完整 Python、28,944 ANN audits／4,824 exact checks 通過；
   fixed recall 132→129/216，三個 uniform-128 independent／ef128 格新增失敗，

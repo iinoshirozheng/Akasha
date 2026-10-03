@@ -22,6 +22,11 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[Mapped F32 雙區塊探針](docs/benchmarks/2026-10-04-mapped-chunks.md)未採用：
+3 metric tests／1,646,592 score-bit 比對通過，42 筆微量測全保留。128D 七次改善，
+1536D Dot／Cosine 分別有 2／3 次退步；沒有 public query／Qdrant 新通過主張。
+正式 source/binary 不變。接續檢查原 HTTP 失敗格的實際成本，不重做此微調。
+
 [每中心一次的 private batch 修復](docs/benchmarks/2026-10-04-batched-cache-repair.md)
 已完成隔離實作與完整 named 生命週期曲線，**未採用**。79 targeted Mojo／388 完整
 Python 通過；相同高維更新的 distance calls 減少 63.8%。三 corpus／三 trial 共
