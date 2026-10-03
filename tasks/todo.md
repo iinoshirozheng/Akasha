@@ -1,6 +1,16 @@
 # 下一輪工作包 checklist
 
-最新採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
+目前正式 engine 為 `cc15f37` 的 filtered inactive radius 修正，Python SHA-256
+`609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
+最新 private cache point-refresh 候選未採用：113 targeted Mojo／388 Python 通過，
+但單次 uniform-1536 更新後重開首查 4.90→53.58 秒；完整 grid quality 9→9/24
+無新增失敗。正式來源未改；下一步查既有 retained-base／delta 的 named 適用性。
+[全部證據](../docs/benchmarks/2026-10-04-cache-point-refresh.md)。**M5/M6 未完成**；
+最新完整 gates 與唯一未勾選項目見下方 M5/M6 checklist，沒有 Linux runner。
+
+以下保留歷史工作包，當時的「最新」不代表目前版本。
+
+2026-10-03 採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
 identity／ID／向量並重綁 ordinal。忙碌 artifact／query 不阻塞 writer，稍後可重試。
 正式 Python binary SHA-256：
 `843186a731ceefaa38e6e5780a0eb13c180dcdc9525191d53f5c8ba0d89d79ba`。
@@ -15,7 +25,7 @@ exact checks 通過，兩版各保留 84 個低 recall 格。重開首查約 87�
 Frozen archive SHA-256：
 `8677fec577201dbef6d184f47d6255871f2c98ccd12a46ac676d9dbe75a73356`。
 
-以下保留前一工作包的歷史紀錄；最新狀態以上段與其報告為準。**M5/M6 未完成**。
+以下保留更早工作包的歷史紀錄；目前狀態以本文開頭與 M5/M6 checklist 為準。
 
 最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
 numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
@@ -803,6 +813,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Private cache point-refresh 候選未採用：113 unique targeted Mojo／388 Python
+  通過；單次 uniform-1536 完整 curves 無新增 quality 失敗、暖 QPS 快 3–9%，
+  但更新後重開首查 4.90→53.58 秒。另五秒 native sample 指出修復工作成本。
+  未跑新完整矩陣／C ABI／crash／examples；正式 source/binary 不變，下一步查既有
+  retained-base／delta 的 named 適用性。[全部樣本](../docs/benchmarks/2026-10-04-cache-point-refresh.md)。
   新核心上的 cache 生命週期比較完整完成：fixed recall 132→135/216 無新增失敗，
   首查約快 6–7 倍，仍有 30/36 暖 timing 退步。8 個 profiles／53,312 結果 audits
   顯示同 ef 多 10–13% 距離計算，selective 主要成本在 HNSW。候選仍未採用，

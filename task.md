@@ -22,6 +22,13 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[後續 private point-refresh](docs/benchmarks/2026-10-04-cache-point-refresh.md)
+亦未採用：113 unique targeted Mojo／388 Python 通過。單次 uniform-1536 完整
+ef/filter grid 中，slot 9,011→8,192、暖 QPS 快 3–9%、quality 9→9/24 無新增失敗，
+但更新後重開首查 4.90→53.58 秒。另 native profile 確認修復的主要成本，全部
+失敗與樣本已凍結。正式 source/binary 不變；下一步查既有 retained-base／delta
+能否沿用到 named lifecycle，不擴大或盲目重跑此候選。這不是完整 Qdrant 矩陣。
+
 [搜尋修正後的新生命週期比較](docs/benchmarks/2026-10-04-named-cache-final.md)：
 18 workers／28,944 ANN audits／4,824 exact checks 完成，fixed recall 132→135/216、
 無 pass→fail，但 30/36 暖 timing 退步；快取候選仍未採用。另 8 個 native profiles
