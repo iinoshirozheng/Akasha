@@ -2,7 +2,10 @@
 
 M5/M6 仍未完成。正式 source 保持 `cc15f37`；本方案接續
 [既有 primitives 成本探針](../benchmarks/2026-10-04-named-overlay-cost.md)，
-**尚未實作或採用**。所有原需求、固定矩陣與既有授權持續適用。
+已完成 [隔離實作與驗證](../benchmarks/2026-10-04-named-overlay.md)，**未採用**：
+單次高維首查改善，但 3/4 選定暖格退步。空 delta 以零長度省略，保留 graph
+allocation guard；全部失敗與修復證據已凍結。以下為該候選的設計，所有原需求、
+固定矩陣與既有授權持續適用。
 
 ## 選擇與限制
 

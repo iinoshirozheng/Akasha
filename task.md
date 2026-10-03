@@ -22,6 +22,18 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[Named retained-base／delta 接合](docs/benchmarks/2026-10-04-named-overlay.md)
+已完成隔離實作，**未採用**。跨階段 150 unique targeted Mojo；修正空 delta 後
+23 項相關 Mojo／388 完整 Python／C ABI／3 rebuilt examples 通過，11 crash 為
+前一整合階段。單次原 uniform-1536 完整 grid，更新後首查 33.13→1.71 秒、
+quality 9→9/24 無新增失敗，但 3/4 選定暖格退步、第二次重開變慢。四個 native
+profiles／7,488 audits 支持 stale-base 遍歷成本仍在；all 多算約 981 次距離與
+約 969 次 source rejection。首次 missing-cache 失敗與空 snapshot allocation
+上限重現均保留，改用可選空 delta，沒有放寬安全限制。正式 source/binary 不變；
+下一步量測 local repair 的重複工作、查 batch healing 的可行性，不盲目重跑舊候選。
+Frozen archive SHA-256：
+`2f9f97e8b4d9c5408af60fbfe0772550c181b21abccdde61e3f00682cfa3a2b2`。
+
 [後續 private point-refresh](docs/benchmarks/2026-10-04-cache-point-refresh.md)
 亦未採用：113 unique targeted Mojo／388 Python 通過。單次 uniform-1536 完整
 ef/filter grid 中，slot 9,011→8,192、暖 QPS 快 3–9%、quality 9→9/24 無新增失敗，
@@ -33,8 +45,9 @@ ef/filter grid 中，slot 9,011→8,192、暖 QPS 快 3–9%、quality 9→9/24 
 三次均通過：相同 graph／819 updates／205 deletes 的 primitive 更新 4.42–4.46 秒
 降至 1.33–1.34 秒，47,922 current-vector audits／73,608,192 component bits 通過；
 append 圖與前次逐 byte 相同、segmented base 未改。這不是 named query／recall 或
-Qdrant gate。下一步依 [接合設計](docs/plans/2026-10-04-named-overlay-design.md)
-先補 scored candidates，維持原全域 rerank budget，再隔離驗證 cache 生命週期。
+Qdrant gate。此為前一 primitive 階段；其後已依
+[接合設計](docs/plans/2026-10-04-named-overlay-design.md)完成上述隔離候選，
+原全域 rerank budget 不變，但暖效能仍未通過。
 
 [搜尋修正後的新生命週期比較](docs/benchmarks/2026-10-04-named-cache-final.md)：
 18 workers／28,944 ANN audits／4,824 exact checks 完成，fixed recall 132→135/216、
