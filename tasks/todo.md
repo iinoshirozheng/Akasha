@@ -786,6 +786,9 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新 planner 隔離複核支持 uniform 選 exact／real 低 ef 選 ANN；14,472 exact 與
+  14,472 approx audits 保留 57 個低 recall pass cells，未改 production 路由，
+  不取代 Qdrant gate。[完整證據](../docs/benchmarks/2026-10-03-planner-recheck.md)。
   IVF-flat 已接通 native 五型別、三種 metric、Mojo／Python／Arrow／多欄位融合；
   3 Mojo + 25 Python 新測試與控制項測試通過，最新 Python 全套 264 passed。
   180 probe/filter/dtype/metric 量測格保留完整 recall 與原始延遲；完整 probe 與獨立
