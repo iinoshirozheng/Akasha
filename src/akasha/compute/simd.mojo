@@ -161,6 +161,107 @@ def _prepared_f32_score(
     return _prepared_score[2](query, candidate, query_norm)
 
 
+def _checked_pair_kernel[metric: Int, width: Int](
+    query: List[Float32], first: List[Float32], second: List[Float32],
+    query_norm: Float32,
+) raises -> SIMD[DType.float32, 2]:
+    if len(query) == 0:
+        raise Error("vectors must not be empty")
+    if len(first) != len(query):
+        raise Error("vector dimensions must match")
+    if len(second) != len(query):
+        # Preserve the earlier candidate's finite/zero-norm error precedence.
+        _ = _prepared_score[metric](query, first, query_norm)
+        raise Error("vector dimensions must match")
+    var total0 = SIMD[DType.float32, width](0)
+    var total1 = SIMD[DType.float32, width](0)
+    var norm0 = SIMD[DType.float32, width](0)
+    var norm1 = SIMD[DType.float32, width](0)
+    var valid0 = SIMD[DType.bool, width](fill=True)
+    var valid1 = SIMD[DType.bool, width](fill=True)
+    var offset = 0
+    while offset + width <= len(query):
+        var left = query.unsafe_ptr().unsafe_load[width=width](offset)
+        var right0 = first.unsafe_ptr().unsafe_load[width=width](offset)
+        var right1 = second.unsafe_ptr().unsafe_load[width=width](offset)
+        valid0 &= isfinite(right0)
+        valid1 &= isfinite(right1)
+        comptime if metric == 1:
+            var difference0 = left - right0
+            var difference1 = left - right1
+            total0 += difference0 * difference0
+            total1 += difference1 * difference1
+        else:
+            total0 += left * right0
+            total1 += left * right1
+            comptime if metric == 2:
+                norm0 += right0 * right0
+                norm1 += right1 * right1
+        offset += width
+    if not valid0.reduce_and():
+        raise Error("vectors must contain only finite values")
+    var score0 = total0.reduce_add()
+    var score1 = total1.reduce_add()
+    var squared_norm0 = norm0.reduce_add()
+    var squared_norm1 = norm1.reduce_add()
+    var tail_valid1 = True
+    while offset < len(query):
+        var left = query[offset]
+        var right0 = first[offset]
+        var right1 = second[offset]
+        if not isfinite(right0):
+            raise Error("vectors must contain only finite values")
+        tail_valid1 = tail_valid1 and isfinite(right1)
+        comptime if metric == 1:
+            var difference0 = left - right0
+            var difference1 = left - right1
+            score0 += difference0 * difference0
+            score1 += difference1 * difference1
+        else:
+            score0 += left * right0
+            score1 += left * right1
+            comptime if metric == 2:
+                squared_norm0 += right0 * right0
+                squared_norm1 += right1 * right1
+        offset += 1
+    comptime if metric == 2:
+        if query_norm == 0 or squared_norm0 == 0:
+            raise Error("cosine similarity requires non-zero vectors")
+        score0 = score0 / sqrt(query_norm * squared_norm0)
+    if not valid1.reduce_and() or not tail_valid1:
+        raise Error("vectors must contain only finite values")
+    comptime if metric == 2:
+        if query_norm == 0 or squared_norm1 == 0:
+            raise Error("cosine similarity requires non-zero vectors")
+        score1 = score1 / sqrt(query_norm * squared_norm1)
+    return SIMD[DType.float32, 2](score0, score1)
+
+
+def _prepared_pair_score[metric: Int](
+    query: List[Float32], first: List[Float32], second: List[Float32],
+    query_norm: Float32,
+) raises -> SIMD[DType.float32, 2]:
+    comptime assert metric >= 0 and metric <= 2
+    comptime width = simd_width_of[DType.float32]()
+    if len(query) >= EXACT_WIDE_MIN_DIMENSION:
+        return _checked_pair_kernel[metric, width * EXACT_SIMD_GROUPS](
+            query, first, second, query_norm
+        )
+    return _checked_pair_kernel[metric, width](query, first, second, query_norm)
+
+
+def _prepared_f32_pair_score(
+    metric: Int, query: List[Float32], first: List[Float32],
+    second: List[Float32], query_norm: Float32,
+) raises -> SIMD[DType.float32, 2]:
+    """Score two owned candidates in order, preserving every row check."""
+    if metric == 0:
+        return _prepared_pair_score[0](query, first, second, query_norm)
+    if metric == 1:
+        return _prepared_pair_score[1](query, first, second, query_norm)
+    return _prepared_pair_score[2](query, first, second, query_norm)
+
+
 def _dot_kernel[width: Int](lhs: List[Float32], rhs: List[Float32]) -> Float32:
     var lhs_ptr = lhs.unsafe_ptr()
     var rhs_ptr = rhs.unsafe_ptr()

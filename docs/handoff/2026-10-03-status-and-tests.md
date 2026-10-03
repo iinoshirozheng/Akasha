@@ -1,6 +1,18 @@
 # 2026-10-03 續作狀態
 
-最新採用 [鎖外回收基線上的四列 F32 HNSW](../benchmarks/2026-10-03-batch-after-reclaim.md)：
+最新採用[篩選 exact scan 的兩列 checked F32](../benchmarks/2026-10-03-paired-exact.md)：
+99 targeted Mojo（94 個 final isolated source＋5 個 promotion 後 kernel tests）、
+358 完整 Python、C ABI/client、三個範例通過；promoted package 的 3 個新增 Python
+cases 也通過。未重跑完整 Mojo／crash／distributed。正式 binary SHA-256：
+`b183b8805e8b7cf29b86cf443e1898befebac4cd77844680944f853461422412`。
+Warm 19→20/36 有兩個 real-all pass→fail，mixed 29→32/36 無 pass→fail；仍 FAILED。
+完整保留全 live set／ANN 退步與未採用的 universal pairing，不能跨格抵銷。
+Archive SHA-256：`3e80c14a01efcfca271a8c22199483d3b0257c7dea1b75d4ab18c3f0a5045e7a`。
+Archive 中新 profile 是 promotion 前 `c00494f`，real ANN mapped four-row 占
+31–36% 主執行緒樣本；不是新 candidate 的效能驗收。原生 Linux runner 目前沒有，
+M5/M6 未完成。以下按時間保留先前結果。
+
+前一採用 [鎖外回收基線上的四列 F32 HNSW](../benchmarks/2026-10-03-batch-after-reclaim.md)：
 174 targeted Mojo／355 Python／C ABI/client／三個範例通過。正式 binary SHA-256：
 `7b42e740846e03d99291b38a4c94c3b0b54fa47ba75a34ab889baada6c68f822`。
 Warm 18→22/36、mixed 23→26/36，仍有一個 mixed pass→fail，整體 FAILED。

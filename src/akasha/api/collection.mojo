@@ -24,7 +24,9 @@ from akasha.document.record import (
     validate_fields,
 )
 from akasha.index.bitmap import Bitmap
-from akasha.compute.simd import _prepare_f32_query, _prepared_f32_score
+from akasha.compute.simd import (
+    _prepare_f32_query, _prepared_f32_score, _prepared_f32_pair_score,
+)
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_rebuild import (
@@ -2511,14 +2513,38 @@ struct PersistentCollection:
         )
         var ordinals = candidate_ordinals(self._memtable, candidates)
         var query_norm = _prepare_f32_query(metric, query)
-        for ordinal in ordinals:
-            ref entry = self._memtable.entry_ref_at(ordinal)
-            if not entry.has_dense():
-                continue
-            var score = _prepared_f32_score(
-                metric, query, entry.values(), query_norm
-            )
-            topk.offer(entry.id, score)
+        if len(ordinals) == self._memtable.live_count():
+            # Full scans retain the sequential row loop; pairing is for gathers.
+            for ordinal in ordinals:
+                ref entry = self._memtable.entry_ref_at(ordinal)
+                if not entry.has_dense():
+                    continue
+                var score = _prepared_f32_score(
+                    metric, query, entry.values(), query_norm
+                )
+                topk.offer(entry.id, score)
+        else:
+            var position = 0
+            while position < len(ordinals):
+                ref entry = self._memtable.entry_ref_at(ordinals[position])
+                position += 1
+                if not entry.has_dense():
+                    continue
+                if position < len(ordinals):
+                    ref second = self._memtable.entry_ref_at(ordinals[position])
+                    position += 1
+                    if second.has_dense():
+                        var scores = _prepared_f32_pair_score(
+                            metric, query, entry.values(), second.values(), query_norm
+                        )
+                        topk.offer(entry.id, scores[0])
+                        topk.offer(second.id, scores[1])
+                        continue
+                # A trailing row or an absent second default field uses one score.
+                var score = _prepared_f32_score(
+                    metric, query, entry.values(), query_norm
+                )
+                topk.offer(entry.id, score)
 
         var retained = topk.sorted_entries()
         var results = List[SearchResult](capacity=len(retained))

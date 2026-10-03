@@ -1,12 +1,13 @@
 # AkashaDB 工作交接入口
 
-更新：2026-10-03。已採用 compaction 鎖外舊檔回收，以及其上重新驗證的四列 F32
-HNSW 距離計算；**M5/M6 仍未完成**。最新 174 targeted Mojo／355 Python／C ABI／
-三個範例通過。Warm 18→22/36、mixed 23→26/36，保留一個 mixed pass→fail 及所有
-退步樣本，整體 FAILED。正式 binary 為 `7b42e740…`。
-[最新 ANN 改動與完整證據](docs/benchmarks/2026-10-03-batch-after-reclaim.md)；
-前一回收包的 81 Mojo／21 related crash 等證據見
-[鎖外回收](docs/benchmarks/2026-10-03-unlocked-reclamation.md)。
+更新：2026-10-03。最新採用篩選 exact scan 的兩列 checked F32 計算；全 live set
+保留原順序迴圈。**M5/M6 仍未完成**。99 targeted Mojo／358 Python／C ABI／三個
+範例通過。Warm 19→20/36（兩個 pass→fail）、mixed 29→32/36，整體 FAILED；
+所有慢樣本與未採用的全掃描 pairing 試驗皆保留。正式 binary 為 `b183b880…`。
+[最新改動、profile 與完整證據](docs/benchmarks/2026-10-03-paired-exact.md)。
+先前採用的[四列 HNSW](docs/benchmarks/2026-10-03-batch-after-reclaim.md)與
+[鎖外回收](docs/benchmarks/2026-10-03-unlocked-reclamation.md)保持適用；不同驗證
+範圍不合併成完整整合。原生 Linux runner 使用者確認目前沒有。
 
 本輪先前已補完 distributed 驗證（10/10），新增三種 metric 的
 default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回。

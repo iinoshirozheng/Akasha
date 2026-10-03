@@ -6,7 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新採用（2026-10-03）：** 在鎖外回收基線 `7dd8647` 上重新驗證並採用四列 F32
+**最新採用（2026-10-03）：** 在 `c00494f` 上加入篩選 exact scan 的兩列 checked
+F32 計算，全 live set 保留原迴圈。99 targeted Mojo／358 Python／C ABI／三個範例
+通過；warm 19→20/36（兩個 real-all pass→fail）、mixed 29→32/36，整體 FAILED。
+保留全部退步、原未採用的 universal pairing 與 baseline profile。正式 binary
+為 `b183b880…`。[完整證據](../docs/benchmarks/2026-10-03-paired-exact.md)。
+沒有可用的原生 Linux runner；M5/M6 保持未勾選。以下為先前結果。
+
+**前一採用（2026-10-03）：** 在鎖外回收基線 `7dd8647` 上重新驗證並採用四列 F32
 HNSW；174 targeted Mojo／355 Python／C ABI／三個範例通過。Warm 18→22/36、mixed
 23→26/36，真實 1536D mixed 九個 ANN 格皆改善，但保留 uniform-1536 independent
 trial 1 的 pass→fail 及所有 QPS/p95 退步，整體 FAILED。正式 binary 為 `7b42e740…`。
