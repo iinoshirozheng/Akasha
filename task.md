@@ -36,7 +36,7 @@ flush／close 保存 ready graph，重開驗證 identity、ID／向量並重綁 
 跨程序 reader 的首輪 launcher 失敗與來源模式 9/9 重跑均保留；沒有修改 source/test。
 [範圍、重現與完整證據](docs/research/2026-10-04-cpu-integration.md)，archive SHA-256：
 `5b02346d8b6693dfc69855e611fbaf1c46717f21d81f1ac6b259784859f11043`。
-M5/M6 仍未完成；下一步重測現行 binary 的固定 warm／mixed／HTTP gates。
+M5/M6 仍未完成；現行 binary 的固定 warm／mixed／HTTP gates 已重測如下。
 
 ## 剩餘驗收與固定門檻
 
@@ -48,10 +48,13 @@ M5 尚有首次建圖、多 run／更新後重開的 named artifact 生命週期
 無容許差距、不跨格抵銷、不刪慢樣本、不改 fixed corpora/seeds/filters/K/efs/service
 boundaries。`.99` 曲線只作診斷。IVF 低 probe、MaxSim 小候選集的 recall 失敗仍保留。
 
-上次正式 HTTP gate 為 22/108 strict parity（兩版各 108/108 recall，含 2 格 pass→fail），
-[報告](docs/benchmarks/2026-10-03-http-dispatch.md)。原 binding warm／mixed 最近採用
-結果為 20/36、32/36，皆 FAILED；它們早於後續 named/native 改動，沒有重跑成現行
-binary 的新 gate。先前 distributed 功能 10/10 通過，不代表 HTTP 效能達標。
+2026-10-04 現行 binary：warm **22/36**、mixed 查詢 **25/36**、HTTP **18/108**
+strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush **3/9** 通過。
+三組量測及 audits 完整結束，assessment exit 1 是正確 FAILED gate。
+[完整逐格結果與證據](docs/benchmarks/2026-10-04-current-parity.md)，archive SHA-256：
+`2acea3566eae5e2d4fe34bd35d3f157f601a491ca587a96442bcfe17cdaa63e2`。
+這是獨立現況矩陣，不與歷史實驗合併或宣稱 A/B 改善；先前 distributed 功能 10/10
+通過，不代表 HTTP 效能達標。接續 profile uniform-128 all、real ANN 與高維維護成本。
 
 ## 閱讀順序與執行規則
 

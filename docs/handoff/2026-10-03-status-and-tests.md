@@ -1,5 +1,14 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 最新現況矩陣已完成：warm **22/36**、mixed 查詢 **25/36**、HTTP
+**18/108** strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush
+只有 **3/9** 通過。全部 audits、18 mixed reopen、9 Arrow leases 通過；三組仍
+FAILED，assessment exit 1 正確。這是獨立現況量測，不能與歷史通過格相加。
+[完整逐格結果](../benchmarks/2026-10-04-current-parity.md)，archive SHA-256：
+`2acea3566eae5e2d4fe34bd35d3f157f601a491ca587a96442bcfe17cdaa63e2`。
+Source／binary 未變，沿用下方 CPU/Python 整合證據；本包沒有新 build/test。
+下一步 profile uniform-128 all、real ANN 與高維維護。M5/M6 保持未完成。
+
 2026-10-04 完成現行 `3a5ad04` 的完整 CPU checkpoint：**141 檔／1,001 Mojo、
 8 檔／23 crash、3 個重新編譯範例、既有 C client** 全通過。沿用前包同 binary 的
 388 完整 Python／129 targeted；未重跑成另一輪完整 Python，也未重建 C ABI。
