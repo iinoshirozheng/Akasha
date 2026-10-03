@@ -5,43 +5,48 @@ from akasha.compute.field_metrics import (
 from akasha.compute.topk import BoundedTopK
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
-from akasha.index.bitmap import Bitmap
 from akasha.index.field_hnsw import FieldHnswIndex
 from akasha.index.field_artifacts import FieldRow
 from akasha.index.field_dense import dense_f32_projection
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
-from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.hnsw_core import HnswSearchAdmission, HnswIdOrdinalLookup
 from akasha.index.hnsw_stats import HnswSearchStats, copy_search_stats
 from akasha.query.field_search import (
     FieldSearchExecution,
     field_exact_stats,
-    gather_field_rows,
     search_generation_field_reported,
 )
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterExpression
-from akasha.storage.read_generation import ReadGeneration
+from akasha.storage.read_generation import ReadGeneration, ReadRun
 from std.collections import Dict
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock
 
 
 def _build_field_graph(
-    view: ReadGeneration,
+    run: ReadRun,
     field: VectorFieldSpec,
     control: Optional[QueryControl],
 ) raises -> FieldHnswIndex:
-    var rows = gather_field_rows(view, field.id, control)
+    var locations = List[FieldRow]()
+    ref table = run.memtable
+    for ordinal in table.live_ordinals():
+        if control:
+            control.value().checkpoint(ordinal)
+        ref entry = table.entry_ref_at(ordinal)
+        if entry.field_ordinal(field.id) >= 0:
+            locations.append(FieldRow(entry.id, 0, ordinal))
+    sort(Span(locations))
+    var rows = List[Int](capacity=len(locations))
     var index = HnswIndex(field.hnsw.value())
     var lookup = Dict[Int, Int]()
-    for row in range(len(rows)):
+    for row in range(len(locations)):
         if control:
             control.value().checkpoint(row)
-        ref location = rows[row]
-        ref entry = view.run(location.layer).memtable.entry_ref_at(
-            location.ordinal
-        )
+        ref location = locations[row]
+        ref entry = table.entry_ref_at(location.ordinal)
         ref value = entry.vector_at(entry.field_ordinal(field.id)).value()
         value.validate(field)
         if field.scalar == 0:
@@ -49,28 +54,39 @@ def _build_field_graph(
         else:
             var converted = dense_f32_projection(value)
             index.add(location.id, converted)
+        # This append-only graph's slot order is the sorted run row order.
+        # Validate that identity once before admitting by slot during searches.
+        if index.graph.id_at(UInt32(row)) != location.id:
+            raise Error("field graph slot differs from its immutable run row")
         lookup[location.id] = row
+        rows.append(location.ordinal)
     index.validate_structure()
     var domain = HnswIdOrdinalLookup(lookup^, len(rows))
-    return FieldHnswIndex(index^, rows^, domain^)
+    return FieldHnswIndex(index^, rows^, field.scalar, domain^)
 
 
 def _field_graph(
-    view: ReadGeneration,
+    run: ReadRun,
     field: VectorFieldSpec,
     control: Optional[QueryControl],
 ) raises -> ArcPointer[FieldHnswIndex]:
-    var state = view.field_hnsw[].get(field.id)
+    var state = run.field_hnsw[].get(field.id)
     with BlockingScopedLock(state[].lock):
         if control:
             control.value().checkpoint(0)
         if state[].ready:
+            ref ready = state[].ready.value()[]
+            if (
+                ready.authority_scalar != field.scalar
+                or ready.index.config != field.hnsw.value()
+            ):
+                raise Error("field graph identity differs from its immutable run")
             return state[].ready.value().copy()
         try:
             state[].begin()
             if control:
                 control.value().checkpoint(0)
-            var built = ArcPointer(_build_field_graph(view, field, control))
+            var built = ArcPointer(_build_field_graph(run, field, control))
             if control:
                 control.value().checkpoint(0)
             state[].publish(built.copy())
@@ -110,47 +126,96 @@ def search_generation_field_approx(
         control.value().checkpoint(0)
         control.value().validate_candidate_count(view.visible_count)
     var graph_query = dense_f32_projection(query)
-    var graph = _field_graph(view, field, control)
-    var matched = len(graph[].rows)
-    var allowed = Optional[HnswEligibility]()
-    if expression:
-        var bitmap = Bitmap(len(graph[].rows))
-        for layer in range(view.layer_count()):
+    var merged = BoundedTopK[DType.float32](
+        min(budget, max(1, view.visible_count)),
+        smaller_is_better=field.metric == 1,
+    )
+    var matched = 0
+    var stats = HnswSearchStats()
+    for layer in range(view.layer_count()):
+        if control:
+            control.value().checkpoint(0)
+        var graph = _field_graph(view.run(layer), field, control)
+        var run_matched = len(graph[].rows)
+        var allowed = Optional[HnswSearchAdmission]()
+        if expression:
+            var flags = List[Bool](length=len(graph[].rows), fill=False)
+            run_matched = 0
+            var ordinals = view.filtered_ordinals(layer, expression.value())
             ref table = view.run(layer).memtable
-            for ordinal in view.filtered_ordinals(layer, expression.value()):
+            for ordinal in ordinals:
                 ref entry = table.entry_ref_at(ordinal)
                 if entry.field_ordinal(field.id) < 0:
                     continue
                 var row = graph[].lookup.ordinal_for(entry.id)
                 if row < 0:
-                    raise Error(
-                        "field graph coverage differs from its read root"
-                    )
-                bitmap.set(row)
-        allowed = Optional(HnswEligibility(bitmap^, graph[].lookup))
-        matched = allowed.value().eligible_count()
+                    raise Error("field graph coverage differs from its read run")
+                if not flags[row]:
+                    flags[row] = True
+                    run_matched += 1
+            allowed = Optional(HnswSearchAdmission(flags^))
+        elif view.layers[layer].is_shadowed():
+            # The graph contains only live, present rows of this run. Exclude
+            # shadowed IDs directly instead of walking every visible base row.
+            var flags = List[Bool](length=len(graph[].rows), fill=True)
+            ref table = view.run(layer).memtable
+            for ordinal in view.layers[layer].sealed_hidden[]:
+                var row = graph[].lookup.ordinal_for(table.id_at(ordinal))
+                if row >= 0 and flags[row]:
+                    flags[row] = False
+                    run_matched -= 1
+            for ordinal in view.layers[layer].head_hidden:
+                var row = graph[].lookup.ordinal_for(table.id_at(ordinal))
+                if row >= 0 and flags[row]:
+                    flags[row] = False
+                    run_matched -= 1
+            allowed = Optional(HnswSearchAdmission(flags^))
+        matched += run_matched
+        if run_matched == 0:
+            continue
+        var candidates: List[SearchResult]
+        var run_stats: HnswSearchStats
+        with BlockingScopedLock(graph[].query_lock):
+            if control:
+                control.value().checkpoint(0)
+            if allowed:
+                candidates = graph[].index._search_admitted_candidates_with_widening(
+                    graph_query,
+                    min(budget, run_matched),
+                    max(ef, budget),
+                    config.max_ef_search,
+                    run_matched,
+                    allowed.value(),
+                )
+            else:
+                candidates = graph[].index.search(
+                    graph_query, min(budget, run_matched), ef_search=max(ef, budget)
+                )
+            run_stats = copy_search_stats(graph[].index.last_search_stats)
+        stats.effective_ef = max(stats.effective_ef, run_stats.effective_ef)
+        stats.widening_rounds += run_stats.widening_rounds
+        stats.upper_visited += run_stats.upper_visited
+        stats.base_visited += run_stats.base_visited
+        stats.distance_evaluations += run_stats.distance_evaluations
+        stats.filtered_rejections += run_stats.filtered_rejections
+        stats.inactive_rejections += run_stats.inactive_rejections
+        stats.backend_name = run_stats.backend_name.copy()
+        stats.metric_name = run_stats.metric_name.copy()
+        stats.scalar_name = run_stats.scalar_name.copy()
+        if layer == 0:
+            stats.base_candidates += len(candidates)
+        else:
+            stats.delta_candidates += len(candidates)
+        for candidate in candidates:
+            var row = graph[].lookup.ordinal_for(candidate.id)
+            if row < 0 or (allowed and not allowed.value().allows(UInt32(row))):
+                raise Error("field HNSW returned an invalid candidate")
+            merged.offer(candidate.id, candidate.score)
     if matched == 0:
         var empty_stats = field_exact_stats(field)
         empty_stats.requested_ef = ef
         return FieldSearchExecution([], empty_stats^, "field_empty")
-    var candidates: List[SearchResult]
-    var stats: HnswSearchStats
-    with BlockingScopedLock(graph[].query_lock):
-        if control:
-            control.value().checkpoint(0)
-        if allowed:
-            candidates = graph[].index.search_allowed_candidates_with_widening(
-                graph_query,
-                min(budget, matched),
-                max(ef, budget),
-                config.max_ef_search,
-                allowed.value(),
-            )
-        else:
-            candidates = graph[].index.search(
-                graph_query, min(budget, matched), ef_search=max(ef, budget)
-            )
-        stats = copy_search_stats(graph[].index.last_search_stats)
+    var candidates = merged.sorted_entries()
     if control:
         control.value().checkpoint(0)
     var target = min(k, matched)
@@ -175,13 +240,12 @@ def search_generation_field_approx(
         if control:
             control.value().checkpoint(ranked)
         ref candidate = candidates[ranked]
-        var row = graph[].lookup.ordinal_for(candidate.id)
-        if row < 0 or (allowed and not allowed.value().allows(candidate.id)):
-            raise Error("field HNSW returned an invalid candidate")
-        ref location = graph[].rows[row]
-        ref entry = view.run(location.layer).memtable.entry_ref_at(
-            location.ordinal
-        )
+        var location = view.find(candidate.id)
+        if location[0] < 0:
+            raise Error("field HNSW returned an invisible candidate")
+        ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+        if entry.field_ordinal(field.id) < 0:
+            raise Error("field HNSW returned a missing field")
         ref value = entry.vector_at(entry.field_ordinal(field.id)).value()
         topk.offer(candidate.id, _score_validated_field(query, value, field))
     if control:
@@ -189,7 +253,6 @@ def search_generation_field_approx(
     var results = topk.sorted_entries()
     stats.storage_name = String("field-hnsw-", config.scalar_name())
     stats.requested_ef = ef
-    stats.base_candidates = len(candidates)
     stats.reranked_candidates = reranked
     stats.retained_candidates = len(results)
     return FieldSearchExecution(results^, stats^, "field_ann")

@@ -392,6 +392,17 @@ query after its lifecycle slice. A failed/stale new artifact cannot replace read
 state. Current authoritative exact behavior remains available by the documented
 query policy; do not introduce hidden new fallbacks.
 
+Named HNSW now shares artifacts at the immutable-run boundary (2026-10-03).
+The run owner, field ID, authority scalar and exact graph configuration identify
+the source; another root retaining that same run may reuse its graph. Root-specific
+shadowing and payload admission occur before candidate selection, and native
+reranking resolves IDs in the captured root. Graph slot/public-ID correspondence
+is validated at construction; owned query flags use that immutable slot domain.
+Merged runs get fresh artifacts and retained old roots keep their prior owners.
+This eliminates whole-root rebuilds after small writes; first-open/reopen building
+and warm per-run query costs remain unfinished M5/M6 work. See the
+[measurements and validation](../benchmarks/2026-10-03-named-run-hnsw.md).
+
 HNSW publication checks captured field/schema/config and reconciles newer accepted
 mutations using its existing incremental update semantics in a bounded catch-up.
 If catch-up cannot fit the publication budget, reschedule from a newer root; never

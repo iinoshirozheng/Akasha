@@ -1,4 +1,5 @@
 from akasha import CollectionConfig, PersistentCollection
+from akasha.api.snapshot import ReadSnapshot
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.document.point_state import FieldUpdate, PointMutation
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
@@ -121,9 +122,9 @@ def test_named_graphs_use_own_identity_presence_filter_and_native_rerank() raise
             assert_equal(other[i].id, other_exact[i].id)
             assert_equal(other[i].score, other_exact[i].score)
     var root = snapshot._acquire()
-    assert_equal(root[].field_hnsw[].get(2)[].build_count, 1)
-    assert_equal(root[].field_hnsw[].get(3)[].build_count, 1)
-    assert_equal(root[].field_hnsw[].count(), 2)
+    assert_equal(root[].run(0).field_hnsw[].get(2)[].build_count, 1)
+    assert_equal(root[].run(0).field_hnsw[].get(3)[].build_count, 1)
+    assert_equal(root[].run(0).field_hnsw[].count(), 2)
     collection.flush()
     collection.close()
     assert_true(
@@ -163,7 +164,7 @@ def test_build_failure_freshness_and_concurrent_first_queries() raises:
     var query = VectorValue.dense[DType.uint8]([UInt8(31), UInt8(4)])
     var expected = snapshot.search_field("audio", query, 7)
     var root = snapshot._acquire()
-    var state = root[].field_hnsw[].get(3)
+    var state = root[].run(0).field_hnsw[].get(3)
     state[].fail_for_test = True
     with assert_raises(contains="derived index build failed"):
         _ = snapshot.search_field("audio", query, 7, approximate=True)
@@ -202,9 +203,23 @@ def test_build_failure_freshness_and_concurrent_first_queries() raises:
     _ = collection.apply_point_batch(batch)
     var fresh = collection.snapshot()
     var fresh_root = fresh._acquire()
-    assert_equal(fresh_root[].field_hnsw[].count(), 0)
+    assert_true(fresh_root[].run(0).field_hnsw[].get(3) is state)
+    var head_state = fresh_root[].run(1).field_hnsw[].get(3)
+    head_state[].fail_for_test = True
+    with assert_raises(contains="derived index build failed"):
+        _ = fresh.search_field("audio", query, 1, approximate=True)
+    assert_equal(state[].status, ARTIFACT_READY)
+    assert_equal(state[].build_count, 1)
+    assert_equal(head_state[].status, ARTIFACT_FAILED)
+    assert_true(not Bool(head_state[].ready))
+    head_state[].fail_for_test = False
     assert_equal(
         fresh.search_field("audio", query, 1, approximate=True)[0].id, -999
+    )
+    assert_equal(state[].build_count, 1)
+    assert_equal(fresh_root[].run(1).field_hnsw[].get(3)[].build_count, 1)
+    assert_equal(
+        len(fresh_root[].run(1).field_hnsw[].get(3)[].ready.value()[].rows), 1
     )
     collection.close()
     var old = snapshot.search_field("audio", query, 7, approximate=True)
@@ -214,6 +229,163 @@ def test_build_failure_freshness_and_concurrent_first_queries() raises:
     _ = root^
     _ = fresh_root^
     assert_equal(collection._pins[].active_count(), 0)
+    Python.import_module("shutil").rmtree(path)
+
+
+def _check_layered_audio(snapshot: ReadSnapshot, query: VectorValue) raises:
+    for filtered in [False, True]:
+        var expected = snapshot.search_field("audio", query, 7, _predicate(filtered))
+        var actual = snapshot.search_field_reported(
+            "audio", query, 7, _predicate(filtered),
+            approximate=True, ef_search=128, rerank_k=7,
+        )
+        assert_equal(actual.reason, "field_ann")
+        assert_equal(actual.stats.reranked_candidates, 7)
+        assert_equal(actual.stats.retained_candidates, len(expected))
+        assert_equal(len(actual.results), len(expected))
+        for row in range(len(expected)):
+            assert_equal(actual.results[row].id, expected[row].id)
+            assert_equal(actual.results[row].score, expected[row].score)
+
+
+def test_run_graphs_shadow_before_global_budget_and_survive_merge() raises:
+    var path = String(py=Python.import_module("tempfile").mkdtemp(prefix="akasha-field-runs-"))
+    var collection = PersistentCollection.open_with_fields(
+        path, _fields(), maintenance_library_path=""
+    )
+    _populate(collection)
+    var original = collection.snapshot()
+    var query = VectorValue.dense[DType.uint8]([UInt8(31), UInt8(4)])
+    _check_layered_audio(original, query)
+    var original_root = original._acquire()
+    var base_state = original_root[].run(0).field_hnsw[].get(3)
+    # Nearest rows become excluded, missing or deleted; the old graph remains
+    # searchable only through this root's visibility and payload admission.
+    var changes = List[PointMutation]()
+    var payload: List[DocumentField] = [DocumentField("group", PayloadValue.integer(0))]
+    changes.append(PointMutation(-31, 3, [], Optional(payload^)))
+    changes.append(PointMutation(-30, 3, [FieldUpdate.remove(3)]))
+    changes.append(PointMutation.delete(-32))
+    changes.append(PointMutation(-29, 3, [FieldUpdate.set(
+        3, VectorValue.dense[DType.uint8]([UInt8(255), UInt8(255)])
+    )]))
+    # Reach the existing head bound without adding any field candidates.
+    for id in range(1020):
+        changes.append(PointMutation(1000 + id, 1, []))
+    _ = collection.apply_point_batch(changes)
+    var sealed = collection.snapshot()
+    var sealed_root = sealed._acquire()
+    assert_equal(sealed_root[].layer_count(), 2)
+    assert_true(sealed_root[].run(0).field_hnsw[].get(3) is base_state)
+    _check_layered_audio(sealed, query)
+    assert_equal(base_state[].build_count, 1)
+    var sealed_state = sealed_root[].run(1).field_hnsw[].get(3)
+    assert_equal(sealed_state[].build_count, 1)
+    assert_equal(len(sealed_state[].ready.value()[].rows), 2)
+    var reinsertion: List[PointMutation] = [PointMutation(
+        -32, 1, [FieldUpdate.set(3, VectorValue.dense[DType.uint8]([UInt8(31), UInt8(4)]))],
+        Optional[List[DocumentField]]([DocumentField("group", PayloadValue.integer(1))])
+    )]
+    _ = collection.apply_point_batch(reinsertion)
+    var latest = collection.snapshot()
+    var latest_root = latest._acquire()
+    assert_equal(latest_root[].layer_count(), 3)
+    assert_true(latest_root[].run(1).field_hnsw[].get(3) is sealed_state)
+    _check_layered_audio(latest, query)
+    assert_equal(latest.search_field("audio", query, 1, approximate=True)[0].id, -32)
+    # Exercise the same captured merge publication used by maintenance. The
+    # frozen head survives, while the merged base gets a new artifact owner.
+    collection._read_generations[].merge_sealed_runs()
+    var merged = collection.snapshot()
+    var merged_root = merged._acquire()
+    assert_equal(merged_root[].layer_count(), 2)
+    assert_true(not (merged_root[].run(0).field_hnsw[].get(3) is base_state))
+    assert_true(merged_root[].layers[1].run is latest_root[].layers[2].run)
+    _check_layered_audio(merged, query)
+    collection.close()
+    _check_layered_audio(original, query)
+    _check_layered_audio(sealed, query)
+    _check_layered_audio(latest, query)
+    _check_layered_audio(merged, query)
+    assert_equal(base_state[].build_count, 1)
+    assert_equal(sealed_state[].build_count, 1)
+    original.close()
+    sealed.close()
+    latest.close()
+    merged.close()
+    _ = original_root^
+    _ = sealed_root^
+    _ = latest_root^
+    _ = merged_root^
+    assert_equal(collection._pins[].active_count(), 0)
+    Python.import_module("shutil").rmtree(path)
+
+
+def test_run_graph_rejects_changed_identity_without_losing_ready_artifact() raises:
+    from akasha.query.field_ann import _field_graph
+
+    var path = String(py=Python.import_module("tempfile").mkdtemp(prefix="akasha-field-identity-"))
+    var collection = PersistentCollection.open_with_fields(path, _fields(), maintenance_library_path="")
+    _populate(collection)
+    var snapshot = collection.snapshot()
+    var root = snapshot._acquire()
+    var fields = _fields()
+    var graph = _field_graph(root[].run(0), fields[3], None)
+    fields[3].hnsw.value().ef_construction += 1
+    with assert_raises(contains="field graph identity"):
+        _ = _field_graph(root[].run(0), fields[3], None)
+    fields[3].hnsw.value().ef_construction -= 1
+    fields[3].scalar = 3
+    with assert_raises(contains="field graph identity"):
+        _ = _field_graph(root[].run(0), fields[3], None)
+    fields[3].scalar = 4
+    assert_true(_field_graph(root[].run(0), fields[3], None) is graph)
+    assert_equal(root[].run(0).field_hnsw[].get(3)[].build_count, 1)
+    collection.close()
+    snapshot.close()
+    Python.import_module("shutil").rmtree(path)
+
+
+def test_named_candidate_budget_is_bounded_by_visible_population() raises:
+    var path = String(
+        py=Python.import_module("tempfile").mkdtemp(prefix="akasha-field-budget-")
+    )
+    var fields = _fields()
+    var maximum = Int(UInt32.MAX)
+    fields[3].hnsw.value().max_ef_search = maximum
+    var collection = PersistentCollection.open_with_fields(
+        path, fields^, maintenance_library_path=""
+    )
+    var query = VectorValue.dense[DType.uint8]([UInt8(31), UInt8(4)])
+    var empty = collection.snapshot()
+    var result = empty.search_field_reported(
+        "audio", query, 7, approximate=True,
+        ef_search=maximum, rerank_k=maximum,
+    )
+    assert_equal(result.reason, "field_empty")
+    assert_equal(len(result.results), 0)
+    _populate(collection)
+    var snapshot = collection.snapshot()
+    var budgets: List[Tuple[Int, Int]] = [
+        (maximum, maximum), (128, maximum), (maximum, 0)
+    ]
+    for filtered in [False, True]:
+        var expected = snapshot.search_field(
+            "audio", query, 7, _predicate(filtered)
+        )
+        for limits in budgets:
+            var actual = snapshot.search_field_reported(
+                "audio", query, 7, _predicate(filtered), approximate=True,
+                ef_search=limits[0], rerank_k=limits[1],
+            )
+            assert_equal(len(actual.results), len(expected))
+            assert_equal(actual.stats.reranked_candidates, 48 if filtered else 96)
+            for row in range(len(expected)):
+                assert_equal(actual.results[row].id, expected[row].id)
+                assert_equal(actual.results[row].score, expected[row].score)
+    empty.close()
+    snapshot.close()
+    collection.close()
     Python.import_module("shutil").rmtree(path)
 
 
@@ -230,7 +402,7 @@ def test_named_control_cancelled_build_never_publishes() raises:
     var snapshot = collection.snapshot()
     var query = VectorValue.dense[DType.uint8]([UInt8(31), UInt8(4)])
     var root = snapshot._acquire()
-    var state = root[].field_hnsw[].get(3)
+    var state = root[].run(0).field_hnsw[].get(3)
     state[].delay_for_test = 0.1
     var token = CancellationToken()
     var deadline = Optional(

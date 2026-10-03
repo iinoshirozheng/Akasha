@@ -1,5 +1,26 @@
 # AkashaDB 工作交接入口
 
+最新採用 named HNSW 的 immutable-run 共享：新快照重用未變動的 base，只建新 run。
+正式 Python binary SHA-256 為
+`7db8a2d6b20436c5efdc71dd92565d58c4037448c32fbd7bfbee6a81c19910a6`。
+第一版 76 targeted Mojo 通過；slot 版 22 targeted Mojo 通過；最後補上候選 heap
+容量上限，8 targeted Mojo／358 完整 Python／C ABI／三個範例通過。最終正式
+package 另通過 59 named Python／C client。不同階段不加總成完整 Mojo／crash。
+量測使用容量修正前的 slot binary `2d7506f8…`；未重跑最後容量修正的速度。
+固定 named 曲線的 1,608 exact checks／9,648 ANN audits 通過，12 組皆可達
+Recall@10 ≥ .95；保留 baseline 28／candidate 25 個低 recall 曲線格。
+全資料更新後首查 6.874／33.082／17.346 → 0.536／1.124／0.916 秒，但多數暖查詢
+仍退步，128D independent 需更高 ef。首次開啟／重開仍建圖，不能宣稱全面加速。
+[實作、完整樣本與限制](docs/benchmarks/2026-10-03-named-run-hnsw.md)。Archive SHA-256：
+`6115ca3fc12be54c10044c6148dd1f0b453a5eaaff99105dc08ad2531fee2899`。
+容量修正與最新測試 archive SHA-256：
+`99ba7da9d2305e80fec6de02e2bd98acf036116308c763d3a35881e884eaa2bf`。
+**M5/M6 保持未完成**；未重跑原三次 Qdrant 矩陣，也未完成 nonresident／memory-limit
+與 concurrent-client parity。使用者已確認目前沒有原生 Linux runner。
+下一步處理小 run 建圖／查詢成本及首次重開的 named artifact 生命週期。
+
+以下保留本次採用前的紀錄，當時的引擎／binary 並非最新狀態。
+
 後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
 23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
 保留三項 scalar-oracle 回歸與[完整證據](docs/benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為

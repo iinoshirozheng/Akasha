@@ -74,12 +74,15 @@ struct ReadRun(Movable):
 
     var memtable: MemTable
     var index: Optional[RunIndex]
+    # Graphs describe this immutable run, shared by every root that retains it.
+    var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
 
     def __init__(
         out self, var memtable: MemTable, var index: Optional[RunIndex]
     ):
         self.memtable = memtable^
         self.index = index^
+        self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
 
 
 struct ReadLayer(Copyable, Movable):
@@ -160,7 +163,6 @@ struct ReadGeneration(Movable):
     # operation that owns the root, built once and released with it.
     var sq8: ArcPointer[ArtifactState[Sq8Index]]
     var pq: ArcPointer[PqArtifacts]
-    var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
     var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
     var field_ivf: ArcPointer[FieldIvfArtifacts]
     var _pins: ArcPointer[GenerationPinRegistry]
@@ -188,7 +190,6 @@ struct ReadGeneration(Movable):
         self.device = ArcPointer(GpuSnapshotState(generation, sequence))
         self.sq8 = ArcPointer(ArtifactState[Sq8Index]())
         self.pq = ArcPointer(PqArtifacts())
-        self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
         self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
         self.field_ivf = ArcPointer(FieldIvfArtifacts())
         self._pins = pins^
