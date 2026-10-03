@@ -68,6 +68,12 @@ binary 不變。首輪原基線 worker 曾停滯於 BlockingScopedLock，124.97 
 9424 已核對。**原因未解，未改正式鎖**。保留失敗；下一步獨立驗證高維 segment
 逐值編碼的成本，不以成功重跑宣稱修復。
 
+[Segment F32 bulk 候選](docs/benchmarks/2026-10-04-segment-bulk-write.md)亦未採用：
+73 targeted Mojo／8 related crash／388 Python 通過；完整編碼 bytes 相同，微量測
+變快，但 uniform-1536 flush p95 三次慢 4–8%。三方 warm／mixed 皆 19→18/36，
+write+flush 3→3/9；保留全部退步。正式 source/binary 不變；下一步回到 real ANN／
+selective query 的實際主要成本，不重跑已否決原型。
+
 ## 閱讀順序與執行規則
 
 1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。

@@ -803,6 +803,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Segment F32 整段寫入候選未採用：73 targeted Mojo／8 related crash／388 Python
+  通過，bytes 相同；micro 改善未穩定反映在 public flush。三方 warm／mixed 皆
+  19→18/36，write+flush 3→3/9，保留全部失敗；正式來源與 binary 不變。
+  [完整實驗](../docs/benchmarks/2026-10-04-segment-bulk-write.md)。
   鎖停滯後續 100 次原 binary／100 次隔離 owner 診斷，各通過 28,800 audits、
   100 reopens、100 leases；診斷版 20 項背景維護測試通過。原 DB 複本恢復 9 個
   exact oracle 與序號 9424 通過；仍未重現、原因未解、未改正式鎖。下一步獨立

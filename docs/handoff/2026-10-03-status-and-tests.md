@@ -1,5 +1,13 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 Segment F32 整段寫入候選未採用：73 targeted Mojo／8 related crash／
+388 Python 通過，完整輸出 bytes 相同。Micro 編碼變快，但 uniform-1536 public
+flush p95 三次慢 4–8%；三方 warm／mixed 皆 19→18/36，write+flush 3→3/9。
+正式 source/binary 不變；没有新 C ABI／examples／HTTP／Linux／GPU gate。
+[完整報告](../benchmarks/2026-10-04-segment-bulk-write.md)，archive SHA-256：
+`416067ecf9af13d60c7bb18bc3a08c209f156f8089b5b59b6eafc313dacc071b`。
+下一步回到 real ANN／selective query，先確認實際熱點，不重跑已否決原型。
+
 2026-10-04 鎖停滯後續：100 次原 binary 與 100 次隔離 owner 診斷各通過 28,800
 audits／100 reopens／100 leases；診斷版另通過 20 項背景維護 Mojo tests。沒有
 LOCK_WAIT／LOCK_UNLOCK_FAILED，**原因仍未解，正式 source/binary 未改**。
