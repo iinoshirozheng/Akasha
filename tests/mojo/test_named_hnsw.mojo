@@ -13,6 +13,7 @@ from akasha.index.artifact_state import ARTIFACT_FAILED, ARTIFACT_READY
 from akasha.query.control import CancellationToken, QueryControl
 from max.algorithm import parallelize
 from std.time import perf_counter_ns
+from akasha.storage.filesystem import path_exists
 
 
 def _fields() raises -> List[VectorFieldSpec]:
@@ -126,6 +127,8 @@ def test_named_graphs_use_own_identity_presence_filter_and_native_rerank() raise
     assert_equal(root[].run(0).field_hnsw[].get(3)[].build_count, 1)
     assert_equal(root[].run(0).field_hnsw[].count(), 2)
     collection.flush()
+    assert_true(path_exists(path + "/field-hnsw-2.cache"))
+    assert_true(path_exists(path + "/field-hnsw-3.cache"))
     collection.close()
     assert_true(
         len(snapshot.search_field("image", image, 7, approximate=True)) == 7
@@ -142,6 +145,15 @@ def test_named_graphs_use_own_identity_presence_filter_and_native_rerank() raise
     for i in range(len(exact)):
         assert_equal(after[i].id, exact[i].id)
         assert_equal(after[i].score, exact[i].score)
+    var reopened_view = reopened.snapshot()
+    var reopened_root = reopened_view._acquire()
+    assert_true(
+        reopened_root[].run(0).field_hnsw[].get(3)[].ready.value()[].cache_hit
+    )
+    _ = reopened_view.search_field("image", image, 7, approximate=True)
+    assert_true(
+        reopened_root[].run(0).field_hnsw[].get(2)[].ready.value()[].cache_hit
+    )
     reopened.close()
     Python.import_module("shutil").rmtree(path)
 

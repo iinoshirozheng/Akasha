@@ -483,6 +483,7 @@ struct PersistentCollection:
             "rebuild_failed",
         )
         collection._point_store = Optional(store^)
+        collection._read_generations[].field_cache_directory = path.copy()
         collection._hnsw_mutations_since_rebuild = replayed
         if hnsw_load.base_sequence:
             collection._hnsw_base_sequence = hnsw_load.base_sequence.value()
@@ -653,6 +654,10 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
+            if self._point_store:
+                self._read_generations[].publish_field_caches_best_effort(
+                    self._point_store.value()._catalog[]
+                )
             if self._read_generations[].root:
                 released = Optional(self._read_generations[].root.take())
             self._read_generations[].reset()
@@ -2814,6 +2819,9 @@ struct PersistentCollection:
             except:
                 pass
         if self._point_store:
+            self._read_generations[].publish_field_caches_best_effort(
+                self._point_store.value()._catalog[]
+            )
             return
         try:
             var generation = self._read_generations[].generation

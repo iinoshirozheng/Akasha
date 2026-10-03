@@ -12,6 +12,8 @@ struct FieldHnswIndex(Movable):
     var authority_scalar: UInt8
     var lookup: HnswIdOrdinalLookup
     var query_lock: BlockingSpinLock
+    var cache_hit: Bool
+    var cache_published: Bool
 
     def __init__(
         out self,
@@ -19,9 +21,12 @@ struct FieldHnswIndex(Movable):
         var rows: List[Int],
         authority_scalar: UInt8,
         var lookup: HnswIdOrdinalLookup,
+        cache_hit: Bool = False,
     ):
         self.index = index^
         self.rows = rows^
         self.authority_scalar = authority_scalar
         self.lookup = lookup^
         self.query_lock = BlockingSpinLock()
+        self.cache_hit = cache_hit
+        self.cache_published = cache_hit

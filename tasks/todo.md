@@ -1,5 +1,22 @@
 # 下一輪工作包 checklist
 
+最新採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
+identity／ID／向量並重綁 ordinal。忙碌 artifact／query 不阻塞 writer，稍後可重試。
+正式 Python binary SHA-256：
+`843186a731ceefaa38e6e5780a0eb13c180dcdc9525191d53f5c8ba0d89d79ba`。
+第一版 77 targeted Mojo／1 targeted crash／376 Python／C ABI／3 examples；最終鎖修正
+47 targeted Mojo／376 完整 Python／C ABI／3 examples；正式 package 再通過 125 targeted
+Python／重建 C ABI。這些階段不加總為新完整 Mojo／crash／Linux／GPU gate。
+最終三組各三次配對的 14,472 組 ID／F64 bits／stats 相同，28,944 ANN audits／4,824
+exact checks 通過，兩版各保留 84 個低 recall 格。重開首查約 87–339 ms，但首次 flush
+增加成本，選定暖查詢 24/36 格 QPS 或 p95 退步；未重跑或取代原 Qdrant gate。
+多 run／更新後重開、首次建圖及 M6 效能／memory-limit 仍未完成。沒有 Linux runner。
+[實作與全部樣本](../docs/benchmarks/2026-10-03-named-hnsw-cache.md)。
+Frozen archive SHA-256：
+`8677fec577201dbef6d184f47d6255871f2c98ccd12a46ac676d9dbe75a73356`。
+
+以下保留前一工作包的歷史紀錄；最新狀態以上段與其報告為準。**M5/M6 未完成**。
+
 最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
 numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
 正式 Python binary SHA-256：

@@ -20,6 +20,7 @@ from std.sys.info import is_little_endian
 comptime CACHE_HNSW_KIND = UInt8(1)
 comptime CACHE_METADATA_KIND = UInt8(2)
 comptime CACHE_HNSW_OVERLAY_KIND = UInt8(3)
+comptime CACHE_FIELD_HNSW_KIND = UInt8(4)
 comptime _VERSION = UInt16(1)
 comptime _FIXED_BYTES = 40
 comptime _MAX_PAYLOAD_BYTES = 512 * 1024 * 1024
@@ -225,6 +226,7 @@ def _validate_header(kind: UInt8, dimension: Int, payload_length: Int) raises:
         kind != CACHE_HNSW_KIND
         and kind != CACHE_METADATA_KIND
         and kind != CACHE_HNSW_OVERLAY_KIND
+        and kind != CACHE_FIELD_HNSW_KIND
     ):
         raise Error("unknown derived index cache kind")
     if dimension <= 0:

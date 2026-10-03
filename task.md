@@ -1,110 +1,65 @@
-# AkashaDB 工作交接入口
+# AkashaDB 工作入口
 
-最新採用 HTTP search 的單次 worker 排程，保留原 response validation。正式 package
-41 targeted Python 通過；native binary 仍為 `2d5e8e09…`。三方對照的 strict parity
-為前版 14/108 → 採用版 22/108，兩版各 108/108 recall；有 2 格 pass→fail，整體 FAILED。
-[HTTP 排程實作與完整樣本](docs/benchmarks/2026-10-03-http-dispatch.md)。M5/M6 未完成。
+目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
+`tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-最新補齊原生 HTTP／並行 1/2/4 clients 的完整量測：108/108 recall、16/108 strict
-parity，整體 FAILED；24,120 query audits 全通過。33 targeted Python tests 與
-兩個實際 server smoke 通過，production engine／binary 仍為 `d38bffa`／`2d5e8e09…`。
-[HTTP 工作包與完整證據](docs/benchmarks/2026-10-03-http-parity.md)。M5/M6 尚未完成。
+## 最新工作包（2026-10-03）
 
-最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
-numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
-正式 Python binary SHA-256：
-`2d5e8e0910d4d81d84699e5bc023ba9824a5f9ab867b613cc6bcefcc7bcc0463`。
-31 targeted Mojo／358 完整 Python／C ABI／三個範例通過；正式 package 再通過
-7 score-bit Mojo／91 Python／C client。沒有重新跑完整 Mojo／crash／Linux／GPU。
-獨立 named 診斷的 4,824 配對樣本 ID／F64 bits／stats 相同，高維 uniform QPS
-提高約 7–13%、real 約 4–20%；首輪 128D all 退步仍保留。另三次完整 128D 曲線
-的 all 均改善，但 selective 仍有 QPS／p95 退步，不能以中位數蓋過。
-[實作、各次樣本與驗證](docs/benchmarks/2026-10-03-native-metric-loops.md)。Frozen archive SHA-256：
-`1084d5fc6c696fc0b2cd0bce1c116ca993524b0daa47eaf38940d5969fdbbfdb`。
-**M5/M6 仍未完成**：未重跑原 Qdrant gate；named 首次重開建圖、並行與
-nonresident／memory-limit 仍待完成。使用者目前沒有原生 Linux runner。
-以下保留前一採用與獨立實驗，不將其通過格或比例合併。
+已採用 named HNSW 的完整單一 run 快取：flush／close 保存已建好的圖，重開時驗證
+欄位、設定、ID 與向量內容，再重新綁定 ordinal。忙碌的 builder／query 會略過保存，
+不等待其鎖；查詢與 held snapshot 不寫快取。多 run 更新後重開仍可能重建。
+[實作、每個 trial 與完整證據](docs/benchmarks/2026-10-03-named-hnsw-cache.md)。
 
-前一採用 named HNSW 的 immutable-run 共享：新快照重用未變動的 base，只建新 run。
-正式 Python binary SHA-256 為
-`7db8a2d6b20436c5efdc71dd92565d58c4037448c32fbd7bfbee6a81c19910a6`。
-第一版 76 targeted Mojo 通過；slot 版 22 targeted Mojo 通過；最後補上候選 heap
-容量上限，8 targeted Mojo／358 完整 Python／C ABI／三個範例通過。最終正式
-package 另通過 59 named Python／C client。不同階段不加總成完整 Mojo／crash。
-量測使用容量修正前的 slot binary `2d7506f8…`；未重跑最後容量修正的速度。
-固定 named 曲線的 1,608 exact checks／9,648 ANN audits 通過，12 組皆可達
-Recall@10 ≥ .95；保留 baseline 28／candidate 25 個低 recall 曲線格。
-全資料更新後首查 6.874／33.082／17.346 → 0.536／1.124／0.916 秒，但多數暖查詢
-仍退步，128D independent 需更高 ef。首次開啟／重開仍建圖，不能宣稱全面加速。
-[實作、完整樣本與限制](docs/benchmarks/2026-10-03-named-run-hnsw.md)。Archive SHA-256：
-`6115ca3fc12be54c10044c6148dd1f0b453a5eaaff99105dc08ad2531fee2899`。
-容量修正與最新測試 archive SHA-256：
-`99ba7da9d2305e80fec6de02e2bd98acf036116308c763d3a35881e884eaa2bf`。
-**M5/M6 保持未完成**；未重跑原三次 Qdrant 矩陣，也未完成 nonresident／memory-limit
-與 concurrent-client parity。使用者已確認目前沒有原生 Linux runner。
-下一步處理小 run 建圖／查詢成本及首次重開的 named artifact 生命週期。
+正式 `python/akashadb/_kernel.so` SHA-256：
+`843186a731ceefaa38e6e5780a0eb13c180dcdc9525191d53f5c8ba0d89d79ba`。
+Frozen archive SHA-256：
+`8677fec577201dbef6d184f47d6255871f2c98ccd12a46ac676d9dbe75a73356`。
 
-以下保留本次採用前的紀錄，當時的引擎／binary 並非最新狀態。
+第一版 77 targeted Mojo／1 targeted crash／376 完整 Python／C ABI／3 examples；
+最終鎖修正另通過 47 targeted Mojo／376 完整 Python／C ABI／3 examples。正式 package
+再通過 125 targeted Python 與重建 C ABI/client。未重跑完整 Mojo／crash／Linux／GPU。
+不同階段不加總成一輪完整整合；TestSuite 時間是毫秒。
 
-後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
-23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
-保留三項 scalar-oracle 回歸與[完整證據](docs/benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為
-`a57f11a` / `b183b880…`。這是獨立實驗，不取代或合併前次通過格。M5/M6 未完成。
+三資料集各三次配對的 14,472 組 ID／F64 bits／stats 一致，28,944 ANN audits 與
+4,824 exact oracle checks 通過；兩版各保留 84 個低 recall 曲線格。最終版 resident
+重開首查約 87–339 ms，原版約 6.9–32.5 s；首次 flush 變慢，36 個選定暖查詢格仍有
+24 格 QPS 或 p95 退步。這是 named 診斷，**不等於 Qdrant parity**。
 
-更新：2026-10-03。最新採用篩選 exact scan 的兩列 checked F32 計算；全 live set
-保留原順序迴圈。**M5/M6 仍未完成**。99 targeted Mojo／358 Python／C ABI／三個
-範例通過。Warm 19→20/36（兩個 pass→fail）、mixed 29→32/36，整體 FAILED；
-所有慢樣本與未採用的全掃描 pairing 試驗皆保留。正式 binary 為 `b183b880…`。
-[最新改動、profile 與完整證據](docs/benchmarks/2026-10-03-paired-exact.md)。
-先前採用的[四列 HNSW](docs/benchmarks/2026-10-03-batch-after-reclaim.md)與
-[鎖外回收](docs/benchmarks/2026-10-03-unlocked-reclamation.md)保持適用；不同驗證
-範圍不合併成完整整合。原生 Linux runner 使用者確認目前沒有。
+## 剩餘驗收與固定門檻
 
-本輪先前已補完 distributed 驗證（10/10），新增三種 metric 的
-default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回。
-後續 immutable F32 summary 候選也因公開速度退步未採用；
-[試驗與證據](docs/benchmarks/2026-10-03-owned-f32-summary.md)。
-HNSW query 驗證候選也未採用；已補 2 項邊界回歸與 A/A、GC 診斷，
-[證據](docs/benchmarks/2026-10-03-query-validation.md)。
-最新紀錄見 [10-03 續作狀態](docs/handoff/2026-10-03-status-and-tests.md)。
+M5 尚有首次建圖、多 run／更新後重開的 named artifact 生命週期成本。M6 須完成
+原定全部暖查詢、混合維護、HTTP／並行與 resident/nonresident／memory-limit 矩陣。
+使用者目前沒有原生 Linux runner；不要重問或自行配置付費資源。
 
-2026-10-02 的 Git 交付已完成：當時全部交付變更已 commit、push，並以
-merge commit `eef8dab` 合併進 `main` 且 push。功能與驗證紀錄已整理；
-**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
+門檻已定案：共同 Recall@10 ≥ .95，每一格／trial **QPS ≥ Qdrant 且 p95 ≤ Qdrant**，
+無容許差距、不跨格抵銷、不刪慢樣本、不改 fixed corpora/seeds/filters/K/efs/service
+boundaries。`.99` 曲線只作診斷。IVF 低 probe、MaxSim 小候選集的 recall 失敗仍保留。
 
-## 閱讀順序
+上次正式 HTTP gate 為 22/108 strict parity（兩版各 108/108 recall，含 2 格 pass→fail），
+[報告](docs/benchmarks/2026-10-03-http-dispatch.md)。原 binding warm／mixed 最近採用
+結果為 20/36、32/36，皆 FAILED；它們早於後續 named/native 改動，沒有重跑成現行
+binary 的新 gate。先前 distributed 功能 10/10 通過，不代表 HTTP 效能達標。
 
-1. [最新續作狀態、測試與效能決策](docs/handoff/2026-10-03-status-and-tests.md)
-2. [10-02 交接狀態、測試證據與重現指令](docs/handoff/2026-10-02-status-and-tests.md)
-3. [原 handoff prompt](docs/handoff/2026-10-02-prompt.md) 與 [Git 交付紀錄](docs/handoff/2026-10-02-git-delivery.md)
-4. [唯一工作項目 checklist](tasks/todo.md) 與 [驗收計畫](tasks/plan.md)
+## 閱讀順序與執行規則
 
-## 現況
+1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。
+2. [唯一 checklist](tasks/todo.md)、[原驗收計畫](tasks/plan.md)。
+3. [最新 named cache 報告](docs/benchmarks/2026-10-03-named-hnsw-cache.md)及
+   [10-03 各工作包狀態與測試範圍](docs/handoff/2026-10-03-status-and-tests.md)。
+4. [10-02 原交接](docs/handoff/2026-10-02-status-and-tests.md)與
+   [已完成的 Git 交付](docs/handoff/2026-10-02-git-delivery.md)。
 
-Named/native vector 的遷移、原子提交、查詢、Python／Arrow、F16／BF16／I8／U8、
-Binary／MaxSim、NDJSON 已串接並驗證；retained base／delta cache 已改善更新後重開。
-先前採用 exact scan query preparation；詳細數據見
-[10-02 量測報告](docs/benchmarks/2026-10-02-prepared-exact.md)。
+工作目錄 `/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan`，分支
+`feat/48-bounded-generation-head`。原 10-02 交付已由 `eef8dab` 合併並 push 至 main，
+不要重做；後續工作按語意分別 commit，目前未再次 push／merge。
 
-本輪先前還原基線後：**355 Python／10 distributed／重建 C ABI 與 client 全通過**。
-未重跑完整 Mojo／crash／examples；正式引擎未變，沿用仍適用的既有證據。
-先前完整整合：957 Mojo／23 crash／344 Python／C ABI／三個範例。
-最新改動：88 項受影響 Mojo、349 項完整 Python、C ABI／三個範例，另有後續
-16 項 benchmark tests。這些是不同範圍的既有結果，不能加總為新一輪完整整合。
+所有 shell 命令以 `rtk` 開頭。Mojo 1.0.0 (`ed45d567`)，Apple M4／Metal:4；
+Python／child compile 繼承 `.build/compiler-bin` wrapper PATH。Benchmark 必須串行，
+不與 build/test/archive compression 重疊；tests 期間不覆寫 native worker。
+Isolated binding 從複製的 source 與 binding entry 編譯；saved-package pytest 使用
+`-o pythonpath=` 並核對實際 import。保留未提交修改與全部失敗樣本；`.build` 是暫存，
+凍結 archive 不改寫，舊 driver 不盲目原地重跑。既有仍適用的測試結果沿用。
 
-未完成：M5/M6 全效能矩陣、持續 non-resident／memory-limit 與 concurrent-client
-parity。先前被 sandbox 阻擋的 distributed suite 本輪已通過，但不等於 HTTP
-效能對照完成。Qdrant 門檻已定案：相同 recall 下，**每格 QPS ≥ Qdrant
-且 p95 ≤ Qdrant**，不能跨格抵銷。本輪不變基線的兩次暖查詢為 16/36、19/36，
-mixed 為 24/36；都是不同實驗的結果，未達全面 parity。候選與全部慢樣本見
-[10-03 量測與撤回原因](docs/benchmarks/2026-10-03-default-vector-borrow.md)。
-
-工作目錄：`/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan`。
-分支 `feat/48-bounded-generation-head` 的 10-02 交付已合併進 `main`，之後同步至
-`a710aa5`。本輪新增本地 commits `3b10af6`（原型與測試）、`717e240`（撤回原型，
-保留測試）及續作文件；尚未推送或再次合併 main。前次交接完成時沒有進行中的 benchmark／build／test；後續實驗狀態見最新對話。
-本檔僅作入口，不另設與 `tasks/todo.md` 重複的 checklist。
-
-最新診斷：[四列 F32 與 compaction 持鎖成本](docs/benchmarks/2026-10-03-four-distance.md)。
-原四列 distance 候選曾保持隔離；鎖外回收獨立採用後，已重新量測並整合四列距離計算。
-不同實驗不合併通過格；M5/M6 尚未完成。
+下一步持續處理 M5 剩餘生命週期與 M6 失敗格的實測瓶頸；先確認成本，不直接刪除
+validation，也不重做已否決原型。ASan runtime、原生 Linux 與新 GPU device gate
+沒有新通過結果。交接、commit 或 merge 都不代表原任務全部完成。

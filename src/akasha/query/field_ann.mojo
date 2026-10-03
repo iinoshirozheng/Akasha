@@ -20,6 +20,7 @@ from akasha.query.field_search import (
 from akasha.query.control import QueryControl
 from akasha.query.filter_ast import FilterExpression
 from akasha.storage.read_generation import ReadGeneration, ReadRun
+from akasha.storage.field_hnsw_cache import load_field_hnsw_cache
 from std.collections import Dict
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock
@@ -86,7 +87,12 @@ def _field_graph(
             state[].begin()
             if control:
                 control.value().checkpoint(0)
-            var built = ArcPointer(_build_field_graph(run, field, control))
+            var loaded = load_field_hnsw_cache(
+                run.field_cache_directory, run.memtable, field
+            )
+            var built = ArcPointer(
+                loaded.take() if loaded else _build_field_graph(run, field, control)
+            )
             if control:
                 control.value().checkpoint(0)
             state[].publish(built.copy())
