@@ -1,5 +1,15 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 完成現行 `3a5ad04` 的完整 CPU checkpoint：**141 檔／1,001 Mojo、
+8 檔／23 crash、3 個重新編譯範例、既有 C client** 全通過。沿用前包同 binary 的
+388 完整 Python／129 targeted；未重跑成另一輪完整 Python，也未重建 C ABI。
+獨立 reader 測試初次因 launcher 把 executable path 傳給 `mojo run` 而 8 pass／1 fail；
+改來源模式與既有 wrapper 後 9/9 通過。只重跑失敗檔及未跑檔，所有 log 保留。
+[最新整合報告](../research/2026-10-04-cpu-integration.md)，archive SHA-256：
+`5b02346d8b6693dfc69855e611fbaf1c46717f21d81f1ac6b259784859f11043`。
+Source／Python／C／worker identities 未變。M5/M6 未完成；接續最新 binary 的 warm、
+mixed（含 durable write+flush）與 HTTP gate。沒有新 Linux／GPU／ASan／distributed run。
+
 最新採用每次 Python 向量轉換只解析一次驗證 callable/type，保留逐 component 的
 Real/Integral、bool 排除、conversion 與 range/finite 檢查。正式 Python binary SHA-256：
 `53f630ffba1e6e91f20e3abd6e13cc34475797cfd8fa5f0511ff8e61fb013eb6`。

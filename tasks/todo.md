@@ -803,6 +803,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  2026-10-04 現行來源完整 **141 檔／1,001 Mojo、8 檔／23 crash、3 rebuilt examples**
+  與既有 C client 通過；沿用同 binary 的 388 完整 Python。保留 reader launcher
+  首次失敗與 9/9 來源模式重跑，不重複加總；沒有新 Linux／GPU／ASan gate。
+  [最新 CPU 整合證據](../docs/research/2026-10-04-cpu-integration.md)。
   最新 Python 向量轉換重用單次操作的驗證 callable/type，逐值檢查不變；388 完整
   Python／採用後 129 targeted Python 通過。Named 三資料集各三次完整曲線的
   14,472 paired ID／F64 bits／stats 相同，28,944 ANN audits／4,824 exact ID checks

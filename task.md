@@ -11,7 +11,7 @@ bool 排除、數值及範圍檢查保持不變。唯一 source 改動為 `src/b
 
 正式 `python/akashadb/_kernel.so` SHA-256：
 `53f630ffba1e6e91f20e3abd6e13cc34475797cfd8fa5f0511ff8e61fb013eb6`。
-Latest frozen archive SHA-256：
+該工作包 frozen archive SHA-256：
 `de892118a0f539d3e0439a53ca261ddda53751d19080148b19078c80e2a87c57`。
 
 12 項新增 protocol／原子拒絕案例在基線與候選皆通過；候選 **388 完整 Python**、
@@ -28,6 +28,15 @@ flush／close 保存 ready graph，重開驗證 identity、ID／向量並重綁 
 略過保存。該包 47 targeted Mojo／376 Python／C ABI／3 examples 的最終驗證仍適用。
 同一 binary 的載入／重建診斷確認圖檔與查詢 bits 相同，但仍有 25/36 暖格退步；
 持續查詢沒有建立載入方式的因果成本，未因這個診斷改動圖解碼。
+
+## 2026-10-04 CPU 整合 checkpoint
+
+現行 `3a5ad04` 完整 **141 檔／1,001 Mojo、8 檔／23 crash、3 個重建 examples**
+與既有 C client 全通過；同 binary 的 388 完整 Python／129 targeted 結果沿用。
+跨程序 reader 的首輪 launcher 失敗與來源模式 9/9 重跑均保留；沒有修改 source/test。
+[範圍、重現與完整證據](docs/research/2026-10-04-cpu-integration.md)，archive SHA-256：
+`5b02346d8b6693dfc69855e611fbaf1c46717f21d81f1ac6b259784859f11043`。
+M5/M6 仍未完成；下一步重測現行 binary 的固定 warm／mixed／HTTP gates。
 
 ## 剩餘驗收與固定門檻
 
