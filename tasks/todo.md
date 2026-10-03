@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**2026-10-03 後續查證：** HNSW 重複 prepared-query 驗證已量出呼叫次數與成本；
+候選通過 143 targeted Mojo／355 Python，但 warm 19→17/36、mixed 32→30/36，
+未證明穩定公開收益，故不採用。保留 2 項 public query boundary 回歸。
+相同 binary 的 A/A 仍有 p95 波動；GC 診斷只能解釋部分慢樣本，均不排除失敗格。
+[完整證據與控制實驗](../docs/benchmarks/2026-10-03-query-validation.md)。
+
 **2026-10-03 後續實驗：** immutable F32 finite/norm summary 候選已完成隔離驗證
 （94 targeted Mojo、354 Python＋補跑 pinned Qdrant 測試），但 warm 21→20/36、
 mixed 25→25/36 且有 pass→fail 格，故未採用；正式來源與 binary 從未替換。

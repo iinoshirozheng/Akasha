@@ -74,3 +74,14 @@ Archive 也保留原型期間的 `production-identity.json`，那是暫時安裝
 mixed 25→25/36，均有 pass→fail 格；全部品質與 score-bit audits 通過。候選未採用，
 正式 source/binary 從未替換。初次 Python 未啟用 pixi 的編譯器環境失敗也已保留。
 [完整報告與 immutable archive](../benchmarks/2026-10-03-owned-f32-summary.md)。
+
+## 後續：HNSW query 驗證與 A/A／GC 診斷
+
+[完整量測與 archive](../benchmarks/2026-10-03-query-validation.md)。候選 143 targeted
+Mojo／355 Python 通過，但 warm 19→17/36、mixed 32→30/36，未採用；正式來源與
+binary 仍不變。保留 2 項 public query boundary 回歸，已在 production source 通過。
+同來源重建 A/A 為 17→17/36，相同 binary/package 的 A/A 為 18→15/36；資料皆保留，
+不能把失敗格當成噪音刪除。GC 每資料集影響 5 筆 timed query，但多數最慢樣本沒有 GC。
+後續應檢驗主要 mapped distance 成本，不再憑小幅單格變動採用候選。已詢問是否有
+可用原生 Linux x86-64 runner 以完成受控 memory-limit／持續 nonresident gate；
+本工作包沒有完成該 gate。

@@ -5,6 +5,8 @@ default-vector scan 回歸測試，並完成兩個效能候選的量測及撤回
 正式 Mojo source 與 Python binary 已還原至 `a710aa5` 基線；**M5/M6 仍未完成**。
 後續 immutable F32 summary 候選也因公開速度退步未採用；
 [試驗與證據](docs/benchmarks/2026-10-03-owned-f32-summary.md)。
+HNSW query 驗證候選也未採用；已補 2 項邊界回歸與 A/A、GC 診斷，
+[證據](docs/benchmarks/2026-10-03-query-validation.md)。
 最新紀錄見 [10-03 續作狀態](docs/handoff/2026-10-03-status-and-tests.md)。
 
 2026-10-02 的 Git 交付已完成：當時全部交付變更已 commit、push，並以
@@ -41,5 +43,5 @@ mixed 為 24/36；都是不同實驗的結果，未達全面 parity。候選與�
 工作目錄：`/Users/ray/Projects/Akasha/.worktrees/production-hnsw-plan`。
 分支 `feat/48-bounded-generation-head` 的 10-02 交付已合併進 `main`，之後同步至
 `a710aa5`。本輪新增本地 commits `3b10af6`（原型與測試）、`717e240`（撤回原型，
-保留測試）及續作文件；尚未推送或再次合併 main。沒有進行中的 benchmark／build／test。
+保留測試）及續作文件；尚未推送或再次合併 main。前次交接完成時沒有進行中的 benchmark／build／test；後續實驗狀態見最新對話。
 本檔僅作入口，不另設與 `tasks/todo.md` 重複的 checklist。
