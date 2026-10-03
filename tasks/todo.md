@@ -6,7 +6,16 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**目前狀態（2026-10-02）：** named／typed point 的遷移、原子提交、查詢、Python／Arrow、
+**最新續作（2026-10-03）：** 正式引擎維持 `a710aa5` 的來源與 binary。
+兩個 default-vector lookup 候選均因公開 latency 退步撤回；保留三種 metric 的
+缺少 default field／更新／刪除／重開回歸測試。還原後 **355 Python、10 distributed、
+重建 C ABI 與 client** 全通過；先前 socket-bind 限制已解除。不同實驗中的不變
+基線暖查詢為 **16/36、19/36**，mixed 為 **24/36**，仍未達每格 Qdrant 門檻。
+不合併試跑、不排除慢樣本，也不以驗證或撤回原型代表 M5/M6 完成。
+[續作紀錄](../docs/handoff/2026-10-03-status-and-tests.md)／
+[完整量測與撤回原因](../docs/benchmarks/2026-10-03-default-vector-borrow.md)。
+
+**前次狀態（2026-10-02）：** named／typed point 的遷移、原子提交、查詢、Python／Arrow、
 原生 F16／BF16／I8／U8、Binary／MaxSim 與 typed NDJSON 匯出／匯入已實作驗證。
 最近完整 CPU 整合為 **957 Mojo／23 crash／344 Python／C ABI／三個範例**，
 涵蓋 NDJSON 與 CRC 改動。其後 exact scan query preparation 已通過 **88 項受影響
