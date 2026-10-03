@@ -5,25 +5,29 @@
 
 ## 最新工作包（2026-10-03）
 
-已採用 named HNSW 的完整單一 run 快取：flush／close 保存已建好的圖，重開時驗證
-欄位、設定、ID 與向量內容，再重新綁定 ordinal。忙碌的 builder／query 會略過保存，
-不等待其鎖；查詢與 held snapshot 不寫快取。多 run 更新後重開仍可能重建。
-[實作、每個 trial 與完整證據](docs/benchmarks/2026-10-03-named-hnsw-cache.md)。
+已採用 Python 向量轉換時每次只查找一次驗證函式／類別；每個 component 的型別、
+bool 排除、數值及範圍檢查保持不變。唯一 source 改動為 `src/bindings/point_values.mojo`。
+[實作、profiles、所有 trial 與證據](docs/benchmarks/2026-10-03-python-vector-validation.md)。
 
 正式 `python/akashadb/_kernel.so` SHA-256：
-`843186a731ceefaa38e6e5780a0eb13c180dcdc9525191d53f5c8ba0d89d79ba`。
-Frozen archive SHA-256：
-`8677fec577201dbef6d184f47d6255871f2c98ccd12a46ac676d9dbe75a73356`。
+`53f630ffba1e6e91f20e3abd6e13cc34475797cfd8fa5f0511ff8e61fb013eb6`。
+Latest frozen archive SHA-256：
+`de892118a0f539d3e0439a53ca261ddda53751d19080148b19078c80e2a87c57`。
 
-第一版 77 targeted Mojo／1 targeted crash／376 完整 Python／C ABI／3 examples；
-最終鎖修正另通過 47 targeted Mojo／376 完整 Python／C ABI／3 examples。正式 package
-再通過 125 targeted Python 與重建 C ABI/client。未重跑完整 Mojo／crash／Linux／GPU。
-不同階段不加總成一輪完整整合；TestSuite 時間是毫秒。
+12 項新增 protocol／原子拒絕案例在基線與候選皆通過；候選 **388 完整 Python**、
+採用後 **129 targeted Python** 通過。引擎／C ABI／worker 未改，沿用前一工作包證據，
+本輪未重跑完整 Mojo／crash／C ABI／examples／Linux／GPU。不同階段不加總成完整整合。
 
-三資料集各三次配對的 14,472 組 ID／F64 bits／stats 一致，28,944 ANN audits 與
-4,824 exact oracle checks 通過；兩版各保留 84 個低 recall 曲線格。最終版 resident
-重開首查約 87–339 ms，原版約 6.9–32.5 s；首次 flush 變慢，36 個選定暖查詢格仍有
-24 格 QPS 或 p95 退步。這是 named 診斷，**不等於 Qdrant parity**。
+Named resident 的三資料集各三次完整六 ef 曲線，14,472 paired ID／F64 bits／stats
+相同，28,944 ANN audits／4,824 exact ID oracle checks 通過，兩版各保留 84 個低
+recall 格。36 個選定格 QPS 全提高、30 格同時改善 p95；另外 6 格 p95 退步保留。
+這是 named 前後診斷，**不等於 Qdrant parity**。
+
+前一採用為 [named HNSW 完整單一 run 快取](docs/benchmarks/2026-10-03-named-hnsw-cache.md)：
+flush／close 保存 ready graph，重開驗證 identity、ID／向量並重綁 ordinal；busy lock
+略過保存。該包 47 targeted Mojo／376 Python／C ABI／3 examples 的最終驗證仍適用。
+同一 binary 的載入／重建診斷確認圖檔與查詢 bits 相同，但仍有 25/36 暖格退步；
+持續查詢沒有建立載入方式的因果成本，未因這個診斷改動圖解碼。
 
 ## 剩餘驗收與固定門檻
 
@@ -44,7 +48,7 @@ binary 的新 gate。先前 distributed 功能 10/10 通過，不代表 HTTP 效
 
 1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。
 2. [唯一 checklist](tasks/todo.md)、[原驗收計畫](tasks/plan.md)。
-3. [最新 named cache 報告](docs/benchmarks/2026-10-03-named-hnsw-cache.md)及
+3. [最新 Python validation 報告](docs/benchmarks/2026-10-03-python-vector-validation.md)及
    [10-03 各工作包狀態與測試範圍](docs/handoff/2026-10-03-status-and-tests.md)。
 4. [10-02 原交接](docs/handoff/2026-10-02-status-and-tests.md)與
    [已完成的 Git 交付](docs/handoff/2026-10-02-git-delivery.md)。

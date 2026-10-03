@@ -803,6 +803,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新 Python 向量轉換重用單次操作的驗證 callable/type，逐值檢查不變；388 完整
+  Python／採用後 129 targeted Python 通過。Named 三資料集各三次完整曲線的
+  14,472 paired ID／F64 bits／stats 相同，28,944 ANN audits／4,824 exact ID checks
+  通過；兩版各 84 低 recall 格保留。36 選定格 QPS 全提高、30 格 p95 改善，6 格
+  p95 退步仍保留；不取代原 Qdrant gate，也不代表 M5/M6 完成。
+  [完整 profiles／配對／驗證](../docs/benchmarks/2026-10-03-python-vector-validation.md)。
   已採用 HTTP search 單次 worker 排程；41 targeted Python 與 OpenAPI／結果位元
   檢查通過。獨立三方 strict parity 14→22/108，兩格 pass→fail 仍保留，整體 FAILED；
   不與前次 16/108 合併。[實作、profile 與全部試跑](../docs/benchmarks/2026-10-03-http-dispatch.md)。

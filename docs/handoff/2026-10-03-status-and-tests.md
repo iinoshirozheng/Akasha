@@ -1,5 +1,23 @@
 # 2026-10-03 續作狀態
 
+最新採用每次 Python 向量轉換只解析一次驗證 callable/type，保留逐 component 的
+Real/Integral、bool 排除、conversion 與 range/finite 檢查。正式 Python binary SHA-256：
+`53f630ffba1e6e91f20e3abd6e13cc34475797cfd8fa5f0511ff8e61fb013eb6`。
+新增 12 項 protocol/atomic-rejection tests 基線與候選皆通過；候選 **388 完整 Python**、
+正式採用後 **129 targeted Python** 通過。引擎／C ABI／native worker 未改，沒有新完整
+Mojo／crash／C ABI／examples／Linux／GPU gate。
+Named 三資料集各三次完整曲線的 14,472 paired ID／F64 bits／stats 相同；28,944 ANN
+audits、4,824 exact ID checks 通過，兩版各 84 低 recall 格保留。選定 36 格 QPS 皆提高、
+30 格 p95 也改善；6 格 p95 退步仍失敗。未重跑或取代原 Qdrant gate。
+同 binary 的 cache/rebuild 額外診斷保留 25/36 退步格，但圖 bytes／結果一致；持續查詢
+未建立圖載入方式的因果成本。Python profiles 指向重複屬性解析，故只採用 binding 改動。
+[完整報告](../benchmarks/2026-10-03-python-vector-validation.md)，archive SHA-256：
+`de892118a0f539d3e0439a53ca261ddda53751d19080148b19078c80e2a87c57`。
+**M5/M6 未完成**；多 run 更新後重開、首次建圖、完整 parity／memory gate 仍待完成。
+使用者沒有原生 Linux runner；下一步須繼續實測其餘失敗格，不再重問 runner。
+
+以下依序保留前一工作包的歷史證據；目前 source/binary 以上段為準。
+
 最新採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
 identity／ID／向量並重綁 ordinal。忙碌 artifact／query 不阻塞 writer，稍後可重試。
 正式 Python binary SHA-256：

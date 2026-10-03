@@ -15,17 +15,24 @@ def vector_from_python(
         var values = List[SparseElement]()
         var builtins = Python.import_module("builtins")
         var numbers = Python.import_module("numbers")
+        var is_instance = builtins.isinstance
+        var integer_type = numbers.Integral
+        var real_type = numbers.Real
+        var bool_type = builtins.bool
         for item in raw:
-            var term = _integer(item["term_id"], builtins, numbers)
-            var weight = _real(item["weight"], builtins, numbers)
+            var term = _integer(item["term_id"], is_instance, integer_type, bool_type)
+            var weight = _real(item["weight"], is_instance, real_type, bool_type)
             values.append(SparseElement(term, Float32(weight)))
         return VectorValue.sparse(values^)
     if field.kind == 3:
         var values = List[UInt8]()
         var builtins = Python.import_module("builtins")
         var numbers = Python.import_module("numbers")
+        var is_instance = builtins.isinstance
+        var integer_type = numbers.Integral
+        var bool_type = builtins.bool
         for item in raw:
-            var value = _integer(item, builtins, numbers)
+            var value = _integer(item, is_instance, integer_type, bool_type)
             if value < 0 or value > 255:
                 raise Error("binary bytes must fit UInt8")
             values.append(UInt8(value))
@@ -44,20 +51,20 @@ def vector_from_python(
 
 
 def _integer(
-    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
 ) raises -> Int:
-    if not Bool(py=builtins.isinstance(raw, numbers.Integral)) or Bool(
-        py=builtins.isinstance(raw, builtins.bool)
+    if not Bool(py=is_instance(raw, numeric_type)) or Bool(
+        py=is_instance(raw, bool_type)
     ):
         raise Error("integer vector values must be integers")
     return Int(py=raw)
 
 
 def _real(
-    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
 ) raises -> Float64:
-    if not Bool(py=builtins.isinstance(raw, numbers.Real)) or Bool(
-        py=builtins.isinstance(raw, builtins.bool)
+    if not Bool(py=is_instance(raw, numeric_type)) or Bool(
+        py=is_instance(raw, bool_type)
     ):
         raise Error("numeric vector values must be real numbers")
     return Float64(py=raw)
@@ -66,10 +73,10 @@ def _real(
 def _component[
     dtype: DType
 ](
-    raw: PythonObject, builtins: PythonObject, numbers: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
 ) raises -> Scalar[dtype]:
     comptime if dtype == DType.int8 or dtype == DType.uint8:
-        var value = _integer(raw, builtins, numbers)
+        var value = _integer(raw, is_instance, numeric_type, bool_type)
         comptime if dtype == DType.int8:
             if value < -128 or value > 127:
                 raise Error("integer vector value exceeds Int8")
@@ -78,7 +85,7 @@ def _component[
                 raise Error("integer vector value exceeds UInt8")
         return Scalar[dtype](value)
     else:
-        return Scalar[dtype](_real(raw, builtins, numbers))
+        return Scalar[dtype](_real(raw, is_instance, numeric_type, bool_type))
 
 
 def _numeric_from_python[
@@ -121,12 +128,17 @@ def _numeric_from_python[
                     values.extend(from_numpy_array[dtype](flat))
                     used_array = True
     if not used_array:
+        # Resolve Python callables/types once; every component still takes both
+        # original isinstance checks and the same numeric conversion.
+        var is_instance = builtins.isinstance
+        var bool_type = builtins.bool
+        var numeric_type = numbers.Integral if (dtype == DType.int8 or dtype == DType.uint8) else numbers.Real
         if field.kind == 0:
             if len(raw) != field.dimension:
                 raise Error("vector dimension does not match field")
             values.reserve(len(raw))
             for item in raw:
-                values.append(_component[dtype](item, builtins, numbers))
+                values.append(_component[dtype](item, is_instance, numeric_type, bool_type))
         else:
             for row in raw:
                 if len(row) != field.dimension:
@@ -134,7 +146,7 @@ def _numeric_from_python[
                         "multivector row dimension does not match field"
                     )
                 for item in row:
-                    values.append(_component[dtype](item, builtins, numbers))
+                    values.append(_component[dtype](item, is_instance, numeric_type, bool_type))
     if field.kind == 0:
         return VectorValue.dense[dtype](values^)
     return VectorValue.multivector[dtype](field.dimension, values^)
