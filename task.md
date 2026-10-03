@@ -62,6 +62,12 @@ strict parity；recall 各為 36/36、36/36、108/108。Durable write+flush **3/
 binary 不變。首輪原基線 worker 曾停滯於 BlockingScopedLock，124.97 秒後終止；
 額外 13 次診斷與後續矩陣未重現，原因仍未查明。下一步優先重現並定位此鎖停滯。
 
+後續 [鎖停滯診斷](docs/benchmarks/2026-10-04-baseline-lock-stall.md)：100 次原 binary
+與 100 次隔離 owner 診斷各通過 28,800 audits／100 reopens／100 leases；20 項診斷版
+背景維護測試通過，未重現異常。原部分資料庫複本恢復通過 9 個 exact oracle，序號
+9424 已核對。**原因未解，未改正式鎖**。保留失敗；下一步獨立驗證高維 segment
+逐值編碼的成本，不以成功重跑宣稱修復。
+
 ## 閱讀順序與執行規則
 
 1. `AGENTS.md`、`/Users/ray/.codex/RTK.md`，以及修改 Mojo 前的 `mojo-syntax` skill。

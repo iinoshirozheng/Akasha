@@ -803,6 +803,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  鎖停滯後續 100 次原 binary／100 次隔離 owner 診斷，各通過 28,800 audits、
+  100 reopens、100 leases；診斷版 20 項背景維護測試通過。原 DB 複本恢復 9 個
+  exact oracle 與序號 9424 通過；仍未重現、原因未解、未改正式鎖。下一步獨立
+  驗證高維 segment 編碼成本。[完整診斷](../docs/benchmarks/2026-10-04-baseline-lock-stall.md)。
   Payload scratch 候選未採用：67 targeted Mojo／388 Python／9 related crash／C ABI／
   3 examples 通過；三方 warm 19→18/36 有兩個 pass→fail，mixed 24→29/36 不抵銷。
   原基線首輪另有 BlockingScopedLock 停滯，124.97 秒後終止；13 次診斷未重現，

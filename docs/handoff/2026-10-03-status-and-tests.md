@@ -1,5 +1,13 @@
 # 2026-10-03 續作狀態
 
+2026-10-04 鎖停滯後續：100 次原 binary 與 100 次隔離 owner 診斷各通過 28,800
+audits／100 reopens／100 leases；診斷版另通過 20 項背景維護 Mojo tests。沒有
+LOCK_WAIT／LOCK_UNLOCK_FAILED，**原因仍未解，正式 source/binary 未改**。
+原 DB 複本恢復通過 9 個 exact oracle，last sequence 9424 已確認。保留原失敗，
+不能用未重現宣稱修復。下一步獨立驗證 profile 所指高維 segment 逐值編碼成本。
+[完整診斷](../benchmarks/2026-10-04-baseline-lock-stall.md)，archive SHA-256：
+`d6d6c5ab6ae29d24311c3ded50a7774ac0c289373798d9aabb9e89232ad4b8e4`。
+
 2026-10-04 後續 payload buffer 候選保持隔離：67 targeted Mojo、388 Python、
 9 related crash、C ABI/client、3 rebuilt examples 通過，但三方 warm 19→18/36
 有兩個 real-all pass→fail；mixed 24→29/36 無 pass→fail，write+flush 仍 3/9。
