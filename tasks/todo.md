@@ -4,7 +4,9 @@
 `609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
 最新 private cache point-refresh 候選未採用：113 targeted Mojo／388 Python 通過，
 但單次 uniform-1536 更新後重開首查 4.90→53.58 秒；完整 grid quality 9→9/24
-無新增失敗。正式來源未改；下一步查既有 retained-base／delta 的 named 適用性。
+無新增失敗。正式來源未改；既有 retained-base／delta 的三次 primitive 成本探針
+已通過，更新 4.42–4.46→1.33–1.34 秒；不是 named query／recall 或 Qdrant gate。
+下一步依 [接合設計](../docs/plans/2026-10-04-named-overlay-design.md)隔離實作。
 [全部證據](../docs/benchmarks/2026-10-04-cache-point-refresh.md)。**M5/M6 未完成**；
 最新完整 gates 與唯一未勾選項目見下方 M5/M6 checklist，沒有 Linux runner。
 
@@ -813,6 +815,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  既有 retained-base／delta 原 source 成本探針六次完成，47,922 current-vector
+  audits／73,608,192 component bits 通過；三次更新 4.42–4.46→1.33–1.34 秒。
+  無新 engine／named query／recall／Qdrant gate。下一步隔離補 scored candidates
+  與 named cache 接合，原 rerank budget 不變。[證據](../docs/benchmarks/2026-10-04-named-overlay-cost.md)。
   Private cache point-refresh 候選未採用：113 unique targeted Mojo／388 Python
   通過；單次 uniform-1536 完整 curves 無新增 quality 失敗、暖 QPS 快 3–9%，
   但更新後重開首查 4.90→53.58 秒。另五秒 native sample 指出修復工作成本。

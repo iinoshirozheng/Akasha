@@ -29,6 +29,13 @@ ef/filter grid 中，slot 9,011→8,192、暖 QPS 快 3–9%、quality 9→9/24 
 失敗與樣本已凍結。正式 source/binary 不變；下一步查既有 retained-base／delta
 能否沿用到 named lifecycle，不擴大或盲目重跑此候選。這不是完整 Qdrant 矩陣。
 
+[既有 base／delta 成本探針](docs/benchmarks/2026-10-04-named-overlay-cost.md)
+三次均通過：相同 graph／819 updates／205 deletes 的 primitive 更新 4.42–4.46 秒
+降至 1.33–1.34 秒，47,922 current-vector audits／73,608,192 component bits 通過；
+append 圖與前次逐 byte 相同、segmented base 未改。這不是 named query／recall 或
+Qdrant gate。下一步依 [接合設計](docs/plans/2026-10-04-named-overlay-design.md)
+先補 scored candidates，維持原全域 rerank budget，再隔離驗證 cache 生命週期。
+
 [搜尋修正後的新生命週期比較](docs/benchmarks/2026-10-04-named-cache-final.md)：
 18 workers／28,944 ANN audits／4,824 exact checks 完成，fixed recall 132→135/216、
 無 pass→fail，但 30/36 暖 timing 退步；快取候選仍未採用。另 8 個 native profiles
