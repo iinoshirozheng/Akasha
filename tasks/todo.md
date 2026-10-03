@@ -815,13 +815,17 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Local repair 計數完成：38,256 jobs／8,210 unique centers-levels，78.54% 重複；
+  reciprocal connect 占 47.43% distance calls。只加記錄，最終 graph 與原 frozen
+  結果逐 byte 相同，12,268,032 component bits 通過，沒有新效能達標主張。下一步
+  依 private batch 方案隔離驗證每中心一次修復。[計數與限制](../docs/research/2026-10-04-refresh-work.md)、
+  [實作方案](../docs/plans/2026-10-04-batched-cache-repair.md)。
   Named retained-base／delta 已完成隔離接合，未採用：跨階段 150 unique targeted
   Mojo，空 delta 修正後 23 related Mojo／388 Python／C ABI／3 rebuilt examples
   通過；11 crash 為前一整合階段。單次原高維 grid 首查 33.13→1.71 秒、quality
   9→9/24 無新增失敗，但 3/4 選定暖格退步、第二次重開較慢。四個 native profiles
   與 7,488 audits 支持 stale-base 遍歷成本仍在。missing-cache 首次失敗與修復
-  證據全保留，正式 source/binary 不變。下一步量測 local repair 重複工作與 batch
-  healing 可行性；不擴大舊候選。[完整證據](../docs/benchmarks/2026-10-04-named-overlay.md)。
+  證據全保留，正式 source/binary 不變。後續 local repair 計數見上段，不擴大舊候選。[完整證據](../docs/benchmarks/2026-10-04-named-overlay.md)。
   既有 retained-base／delta 原 source 成本探針六次完成，47,922 current-vector
   audits／73,608,192 component bits 通過；三次更新 4.42–4.46→1.33–1.34 秒。
   該 primitive 階段無新 named query／recall／Qdrant gate；其後隔離接合見上段，

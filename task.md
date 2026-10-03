@@ -22,6 +22,13 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[修復重複工作計數](docs/research/2026-10-04-refresh-work.md)已完成：819 updates
+產生 38,256 jobs／8,210 unique center-level，78.54% 重複處理，reciprocal connect
+占 47.43% distance calls。診斷 graph 與舊 frozen 結果逐 byte 相同，7,987 points／
+12,268,032 component bits／205 deleted IDs 通過；instrumented 時間不列效能 gate。
+正式來源未改。下一步依 [每個中心一次的 private batch 方案](docs/plans/2026-10-04-batched-cache-repair.md)
+做隔離實作與窄驗證，不直接移植 Qdrant 單向 pruning，也不把重複 jobs 比例當速度。
+
 [Named retained-base／delta 接合](docs/benchmarks/2026-10-04-named-overlay.md)
 已完成隔離實作，**未採用**。跨階段 150 unique targeted Mojo；修正空 delta 後
 23 項相關 Mojo／388 完整 Python／C ABI／3 rebuilt examples 通過，11 crash 為
@@ -30,7 +37,7 @@ quality 9→9/24 無新增失敗，但 3/4 選定暖格退步、第二次重開�
 profiles／7,488 audits 支持 stale-base 遍歷成本仍在；all 多算約 981 次距離與
 約 969 次 source rejection。首次 missing-cache 失敗與空 snapshot allocation
 上限重現均保留，改用可選空 delta，沒有放寬安全限制。正式 source/binary 不變；
-下一步量測 local repair 的重複工作、查 batch healing 的可行性，不盲目重跑舊候選。
+其後已完成上方 local repair 計數；下一步驗證 batch 候選，不盲目重跑舊演算法。
 Frozen archive SHA-256：
 `2f9f97e8b4d9c5408af60fbfe0772550c181b21abccdde61e3f00682cfa3a2b2`。
 
