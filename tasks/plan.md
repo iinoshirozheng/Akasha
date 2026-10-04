@@ -7,7 +7,15 @@
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
 
-2026-10-04 最新：[named input refs／None identity](../docs/research/2026-10-04-query-input-refs.md)
+2026-10-04 最新：[Python 回傳容器參照釋放](../docs/benchmarks/2026-10-04-output-list-refs.md)
+已採用。新增24 cases：基線23 failed／1 passed，候選24 passed；595完整隔離
+Python／147正式targeted通過。原矩陣warm24/36、mixed20/36、write+flush3/9，
+recall各36/36，四個pass→fail完整保留，整體FAILED。兩個named selective profiles
+顯示約55–58%主執行緒samples在HNSW distance，輸出建構只占少量；不再增加輸出
+速度原型，接續距離計算具體成本與named更新後重開生命週期。其他普通call路徑
+尚未普查，不宣稱binding無洩漏。沒有Linux runner，唯一todo項目維持未勾選。
+
+2026-10-04 前一修復：[named input refs／None identity](../docs/research/2026-10-04-query-input-refs.md)
 已修復，28 red→green、571完整隔離Python／123正式targeted通過。本版沒有新
 performance gate；前版warm25/36、mixed27/36、write+flush3/9仍FAILED。
 接續普通Python callable refs在輸出建構／typed helpers的最小probe與實際修復，

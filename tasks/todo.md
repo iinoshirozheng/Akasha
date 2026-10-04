@@ -1,4 +1,25 @@
-# 最新修復（2026-10-04）：named輸入容器回收與None identity
+# 最新修復（2026-10-04）：Python 回傳容器參照釋放
+
+新建 Python 輸出改用 local Mojo List owner＋既有 stdlib list/Span conversion；
+三處 dictionary insertion 保留借用 owners，binary bytes callable 改用既有
+vectorcall。修復 search/get/schema/export/native vector 輸出被隱藏 reference
+保留的問題，只改兩個 binding files，engine／C API／worker／格式不變。
+
+新增 24 cases：修正 fixture/assertion 後基線 23 failed／1 passed，候選全通過；
+**595 完整隔離 Python／147 正式 targeted** 通過，重複不加總。第一版失敗全部保留。
+原矩陣 warm21→24/36、mixed21→20/36、write+flush3→3/9；recall各36/36，
+四個performance pass→fail保留，**整體FAILED，M5/M6未完成**。
+Named 14,472 pairs IDs/F64 bits/stats一致、品質132/216；25/36選定格timing退步。
+[完整實作、全部失敗與凍結證據](../docs/benchmarks/2026-10-04-output-list-refs.md)。正式kernel SHA-256：
+`0088e118e5723f9a30cdef9c5a99ac3b3d6503fe4c67b09afb50ba4ef76b6c1c`。
+
+兩個named selective profiles共3,584 repeat＋134 warmup audits；HNSW distance占
+主執行緒samples約55–58%，不支持再做output-container速度原型。接續距離計算
+具體成本與named更新後重開生命週期。其他binding callable尚未普查；舊mixed
+停滯根因未解。沒有新full Mojo/crash/C/examples/HTTP/Linux/GPU/ASan/nonresident
+驗收；沒有Linux runner，不重問。以下均為各歷史工作包當時結果。
+
+# 前一修復（2026-10-04）：named輸入容器回收與None identity
 
 已修復 named query/write input container 的參照保留：相同hasattr／ndarray
 isinstance predicates改用既有vectorcall helper；None sentinel改為Python object
@@ -974,6 +995,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新採用回傳容器ownership修復：595完整隔離Python／147正式targeted通過；
+  原warm24/36、mixed20/36、write+flush3/9，recall各36/36，四個pass→fail保留。
+  **整體FAILED，保持未勾選**。核心engine未改；[完整證據](../docs/benchmarks/2026-10-04-output-list-refs.md)。
+  下方均為歷史工作包數字，不取代頁首現況。
+
   最新停滯診斷：30＋24 個獨立 workers、15,552 audits／54 reopens／54 leases
   均通過，但未重現原超時，原因未解。sample／LLDB lock owner 取證與四個控制
   案例已驗證；正式 source/binary 不變，原失敗不替換，沒有新效能 gate。

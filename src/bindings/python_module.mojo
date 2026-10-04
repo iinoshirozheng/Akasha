@@ -176,8 +176,8 @@ struct BoundScanner(Movable, Writable):
                 self[].max_bytes,
                 control,
             )
-            result["visited_slots"] = PythonObject(
-                visited
+            _set_output_item(
+                result, PythonObject("visited_slots"), PythonObject(visited)
             )
             return result
         except error:
@@ -360,10 +360,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
-        var output = Python.list()
+        var output = List[PythonObject]()
         for field in fields:
             output.append(_vector_field_to_python(field))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def apply_point_batch(
@@ -698,17 +698,17 @@ struct BoundCollection(Movable, Writable):
         if not root[].catalog:
             return Python.none()
         ref fields = root[].catalog.value()[]._fields
-        var schema = Python.list()
+        var schema = List[PythonObject]()
         for field in fields:
             schema.append(_vector_field_to_python(field))
-        var output = Python.list()
+        var output = List[PythonObject]()
         for location in root[].id_ordered_locations():
             var point = root[].run(location[0]).memtable.entry_ref_at(location[1]).to_point()
             output.append(_point_to_python(point, fields))
         return Python.dict(
             config=_collection_config_to_python(root[].config),
-            schema=schema,
-            points=output,
+            schema=Python.list(Span(schema)),
+            points=Python.list(Span(output)),
             source_sequence=PythonObject(root[].sequence),
         )
 
@@ -719,12 +719,12 @@ struct BoundCollection(Movable, Writable):
         var snapshot = self[].inner.value().snapshot()
         var documents = snapshot.documents()
         var sparse = snapshot.sparse_records()
-        var output = Python.list()
+        var output = List[PythonObject]()
         for document_index in range(len(documents)):
             var record = _document_to_python(
                 Optional(documents[document_index].clone())
             )
-            var elements = Python.list()
+            var elements = List[PythonObject]()
             for sparse_index in range(len(sparse)):
                 if sparse[sparse_index].id != documents[document_index].id:
                     continue
@@ -736,10 +736,10 @@ struct BoundCollection(Movable, Writable):
                         )
                     )
                 break
-            record["sparse"] = elements
+            _set_output_item(record, PythonObject("sparse"), Python.list(Span(elements)))
             output.append(record)
         snapshot.close()
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def scanner(
@@ -795,17 +795,17 @@ struct BoundCollection(Movable, Writable):
         var record = self[].inner.value().get(native_id)
         if not Bool(record):
             return Python.none()
-        var fields = Python.list()
+        var fields = List[PythonObject]()
         for index in range(len(record.value().fields)):
             fields.append(_field_to_python(record.value().fields[index]))
-        var vector = Python.list()
+        var vector = List[PythonObject]()
         for value in record.value().vector:
             vector.append(value)
         return Python.dict(
             id=PythonObject(record.value().id),
             sequence=PythonObject(record.value().sequence),
-            vector=vector,
-            fields=fields,
+            vector=Python.list(Span(vector)),
+            fields=Python.list(Span(fields)),
         )
 
     @staticmethod
@@ -935,10 +935,10 @@ struct BoundCollection(Movable, Writable):
             )
         else:
             raise Error("unknown dense metric")
-        var output = Python.list()
+        var output = List[PythonObject]()
         for query_results in results:
             output.append(_results_to_python(query_results))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def search_batch_where(
@@ -997,10 +997,10 @@ struct BoundCollection(Movable, Writable):
             )
         else:
             raise Error("unknown dense metric")
-        var output = Python.list()
+        var output = List[PythonObject]()
         for query_results in results:
             output.append(_results_to_python(query_results))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def search_approx[
@@ -1606,6 +1606,17 @@ def _field_to_python(field: DocumentField) raises -> PythonObject:
 
 
 
+def _set_output_item(
+    target: PythonObject, key: PythonObject, value: PythonObject
+) raises:
+    # These are freshly built output dictionaries, with owned Python values.
+    # PyDict_SetItem borrows all three arguments; the caller keeps them alive.
+    if Python().cpython().PyDict_SetItem(
+        target._obj_ptr, key._obj_ptr, value._obj_ptr
+    ) != 0:
+        raise Python().cpython().unsafe_get_error()
+
+
 def _point_to_python(
     point: PointState, schema: List[VectorFieldSpec]
 ) raises -> PythonObject:
@@ -1622,9 +1633,9 @@ def _point_to_python(
         else:
             for spec in schema:
                 if spec.id == field.id:
-                    vectors[spec.name] = value
+                    _set_output_item(vectors, PythonObject(spec.name), value)
                     break
-    var payload = Python.list()
+    var payload = List[PythonObject]()
     for index in range(len(point.payload())):
         payload.append(_field_to_python(point.payload()[index]))
     return Python.dict(
@@ -1634,7 +1645,7 @@ def _point_to_python(
         vector=dense,
         sparse=sparse,
         vectors=vectors,
-        fields=payload,
+        fields=Python.list(Span(payload)),
     )
 
 def _document_to_python(
@@ -1642,17 +1653,17 @@ def _document_to_python(
 ) raises -> PythonObject:
     if not Bool(record):
         return Python.none()
-    var fields = Python.list()
+    var fields = List[PythonObject]()
     for index in range(len(record.value().fields)):
         fields.append(_field_to_python(record.value().fields[index]))
-    var vector = Python.list()
+    var vector = List[PythonObject]()
     for value in record.value().vector:
         vector.append(value)
     return Python.dict(
         id=PythonObject(record.value().id),
         sequence=PythonObject(record.value().sequence),
-        vector=vector,
-        fields=fields,
+        vector=Python.list(Span(vector)),
+        fields=Python.list(Span(fields)),
     )
 
 
@@ -1669,21 +1680,21 @@ def _results_to_python[
             ids[index] = Int64(results[index].id)
             scores[index] = results[index].score
         return Python.dict(ids=ids_array, scores=scores_array)
-    var output = Python.list()
+    var output = List[PythonObject]()
     for result in results:
         output.append(
             Python.dict(
                 id=PythonObject(result.id), score=PythonObject(result.score)
             )
         )
-    return output
+    return Python.list(Span(output))
 
 
 def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
-    var segments = Python.list()
+    var segments = List[PythonObject]()
     for name in report.segment_names:
         segments.append(name)
-    var sparse = Python.list()
+    var sparse = List[PythonObject]()
     for name in report.sparse_names:
         sparse.append(name)
     return Python.dict(
@@ -1695,8 +1706,8 @@ def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
         live_points=PythonObject(report.live_points),
         valid=PythonObject(report.valid),
         config_fingerprint=PythonObject(report.config_fingerprint),
-        segment_names=segments,
-        sparse_names=sparse,
+        segment_names=Python.list(Span(segments)),
+        sparse_names=Python.list(Span(sparse)),
     )
 
 
@@ -1928,11 +1939,11 @@ def _field_results_to_python[
             ids[index] = Int64(results[index].id)
             scores[index] = results[index].score
         return Python.dict(ids=ids_array, scores=scores_array)
-    var output = Python.list()
+    var output = List[PythonObject]()
     for result in results:
         output.append(
             Python.dict(
                 id=PythonObject(result.id), score=PythonObject(result.score)
             )
         )
-    return output
+    return Python.list(Span(output))

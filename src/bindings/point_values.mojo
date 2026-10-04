@@ -204,9 +204,26 @@ def _numeric_from_python[
     return VectorValue.multivector[dtype](field.dimension, values^)
 
 
+def _binary_bytes(values: PythonObject, constructor: PythonObject) raises -> PythonObject:
+    # Caller retains the temporary list and the original Python callable until
+    # vectorcall returns; the returned reference is owned by PythonObject.
+    var arguments: Array[PyObjectPtr, 1] = [values._obj_ptr]
+    var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
+    var result = vectorcall(
+        constructor._obj_ptr,
+        arguments.unsafe_ptr().as_imm().unsafe_bitcast[NoneType]().unsafe_origin_cast[ImmutAnyOrigin](),
+        c_size_t(1),
+        PyObjectPtr(),
+    )
+    if not result:
+        var error = _type_check_error()
+        raise error^
+    return PythonObject(from_owned=result)
+
+
 def vector_to_python(value: VectorValue) raises -> PythonObject:
     if value.kind() == 1:
-        var values = Python.list()
+        var values = List[PythonObject]()
         for element in value.sparse_values():
             values.append(
                 Python.dict(
@@ -214,12 +231,12 @@ def vector_to_python(value: VectorValue) raises -> PythonObject:
                     weight=PythonObject(element.weight),
                 )
             )
-        return values
+        return Python.list(Span(values))
     if value.kind() == 3:
-        var values = Python.list()
+        var values = List[PythonObject]()
         for byte in value.binary_values():
             values.append(Int(byte))
-        return Python.import_module("builtins").bytes(values)
+        return _binary_bytes(Python.list(Span(values)), Python.import_module("builtins").bytes)
     if value.scalar() == 0:
         return _numeric_to_python[DType.float32](value)
     if value.scalar() == 1:
@@ -241,17 +258,17 @@ def _python_component[
 
 
 def _numeric_to_python[dtype: DType](value: VectorValue) raises -> PythonObject:
-    var result = Python.list()
+    var result = List[PythonObject]()
     if value.kind() == 0:
         for item in value.dense_values[dtype]():
             result.append(_python_component(item))
     else:
         ref values = value.multivector_values[dtype]()
         for row in range(value.row_count()):
-            var output = Python.list()
+            var output = List[PythonObject]()
             for column in range(value.dimension()):
                 output.append(
                     _python_component(values[row * value.dimension() + column])
                 )
-            result.append(output)
-    return result
+            result.append(Python.list(Span(output)))
+    return Python.list(Span(result))
