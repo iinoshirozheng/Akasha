@@ -970,19 +970,23 @@ struct BoundCollection(Movable, Writable):
     ) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
+        # Python conversions can re-enter close(); recheck before native access.
         var metric_name = String(py=metric)
         var values = _float_vector(query)
         var count = Int(py=k)
         var ef = Int(py=ef_search)
         if metric_name == "dot":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_dot_approx(values, count, ef)
             )
         if metric_name == "l2":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_l2_approx(values, count, ef)
             )
         if metric_name == "cosine":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_cosine_approx(values, count, ef)
             )
@@ -1052,6 +1056,7 @@ struct BoundCollection(Movable, Writable):
     ) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
+        # Python conversions can re-enter close(); recheck before native access.
         var metric_name = String(py=metric)
         var values = _float_vector(query)
         var k = Int(py=options["k"])
@@ -1062,18 +1067,21 @@ struct BoundCollection(Movable, Writable):
         if approximate:
             var ef = Int(py=options["ef_search"])
             if metric_name == "dot":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
                     .search_dot_approx_where(values, k, ef, expression)
                 )
             if metric_name == "l2":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
                     .search_l2_approx_where(values, k, ef, expression)
                 )
             if metric_name == "cosine":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
@@ -1081,14 +1089,17 @@ struct BoundCollection(Movable, Writable):
                 )
         else:
             if metric_name == "dot":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[].inner.value().search_dot_where(values, k, expression)
                 )
             if metric_name == "l2":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[].inner.value().search_l2_where(values, k, expression)
                 )
             if metric_name == "cosine":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()

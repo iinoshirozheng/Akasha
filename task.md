@@ -3,7 +3,18 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新採用（2026-10-04）：filtered HNSW inactive radius
+## 最新採用（2026-10-04）：Python 搜尋轉換時 close
+
+`search_approx`／`search_dense_where` 在 Python 轉換後重新檢查 handle，修正 callback
+呼叫 close 後的程序 abort，保留未知 metric 的錯誤優先順序。54 個 baseline abort／
+18 個既有通過案例均保留；候選 72 targeted／460 完整 Python 通過，採用後 72 項
+再驗證通過。沒有 GIL／owner／engine 變更，也沒有新的效能通過主張。
+[修正與證據](docs/research/2026-10-04-conversion-close.md)。
+現行 kernel SHA-256：
+`b8a66097cb6c0f598238e6e79a997820c4b4e1fdc55b8a09bd3cdc174dab7865`。
+下一步重現並處理相鄰 binding 的同類轉換邊界；M5/M6 仍未完成。
+
+## 前一採用（2026-10-04）：filtered HNSW inactive radius
 
 已修正 deleted/replaced slots 占用 filtered navigation radius、導致全允許 filter
 也可能提早停止的缺陷。唯一 engine 改動為 `hnsw_core.mojo`，新增三個重現測試。
@@ -11,7 +22,7 @@
 binary 的 3 Mojo／8 server tests／C client／3 examples 再驗證通過，不重複加總。
 [修正、全部矩陣與證據](docs/benchmarks/2026-10-04-live-filtered-radius.md)。
 
-正式 Python kernel SHA-256：
+該工作包 Python kernel SHA-256：
 `609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
 Frozen archive SHA-256：
 `77ae0191f6ebbe08689c184c9f6cc0aa5686480ca0f102e98a5bb29f159c53ce`。
@@ -26,7 +37,7 @@ Frozen archive SHA-256：
 34 targeted／388 完整 Python 通過；fixed warm 20→22/36、mixed 25→25/36、
 HTTP 24→28/108，整體 FAILED。保留所有 A/B 退步、9 個 performance pass→fail
 及三個 Qdrant 低 recall 格；錯誤 runtime 的早期量測獨立保留。Production 未改。
-已獨立重現 Python 轉換時 close 造成 abort，下一步以最小 handle recheck 修正。
+由此重現的兩個搜尋入口 abort 已以上方獨立最小 handle recheck 修正。
 
 [Mapped F32 雙區塊探針](docs/benchmarks/2026-10-04-mapped-chunks.md)未採用：
 3 metric tests／1,646,592 score-bit 比對通過，42 筆微量測全保留。128D 七次改善，
