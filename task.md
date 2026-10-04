@@ -3,6 +3,13 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
+## 最新診斷（2026-10-04）：Top-K admission 拆分未採用
+
+候選在compiler gate停止：offer與exact caller指令數未縮小，沒有新效能量測。
+兩版各8 targeted Mojo通過，保留3項獨立oracle；正式路徑另3項通過，不加總。
+正式engine仍為`8ba04ce`，下方性能門檻與kernel不變；M5/M6仍未完成。
+[完整證據與失敗紀錄](docs/benchmarks/2026-10-04-topk-admission.md)。
+
 ## 最新採用（2026-10-04）：checked visit 縮小參數
 
 HNSW visit改用只借用epoch words的private helper，保留原epoch／bounds／owner與

@@ -1,3 +1,10 @@
+# 最新診斷：2026-10-04 Top-K admission 拆分未採用
+
+在compiled-code gate停止，沒有新效能量測。兩版各8 targeted Mojo通過，保留3項
+獨立oracle，正式路徑另3項通過；不重複加總。正式engine仍為`8ba04ce`，現行
+kernel與Qdrant性能結果保持下段；M5/M6未完成。
+[完整證據與失敗紀錄](../docs/benchmarks/2026-10-04-topk-admission.md)。
+
 # 最新採用：2026-10-04 checked visit 縮小參數
 
 單檔HNSW visit改動通過110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt
@@ -860,6 +867,9 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - Top-K admission候選在compiler gate停止，兩版各8 targeted Mojo通過；新增
+  3項oracle保留，正式source/binary不變。沒有新Qdrant／full integration gate。
+  [否決證據](../docs/benchmarks/2026-10-04-topk-admission.md)。
   - 最新採用checked visit縮小可變參數，epoch／bounds／owner／bits/stats不變。
   110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；正式
   路徑另11 Mojo／143 Python與C/client/examples通過。Named品質132/216、84低recall
