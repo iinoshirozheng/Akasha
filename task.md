@@ -14,7 +14,10 @@ recall 的 36 個暖格全部 QPS 退步；fixed-ef recall 132→141/216，新�
 [同圖對照](docs/benchmarks/2026-10-04-named-bundle-fixed-graph.md)亦完成18 workers：
 14,472組成對query的IDs／score bits／全部stats一致，品質兩版均132/216；
 23/36選定格仍有QPS或p95退步，未重現多分區一致降速，沒有新Qdrant gate。
-下一步逐partition計數額外搜尋工作，先確認成本，不降低原預算或重跑舊repair。
+[逐分區／逐輪計數](docs/research/2026-10-04-named-partition-work.md)亦完成：
+9,648 query bits／stats、1,608 exact checks 一致；正式單圖 selective 也有重算，
+uniform-1536 平均三輪、21,803 次距離計算。下一步隔離驗證同操作 widening 距離
+重用，不降低原預算、不重跑舊 repair；此計數沒有新的效能達標主張。
 
 ## 最新採用（2026-10-04）：Python 搜尋轉換時 close
 

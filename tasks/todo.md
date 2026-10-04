@@ -820,6 +820,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新逐分區／逐輪計數：9,648 query bits/stats、1,608 exact checks 一致；正式
+  named selective 也有重算，uniform-1536 平均三輪、21,803 distances。下一步隔離
+  驗證同操作距離重用，沒有新的速度或 Qdrant 通過主張。
+  [證據](../docs/research/2026-10-04-named-partition-work.md)。
   Named graph bundle 隔離候選未採用：112 targeted Mojo／11 related crash／506
   完整 Python／C ABI／3 rebuilt examples 通過；18 個原 lifecycle workers 完成。
   首查快約43–93倍，但36/36共同 recall 暖格 QPS 退步；fixed-ef 品質132→141/216，
