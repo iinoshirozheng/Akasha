@@ -1,8 +1,15 @@
 # 下一輪工作包 checklist
 
-目前正式 engine 為 `cc15f37` 的 filtered inactive radius 修正，Python SHA-256
-`609aeb2b0d721cbc1d84f6aec1bd325a360484cfa72d207600313b342c5cd8d9`。
-最新 private batch cache 修復候選未採用：79 targeted Mojo／388 完整 Python 通過，
+目前正式 engine 為 `cc15f37` 的 filtered inactive radius 修正，binding 採用
+`b54853e` 的 callback-close 修正；現行 Python SHA-256：
+`780e8aaf3d7db9423251a4090fd069382d148d783451a91b6eb972893f5f74d6`。
+最新兩版 widening 距離重用均未採用：各70 targeted Mojo、18 workers、14,472
+paired query bits/stats一致；fixed quality各132/216。高維selective改善約9–20%，
+第二版仍有21/36選定timing格退步；沒有新Qdrant gate，正式source/binary不變。
+[完整證據](../docs/benchmarks/2026-10-04-widening-distances.md)。M5/M6仍未完成；
+下一步回到未widen的高維all與named小分區成本，不重跑這兩版。
+
+以下為先前 private batch cache 修復的歷史結果，候選未採用：79 targeted Mojo／388 完整 Python 通過，
 完整 named 生命週期 28,944 ANN audits／4,824 exact checks 通過，但 fixed recall
 132→129/216、三個新增品質失敗、23/36 選定暖格退步。三 corpus 首查均降低，
 高維修復 distance calls 減少63.8%，但成本與品質取捨未支持採用；正式來源未改。
@@ -820,9 +827,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新兩版 widening distance reuse 各70 targeted Mojo、18 workers、14,472
+  paired query bits/stats一致，品質各132/216；高維selective改善，其他格仍退步。
+  第二版21/36選定timing退步，兩版未採用；沒有新Qdrant/full integration gate。
+  [全部樣本與限制](../docs/benchmarks/2026-10-04-widening-distances.md)。
   - 最新逐分區／逐輪計數：9,648 query bits/stats、1,608 exact checks 一致；正式
-  named selective 也有重算，uniform-1536 平均三輪、21,803 distances。下一步隔離
-  驗證同操作距離重用，沒有新的速度或 Qdrant 通過主張。
+  named selective 也有重算，uniform-1536 平均三輪、21,803 distances。後續隔離
+  距離重用實驗見上段；本計數沒有新的速度或 Qdrant 通過主張。
   [證據](../docs/research/2026-10-04-named-partition-work.md)。
   Named graph bundle 隔離候選未採用：112 targeted Mojo／11 related crash／506
   完整 Python／C ABI／3 rebuilt examples 通過；18 個原 lifecycle workers 完成。
@@ -836,7 +847,7 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   [完整證據](../docs/benchmarks/2026-10-04-named-graph-bundle.md)。
   相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
   13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
-  保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；没有新效能、
+  保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；沒有新效能、
   完整 Mojo/crash/Linux gate。M5/M6 不勾選。
   [完整證據與限制](../docs/research/2026-10-04-binding-close.md)。
   HTTP 直接替換 JSON parser 的相容性探針未採用：20,006 numeric bits 一致，
@@ -855,7 +866,7 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   GIL 候選未改 production；由此重現的搜尋 abort 已以上方最小 handle 修正。
   [完整樣本、驗證與限制](../docs/benchmarks/2026-10-04-binding-gil.md)。
   Mapped F32 雙區塊 kernel 探針未採用：3 metric tests／1,646,592 score-bit 比對
-  通過，42 筆微量測保留；高維結果不一致，没有新 public query／Qdrant 驗收。
+  通過，42 筆微量測保留；高維結果不一致，沒有新 public query／Qdrant 驗收。
   正式 source/binary 不變。[證據](../docs/benchmarks/2026-10-04-mapped-chunks.md)。
   每中心一次的 private batch 修復已完成隔離實作與三 corpora／三 trials，未採用：
   79 targeted Mojo／388 完整 Python、28,944 ANN audits／4,824 exact checks 通過；

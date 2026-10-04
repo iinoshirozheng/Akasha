@@ -3,7 +3,18 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新隔離結果（2026-10-04）：named graph bundle 未採用
+## 最新隔離結果（2026-10-04）：widening 距離重用未採用
+
+[逐分區／逐輪計數](docs/research/2026-10-04-named-partition-work.md)確認正式單圖
+也會重算。兩版隔離候選各70 targeted Mojo通過，包含11種native backend的
+owned/mapped多輪案例；各18 workers、14,472 paired IDs／F64 bits／stats一致，
+品質兩版各132/216。高維selective QPS提升約9–20%，但其餘格仍有退步，沒有新
+Qdrant通過主張，正式source/binary未改。[完整實作、兩次曲線與失敗樣本](docs/benchmarks/2026-10-04-widening-distances.md)。
+第二版分離record-only／reuse，仍有21/36選定格timing退步。原門檻不變，M5/M6
+保持未完成。下一步回到沒有widening的高維all與named小分區額外工作，不原樣
+重跑兩版；沒有新full Python／Mojo／crash／Linux／nonresident驗收。
+
+## 前一隔離結果（2026-10-04）：named graph bundle 未採用
 
 分區快取完成隔離實作；112 targeted Mojo／11 related crash／506 完整 Python／
 C ABI／3 rebuilt examples 通過。原三 corpus／三 trial 共 18 個 lifecycle workers
@@ -16,8 +27,8 @@ recall 的 36 個暖格全部 QPS 退步；fixed-ef recall 132→141/216，新�
 23/36選定格仍有QPS或p95退步，未重現多分區一致降速，沒有新Qdrant gate。
 [逐分區／逐輪計數](docs/research/2026-10-04-named-partition-work.md)亦完成：
 9,648 query bits／stats、1,608 exact checks 一致；正式單圖 selective 也有重算，
-uniform-1536 平均三輪、21,803 次距離計算。下一步隔離驗證同操作 widening 距離
-重用，不降低原預算、不重跑舊 repair；此計數沒有新的效能達標主張。
+uniform-1536 平均三輪、21,803 次距離計算。其後完成的兩版 widening 距離
+重用實驗見上方最新結果；此計數沒有新的效能達標主張。
 
 ## 最新採用（2026-10-04）：Python 搜尋轉換時 close
 
