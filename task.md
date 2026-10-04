@@ -3,6 +3,21 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
+## 最新診斷（2026-10-04）：named 小分區有界掃描
+
+正式 engine／kernel 仍為下方 `1318457`，未修改。九個原 corpus/trial native workers
+直接載入前一 bundle 的 graph bytes，完成 24,120 組 scan/graph、2,513,574 common
+F32 bits 與 14,472 原 bundle IDs／distance／widening 比對。所有 scan top-10
+符合獨立 oracle；品質仍 141/216，75 個低 recall 格與 54 次結果差異完整保留。
+
+選定 36 格的 native 分區搜尋總 mean／p95 均改善，mean 降低約 6.5–28.1%；
+不包含 wrapper／rerank／IO，不是 public QPS 或 Qdrant gate，舊 bundle 尚未採用。
+[全部證據與失敗紀錄](docs/research/2026-10-04-named-small-partitions.md)；接續
+[小分區掃描＋完整 artifact 生命週期方案](docs/plans/2026-10-04-named-bounded-partitions.md)，
+在最新 source 上隔離重接，不原樣重跑舊 bundle／repair。
+原正式 gate 仍 warm21/36、mixed26/36、write+flush4/9，**FAILED，M5/M6未完成**。
+沒有新完整 Mojo/Python/crash/C ABI／HTTP／Linux／nonresident 驗收；沒有 runner。
+
 ## 最新採用（2026-10-04）：delta live／history 分別限額
 
 小型 delta 依 live rows 限制向量評分，另保留 physical history／ef 上限；累積替換

@@ -12,6 +12,11 @@
 這是局部查詢成本改善；M5/M6 的唯一 checklist 項目仍未勾選。其餘歷史數字按當時
 工作包解讀，現行 binary／門檻與剩餘工作以 [todo.md](todo.md) 頁首為準。
 
+接續的 [named 小分區診斷](../docs/research/2026-10-04-named-small-partitions.md) 已完成；
+正式 `1318457` 不變，native 成本改善仍非 public gate。下一個隔離工作包依
+[bundle＋有界小分區掃描方案](../docs/plans/2026-10-04-named-bounded-partitions.md)
+重接現行 source、驗證完整生命週期與原矩陣，不原樣重跑已否決版本。
+
 ## 完成狀態與剩餘缺口
 
 #31–#38 可以結案，沒有從該範圍查到尚未完成的必做收尾。核對 Git commits、
