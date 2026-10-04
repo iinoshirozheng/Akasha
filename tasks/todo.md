@@ -1,4 +1,17 @@
-# 最新結果（2026-10-04）：bounded named bundle 未採用，baseline 查詢超時再現
+# 最新診斷（2026-10-04）：停滯未重現，native 超時取證已驗證
+
+正式 engine `1318457`／kernel 未改。原 scheduling 30 次與 flush 後 scheduling 擾動
+24 次，共 15,552 query audits／54 reopens／54 retained leases 通過；未重現停滯，
+**原因仍未解**，原超時失敗沒有替換。獨立 compiled probe 完成 200 萬次巢狀鎖操作，
+不是完整 Mojo suite 或 engine 修復證據。
+
+本機 sample／LLDB 已驗證能取得 native frames、registers 與 lock owner；四個
+supervisor 控制案例通過，包括「取證期間正常退出仍保留 timeout failure」。
+[完整診斷與凍結證據](../docs/research/2026-10-04-query-stall-recurrence.md)。後續原 worker deadline 不變，接入這份取證流程，
+回到 production 失敗格的可量測成本；不原樣重複未重現迴圈或已否決 bundle。
+沒有新 Qdrant／完整整合／HTTP／Linux／GPU／ASan／nonresident gate，M5/M6 未完成。
+
+# 前一結果（2026-10-04）：bounded named bundle 未採用，baseline 查詢超時再現
 
 正式 engine `1318457`／kernel 未改。隔離候選通過 **230 targeted Mojo／11 related crash／
 506 完整 Python／C ABI/client／3 rebuilt examples**；18 個原 named lifecycle workers
@@ -921,6 +934,11 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新停滯診斷：30＋24 個獨立 workers、15,552 audits／54 reopens／54 leases
+  均通過，但未重現原超時，原因未解。sample／LLDB lock owner 取證與四個控制
+  案例已驗證；正式 source/binary 不變，原失敗不替換，沒有新效能 gate。
+  [完整證據](../docs/research/2026-10-04-query-stall-recurrence.md)。
+
   最新 named 小分區診斷：九個 native workers、24,120 pairs／2,513,574 F32 bits／
   14,472 原 bundle result/work audits 通過；品質141/216與75低recall保留。36選定
   native分區搜尋mean/p95均改善，不是public或Qdrant驗收；正式1318457未改。

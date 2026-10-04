@@ -1,5 +1,11 @@
 # 查詢超時再次出現：先取證再修復
 
+本方案的第一輪診斷已完成，見[結果與凍結證據](../research/2026-10-04-query-stall-recurrence.md)。
+原 binary 的 30＋24 次診斷沒有重現；原因未解。獨立 probe 已驗證 sample／LLDB
+lock owner capture，以及 timeout 後成功退出仍保留失敗的 supervisor。後續 worker
+接入此流程，保留原 deadline；回到 production 失敗格 profiling，不原樣重複此輪。
+以下保留原調查依據與約束，不能以未重現宣稱修復。
+
 正式 engine `1318457`、kernel `eb3bebdea9ea4f9d8050d965af1625003d7aec9d841f02fbc9bf101c05f73945`。
 在 named bounded-partition 候選的原矩陣中，未修改 baseline 的 uniform-128／trial2
 mixed worker 查詢超過 40 秒；Python watchdog 在 20 秒記錄 `database._call` →

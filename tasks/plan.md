@@ -20,6 +20,12 @@
 [超時再現取證方案](../docs/plans/2026-10-04-query-stall-recurrence.md)優先查清阻塞位置，
 不原樣重跑此bundle／repair；全部剩餘工作仍以todo唯一checklist為準。
 
+[後續停滯診斷](../docs/research/2026-10-04-query-stall-recurrence.md)完成原 binary
+30＋24 workers、15,552 audits／54 reopens／54 leases，均未重現；原因仍未解。
+獨立 sample／LLDB lock owner 取證及四個 supervisor 控制案例通過，正式 source/binary
+未變。接續 production 失敗格 profiling 時保留原 deadline 並接入 native capture；
+不要原樣重複未重現迴圈，或把這些診斷當作新 Qdrant／完整整合驗收。
+
 ## 完成狀態與剩餘缺口
 
 #31–#38 可以結案，沒有從該範圍查到尚未完成的必做收尾。核對 Git commits、
