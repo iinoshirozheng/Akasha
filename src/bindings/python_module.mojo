@@ -1393,9 +1393,8 @@ def _vector_field_to_python(field: VectorFieldSpec) raises -> PythonObject:
     )
 
 
-def _is_python_none(value: PythonObject) raises -> Bool:
-    var builtins = Python.import_module("builtins")
-    return Bool(py=builtins.type(value) == builtins.type(Python.none()))
+def _is_python_none(value: PythonObject) -> Bool:
+    return value is Python.none()
 
 
 def _exact_python_int(value: PythonObject, name: String) raises -> Int:

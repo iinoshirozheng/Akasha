@@ -5,6 +5,10 @@
 `point_values.mojo` 與 37 個 Python regression cases。沒有改搜尋策略、格式、
 C API、worker、GPU 或 ndarray fast path。
 
+後續的[輸入容器／None identity修復](../research/2026-10-04-query-input-refs.md)
+已處理本報告中當時未修的hasattr query-container retention；下文保留此工作包
+當時的版本、數據與缺口，不能當作後續binary的效能驗收。
+
 ## 實作與版本證據
 
 Mojo 1.0.0 (`ed45d567`)，Python 3.11，Apple M4 / Metal:4。

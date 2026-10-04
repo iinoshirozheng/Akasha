@@ -3,7 +3,26 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新採用（2026-10-04）：named scalar vectorcall 與例外參照釋放
+## 最新修復（2026-10-04）：named輸入容器回收與None identity
+
+已修復 named query/write input container 的參照保留：相同hasattr／ndarray
+isinstance predicates改用既有vectorcall helper；None sentinel改為Python object
+identity，避免保留整個輸入與自訂type equality誤刪合法向量。只改兩個binding檔，
+engine／C API／worker未改，沒有新抽象層。
+
+新增28 cases在基線全失敗、候選全通過；**571完整隔離Python／123正式targeted**
+通過（重複不加總），包含weakref回收、dtype回呼、close、write alias隔離及reopen。
+[完整實作、失敗與凍結證據](docs/research/2026-10-04-query-input-refs.md)。現行kernel SHA-256：
+`87717b0d2ffc31b46a9c92ed5069135fe6125977c07804c22be04a85fd082fda`。
+
+這批是正確性修復，**未跑新performance gate**；上一版完整Qdrant warm25/36、
+mixed27/36、write+flush3/9仍FAILED，不能視為本binary已驗收。M5/M6仍未完成。
+沒有新full Mojo/crash／C ABI／examples／HTTP／Linux／GPU／ASan／RSS／nonresident證據。
+其他普通Python callable的refs尚須按實際路徑查證；下一步先probe輸出建構／typed
+helpers，再回到原失敗格及named更新後重開成本。舊mixed停滯根因仍未解。
+沒有Linux runner，不重問。下方均為各歷史工作包當時結果，不取代本節。
+
+## 前一採用（2026-10-04）：named scalar vectorcall 與例外參照釋放
 
 Named scalar 型別檢查改用 CPython vectorcall 呼叫同一個 callable，保留兩次檢查、
 bool 排除與數值轉換；同時釋放 call/truth 例外的 type/value/traceback refs。

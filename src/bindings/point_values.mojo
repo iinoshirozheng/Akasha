@@ -31,17 +31,17 @@ def _type_check_error() raises -> Error:
     return Error(String(py=PythonObject(from_owned=error_type)))
 
 
-def _is_instance(
+def _call_predicate(
     raw: PythonObject,
-    numeric_type: PythonObject,
-    is_instance: PythonObject,
+    argument: PythonObject,
+    predicate: PythonObject,
     vectorcall: _Vectorcall.type,
 ) raises -> Bool:
     # Both Python owners and this stack argument array live through the call.
     # No kwargs or ARGUMENTS_OFFSET flag: the two borrowed slots stay read-only.
-    var arguments: Array[PyObjectPtr, 2] = [raw._obj_ptr, numeric_type._obj_ptr]
+    var arguments: Array[PyObjectPtr, 2] = [raw._obj_ptr, argument._obj_ptr]
     var result = vectorcall(
-        is_instance._obj_ptr,
+        predicate._obj_ptr,
         arguments.unsafe_ptr().as_imm().unsafe_bitcast[NoneType]().unsafe_origin_cast[ImmutAnyOrigin](),
         c_size_t(2),
         PyObjectPtr(),
@@ -104,7 +104,7 @@ def vector_from_python(
 def _integer(
     raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject, vectorcall: _Vectorcall.type
 ) raises -> Int:
-    if not _is_instance(raw, numeric_type, is_instance, vectorcall) or _is_instance(
+    if not _call_predicate(raw, numeric_type, is_instance, vectorcall) or _call_predicate(
         raw, bool_type, is_instance, vectorcall
     ):
         raise Error("integer vector values must be integers")
@@ -114,7 +114,7 @@ def _integer(
 def _real(
     raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject, vectorcall: _Vectorcall.type
 ) raises -> Float64:
-    if not _is_instance(raw, numeric_type, is_instance, vectorcall) or _is_instance(
+    if not _call_predicate(raw, numeric_type, is_instance, vectorcall) or _call_predicate(
         raw, bool_type, is_instance, vectorcall
     ):
         raise Error("numeric vector values must be real numbers")
@@ -146,9 +146,10 @@ def _numeric_from_python[
     var numbers = Python.import_module("numbers")
     var values = List[Scalar[dtype]]()
     var used_array = False
-    if Bool(py=builtins.hasattr(raw, "dtype")):
+    var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
+    if _call_predicate(raw, PythonObject("dtype"), builtins.hasattr, vectorcall):
         var np = Python.import_module("numpy")
-        if Bool(py=builtins.isinstance(raw, np.ndarray)):
+        if _call_predicate(raw, np.ndarray, builtins.isinstance, vectorcall):
             var ndim = Int(py=raw.ndim)
             if (field.kind == 0 and ndim != 1) or (
                 field.kind == 2 and ndim != 2
@@ -182,7 +183,6 @@ def _numeric_from_python[
         # Resolve the existing callable/types and vectorcall once per operation.
         # Every component retains both checks and its original conversion.
         var is_instance = builtins.isinstance
-        var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
         var bool_type = builtins.bool
         var numeric_type = numbers.Integral if (dtype == DType.int8 or dtype == DType.uint8) else numbers.Real
         if field.kind == 0:

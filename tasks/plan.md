@@ -7,7 +7,13 @@
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
 
-2026-10-04 最新：[named scalar vectorcall 與 callback refs](../docs/benchmarks/2026-10-04-instance-capi.md)
+2026-10-04 最新：[named input refs／None identity](../docs/research/2026-10-04-query-input-refs.md)
+已修復，28 red→green、571完整隔離Python／123正式targeted通過。本版沒有新
+performance gate；前版warm25/36、mixed27/36、write+flush3/9仍FAILED。
+接續普通Python callable refs在輸出建構／typed helpers的最小probe與實際修復，
+不宣稱其他路徑無洩漏。原性能、named更新後重開與nonresident缺口仍以todo為準。
+
+2026-10-04 前一工作包：[named scalar vectorcall 與 callback refs](../docs/benchmarks/2026-10-04-instance-capi.md)
 已採用，543 完整隔離 Python、正式95 targeted與compiled ownership probe通過。
 原完整gate warm25/36、mixed27/36、write+flush3/9仍FAILED；三個pass→fail保留。
 接續已重現的普通call/hasattr query-container retention，先用最小probe定位，再修
