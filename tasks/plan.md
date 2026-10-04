@@ -12,10 +12,13 @@
 這是局部查詢成本改善；M5/M6 的唯一 checklist 項目仍未勾選。其餘歷史數字按當時
 工作包解讀，現行 binary／門檻與剩餘工作以 [todo.md](todo.md) 頁首為準。
 
-接續的 [named 小分區診斷](../docs/research/2026-10-04-named-small-partitions.md) 已完成；
-正式 `1318457` 不變，native 成本改善仍非 public gate。下一個隔離工作包依
-[bundle＋有界小分區掃描方案](../docs/plans/2026-10-04-named-bounded-partitions.md)
-重接現行 source、驗證完整生命週期與原矩陣，不原樣重跑已否決版本。
+接續的 [named bundle＋有界小分區掃描](../docs/benchmarks/2026-10-04-named-bounded-partitions.md)
+已完成隔離實作、230 targeted Mojo／11 crash／506 完整 Python／C ABI／3 examples
+與18 named workers；暖查詢35/36 QPS退步及三個新fixed-ef品質失敗，候選未採用。
+原矩陣54嘗試中53完成、一個未修改baseline mixed查詢超時；candidate gate仍FAILED，
+缺失baseline結果保留。正式engine不變。接續依
+[超時再現取證方案](../docs/plans/2026-10-04-query-stall-recurrence.md)優先查清阻塞位置，
+不原樣重跑此bundle／repair；全部剩餘工作仍以todo唯一checklist為準。
 
 ## 完成狀態與剩餘缺口
 

@@ -1,4 +1,22 @@
-# 最新診斷（2026-10-04）：named 小分區有界掃描
+# 最新結果（2026-10-04）：bounded named bundle 未採用，baseline 查詢超時再現
+
+正式 engine `1318457`／kernel 未改。隔離候選通過 **230 targeted Mojo／11 related crash／
+506 完整 Python／C ABI/client／3 rebuilt examples**；18 個原 named lifecycle workers
+完成，28,944 ANN audits／4,824 exact checks。重開首查降低，但共同 recall 的
+36 格中 35 格 QPS 退步，三個新增 fixed-ef recall 失敗仍在，**候選未採用**。
+
+原 Qdrant 54 jobs 全部嘗試：53 完成、1 未修改 baseline 的 uniform-128/trial2 mixed
+查詢超時；只續跑剩餘 jobs，失敗樣本沒有替換。候選 warm22/36、mixed27/36、
+write+flush5/9，**整體 FAILED**。Baseline mixed 缺四格，不能把缺失算成改善。
+超時資料庫複本恢復為 sequence9336，九個對應 oracle 通過；原檔未改，停滯原因未解。
+[完整實作、測試、失敗與凍結證據](../docs/benchmarks/2026-10-04-named-bounded-partitions.md)。
+
+接續按[查詢超時取證方案](../docs/plans/2026-10-04-query-stall-recurrence.md)優先取得未修改 binary 的 native stack 與操作位置，
+再決定根因修復；不原樣重跑未採用 bundle／repair。M5/M6 唯一 checklist 仍不勾選。
+沒有新 full Mojo/crash、HTTP performance／Linux／GPU／ASan／持續 nonresident gate；
+沒有 Linux runner，不重新詢問。以下為先前工作包的歷史結果。
+
+# 前一診斷（2026-10-04）：named 小分區有界掃描
 
 正式 engine／kernel 仍為下方 `1318457`，未修改。九個原 corpus/trial native workers
 直接載入前一 bundle 的 graph bytes，完成 24,120 組 scan/graph、2,513,574 common
