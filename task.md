@@ -5,14 +5,24 @@
 
 ## 最新採用（2026-10-04）：Python 搜尋轉換時 close
 
+相鄰 binding／Arrow／scanner 已完成同類修正：另重現 33 個 abort，13 個既有通過
+案例保留；46 targeted／506 完整 Python 通過，採用後兩份回歸共 118 項再通過。
+轉換完成後才借用原生 collection；scanner 先保存統計，已捕獲 snapshot／batch
+仍可跨 close 使用。唯一正式 source 變更為 Python binding，core／worker 未改。
+[後續完整證據](docs/research/2026-10-04-binding-close.md)。
+**現行 kernel SHA-256**：
+`780e8aaf3d7db9423251a4090fd069382d148d783451a91b6eb972893f5f74d6`。
+本輪沒有新效能／完整 Mojo／crash／Linux 驗收。接續验证 HTTP JSON 解析成本；
+M5/M6 整體仍 FAILED，不能以正確性修正當作效能達標。
+
 `search_approx`／`search_dense_where` 在 Python 轉換後重新檢查 handle，修正 callback
 呼叫 close 後的程序 abort，保留未知 metric 的錯誤優先順序。54 個 baseline abort／
 18 個既有通過案例均保留；候選 72 targeted／460 完整 Python 通過，採用後 72 項
 再驗證通過。沒有 GIL／owner／engine 變更，也沒有新的效能通過主張。
 [修正與證據](docs/research/2026-10-04-conversion-close.md)。
-現行 kernel SHA-256：
+第一階段 kernel SHA-256：
 `b8a66097cb6c0f598238e6e79a997820c4b4e1fdc55b8a09bd3cdc174dab7865`。
-下一步重現並處理相鄰 binding 的同類轉換邊界；M5/M6 仍未完成。
+相鄰 binding 的後續結果見上段；M5/M6 仍未完成。
 
 ## 前一採用（2026-10-04）：filtered HNSW inactive radius
 

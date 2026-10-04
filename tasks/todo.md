@@ -820,10 +820,15 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
+  13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
+  保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；没有新效能、
+  完整 Mojo/crash/Linux gate。接續驗證 HTTP JSON 解析成本，M5/M6 不勾選。
+  [完整證據與限制](../docs/research/2026-10-04-binding-close.md)。
   已修正 search_approx／search_dense_where 轉換 callback 關閉 handle 後的 abort：
   baseline 54 個程序失敗／18 pass，候選 72 targeted／460 完整 Python 通過，
   採用後同 binary 72 項再驗證通過。只加轉換後 open 檢查，無 GIL／owner／engine
-  變更；未跑新效能或完整 Mojo/crash gate。接續重現相鄰 binding 的同類問題。
+  變更；未跑新效能或完整 Mojo/crash gate。相鄰 binding 後續結果見上段。
   [修正、重現與精確範圍](../docs/research/2026-10-04-conversion-close.md)。
   Python ANN 釋放 GIL 的隔離候選未採用：34 targeted／388 完整 Python 通過；
   fixed warm 20→22/36、mixed 25→25/36、write+flush 4→4/9、HTTP 24→28/108，
