@@ -76,6 +76,7 @@ from akasha.storage.maintenance import (
 from akasha.storage.retired_files import RetiredFileQueue, reclaim_retired_batch
 from akasha.storage.index_cache import (
     authoritative_index_checksum,
+    metadata_cache_from_authority,
     CACHE_HNSW_KIND,
     CACHE_METADATA_KIND,
     CacheArtifact,
@@ -2825,16 +2826,10 @@ struct PersistentCollection:
             return
         try:
             var generation = self._read_generations[].generation
-            var checksum = authoritative_index_checksum(self._memtable)
-            var metadata_payload = self._metadata.encode_cache_payload()
-            var metadata_artifact = CacheArtifact(
-                CACHE_METADATA_KIND,
-                self._config.dimension,
-                generation,
-                self._last_sequence,
-                checksum,
-                metadata_payload^,
+            var metadata_artifact = metadata_cache_from_authority(
+                self._memtable, generation, self._last_sequence
             )
+            var checksum = metadata_artifact.source_checksum
             publish_cache(self._path, "metadata.cache", metadata_artifact)
             if self._hnsw_available and self._hnsw.checkpoint_ready():
                 var hnsw_payload = (

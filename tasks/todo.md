@@ -867,6 +867,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新採用authority／metadata合併payload編碼；格式／CRC／durability不變。
+  108 targeted Mojo／7 related crash／506完整Python／C ABI/client／3 rebuilt examples
+  通過。原54-worker矩陣warm25→26/36、mixed19→17/36、write+flush3→3/9，recall
+  兩版各36/36，四個mixed pass→fail保留。九格write+flush QPS快6–23%，一格p95
+  退步14.45%；另18診斷workers的flush前景CPU減少14–26%，不取代原gate。
+  整體FAILED；無新full Mojo/crash／HTTP／Linux／nonresident驗收，M5/M6不勾選。
+  [全部證據、樣本與限制](../docs/benchmarks/2026-10-04-combined-cache-encoding.md)。
   - Top-K admission候選在compiler gate停止，兩版各8 targeted Mojo通過；新增
   3項oracle保留，正式source/binary不變。沒有新Qdrant／full integration gate。
   [否決證據](../docs/benchmarks/2026-10-04-topk-admission.md)。

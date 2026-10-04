@@ -125,17 +125,10 @@ struct MetadataIndex:
         var writer = BinaryWriter()
         writer.write_u32(UInt32(self.slot_count()))
         for ordinal in range(self.slot_count()):
-            writer.write_i64(Int64(self._ids[ordinal]))
-            writer.write_u8(
-                UInt8(1) if self._live.contains(ordinal) else UInt8(0)
-            )
-            writer.write_u8(UInt8(0))
-            writer.write_u16(UInt16(0))
             var payload = encode_payload(self._fields[ordinal])
-            if len(payload) > Int(UInt32.MAX):
-                raise Error("metadata cache payload exceeds format")
-            writer.write_u32(UInt32(len(payload)))
-            writer.write_bytes(payload)
+            _write_metadata_cache_row(
+                writer, self._ids[ordinal], self._live.contains(ordinal), payload
+            )
         return writer.take_bytes()
 
     @staticmethod
@@ -257,3 +250,17 @@ def build_metadata_index(
             index.upsert(ids[ordinal], owned^)
     index.finish_bulk()
     return index^
+
+
+def _write_metadata_cache_row(
+    mut writer: BinaryWriter, id: Int, live: Bool, payload: List[UInt8]
+) raises:
+    """Frame an already-encoded payload using the unchanged metadata layout."""
+    if len(payload) > Int(UInt32.MAX):
+        raise Error("metadata cache payload exceeds format")
+    writer.write_i64(Int64(id))
+    writer.write_u8(UInt8(1) if live else UInt8(0))
+    writer.write_u8(UInt8(0))
+    writer.write_u16(UInt16(0))
+    writer.write_u32(UInt32(len(payload)))
+    writer.write_bytes(payload)

@@ -3,14 +3,31 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新診斷（2026-10-04）：Top-K admission 拆分未採用
+## 最新採用（2026-10-04）：authority／metadata payload 合併編碼
+
+Legacy cache 每筆 payload 只驗證／編碼一次，供原 CRC 與 metadata framing 共用；
+格式、checksum、持久化順序與 named point-store 路徑不變。
+108 unique targeted Mojo／7 related crash／506 完整 Python／C ABI/client／3 rebuilt
+examples 通過。原54-worker矩陣 warm25→26/36、mixed19→17/36、write+flush3→3/9；
+recall兩版各36/36，四個mixed performance pass→fail全保留，**整體FAILED**。
+
+九格 write+flush QPS 改善6–23%，p95八格改善、一格退步14.45%；另18個診斷workers
+確認flush前景CPU均減少14–26%，不能以此取代原查詢gate。全部樣本、失敗、bytes／CRC
+與正式路徑驗證見[完整報告](docs/benchmarks/2026-10-04-combined-cache-encoding.md)。
+**現行kernel SHA-256**：
+`f33bdbf7734d2762450e9a5e9cb4234a46feee2a4b474907a9d6c3fb5ed2045d`。
+Worker未改；沒有新full Mojo/crash、HTTP performance、Linux/GPU/ASan/nonresident gate。
+M5/M6仍未完成，接續real ANN／mixed selective尾延遲與named多run重開生命週期。
+目前沒有Linux runner，sustained nonresident／memory-limit保持未驗收。
+
+## 前一診斷（2026-10-04）：Top-K admission 拆分未採用
 
 候選在compiler gate停止：offer與exact caller指令數未縮小，沒有新效能量測。
 兩版各8 targeted Mojo通過，保留3項獨立oracle；正式路徑另3項通過，不加總。
-正式engine仍為`8ba04ce`，下方性能門檻與kernel不變；M5/M6仍未完成。
+該診斷未改動`8ba04ce`；當時性能門檻與kernel不變，M5/M6未完成。
 [完整證據與失敗紀錄](docs/benchmarks/2026-10-04-topk-admission.md)。
 
-## 最新採用（2026-10-04）：checked visit 縮小參數
+## 前一採用（2026-10-04）：checked visit 縮小參數
 
 HNSW visit改用只借用epoch words的private helper，保留原epoch／bounds／owner與
 所有搜尋行為。110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples
@@ -23,7 +40,7 @@ Named 14,472 paired IDs／F64 bits／stats相同，品質132/216、84低recall�
 兩版recall各36/36；四個performance pass→fail全保留。**整體FAILED，M5/M6未完成**。
 首輪child wrapper漏absolute src的紀錄保留，更正後506 Python完整重跑通過。
 沒有新版full Mojo/crash／HTTP／Linux／GPU／ASan／nonresident gate，worker未改。
-**現行kernel SHA-256**：
+**該工作包kernel SHA-256**：
 `3ec07dc3c9711ccdb024311831a86c3ed844556c383f7b5de9dcbae535d893c1`。
 接續原real ANN／selective失敗格與M5剩餘artifact生命週期，不重跑已否決原型。
 

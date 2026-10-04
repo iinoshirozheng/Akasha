@@ -6,6 +6,7 @@ from akasha.storage.checksum import (
     CRC32_INITIAL,
 )
 from akasha.document.codec import encode_payload
+from akasha.index.metadata import _write_metadata_cache_row
 from akasha.storage.memtable import MemTable
 from akasha.storage.filesystem import (
     atomic_replace,
@@ -186,8 +187,34 @@ def load_cache_payload(
 
 
 def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
-    """Fingerprint unchanged bytes with at most one row/payload encoded at once.
+    """Fingerprint unchanged bytes with at most one row/payload encoded at once."""
+    var unused_metadata = BinaryWriter()
+    return _encode_authoritative_index[False](memtable, unused_metadata)
+
+
+def metadata_cache_from_authority(
+    memtable: MemTable, generation: UInt64, sequence: UInt64,
+) raises -> CacheArtifact:
+    """Encode each authority payload once for both CRC and metadata cache.
+
+    The stable authority slots are the source of the metadata ID/live/payload
+    layout. This factory neither reads nor mutates a query index or collection.
     """
+    var metadata = BinaryWriter()
+    var checksum = _encode_authoritative_index[True](memtable, metadata)
+    return CacheArtifact(
+        CACHE_METADATA_KIND, memtable.dimension, generation, sequence,
+        checksum, metadata.take_bytes(),
+    )
+
+
+def _encode_authoritative_index[include_metadata: Bool](
+    memtable: MemTable, mut metadata: BinaryWriter,
+) raises -> UInt32:
+    comptime if include_metadata:
+        if memtable.slot_count() > Int(UInt32.MAX):
+            raise Error("metadata cache slot count exceeds format")
+        metadata.write_u32(UInt32(memtable.slot_count()))
     var writer = BinaryWriter()
     writer.write_u32(UInt32(memtable.dimension))
     writer.write_u32(UInt32(memtable.slot_count()))
@@ -218,6 +245,10 @@ def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:
         writer.write_u32(UInt32(len(fields)))
         register = writer.update_crc32_and_clear(register)
         register = crc32_update(register, Span(fields))
+        comptime if include_metadata:
+            _write_metadata_cache_row(
+                metadata, entry.id, not entry.tombstone, fields
+            )
     return ~register
 
 
