@@ -3,6 +3,18 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
+## 最新隔離結果（2026-10-04）：HNSW heap 搬移未採用
+
+新的正式版profile確認原uniform-128 all走planned exact，real filtered ANN的heap
+只占約5% samples。單向搬移候選通過122 targeted Mojo；原54-worker Qdrant同批
+warm25→23/36、mixed15→14/36、write+flush3→3/9、recall各36/36，五個performance
+pass→fail全保留。Named另18 workers、14,472 paired IDs／bits／stats一致，品質
+132→132/216，24/36選定timing退步。未採用，正式`ac48cda` source/binary不變。
+[全部矩陣、五個profiles與assembly](docs/benchmarks/2026-10-04-heap-shifts.md)。
+沒有新完整Python／Mojo／crash／C ABI／examples／HTTP／Linux／nonresident gate。
+接續量測filtered admission是否重複讀取同一slot的current-state與distance成本，
+先確認合約，不直接刪檢查；不原樣重跑heap候選。**M5/M6仍未完成**。
+
 ## 最新採用（2026-10-04）：native F64 四候選 rerank
 
 Named dense ANN 的 native rerank 改為四候選並行、直接借用 read-run owners。
@@ -19,7 +31,7 @@ write+flush **3→3/9**；兩邊recall各36/36，保留四個performance pass→
 GPU／ASan／nonresident／memory-limit gate；worker未改，沒有Linux runner。
 **現行 kernel SHA-256**：
 `80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
-下一步依原失敗格 profile 處理 HNSW搜尋／candidate heap與named更新生命週期。
+其後的candidate heap實驗見頁首；原HNSW搜尋與named更新生命週期仍有剩餘工作。
 下方各工作包的「最新」及數字只描述當時版本，不取代頁首現況。
 
 ## 前一隔離結果（2026-10-04）：widening 距離重用未採用

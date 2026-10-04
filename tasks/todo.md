@@ -3,14 +3,22 @@
 目前正式 engine 在 `cc15f37` 的 filtered inactive radius 修正之上，已採用 native
 F64 四候選 rerank；binding 保留 `b54853e` 的 callback-close 修正。現行 Python SHA-256：
 `80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
-最新工作包30 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；
+最新採用工作包30 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；
 正式路徑再通過3 Mojo／151 Python（不加總）。5,400 public及14,472 named paired
 queries的IDs／bits／stats一致；品質132→132/216、7/36選定timing格退步保留。
 原Qdrant同批warm18→20/36、mixed24→23/36、write+flush3→3/9，保留四個
 performance pass→fail；整體FAILED，**M5/M6未完成**。無新完整Mojo／crash／
 HTTP performance／Linux／nonresident gate；沒有Linux runner。
 [完整證據](../docs/benchmarks/2026-10-04-native-f64-four.md)。後續回到原失敗格
-HNSW搜尋／candidate heap與named更新生命週期；不把局部優化當作最終驗收。
+HNSW搜尋與named更新生命週期；不把局部優化當作最終驗收。
+
+後續heap單向搬移候選未採用：122 targeted Mojo、54原Qdrant workers及18 named
+workers完成。該同批warm25→23/36、mixed15→14/36、write+flush3→3/9，五個
+performance pass→fail保留；named品質132→132/216、24/36選定timing退步。
+14,472 named paired IDs／bits／stats一致；五個profiles共100,416次repeat audits。
+正式`ac48cda`來源／binary未改，沒有新full integration gate。
+[完整證據](../docs/benchmarks/2026-10-04-heap-shifts.md)。接續先量測filtered admission
+的重複current-state讀取，不直接刪檢查、不原樣重跑此候選。
 
 前一兩版 widening 距離重用均未採用：各70 targeted Mojo、18 workers、14,472
 paired query bits/stats一致；fixed quality各132/216。高維selective改善約9–20%，
@@ -836,6 +844,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新heap單向搬移候選未採用：122 targeted Mojo、54原Qdrant workers與18
+  named workers完成；warm25→23/36、mixed15→14/36、write+flush3→3/9，五個
+  performance pass→fail保留。Named 14,472 paired IDs／bits／stats一致，品質
+  132→132/216、24/36選定timing退步。五個profiles有100,416次repeat audits。
+  正式source/binary不變，沒有新完整Python／Mojo／crash／Linux／nonresident gate。
+  [完整結果與限制](../docs/benchmarks/2026-10-04-heap-shifts.md)。
   - 最新採用native F64四候選rerank第二版：30 targeted Mojo／506完整Python／
   C ABI/client／3 rebuilt examples通過，正式路徑3 Mojo／151 Python再通過（不加總）。
   5,400 public與14,472 named paired queries一致，品質132→132/216，保留7/36
