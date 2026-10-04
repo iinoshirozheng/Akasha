@@ -3,6 +3,21 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
+## 最新診斷（2026-10-04）：mixed 查詢與 delta 歷史成本
+
+正式engine／kernel仍為下方`9bf69e0`工作包，未修改。四個production profiles完成
+91,392 repeat audits／268 exact checks／1,152 mixed audits，另4個reopen／Arrow leases
+通過；real independent跨過physical-slot界線後distance evaluations增加約40%。
+
+新增固定live rows、逐步替換歷史的native sweep：324格／15,552成對samples；scan
+全數符合獨立oracle，graph的105格低recall全部保留。分開限制live vector work與
+physical history的候選predicate新涵蓋72格，其中60格matched quality的mean／p95
+均改善，另12格graph品質不足不作速度主張。**尚未實作／採用新policy，沒有新Qdrant
+gate，M5/M6仍FAILED**。
+[全部profiles與sweep](docs/research/2026-10-04-mixed-query-work.md)；接續按
+[有界live／history設計](docs/plans/2026-10-04-delta-live-budget.md)做隔離實作、
+邊界／native／owned/mapped驗證及原完整矩陣，不放寬fixed ef或recall標準。
+
 ## 最新採用（2026-10-04）：authority／metadata payload 合併編碼
 
 Legacy cache 每筆 payload 只驗證／編碼一次，供原 CRC 與 metadata framing 共用；

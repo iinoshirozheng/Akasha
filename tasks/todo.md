@@ -867,6 +867,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新mixed-state診斷：4 profiles／91,392 repeat audits／268 exact checks，另
+  324格native history sweep／15,552 pairs，scan全oracle通過、105 graph低recall保留。
+  分開限制live vector／physical history的新predicate涵蓋72格，60 matched格mean／p95
+  改善；尚未實作／採用，無新Qdrant或完整整合gate，正式9bf69e0未改。
+  [證據](../docs/research/2026-10-04-mixed-query-work.md)／
+  [下一個隔離工作包](../docs/plans/2026-10-04-delta-live-budget.md)。
   - 最新採用authority／metadata合併payload編碼；格式／CRC／durability不變。
   108 targeted Mojo／7 related crash／506完整Python／C ABI/client／3 rebuilt examples
   通過。原54-worker矩陣warm25→26/36、mixed19→17/36、write+flush3→3/9，recall
