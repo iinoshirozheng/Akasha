@@ -11,7 +11,10 @@ C ABI／3 rebuilt examples 通過。原三 corpus／三 trial 共 18 個 lifecyc
 recall 的 36 個暖格全部 QPS 退步；fixed-ef recall 132→141/216，新增三個失敗。
 保存時間增加；正式 source/binary/格式不變，M5/M6 不勾選。
 [全部證據與限制](docs/benchmarks/2026-10-04-named-graph-bundle.md)。
-下一步用同一圖 bytes 隔離 query wrapper 與分區拓撲成本；不重跑此 cohort 或舊 repair。
+[同圖對照](docs/benchmarks/2026-10-04-named-bundle-fixed-graph.md)亦完成18 workers：
+14,472組成對query的IDs／score bits／全部stats一致，品質兩版均132/216；
+23/36選定格仍有QPS或p95退步，未重現多分區一致降速，沒有新Qdrant gate。
+下一步逐partition計數額外搜尋工作，先確認成本，不降低原預算或重跑舊repair。
 
 ## 最新採用（2026-10-04）：Python 搜尋轉換時 close
 

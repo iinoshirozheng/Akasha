@@ -825,7 +825,10 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   首查快約43–93倍，但36/36共同 recall 暖格 QPS 退步；fixed-ef 品質132→141/216，
   有三個新失敗，flush 成本增加。保留28,944 ANN audits／4,824 exact checks與
   全部樣本；正式 source/binary/格式不變，沒有新Qdrant／Linux／nonresident gate。
-  下一步同圖 bytes 對照查詢路徑成本，不重跑舊 repair，M5/M6 不勾選。
+  同圖 bytes 對照另18 workers完成：14,472成對query的IDs／bits／stats一致，
+  品質均132/216，23/36選定格有timing退步；原型仍未採用，M5/M6不勾選。
+  下一步逐partition計數額外搜尋工作，不降低預算或重跑舊repair。
+  [同圖證據](../docs/benchmarks/2026-10-04-named-bundle-fixed-graph.md)。
   [完整證據](../docs/benchmarks/2026-10-04-named-graph-bundle.md)。
   相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
   13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
