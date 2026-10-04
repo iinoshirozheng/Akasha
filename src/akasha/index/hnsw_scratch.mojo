@@ -1,6 +1,22 @@
 from .hnsw_heap import CandidateMinHeap, ResultMaxHeap
 
 
+def _visit_epoch(
+    mut visited_epochs: List[UInt32], epoch: UInt32,
+    prepared_slot_count: Int, slot: UInt32,
+) raises -> Bool:
+    """Check and update visit words without passing unrelated scratch heaps."""
+    if epoch == UInt32(0):
+        raise Error("HNSW scratch begin must be called before visit")
+    if UInt64(slot) >= UInt64(prepared_slot_count):
+        raise Error("HNSW scratch slot is outside the prepared range")
+    var ordinal = Int(slot)
+    if visited_epochs[ordinal] == epoch:
+        return False
+    visited_epochs[ordinal] = epoch
+    return True
+
+
 struct HnswSearchScratch(Movable):
     """Reusable HNSW traversal state with generation-stamped visits.
 
@@ -75,15 +91,10 @@ struct HnswSearchScratch(Movable):
 
     def visit(mut self, slot: UInt32) raises -> Bool:
         """Mark ``slot`` visited and report whether this is its first visit."""
-        if self.epoch == UInt32(0):
-            raise Error("HNSW scratch begin must be called before visit")
-        if UInt64(slot) >= UInt64(self._prepared_slot_count):
-            raise Error("HNSW scratch slot is outside the prepared range")
-        var ordinal = Int(slot)
-        if self.visited_epochs[ordinal] == self.epoch:
-            return False
-        self.visited_epochs[ordinal] = self.epoch
-        return True
+        return _visit_epoch(
+            self.visited_epochs, self.epoch, self._prepared_slot_count, slot
+        )
+
 
     def _force_epoch_for_test(mut self, epoch: UInt32):
         """Unexported test-only seam for exercising the rare wrap path."""

@@ -3,14 +3,31 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新診斷（2026-10-04）：HNSW traversal work
+## 最新採用（2026-10-04）：checked visit 縮小參數
+
+HNSW visit改用只借用epoch words的private helper，保留原epoch／bounds／owner與
+所有搜尋行為。110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples
+通過；正式路徑另11 Mojo／143 Python與C loader/client／examples通過（不加總）。
+[全部實作、驗證、原始samples與凍結證據](docs/benchmarks/2026-10-04-visit-arguments.md)。
+
+Named 14,472 paired IDs／F64 bits／stats相同，品質132/216、84低recall格保留。
+高維selective QPS改善3–7%，六個trials的p95皆改善；36選定格仍12格timing退步。
+原54-worker Qdrant矩陣warm18→19/36、mixed24→27/36、write+flush3→3/9，
+兩版recall各36/36；四個performance pass→fail全保留。**整體FAILED，M5/M6未完成**。
+首輪child wrapper漏absolute src的紀錄保留，更正後506 Python完整重跑通過。
+沒有新版full Mojo/crash／HTTP／Linux／GPU／ASan／nonresident gate，worker未改。
+**現行kernel SHA-256**：
+`3ec07dc3c9711ccdb024311831a86c3ed844556c383f7b5de9dcbae535d893c1`。
+接續原real ANN／selective失敗格與M5剩餘artifact生命週期，不重跑已否決原型。
+
+## 前一診斷（2026-10-04）：HNSW traversal work
 
 隔離計數完成5,628 paired IDs／bits／stats、1,608 exact oracle checks及18 targeted
 Mojo；正式source/binary未改。原real ANN重複邊43–45%，scalar tails約6%；current
 重讀雖保留於machine code，但只占約0.8–1.4% query samples。另兩個正式named
 selective profiles完成2,880 repeat audits＋134 warmups，visited標記占8.6–9.6%；
-assembly顯示每次visit仍搬移多個scratch欄位。下一步隔離驗證縮小該helper的可變
-參數，保留epoch／bounds／owner，不重做heap、validation reuse或raw Span原型。
+assembly顯示每次visit仍搬移多個scratch欄位；其後已採用頁首的縮小參數改動。
+保留epoch／bounds／owner，不重做heap、validation reuse或raw Span原型。
 [全部traces、profiles、失敗及凍結證據](docs/research/2026-10-04-traversal-work.md)。
 這不是新效能gate；named trial-0品質44/72，28個低recall格全保留。M5/M6未完成，
 沒有新完整Python／Mojo／crash／Qdrant／Linux／nonresident驗收。
@@ -27,7 +44,7 @@ pass→fail全保留。Named另18 workers、14,472 paired IDs／bits／stats一�
 其後filtered admission與distance grouping的診斷見頁首；不直接刪檢查，
 不原樣重跑heap候選。**M5/M6仍未完成**。
 
-## 最新採用（2026-10-04）：native F64 四候選 rerank
+## 前一採用（2026-10-04）：native F64 四候選 rerank
 
 Named dense ANN 的 native rerank 改為四候選並行、直接借用 read-run owners。
 30 targeted Mojo／506 完整 Python／C ABI/client／3 rebuilt examples 通過；
@@ -41,7 +58,7 @@ Named dense ANN 的 native rerank 改為四候選並行、直接借用 read-run 
 write+flush **3→3/9**；兩邊recall各36/36，保留四個performance pass→fail。
 整體仍FAILED，M5/M6不勾選。沒有新完整Mojo／crash／HTTP performance／Linux／
 GPU／ASan／nonresident／memory-limit gate；worker未改，沒有Linux runner。
-**現行 kernel SHA-256**：
+**該工作包 kernel SHA-256**：
 `80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
 其後的candidate heap實驗見頁首；原HNSW搜尋與named更新生命週期仍有剩餘工作。
 下方各工作包的「最新」及數字只描述當時版本，不取代頁首現況。

@@ -1,14 +1,23 @@
-# 最新診斷：2026-10-04 traversal work
+# 最新採用：2026-10-04 checked visit 縮小參數
+
+單檔HNSW visit改動通過110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt
+examples；正式路徑另11 Mojo／143 Python與C/client/examples再通過，不重複加總。
+Named高維selective六個trials的QPS/p95皆改善，但仍有12/36選定timing退步。
+原Qdrant同批warm18→19/36、mixed24→27/36、write+flush3→3/9；四個performance
+pass→fail均保留。**M5/M6未完成**；唯一checklist項目不勾選，沒有新Linux runner。
+[完整驗證與全部樣本](../docs/benchmarks/2026-10-04-visit-arguments.md)。
+
+# 前一診斷：2026-10-04 traversal work
 
 正式引擎未改；5,628成對query、1,608 exact checks與18 targeted Mojo通過。
-實測named selective的visit占8.6–9.6%，下一步隔離驗證其參數／呼叫搬移成本。
+當時量到named selective的visit占8.6–9.6%；其後已採用上段的縮小參數改動。
 沒有新效能通過主張，唯一M5/M6項目仍未勾選；
 [完整計數、profiles與限制](../docs/research/2026-10-04-traversal-work.md)。
 
-# 下一輪工作包 checklist
+# 前一採用：native F64 四候選 rerank
 
-目前正式 engine 在 `cc15f37` 的 filtered inactive radius 修正之上，已採用 native
-F64 四候選 rerank；binding 保留 `b54853e` 的 callback-close 修正。現行 Python SHA-256：
+該工作包在 `cc15f37` 的 filtered inactive radius 修正之上採用 native
+F64 四候選 rerank；binding 保留 `b54853e` 的 callback-close 修正。當時 Python SHA-256：
 `80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
 最新採用工作包30 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；
 正式路徑再通過3 Mojo／151 Python（不加總）。5,400 public及14,472 named paired
@@ -851,6 +860,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新採用checked visit縮小可變參數，epoch／bounds／owner／bits/stats不變。
+  110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；正式
+  路徑另11 Mojo／143 Python與C/client/examples通過。Named品質132/216、84低recall
+  保留；高維selective QPS快3–7%，36選定格仍12格timing退步。原54-worker同批
+  warm18→19/36、mixed24→27/36、write+flush3→3/9，四個pass→fail全保留，整體
+  FAILED。沒有新full Mojo/crash／HTTP／Linux／nonresident驗收；
+  [完整證據](../docs/benchmarks/2026-10-04-visit-arguments.md)。
   - 最新traversal診斷：5,628 paired IDs／bits／stats、1,608 exact oracle checks、
   18 targeted Mojo通過；原real ANN scalar tails約6%，current reads只占0.8–1.4%。
   兩個正式named selective profiles有2,880 repeat audits＋134 warmups，visit占
