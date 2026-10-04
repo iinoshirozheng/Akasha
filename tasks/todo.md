@@ -820,6 +820,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Named graph bundle 隔離候選未採用：112 targeted Mojo／11 related crash／506
+  完整 Python／C ABI／3 rebuilt examples 通過；18 個原 lifecycle workers 完成。
+  首查快約43–93倍，但36/36共同 recall 暖格 QPS 退步；fixed-ef 品質132→141/216，
+  有三個新失敗，flush 成本增加。保留28,944 ANN audits／4,824 exact checks與
+  全部樣本；正式 source/binary/格式不變，沒有新Qdrant／Linux／nonresident gate。
+  下一步同圖 bytes 對照查詢路徑成本，不重跑舊 repair，M5/M6 不勾選。
+  [完整證據](../docs/benchmarks/2026-10-04-named-graph-bundle.md)。
   相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
   13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
   保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；没有新效能、
