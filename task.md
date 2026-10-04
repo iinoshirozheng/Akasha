@@ -12,8 +12,12 @@
 [後續完整證據](docs/research/2026-10-04-binding-close.md)。
 **現行 kernel SHA-256**：
 `780e8aaf3d7db9423251a4090fd069382d148d783451a91b6eb972893f5f74d6`。
-本輪沒有新效能／完整 Mojo／crash／Linux 驗收。接續验证 HTTP JSON 解析成本；
+本輪沒有新效能／完整 Mojo／crash／Linux 驗收。
 M5/M6 整體仍 FAILED，不能以正確性修正當作效能達標。
+後續 [JSON decoder 相容性探針](docs/research/2026-10-04-http-json-compatibility.md)：
+20,006 numeric bits 一致，但 direct replacement 改變 5 種 accepted inputs 和 3 種
+錯誤回應；未採用、沒有新速度主張。回到 M5 多 run artifact 的生命週期，先確認
+未改內容的圖能否保留其分區與拓撲；不重跑已否決的 reconciliation／overlay。
 
 `search_approx`／`search_dense_where` 在 Python 轉換後重新檢查 handle，修正 callback
 呼叫 close 後的程序 abort，保留未知 metric 的錯誤優先順序。54 個 baseline abort／

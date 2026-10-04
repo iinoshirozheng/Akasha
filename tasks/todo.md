@@ -823,8 +823,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
   13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
   保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；没有新效能、
-  完整 Mojo/crash/Linux gate。接續驗證 HTTP JSON 解析成本，M5/M6 不勾選。
+  完整 Mojo/crash/Linux gate。M5/M6 不勾選。
   [完整證據與限制](../docs/research/2026-10-04-binding-close.md)。
+  HTTP 直接替換 JSON parser 的相容性探針未採用：20,006 numeric bits 一致，
+  但 5 種 accepted inputs／3 種錯誤回應改變；沒有新速度或 HTTP gate 主張。
+  接續確認 M5 多 run 未改內容的 artifact 生命週期，不重跑舊 reconciliation。
+  [全部輸入與回應](../docs/research/2026-10-04-http-json-compatibility.md)。
   已修正 search_approx／search_dense_where 轉換 callback 關閉 handle 後的 abort：
   baseline 54 個程序失敗／18 pass，候選 72 targeted／460 完整 Python 通過，
   採用後同 binary 72 項再驗證通過。只加轉換後 open 檢查，無 GIL／owner／engine
