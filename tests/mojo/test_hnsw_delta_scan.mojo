@@ -212,23 +212,23 @@ def test_scan_preserves_invalid_query_identity_and_demand_checks() raises:
 
 
 def test_delta_scan_work_bounds_and_integer_extremes() raises:
-    assert_true(_should_scan_delta(1, 1024, 1536, 48, 32))
-    assert_true(_should_scan_delta(1, 1024, 1536, 48, 22))
-    assert_false(_should_scan_delta(1, 1024, 1536, 48, 21))
-    assert_false(_should_scan_delta(1, 1024, 1536, 48, 10))
-    assert_false(_should_scan_delta(1, 4096, 1536, 48, 32))
-    assert_false(_should_scan_delta(1, 1025, 1, 48, 128))
-    assert_false(_should_scan_delta(1, 1024, 1537, 48, 128))
-    assert_false(_should_scan_delta(0, 64, 3, 48, 32))
-    assert_true(_should_scan_delta(Int.MAX, 1024, 1, Int.MAX, Int.MAX))
+    assert_true(_should_scan_delta(1, 1024, 1024, 1536, 48, 32))
+    assert_true(_should_scan_delta(1, 1024, 1024, 1536, 48, 22))
+    assert_false(_should_scan_delta(1, 1024, 1024, 1536, 48, 21))
+    assert_false(_should_scan_delta(1, 1024, 1024, 1536, 48, 10))
+    assert_false(_should_scan_delta(1, 4096, 4096, 1536, 48, 32))
+    assert_false(_should_scan_delta(1, 1025, 1025, 1, 48, 128))
+    assert_false(_should_scan_delta(1, 1024, 1024, 1537, 48, 128))
+    assert_false(_should_scan_delta(0, 64, 64, 3, 48, 32))
+    assert_true(_should_scan_delta(Int.MAX, 1024, 1024, 1, Int.MAX, Int.MAX))
     for bad in [0, -1, Int.MIN]:
-        assert_false(_should_scan_delta(bad, 64, 3, 48, 32))
-        assert_false(_should_scan_delta(1, bad, 3, 48, 32))
-        assert_false(_should_scan_delta(1, 64, bad, 48, 32))
-        assert_false(_should_scan_delta(1, 64, 3, bad, 32))
-        assert_false(_should_scan_delta(1, 64, 3, 48, bad))
-    assert_false(_should_scan_delta(1, Int.MAX, 1, 48, Int.MAX))
-    assert_false(_should_scan_delta(1, 1, Int.MAX, 48, Int.MAX))
+        assert_false(_should_scan_delta(bad, 64, 64, 3, 48, 32))
+        assert_false(_should_scan_delta(1, bad, bad, 3, 48, 32))
+        assert_false(_should_scan_delta(1, 64, 64, bad, 48, 32))
+        assert_false(_should_scan_delta(1, 64, 64, 3, bad, 32))
+        assert_false(_should_scan_delta(1, 64, 64, 3, 48, bad))
+    assert_false(_should_scan_delta(1, Int.MAX, Int.MAX, 1, 48, Int.MAX))
+    assert_false(_should_scan_delta(1, 1, 1, Int.MAX, 48, Int.MAX))
 
 
 def test_physical_history_controls_scan_and_single_source_stays_graph() raises:

@@ -1,7 +1,8 @@
 # Separate live-vector work from delta history inspection
 
-Baseline production `9bf69e0`; this is the next isolated implementation, not an
-adopted policy. Evidence is the [mixed-query/history investigation](../research/2026-10-04-mixed-query-work.md).
+Baseline production `9bf69e0`; implemented and adopted after the isolated tests,
+original full matrix and CPU diagnostic below. Overall parity remains FAILED.
+The completed evidence is in [the implementation report](../benchmarks/2026-10-04-delta-live-budget.md). Evidence is the [mixed-query/history investigation](../research/2026-10-04-mixed-query-work.md).
 
 The current delta scan policy charges inactive physical slots as if their vectors
 were scored. The scan already checks current/source/filter status before distance
@@ -9,7 +10,7 @@ calculation. In the original real mixed workload, crossing 1,024 physical slots
 with the same live count switches back to graph traversal and materially adds
 work. Keep both kinds of work bounded using the existing cached source count.
 
-Candidate internal policy (all conditions required):
+Adopted internal policy (all conditions required):
 
 - A live immutable base and a nonempty valid delta; `0 < delta_live <= physical_slots`.
 - At most 1,024 live delta rows and 1,572,864 live vector components.
@@ -30,7 +31,7 @@ newly admits 72 cells: 60 matched-quality cells improve mean/p95, and the other
 4,096-live/ef32 regressions remain excluded. This evidence supports a candidate;
 it does not prove public performance, arbitrary workloads or other hardware.
 
-Before promotion, add policy boundary/overflow tests and end-to-end cases crossing
+Validation plan (completed in the report): add policy boundary/overflow tests and end-to-end cases crossing
 1,024 physical slots with replacement/delete/reinsert history, owned/mapped base,
 all relevant native backends, filters, bounded candidate sets, stable ties, zero
 base, invalid identity/query/demand and upper history limits. Verify source counts

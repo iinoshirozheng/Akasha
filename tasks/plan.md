@@ -7,6 +7,11 @@
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
 
+2026-10-04 現況：已採用 [delta live／history 分別限額](../docs/benchmarks/2026-10-04-delta-live-budget.md)，
+146 targeted Mojo／506 完整 Python／C ABI／3 examples 通過；原完整效能矩陣仍 FAILED。
+這是局部查詢成本改善；M5/M6 的唯一 checklist 項目仍未勾選。其餘歷史數字按當時
+工作包解讀，現行 binary／門檻與剩餘工作以 [todo.md](todo.md) 頁首為準。
+
 ## 完成狀態與剩餘缺口
 
 #31–#38 可以結案，沒有從該範圍查到尚未完成的必做收尾。核對 Git commits、

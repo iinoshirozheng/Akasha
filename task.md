@@ -3,7 +3,28 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新診斷（2026-10-04）：mixed 查詢與 delta 歷史成本
+## 最新採用（2026-10-04）：delta live／history 分別限額
+
+小型 delta 依 live rows 限制向量評分，另保留 physical history／ef 上限；累積替換
+歷史後不再過早切回圖搜尋。唯一 engine 改動為 segmented HNSW 的 private predicate，
+搜尋迴圈、驗證、分數、格式與 ownership 不變。146 unique targeted Mojo／506 完整
+Python／C ABI/client／3 rebuilt examples 通過；正式路徑另 9 Mojo／26 Python 與
+C/client/examples 再通過（不重複加總）。
+
+原 54-worker 矩陣 warm 21→21/36、mixed 28→26/36、write+flush 4→4/9；兩版 recall
+各 36/36，五個 performance pass→fail 全保留，**整體 FAILED，M5/M6 未完成**。
+120 次 real mixed 後段查詢改走有界 scan，所有 IDs／score bits 一致；另 6 個 CPU
+診斷 workers 的九個受影響後段群組 CPU 均降低 9–28%，不取代原效能 gate。
+[完整實作、全部樣本、退步與凍結證據](docs/benchmarks/2026-10-04-delta-live-budget.md)。
+**現行 kernel SHA-256**：
+`eb3bebdea9ea4f9d8050d965af1625003d7aec9d841f02fbc9bf101c05f73945`。
+Worker 未改；沒有新 full Mojo/crash、HTTP performance、Linux/GPU/ASan/nonresident gate。
+接續原 real ANN／selective／maintenance 失敗格與 named 多 run／更新後重開生命週期。
+目前沒有 Linux runner；sustained nonresident／memory-limit 保持未驗收。
+
+以下記錄描述各歷史工作包，不取代本節現況。
+
+## 前一診斷（2026-10-04）：mixed 查詢與 delta 歷史成本
 
 正式engine／kernel仍為下方`9bf69e0`工作包，未修改。四個production profiles完成
 91,392 repeat audits／268 exact checks／1,152 mixed audits，另4個reopen／Arrow leases
@@ -18,7 +39,7 @@ gate，M5/M6仍FAILED**。
 [有界live／history設計](docs/plans/2026-10-04-delta-live-budget.md)做隔離實作、
 邊界／native／owned/mapped驗證及原完整矩陣，不放寬fixed ef或recall標準。
 
-## 最新採用（2026-10-04）：authority／metadata payload 合併編碼
+## 前一採用（2026-10-04）：authority／metadata payload 合併編碼
 
 Legacy cache 每筆 payload 只驗證／編碼一次，供原 CRC 與 metadata framing 共用；
 格式、checksum、持久化順序與 named point-store 路徑不變。
@@ -29,7 +50,7 @@ recall兩版各36/36，四個mixed performance pass→fail全保留，**整體FA
 九格 write+flush QPS 改善6–23%，p95八格改善、一格退步14.45%；另18個診斷workers
 確認flush前景CPU均減少14–26%，不能以此取代原查詢gate。全部樣本、失敗、bytes／CRC
 與正式路徑驗證見[完整報告](docs/benchmarks/2026-10-04-combined-cache-encoding.md)。
-**現行kernel SHA-256**：
+**該工作包 kernel SHA-256**：
 `f33bdbf7734d2762450e9a5e9cb4234a46feee2a4b474907a9d6c3fb5ed2045d`。
 Worker未改；沒有新full Mojo/crash、HTTP performance、Linux/GPU/ASan/nonresident gate。
 M5/M6仍未完成，接續real ANN／mixed selective尾延遲與named多run重開生命週期。

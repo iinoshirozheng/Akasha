@@ -1,11 +1,32 @@
-# 最新診斷：2026-10-04 Top-K admission 拆分未採用
+# 最新採用（2026-10-04）：delta live／history 分別限額
+
+小型 delta 依 live rows 限制向量評分，另保留 physical history／ef 上限；累積替換
+歷史後不再過早切回圖搜尋。唯一 engine 改動為 segmented HNSW 的 private predicate，
+搜尋迴圈、驗證、分數、格式與 ownership 不變。146 unique targeted Mojo／506 完整
+Python／C ABI/client／3 rebuilt examples 通過；正式路徑另 9 Mojo／26 Python 與
+C/client/examples 再通過（不重複加總）。
+
+原 54-worker 矩陣 warm 21→21/36、mixed 28→26/36、write+flush 4→4/9；兩版 recall
+各 36/36，五個 performance pass→fail 全保留，**整體 FAILED，M5/M6 未完成**。
+120 次 real mixed 後段查詢改走有界 scan，所有 IDs／score bits 一致；另 6 個 CPU
+診斷 workers 的九個受影響後段群組 CPU 均降低 9–28%，不取代原效能 gate。
+[完整實作、全部樣本、退步與凍結證據](../docs/benchmarks/2026-10-04-delta-live-budget.md)。
+**現行 kernel SHA-256**：
+`eb3bebdea9ea4f9d8050d965af1625003d7aec9d841f02fbc9bf101c05f73945`。
+Worker 未改；沒有新 full Mojo/crash、HTTP performance、Linux/GPU/ASan/nonresident gate。
+接續原 real ANN／selective／maintenance 失敗格與 named 多 run／更新後重開生命週期。
+目前沒有 Linux runner；sustained nonresident／memory-limit 保持未驗收。
+
+以下記錄描述各歷史工作包，不取代本節現況。
+
+# 前一診斷：2026-10-04 Top-K admission 拆分未採用
 
 在compiled-code gate停止，沒有新效能量測。兩版各8 targeted Mojo通過，保留3項
 獨立oracle，正式路徑另3項通過；不重複加總。正式engine仍為`8ba04ce`，現行
 kernel與Qdrant性能結果保持下段；M5/M6未完成。
 [完整證據與失敗紀錄](../docs/benchmarks/2026-10-04-topk-admission.md)。
 
-# 最新採用：2026-10-04 checked visit 縮小參數
+# 前一採用：2026-10-04 checked visit 縮小參數
 
 單檔HNSW visit改動通過110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt
 examples；正式路徑另11 Mojo／143 Python與C/client/examples再通過，不重複加總。
@@ -867,6 +888,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新採用（2026-10-04）delta live／history 分別限額：146 unique targeted Mojo／506
+  完整 Python／C ABI/client／3 rebuilt examples 通過；正式路徑另 9 Mojo／26 Python
+  與 C/client/examples 再通過，不重複加總。原矩陣 warm21→21/36、mixed28→26/36、
+  write+flush4→4/9、recall各36/36；五個pass→fail全保留。九個受影響後段診斷群組
+  CPU降低9–28%，不取代原gate。**整體FAILED，不勾選**；[完整證據](../docs/benchmarks/2026-10-04-delta-live-budget.md)。
+  以下數字屬先前工作包；named多run/update/reopen與nonresident/memory-limit仍未完成。
+
   - 最新mixed-state診斷：4 profiles／91,392 repeat audits／268 exact checks，另
   324格native history sweep／15,552 pairs，scan全oracle通過、105 graph低recall保留。
   分開限制live vector／physical history的新predicate涵蓋72格，60 matched格mean／p95
