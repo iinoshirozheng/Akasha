@@ -820,6 +820,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  Python ANN 釋放 GIL 的隔離候選未採用：34 targeted／388 完整 Python 通過；
+  fixed warm 20→22/36、mixed 25→25/36、write+flush 4→4/9、HTTP 24→28/108，
+  整體 FAILED。HTTP 有 64/108 A/B timing 退步、6 個 pass→fail；三個 Qdrant
+  低 recall 格完整保留。錯誤 runtime 的早期 HTTP 結果另存、不當作正式 gate。
+  Production 未改；另重現輸入轉換中 close 造成 abort，接續做最小 handle 修正。
+  [完整樣本、驗證與限制](../docs/benchmarks/2026-10-04-binding-gil.md)。
   Mapped F32 雙區塊 kernel 探針未採用：3 metric tests／1,646,592 score-bit 比對
   通過，42 筆微量測保留；高維結果不一致，没有新 public query／Qdrant 驗收。
   正式 source/binary 不變。[證據](../docs/benchmarks/2026-10-04-mapped-chunks.md)。

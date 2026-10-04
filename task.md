@@ -22,6 +22,12 @@ Frozen archive SHA-256：
 較大的 named cache reconciliation 候選仍未採用。接續處理其更新後重開與暖查詢
 成本，以及原 M6 失敗格；以下各段為先前工作包的證據，不代表新版完整整合。
 
+[Python ANN GIL 候選](docs/benchmarks/2026-10-04-binding-gil.md)未採用：
+34 targeted／388 完整 Python 通過；fixed warm 20→22/36、mixed 25→25/36、
+HTTP 24→28/108，整體 FAILED。保留所有 A/B 退步、9 個 performance pass→fail
+及三個 Qdrant 低 recall 格；錯誤 runtime 的早期量測獨立保留。Production 未改。
+已獨立重現 Python 轉換時 close 造成 abort，下一步以最小 handle recheck 修正。
+
 [Mapped F32 雙區塊探針](docs/benchmarks/2026-10-04-mapped-chunks.md)未採用：
 3 metric tests／1,646,592 score-bit 比對通過，42 筆微量測全保留。128D 七次改善，
 1536D Dot／Cosine 分別有 2／3 次退步；沒有 public query／Qdrant 新通過主張。
