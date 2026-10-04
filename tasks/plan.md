@@ -7,7 +7,14 @@
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
 
-2026-10-04 現況：已採用 [delta live／history 分別限額](../docs/benchmarks/2026-10-04-delta-live-budget.md)，
+2026-10-04 最新：[named scalar vectorcall 與 callback refs](../docs/benchmarks/2026-10-04-instance-capi.md)
+已採用，543 完整隔離 Python、正式95 targeted與compiled ownership probe通過。
+原完整gate warm25/36、mixed27/36、write+flush3/9仍FAILED；三個pass→fail保留。
+接續已重現的普通call/hasattr query-container retention，先用最小probe定位，再修
+實際呼叫路徑；既有mixed停滯根因仍未解，沿用原deadline＋native capture。
+沒有Linux runner，nonresident/memory-limit未驗收。其餘以todo唯一checklist為準。
+
+2026-10-04 前一 engine 工作包：已採用 [delta live／history 分別限額](../docs/benchmarks/2026-10-04-delta-live-budget.md)，
 146 targeted Mojo／506 完整 Python／C ABI／3 examples 通過；原完整效能矩陣仍 FAILED。
 這是局部查詢成本改善；M5/M6 的唯一 checklist 項目仍未勾選。其餘歷史數字按當時
 工作包解讀，現行 binary／門檻與剩餘工作以 [todo.md](todo.md) 頁首為準。

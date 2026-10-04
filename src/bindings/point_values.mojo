@@ -6,6 +6,55 @@ from akasha.index.sparse import SparseElement
 from std.python import Python, PythonObject
 from std.python.numpy import from_numpy_array
 from std.memory import bitcast
+from std.collections import Array
+from std.ffi import c_size_t
+from std.python._cpython import ExternalFunction, PyObjectPtr
+
+
+comptime _Vectorcall = ExternalFunction[
+    "PyObject_Vectorcall",
+    def(
+        PyObjectPtr, OpaquePointer[ImmutAnyOrigin], c_size_t, PyObjectPtr
+    ) thin abi("C") -> PyObjectPtr,
+]
+
+
+def _type_check_error() raises -> Error:
+    # PyErr_Fetch returns owned references. Mojo 1.0's unsafe_get_error drops
+    # the type/traceback pointers without releasing them on Python 3.11.
+    ref cpy = Python().cpython()
+    var (error_type, error_value, traceback) = cpy.PyErr_FetchTriple()
+    cpy.Py_DecRef(traceback)
+    if error_value:
+        cpy.Py_DecRef(error_type)
+        return Error(String(py=PythonObject(from_owned=error_value)))
+    return Error(String(py=PythonObject(from_owned=error_type)))
+
+
+def _is_instance(
+    raw: PythonObject,
+    numeric_type: PythonObject,
+    is_instance: PythonObject,
+    vectorcall: _Vectorcall.type,
+) raises -> Bool:
+    # Both Python owners and this stack argument array live through the call.
+    # No kwargs or ARGUMENTS_OFFSET flag: the two borrowed slots stay read-only.
+    var arguments: Array[PyObjectPtr, 2] = [raw._obj_ptr, numeric_type._obj_ptr]
+    var result = vectorcall(
+        is_instance._obj_ptr,
+        arguments.unsafe_ptr().as_imm().unsafe_bitcast[NoneType]().unsafe_origin_cast[ImmutAnyOrigin](),
+        c_size_t(2),
+        PyObjectPtr(),
+    )
+    if not result:
+        var error = _type_check_error()
+        raise error^
+    var owned_result = PythonObject(from_owned=result)
+    var truth = Python().cpython().PyObject_IsTrue(owned_result._obj_ptr)
+    if truth < 0:
+        var error = _type_check_error()
+        raise error^
+    return truth != 0
 
 
 def vector_from_python(
@@ -16,12 +65,13 @@ def vector_from_python(
         var builtins = Python.import_module("builtins")
         var numbers = Python.import_module("numbers")
         var is_instance = builtins.isinstance
+        var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
         var integer_type = numbers.Integral
         var real_type = numbers.Real
         var bool_type = builtins.bool
         for item in raw:
-            var term = _integer(item["term_id"], is_instance, integer_type, bool_type)
-            var weight = _real(item["weight"], is_instance, real_type, bool_type)
+            var term = _integer(item["term_id"], is_instance, integer_type, bool_type, vectorcall)
+            var weight = _real(item["weight"], is_instance, real_type, bool_type, vectorcall)
             values.append(SparseElement(term, Float32(weight)))
         return VectorValue.sparse(values^)
     if field.kind == 3:
@@ -29,10 +79,11 @@ def vector_from_python(
         var builtins = Python.import_module("builtins")
         var numbers = Python.import_module("numbers")
         var is_instance = builtins.isinstance
+        var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
         var integer_type = numbers.Integral
         var bool_type = builtins.bool
         for item in raw:
-            var value = _integer(item, is_instance, integer_type, bool_type)
+            var value = _integer(item, is_instance, integer_type, bool_type, vectorcall)
             if value < 0 or value > 255:
                 raise Error("binary bytes must fit UInt8")
             values.append(UInt8(value))
@@ -51,20 +102,20 @@ def vector_from_python(
 
 
 def _integer(
-    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject, vectorcall: _Vectorcall.type
 ) raises -> Int:
-    if not Bool(py=is_instance(raw, numeric_type)) or Bool(
-        py=is_instance(raw, bool_type)
+    if not _is_instance(raw, numeric_type, is_instance, vectorcall) or _is_instance(
+        raw, bool_type, is_instance, vectorcall
     ):
         raise Error("integer vector values must be integers")
     return Int(py=raw)
 
 
 def _real(
-    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject, vectorcall: _Vectorcall.type
 ) raises -> Float64:
-    if not Bool(py=is_instance(raw, numeric_type)) or Bool(
-        py=is_instance(raw, bool_type)
+    if not _is_instance(raw, numeric_type, is_instance, vectorcall) or _is_instance(
+        raw, bool_type, is_instance, vectorcall
     ):
         raise Error("numeric vector values must be real numbers")
     return Float64(py=raw)
@@ -73,10 +124,10 @@ def _real(
 def _component[
     dtype: DType
 ](
-    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject
+    raw: PythonObject, is_instance: PythonObject, numeric_type: PythonObject, bool_type: PythonObject, vectorcall: _Vectorcall.type
 ) raises -> Scalar[dtype]:
     comptime if dtype == DType.int8 or dtype == DType.uint8:
-        var value = _integer(raw, is_instance, numeric_type, bool_type)
+        var value = _integer(raw, is_instance, numeric_type, bool_type, vectorcall)
         comptime if dtype == DType.int8:
             if value < -128 or value > 127:
                 raise Error("integer vector value exceeds Int8")
@@ -85,7 +136,7 @@ def _component[
                 raise Error("integer vector value exceeds UInt8")
         return Scalar[dtype](value)
     else:
-        return Scalar[dtype](_real(raw, is_instance, numeric_type, bool_type))
+        return Scalar[dtype](_real(raw, is_instance, numeric_type, bool_type, vectorcall))
 
 
 def _numeric_from_python[
@@ -128,9 +179,10 @@ def _numeric_from_python[
                     values.extend(from_numpy_array[dtype](flat))
                     used_array = True
     if not used_array:
-        # Resolve Python callables/types once; every component still takes both
-        # original isinstance checks and the same numeric conversion.
+        # Resolve the existing callable/types and vectorcall once per operation.
+        # Every component retains both checks and its original conversion.
         var is_instance = builtins.isinstance
+        var vectorcall = _Vectorcall.load(Python().cpython().lib.borrow())
         var bool_type = builtins.bool
         var numeric_type = numbers.Integral if (dtype == DType.int8 or dtype == DType.uint8) else numbers.Real
         if field.kind == 0:
@@ -138,7 +190,7 @@ def _numeric_from_python[
                 raise Error("vector dimension does not match field")
             values.reserve(len(raw))
             for item in raw:
-                values.append(_component[dtype](item, is_instance, numeric_type, bool_type))
+                values.append(_component[dtype](item, is_instance, numeric_type, bool_type, vectorcall))
         else:
             for row in raw:
                 if len(row) != field.dimension:
@@ -146,7 +198,7 @@ def _numeric_from_python[
                         "multivector row dimension does not match field"
                     )
                 for item in row:
-                    values.append(_component[dtype](item, is_instance, numeric_type, bool_type))
+                    values.append(_component[dtype](item, is_instance, numeric_type, bool_type, vectorcall))
     if field.kind == 0:
         return VectorValue.dense[dtype](values^)
     return VectorValue.multivector[dtype](field.dimension, values^)

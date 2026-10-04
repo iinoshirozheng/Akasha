@@ -3,7 +3,28 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新診斷（2026-10-04）：停滯未重現，native 超時取證已驗證
+## 最新採用（2026-10-04）：named scalar vectorcall 與例外參照釋放
+
+Named scalar 型別檢查改用 CPython vectorcall 呼叫同一個 callable，保留兩次檢查、
+bool 排除與數值轉換；同時釋放 call/truth 例外的 type/value/traceback refs。
+隔離 **543 完整 Python**、正式 **95 targeted Python** 與 compiled ownership probe
+通過；後者確認 32 次普通 call 多留 32 個 refs，vectorcall 為 0。
+
+Named 14,472 paired IDs／F64 bits／stats 完全一致，real QPS 改善約4–26%；
+選定36格仍9格timing退步，84個fixed-ef低recall格保留。原54-worker Qdrant矩陣
+warm20→25/36、mixed30→27/36、write+flush3→3/9；兩版recall各36/36，三個
+mixed pass→fail完整保留，**整體FAILED，M5/M6未完成**。
+
+[完整實作、退步與凍結證據](docs/benchmarks/2026-10-04-instance-capi.md)。現行 kernel SHA-256：
+`b3f2b57565f4b129752df07a865931863365d03c8a6950d958dc152872779a73`。
+引擎核心仍`1318457`，C API／worker未改；沒有新full Mojo/crash／C ABI／examples／
+HTTP／Linux／GPU／ASan／nonresident gate。先前mixed停滯未重現，根因仍未解。
+
+另已獨立重現普通`hasattr`每次保留一個query list reference，**尚未修復**；
+接續以最小probe與實際呼叫路徑修復此生命週期問題，再回到原失敗格及named更新後
+重開成本。沒有Linux runner，不重問；唯一M5/M6 checklist仍未勾選。
+
+## 前一診斷（2026-10-04）：停滯未重現，native 超時取證已驗證
 
 正式 engine `1318457`／kernel 未改。原 scheduling 30 次與 flush 後 scheduling 擾動
 24 次，共 15,552 query audits／54 reopens／54 retained leases 通過；未重現停滯，
