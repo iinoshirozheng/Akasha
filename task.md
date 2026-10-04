@@ -3,7 +3,26 @@
 目標是完成 [tasks/todo.md](tasks/todo.md) 的 M5／M6；**目前尚未完成**。
 `tasks/todo.md` 是唯一工作 checklist，歷史報告的缺口與測試數不能當成現況。
 
-## 最新隔離結果（2026-10-04）：widening 距離重用未採用
+## 最新採用（2026-10-04）：native F64 四候選 rerank
+
+Named dense ANN 的 native rerank 改為四候選並行、直接借用 read-run owners。
+30 targeted Mojo／506 完整 Python／C ABI/client／3 rebuilt examples 通過；
+正式套件再通過 3 Mojo／151 Python 與 C client／3 examples（重複檢查不加總）。
+53,776 F64 bit 比較、5,400 public paired queries、14,472 named paired queries
+一致；named 品質132→132/216、全部84個低recall格保留。第二版高維all QPS快
+18–25%，選定36格仍有7格timing退步；第一版未採用，全部樣本／失敗均凍結。
+[實作、三份archives與精確驗證](docs/benchmarks/2026-10-04-native-f64-four.md)。
+
+原始54-worker Qdrant同批矩陣：warm **18→20/36**、mixed **24→23/36**、
+write+flush **3→3/9**；兩邊recall各36/36，保留四個performance pass→fail。
+整體仍FAILED，M5/M6不勾選。沒有新完整Mojo／crash／HTTP performance／Linux／
+GPU／ASan／nonresident／memory-limit gate；worker未改，沒有Linux runner。
+**現行 kernel SHA-256**：
+`80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
+下一步依原失敗格 profile 處理 HNSW搜尋／candidate heap與named更新生命週期。
+下方各工作包的「最新」及數字只描述當時版本，不取代頁首現況。
+
+## 前一隔離結果（2026-10-04）：widening 距離重用未採用
 
 [逐分區／逐輪計數](docs/research/2026-10-04-named-partition-work.md)確認正式單圖
 也會重算。兩版隔離候選各70 targeted Mojo通過，包含11種native backend的
@@ -30,14 +49,14 @@ recall 的 36 個暖格全部 QPS 退步；fixed-ef recall 132→141/216，新�
 uniform-1536 平均三輪、21,803 次距離計算。其後完成的兩版 widening 距離
 重用實驗見上方最新結果；此計數沒有新的效能達標主張。
 
-## 最新採用（2026-10-04）：Python 搜尋轉換時 close
+## 前一採用（2026-10-04）：Python 搜尋轉換時 close
 
 相鄰 binding／Arrow／scanner 已完成同類修正：另重現 33 個 abort，13 個既有通過
 案例保留；46 targeted／506 完整 Python 通過，採用後兩份回歸共 118 項再通過。
 轉換完成後才借用原生 collection；scanner 先保存統計，已捕獲 snapshot／batch
 仍可跨 close 使用。唯一正式 source 變更為 Python binding，core／worker 未改。
 [後續完整證據](docs/research/2026-10-04-binding-close.md)。
-**現行 kernel SHA-256**：
+**該工作包 kernel SHA-256**：
 `780e8aaf3d7db9423251a4090fd069382d148d783451a91b6eb972893f5f74d6`。
 該 binding 工作包沒有新效能／完整 Mojo／crash／Linux 驗收。
 M5/M6 整體仍 FAILED，不能以正確性修正當作效能達標。

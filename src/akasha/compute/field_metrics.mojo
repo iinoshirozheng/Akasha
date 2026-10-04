@@ -159,3 +159,66 @@ def _numeric_score[
             raise Error("cosine similarity requires non-zero vectors")
         return total / (sqrt(left_norm) * sqrt(right_norm))
     return total
+
+
+def _score_four_validated_dense(
+    query: VectorValue,
+    a: VectorValue,
+    b: VectorValue,
+    c: VectorValue,
+    d: VectorValue,
+    field: VectorFieldSpec,
+) raises -> SIMD[DType.float64, 4]:
+    """Score four native dense candidates without reordering any row's sum."""
+    if field.kind != 0:
+        raise Error("four-candidate scoring requires a dense field")
+    if field.scalar == 0:
+        return _score_numeric_dense_four[DType.float32](field.metric, query, a, b, c, d)
+    if field.scalar == 1:
+        return _score_numeric_dense_four[DType.bfloat16](field.metric, query, a, b, c, d)
+    if field.scalar == 2:
+        return _score_numeric_dense_four[DType.float16](field.metric, query, a, b, c, d)
+    if field.scalar == 3:
+        return _score_numeric_dense_four[DType.int8](field.metric, query, a, b, c, d)
+    return _score_numeric_dense_four[DType.uint8](field.metric, query, a, b, c, d)
+
+
+def _score_numeric_dense_four[dtype: DType](
+    metric: UInt8,
+    query: VectorValue,
+    a: VectorValue,
+    b: VectorValue,
+    c: VectorValue,
+    d: VectorValue,
+) raises -> SIMD[DType.float64, 4]:
+    ref lhs = query.dense_values[dtype]()
+    ref r0 = a.dense_values[dtype]()
+    ref r1 = b.dense_values[dtype]()
+    ref r2 = c.dense_values[dtype]()
+    ref r3 = d.dense_values[dtype]()
+    var size = len(lhs)
+    if len(r0) != size or len(r1) != size or len(r2) != size or len(r3) != size:
+        raise Error("native metric dimension mismatch")
+    var total = SIMD[DType.float64, 4](0)
+    var left_norm = Float64(0)
+    var right_norm = SIMD[DType.float64, 4](0)
+    for index in range(size):
+        var left = Float64(lhs[index])
+        var right = SIMD[DType.float64, 4](0)
+        right[0] = Float64(r0[index])
+        right[1] = Float64(r1[index])
+        right[2] = Float64(r2[index])
+        right[3] = Float64(r3[index])
+        if metric == 1:
+            var difference = SIMD[DType.float64, 4](left) - right
+            total = difference.fma(difference, total)
+        else:
+            total = SIMD[DType.float64, 4](left).fma(right, total)
+            if metric == 2:
+                left_norm += left * left
+                right_norm = right.fma(right, right_norm)
+    if metric == 2:
+        if left_norm == 0 or right_norm[0] == 0 or right_norm[1] == 0 or right_norm[2] == 0 or right_norm[3] == 0:
+            raise Error("cosine similarity requires non-zero vectors")
+        return total / (SIMD[DType.float64, 4](sqrt(left_norm)) * sqrt(right_norm))
+    return total

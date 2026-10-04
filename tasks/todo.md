@@ -1,13 +1,22 @@
 # 下一輪工作包 checklist
 
-目前正式 engine 為 `cc15f37` 的 filtered inactive radius 修正，binding 採用
-`b54853e` 的 callback-close 修正；現行 Python SHA-256：
-`780e8aaf3d7db9423251a4090fd069382d148d783451a91b6eb972893f5f74d6`。
-最新兩版 widening 距離重用均未採用：各70 targeted Mojo、18 workers、14,472
+目前正式 engine 在 `cc15f37` 的 filtered inactive radius 修正之上，已採用 native
+F64 四候選 rerank；binding 保留 `b54853e` 的 callback-close 修正。現行 Python SHA-256：
+`80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
+最新工作包30 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；
+正式路徑再通過3 Mojo／151 Python（不加總）。5,400 public及14,472 named paired
+queries的IDs／bits／stats一致；品質132→132/216、7/36選定timing格退步保留。
+原Qdrant同批warm18→20/36、mixed24→23/36、write+flush3→3/9，保留四個
+performance pass→fail；整體FAILED，**M5/M6未完成**。無新完整Mojo／crash／
+HTTP performance／Linux／nonresident gate；沒有Linux runner。
+[完整證據](../docs/benchmarks/2026-10-04-native-f64-four.md)。後續回到原失敗格
+HNSW搜尋／candidate heap與named更新生命週期；不把局部優化當作最終驗收。
+
+前一兩版 widening 距離重用均未採用：各70 targeted Mojo、18 workers、14,472
 paired query bits/stats一致；fixed quality各132/216。高維selective改善約9–20%，
 第二版仍有21/36選定timing格退步；沒有新Qdrant gate，正式source/binary不變。
 [完整證據](../docs/benchmarks/2026-10-04-widening-distances.md)。M5/M6仍未完成；
-下一步回到未widen的高維all與named小分區成本，不重跑這兩版。
+其後的高維all實驗見頁首；不原樣重跑這兩版。
 
 以下為先前 private batch cache 修復的歷史結果，候選未採用：79 targeted Mojo／388 完整 Python 通過，
 完整 named 生命週期 28,944 ANN audits／4,824 exact checks 通過，但 fixed recall
@@ -827,6 +836,13 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新採用native F64四候選rerank第二版：30 targeted Mojo／506完整Python／
+  C ABI/client／3 rebuilt examples通過，正式路徑3 Mojo／151 Python再通過（不加總）。
+  5,400 public與14,472 named paired queries一致，品質132→132/216，保留7/36
+  選定timing退步。原54-worker Qdrant同批warm18→20/36、mixed24→23/36、
+  write+flush3→3/9、recall各36/36，四個performance pass→fail均保留；整體FAILED。
+  沒有新完整Mojo／crash／HTTP performance／Linux／nonresident gate。
+  [三份凍結證據與限制](../docs/benchmarks/2026-10-04-native-f64-four.md)。
   - 最新兩版 widening distance reuse 各70 targeted Mojo、18 workers、14,472
   paired query bits/stats一致，品質各132/216；高維selective改善，其他格仍退步。
   第二版21/36選定timing退步，兩版未採用；沒有新Qdrant/full integration gate。

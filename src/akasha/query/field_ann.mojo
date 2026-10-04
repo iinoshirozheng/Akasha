@@ -1,5 +1,6 @@
 from akasha.compute.field_metrics import (
     _score_validated_field,
+    _score_four_validated_dense,
     validate_field_query,
 )
 from akasha.compute.topk import BoundedTopK
@@ -242,10 +243,57 @@ def search_generation_field_approx(
         target, smaller_is_better=field.metric == 1
     )
     var reranked = min(budget, len(candidates))
-    for ranked in range(reranked):
+    var ranked = 0
+    while reranked - ranked >= 4:
+        # Borrow four checked native values directly from their read runs.
         if control:
-            control.value().checkpoint(ranked)
-        ref candidate = candidates[ranked]
+            control.value().checkpoint(ranked + 0)
+        var a_location = view.find(candidates[ranked + 0].id)
+        if a_location[0] < 0:
+            raise Error("field HNSW returned an invisible candidate")
+        ref a_entry = view.run(a_location[0]).memtable.entry_ref_at(a_location[1])
+        var a_ordinal = a_entry.field_ordinal(field.id)
+        if a_ordinal < 0:
+            raise Error("field HNSW returned a missing field")
+        ref a = a_entry.vector_at(a_ordinal).value()
+        if control:
+            control.value().checkpoint(ranked + 1)
+        var b_location = view.find(candidates[ranked + 1].id)
+        if b_location[0] < 0:
+            raise Error("field HNSW returned an invisible candidate")
+        ref b_entry = view.run(b_location[0]).memtable.entry_ref_at(b_location[1])
+        var b_ordinal = b_entry.field_ordinal(field.id)
+        if b_ordinal < 0:
+            raise Error("field HNSW returned a missing field")
+        ref b = b_entry.vector_at(b_ordinal).value()
+        if control:
+            control.value().checkpoint(ranked + 2)
+        var c_location = view.find(candidates[ranked + 2].id)
+        if c_location[0] < 0:
+            raise Error("field HNSW returned an invisible candidate")
+        ref c_entry = view.run(c_location[0]).memtable.entry_ref_at(c_location[1])
+        var c_ordinal = c_entry.field_ordinal(field.id)
+        if c_ordinal < 0:
+            raise Error("field HNSW returned a missing field")
+        ref c = c_entry.vector_at(c_ordinal).value()
+        if control:
+            control.value().checkpoint(ranked + 3)
+        var d_location = view.find(candidates[ranked + 3].id)
+        if d_location[0] < 0:
+            raise Error("field HNSW returned an invisible candidate")
+        ref d_entry = view.run(d_location[0]).memtable.entry_ref_at(d_location[1])
+        var d_ordinal = d_entry.field_ordinal(field.id)
+        if d_ordinal < 0:
+            raise Error("field HNSW returned a missing field")
+        ref d = d_entry.vector_at(d_ordinal).value()
+        var scores = _score_four_validated_dense(query, a, b, c, d, field)
+        for lane in range(4):
+            topk.offer(candidates[ranked + lane].id, Float64(scores[lane]))
+        ranked += 4
+    for tail in range(ranked, reranked):
+        if control:
+            control.value().checkpoint(tail)
+        ref candidate = candidates[tail]
         var location = view.find(candidate.id)
         if location[0] < 0:
             raise Error("field HNSW returned an invisible candidate")
