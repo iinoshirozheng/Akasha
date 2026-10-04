@@ -1,3 +1,10 @@
+# 最新診斷：2026-10-04 traversal work
+
+正式引擎未改；5,628成對query、1,608 exact checks與18 targeted Mojo通過。
+實測named selective的visit占8.6–9.6%，下一步隔離驗證其參數／呼叫搬移成本。
+沒有新效能通過主張，唯一M5/M6項目仍未勾選；
+[完整計數、profiles與限制](../docs/research/2026-10-04-traversal-work.md)。
+
 # 下一輪工作包 checklist
 
 目前正式 engine 在 `cc15f37` 的 filtered inactive radius 修正之上，已採用 native
@@ -844,6 +851,12 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  - 最新traversal診斷：5,628 paired IDs／bits／stats、1,608 exact oracle checks、
+  18 targeted Mojo通過；原real ANN scalar tails約6%，current reads只占0.8–1.4%。
+  兩個正式named selective profiles有2,880 repeat audits＋134 warmups，visit占
+  8.6–9.6%；下一步驗證縮小checked visit的可變參數，保留全部bounds／epoch契約。
+  Named trial-0品質44/72、28個低recall格保留；正式source/binary未改，沒有新
+  Qdrant／full integration／Linux gate。[完整證據](../docs/research/2026-10-04-traversal-work.md)。
   - 最新heap單向搬移候選未採用：122 targeted Mojo、54原Qdrant workers與18
   named workers完成；warm25→23/36、mixed15→14/36、write+flush3→3/9，五個
   performance pass→fail保留。Named 14,472 paired IDs／bits／stats一致，品質
