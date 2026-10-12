@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 exact 欄位位置重用（2026-10-13，未採用）：** 62 Mojo、359 Python、五項
+negative compile 通過。原始 lookup callsites 由七處減為三處，但同批暖速度仍為
+**22/36→19/36**，四格 pass→fail、一格 fail→pass；品質 36/36、結果與 stats 相同。
+沒有新容量／mixed 驗收。下一步從 kernel-inline parent 檢查 query-level metric／width
+分派，維持現有算術順序；此假設尚未驗證。
+[實作、退步格與完整封存](../docs/research/2026-10-13-mapped-exact-field-lookup.md)。
+
 **最新 kernel factory 內聯（2026-10-13，未採用）：** 61 Mojo、359 Python、五項
 negative compile 通過；同批暖速度 **20/36→19/36**，兩格 pass→fail、一格 fail→pass，
 品質皆 36/36、結果與 stats 一致。128D 全量 exact QPS 為同批現行版本 82.3–83.3%；

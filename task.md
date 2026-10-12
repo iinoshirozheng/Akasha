@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [Kernel reader factory 內聯](docs/research/2026-10-13-mapped-kernel-inline.md)、
+1. [Exact 欄位位置重用](docs/research/2026-10-13-mapped-exact-field-lookup.md)、
+   [Kernel reader factory 內聯](docs/research/2026-10-13-mapped-kernel-inline.md)、
    [Mapped reader 後續效能實驗](docs/research/2026-10-13-mapped-reader-followups.md)、
    [Mapped owner 容量與暖查詢](docs/research/2026-10-13-mapped-numeric-owner.md)、
    [Numeric reader 三版實驗](docs/research/2026-10-13-numeric-read-view.md)、

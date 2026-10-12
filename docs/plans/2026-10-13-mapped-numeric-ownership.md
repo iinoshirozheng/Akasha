@@ -56,6 +56,13 @@ five negative compile checks. Its own warm batch is 20/36→19/36 with two pass�
 cells, so it remains isolated. Next remove the duplicated default-field lookup in
 the exact loop using existing field accessors. No capacity/mixed gate is inherited.
 
+The [single field-lookup candidate](../research/2026-10-13-mapped-exact-field-lookup.md)
+passes 62 selected Mojo, 359 Python and five negative compiles but still regresses
+22/36→19/36 in its fixed warm batch, with four pass→fail cells. It remains unadopted.
+Next inspect metric/width dispatch once per query on the frozen kernel-inline parent;
+the emitted parent loop still branches on these query-invariant values. This next
+hypothesis must preserve exact arithmetic/error order and pass the same fixed gate.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up
