@@ -70,6 +70,13 @@ pass→fail cells. All six scan specializations total 56,944 bytes. Do not promo
 Next sample native execution on production versus the frozen kernel-inline parent
 to locate remaining runtime costs before another implementation change.
 
+Two serial [native sampling captures](../research/2026-10-13-mapped-native-sample.md)
+now identify hot merged PCs in SIMD scoring, beside remaining per-chunk range/flag
+calculations. All 67 before/after query audits match. This diagnostic is not a speed
+or capacity gate. The next isolated kernel-inline follow-up bounds the complete safe
+SIMD prefix, keeps a checked first-failure chunk before finite reduction, and retains
+checked scalar tails. It must preserve stale-source/closed-map/paired error order.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up

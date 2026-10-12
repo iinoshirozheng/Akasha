@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 native 取樣（2026-10-13）：** production 與 kernel-inline 各完成一個 serial
+10 秒 sample；各 67 個查詢的前後 IDs／F32 bits／stats 全部一致。合併的熱門 PCs
+位於 SIMD 計分迴圈，附近仍有逐 chunk 範圍比較與旗標計算。這是成本定位線索，
+不是速度或容量驗收。正隔離驗證完整 SIMD prefix 界限與原始 first-fault／tail 順序。
+[原生 traces、限制與下一步](../docs/research/2026-10-13-mapped-native-sample.md)。
+
 **最新 query-level 分派（2026-10-13，未採用）：** 62 Mojo（含原 runtime-dispatch
 逐位元參考與 63／64／65 維邊界）、359 Python、五項 negative compile 通過；
 同批暖速度 **24/36→20/36**，五格 pass→fail、一格 fail→pass，品質 36/36、結果
