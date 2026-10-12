@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-13）：** 已移植既有 `c00494f` 的四候選 F32 HNSW 實作，
+**最新進展（2026-10-13）：** 已移植既有 `a57f11a` 的 filtered exact 雙候選
+計分。新同批暖查詢速度 19/36 → 24/36，mixed 17/36 → 17/36；前後品質皆
+36/36，mixed 有 3 格通過轉失敗，已保留，不能用其他格改善抵銷。
+uniform-1536 correlated／independent 的 12 格暖／mixed QPS 均改善；real-1536
+selective 三次 mixed QPS 與 p95 皆改善。66 Mojo、完整 Python 359、C ABI、
+三個範例與 Linux 模擬 14 Mojo 通過。mixed 尾延遲與逐格 M5/M6 仍未達標。
+[移植範圍、所有退步格與原始證據](../docs/benchmarks/2026-10-13-paired-exact-port.md)。
+
+先移植既有 `c00494f` 的四候選 F32 HNSW 實作，
 同批暖查詢速度 16/36 → 19/36、mixed 15/36 → 19/36，前後品質各 36/36，無
 通過轉失敗格。real-1536 暖 ANN 九格 QPS 提高 21.6–40.1%，p95 皆降低；
 仍保留 exact 格波動與 mixed selective 尾延遲退步，write + flush 前後皆 3/9。
