@@ -6,7 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-13）：** 已移植 `cc15f37` 的 filtered HNSW live-radius
+**最新實驗（2026-10-13）：** `8ba04ce` visit 參數縮減候選未採用；107 Mojo、
+359 Python 通過，但同批暖速度 21/36 → 19/36、mixed 23/36 → 18/36，共 7 格
+pass→fail，前後品質皆 36/36。所有結果保留，正式引擎仍為 `6d01819`。
+[採用判定與逐格證據](../docs/benchmarks/2026-10-13-visit-args-port.md)。
+
+**最新採用（2026-10-13）：** 已移植 `cc15f37` 的 filtered HNSW live-radius
 正確性修正，inactive 節點仍可作通路，但不占 retained radius。100 Mojo、
 完整 Python 359、C ABI、三個範例與 Linux 模擬 25 Mojo 通過；三個漏查案例
 涵蓋 generic／專用 F32 L2。新同批暖速度 23/36 → 22/36、mixed 24/36 → 26/36，

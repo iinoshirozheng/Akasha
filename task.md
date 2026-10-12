@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [Filtered HNSW live radius 修正](docs/benchmarks/2026-10-13-live-radius-port.md)、
+1. [未採用 visit 參數縮減](docs/benchmarks/2026-10-13-visit-args-port.md)、
+   [Filtered HNSW live radius 修正](docs/benchmarks/2026-10-13-live-radius-port.md)、
    [Compaction 鎖外回收](docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)、
    [篩選 exact 雙候選移植](docs/benchmarks/2026-10-13-paired-exact-port.md)、
    [四候選 HNSW 移植與配對驗證](docs/benchmarks/2026-10-13-four-neighbor-port.md)、
@@ -87,6 +88,12 @@ F32 L2 通過；共 100 Mojo、完整 Python 359、C ABI、三個範例與 Linux
 兩組各有 1 格通過轉失敗，write + flush 仍 3/9；採用不代表速度改善。
 配對 IDs／score bits 相同，mixed 120 組 traversal stats 差異完整保留。
 整體 M5/M6 仍 FAILED。
+
+後續試移植 `8ba04ce` 的 visit 參數縮減，**本輪未採用**。候選 107 Mojo／
+359 Python 通過，編譯產物縮小且配對行為相同，但同批暖速度 21/36 → 19/36、
+mixed 23/36 → 18/36，共 7 格 pass→fail。Real ANN QPS 雖在 15/18 格改善，
+收益仍不足以支持採用；全部原始結果保存。正式引擎仍為 `6d01819`，未以候選
+取代正式 binary，亦未把未執行的 Linux／C／範例準備列為成功。
 
 工作目錄：`/Users/ray/Projects/Akasha`，分支 `main`。
 `.build/m5-resume/` 保留重建資料庫、隔離 binary 與所有實驗。
