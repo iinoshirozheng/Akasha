@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 query-level 分派（2026-10-13，未採用）：** 62 Mojo（含原 runtime-dispatch
+逐位元參考與 63／64／65 維邊界）、359 Python、五項 negative compile 通過；
+同批暖速度 **24/36→20/36**，五格 pass→fail、一格 fail→pass，品質 36/36、結果
+與 stats 相同。六個專用函式總計 56,944 bytes，沒有解除退步。下一步在 production
+與 kernel-inline parent 的 native full-exact 路徑取樣；先以執行證據定位剩餘成本。
+正式引擎、容量與 mixed gate 狀態不變。
+[完整對照與封存](../docs/research/2026-10-13-mapped-query-dispatch.md)。
+
 **最新 exact 欄位位置重用（2026-10-13，未採用）：** 62 Mojo、359 Python、五項
 negative compile 通過。原始 lookup callsites 由七處減為三處，但同批暖速度仍為
 **22/36→19/36**，四格 pass→fail、一格 fail→pass；品質 36/36、結果與 stats 相同。

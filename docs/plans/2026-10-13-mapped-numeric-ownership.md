@@ -63,6 +63,13 @@ Next inspect metric/width dispatch once per query on the frozen kernel-inline pa
 the emitted parent loop still branches on these query-invariant values. This next
 hypothesis must preserve exact arithmetic/error order and pass the same fixed gate.
 
+The [query-level dispatch candidate](../research/2026-10-13-mapped-query-dispatch.md)
+passes 62 selected Mojo (expanded bit-reference dimension boundaries), 359 Python
+and five negative compiles, but remains 24/36→20/36 in its own warm batch with five
+pass→fail cells. All six scan specializations total 56,944 bytes. Do not promote it.
+Next sample native execution on production versus the frozen kernel-inline parent
+to locate remaining runtime costs before another implementation change.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up
