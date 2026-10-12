@@ -26,6 +26,9 @@ independent 具持續 faults 與低駐留證據，selective exact 仍為 owned r
 新三方暖查詢前後品質皆 36/36、速度皆 16/36，保留退步格。105 項相關 Mojo、
 23 crash、完整 Python 355 項與新增 1 項 compile contract、C ABI 通過；Linux 原型
 另通過 22 項 targeted Mojo。[修正與完整證據](../docs/benchmarks/2026-10-13-mapped-segment-read.md)。
+候選向量 finite／F32 norm 快取的四個原型未採用：長診斷有改善，但固定完整暖查詢
+仍有 high-dimensional selective 退步；全部試次、組語與 131 Mojo／356 Python
+原型驗證保留。[候選快取實驗](../docs/benchmarks/2026-10-13-candidate-summary-probes.md)。
 完整持續 non-resident／memory limit 矩陣與未達標效能格仍待完成。
 
 **2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance
