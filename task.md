@@ -6,7 +6,9 @@
 
 ## 閱讀順序
 
-1. [Numeric reader 三版實驗](docs/research/2026-10-13-numeric-read-view.md)、
+1. [Mapped reader 後續效能實驗](docs/research/2026-10-13-mapped-reader-followups.md)、
+   [Mapped owner 容量與暖查詢](docs/research/2026-10-13-mapped-numeric-owner.md)、
+   [Numeric reader 三版實驗](docs/research/2026-10-13-numeric-read-view.md)、
    [Mapped numeric 所有權實作計畫](docs/plans/2026-10-13-mapped-numeric-ownership.md)、
    [F32 compiler proof](docs/research/2026-10-13-mapped-list-probe.md)、
    [Open 記憶體分段診斷](docs/benchmarks/2026-10-13-open-memory-phases.md)、

@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 mapped reader follow-up（2026-10-13，未採用）：** Variant 與 kernel snapshot
+兩批各 27 個 serial warm workers，速度各為 **20/36→15/36**，各六格 pass→fail；
+品質皆 36/36，IDs／F32 bits／stats 相同。Snapshot 通過 61 Mojo、359 Python 與五項
+negative compile；其 uniform-1536 全量 exact QPS 為同批 production 的 95.4–99.9%，
+128D 仍僅 72.5–75.8%。沒有新容量／mixed 驗收，正式引擎不變。下一步在實際
+collection caller 檢查仍留著的四處 reader factory calls；保留所有失敗格。
+[完整實作與封存結果](../docs/research/2026-10-13-mapped-reader-followups.md)。
+
 **最新 mapped owner 候選（2026-10-13，未採用）：** 已整合 legacy/v4 numeric authority、
 精確來源檔案 lease、公開 List cache，以及 batch／具名索引／Python／Arrow／GPU
 consumer。最終 359 Python、23 crash、C ABI 與相關 Mojo／Metal 驗證通過。兩組

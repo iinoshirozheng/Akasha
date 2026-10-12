@@ -41,6 +41,15 @@ Next: profile the mapped-reader exact path, preserve its checks while reducing c
 then address legacy write rebasing and mixed/nonresident gates. The report records
 the changed source-lease test expectation and every retained failure.
 
+Follow-up [Variant and kernel-snapshot trials](../research/2026-10-13-mapped-reader-followups.md)
+are frozen too. Both separate warm batches remain 20/36→15/36 with six pass→fail
+cells. The snapshot preserves per-access error order and reduces selected exact code
+to 23,776 bytes; uniform-1536 full-exact QPS is .954–.999 of same-batch production,
+but uniform-128 remains .725–.758. It passes 61 selected Mojo, 359 Python and five
+negative compile checks, without a new capacity/mixed gate. Next inspect the four
+remaining out-of-line reader factory calls in the actual collection caller. No
+candidate is adopted; Task 5 remains unfinished.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up
