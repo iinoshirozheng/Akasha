@@ -6,7 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新實驗（2026-10-13）：** `8ba04ce` visit 參數縮減候選未採用；107 Mojo、
+**最新診斷（2026-10-13）：** 七個隔離 open-memory workers，五成功、兩個高維
+128 MiB OOM；最後觀測在第二個 segment decode 內。1,340 exact／1,340 ANN
+checks 通過，正式 source／binary 未改。6 GiB real control 在 recovery 後約
+134 MiB anon、HNSW 後約 155 MiB、open 後約 163 MiB，包含 Python／allocator／
+QEMU，不能全歸為引擎。持續持有量與 nonresident exact 仍未解決。
+[分段記憶體與原始 traces](../docs/benchmarks/2026-10-13-open-memory-phases.md)。
+
+**此前實驗（2026-10-13）：** `8ba04ce` visit 參數縮減候選未採用；107 Mojo、
 359 Python 通過，但同批暖速度 21/36 → 19/36、mixed 23/36 → 18/36，共 7 格
 pass→fail，前後品質皆 36/36。所有結果保留，正式引擎仍為 `6d01819`。
 [採用判定與逐格證據](../docs/benchmarks/2026-10-13-visit-args-port.md)。
