@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-13）：** 已移植既有 `a57f11a` 的 filtered exact 雙候選
+**最新進展（2026-10-13）：** 已移植既有 `7dd8647` 的 compaction 鎖外回收，
+保留本輪 shared-state `Pointer` 修正。新同批暖查詢速度 23/36 → 25/36，
+mixed 17/36 → 28/36，前後品質皆 36/36；兩組各有 1 格通過轉失敗，完整保留。
+write + flush 仍為 3/9，整體 M5/M6 未達標。103 項不同 Mojo、23 crash、
+完整 Python 359、C ABI、三個範例，以及 Linux 模擬 13 Mojo 通過。
+blocked reclaim 的 close liveness 與 source-owner 排他已驗證，ADR 已同步更新。
+[回收流程、逐格結果與原始證據](../docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)。
+
+此前移植既有 `a57f11a` 的 filtered exact 雙候選
 計分。新同批暖查詢速度 19/36 → 24/36，mixed 17/36 → 17/36；前後品質皆
 36/36，mixed 有 3 格通過轉失敗，已保留，不能用其他格改善抵銷。
 uniform-1536 correlated／independent 的 12 格暖／mixed QPS 均改善；real-1536

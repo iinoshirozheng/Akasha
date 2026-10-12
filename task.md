@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [篩選 exact 雙候選移植](docs/benchmarks/2026-10-13-paired-exact-port.md)、
+1. [Compaction 鎖外回收](docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)、
+   [篩選 exact 雙候選移植](docs/benchmarks/2026-10-13-paired-exact-port.md)、
    [四候選 HNSW 移植與配對驗證](docs/benchmarks/2026-10-13-four-neighbor-port.md)、
    [三資料集受控記憶體矩陣](docs/benchmarks/2026-10-13-memory-cap-matrix.md) 與
    [mapped segment 恢復修正](docs/benchmarks/2026-10-13-mapped-segment-read.md)
@@ -22,7 +23,7 @@
 
 Named/native vector 的遷移、原子提交、查詢、Python／Arrow、F16／BF16／I8／U8、
 Binary／MaxSim、NDJSON 已串接並驗證；retained base／delta cache 已改善更新後重開。
-最新採用 exact scan query preparation；詳細數據見
+前次已採用 exact scan query preparation；詳細數據見
 [最新量測報告](docs/benchmarks/2026-10-02-prepared-exact.md)。
 
 本次 maintenance 修正：44 項相關 Mojo 通過；完整 Python 351 passed／1 skipped，
@@ -64,12 +65,19 @@ checks／110,592 timed response checks 通過。Akasha 9 格、Qdrant 28 格各�
 97 Mojo、完整 Python 356、C ABI、三個範例通過；Linux 模擬另通過 31 Mojo。
 此結果不能與其他批次直接計算效能差值，完整 M5/M6 仍 FAILED。
 
-最新再移植既有 `a57f11a` 的 filtered exact 雙候選計分。新同批暖查詢速度
+後續移植既有 `a57f11a` 的 filtered exact 雙候選計分。該批暖查詢速度
 19/36 → 24/36，mixed 17/36 → 17/36，前後品質皆 36/36；mixed 有 3 格
 通過轉失敗，已完整保留，未用其他格改善抵銷。uniform-1536 correlated／independent
 的 12 格暖／mixed QPS 均改善；real selective 三次 mixed QPS 與 p95 皆改善。
 66 Mojo、完整 Python 359、C ABI、三個範例與 Linux 模擬 14 Mojo 通過。
 此為局部改善，mixed 尾延遲、ANN 差距與整體 M5/M6 仍未完成。
+
+最新移植 `7dd8647` 的 compaction 鎖外回收，保留本輪 shared-state `Pointer`
+修正。新同批暖查詢速度 23/36 → 25/36、mixed 17/36 → 28/36，前後品質皆
+36/36；兩組各有 1 格通過轉失敗，已保留，write + flush 仍僅 3/9。
+103 項不同 Mojo、23 crash、完整 Python 359、C ABI、三個範例，以及 Linux
+模擬 13 Mojo 通過。原版 blocked reclaim 阻止 close 前進的案例已修正，source
+owner 仍保護新 writer 排他；ADR 已更新。M5/M6 每格速度與容量門檻仍未達標。
 
 工作目錄：`/Users/ray/Projects/Akasha`，分支 `main`。
 `.build/m5-resume/` 保留重建資料庫、隔離 binary 與所有實驗。

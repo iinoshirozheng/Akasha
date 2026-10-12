@@ -8,7 +8,7 @@ from akasha.storage.committed_compaction import (
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.native_worker import NativeWorker
 from akasha.storage.read_generation import ReadGenerationCache, SealedMerge
-from akasha.storage.retired_files import RetiredFileQueue
+from akasha.storage.retired_files import RetiredFileQueue, reclaim_retired_batch
 from std.memory import ArcPointer, Pointer
 from std.time import sleep
 from std.utils import BlockingScopedLock, BlockingSpinLock
@@ -177,9 +177,11 @@ def _compact[origin: MutOrigin](
             var output = build_compaction(
                 state[].path, state[].dimension, inputs.value(), state[].pins
             )
+            var published: Bool
+            var cancelled: Bool
             with BlockingScopedLock(state[].writer_lock[]):
-                var cancelled = state[].cancelled
-                if finish_compaction(
+                cancelled = state[].cancelled
+                published = finish_compaction(
                     state[].path,
                     state[].dimension,
                     inputs.value(),
@@ -188,11 +190,16 @@ def _compact[origin: MutOrigin](
                     state[].pins,
                     state[].retired,
                     state[].read_generations,
-                ):
-                    return True
-                if cancelled:
-                    return False
-                state[].count_conflict()
+                )
+                if not published and not cancelled:
+                    state[].count_conflict()
+            if published:
+                reclaim_retired_batch(
+                    state[].path, state[].retired, state[].writer_lock
+                )
+                return True
+            if cancelled:
+                return False
         state[].count_exhausted()
         return False
 

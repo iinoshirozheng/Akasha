@@ -131,11 +131,12 @@ def finish_compaction(
     retired: ArcPointer[RetiredFileQueue],
     read_generations: ArcPointer[ReadGenerationCache],
 ) raises -> Bool:
-    """Publish a built job and retire its inputs; False when discarded.
+    """Publish a built job and queue its retired inputs; False when discarded.
 
     The caller holds the writer lock. A cancelled job or replaced inputs
     discard the output. A publish error keeps the files: the manifest rename
-    may already be durable, and open() removes an unpublished output.
+    may already be durable, and open() removes an unpublished output. After
+    success the caller reclaims the queued paths outside the writer lock.
     """
     # Release the job's lease first so retirement sees reader pins only.
     pins[].unpin(inputs.manifest.generation)
@@ -152,10 +153,7 @@ def finish_compaction(
             inputs.source_lock = None
             return False
         read_generations[].publish(replaced.value() + 1)
-        retired[].retire_or_reclaim(
-            directory,
-            compaction_input_paths(directory, inputs.manifest),
-        )
+        retired[].enqueue(compaction_input_paths(directory, inputs.manifest))
     except error:
         inputs.source_lock = None
         raise error^

@@ -226,6 +226,10 @@ Collection close first rejects new operations, then cancels/drains maintenance w
 holding the writer lock, drops collection/cache owners and releases the writer file
 lock owner. A captured backup or foreground compaction holds another strong
 file-lock owner until its copy, publication, discard or build failure finishes.
+For successful foreground compaction this also includes the detached reclamation
+attempt after publication, including an I/O failure. Close can finish during that
+attempt, but a replacement writer remains excluded until the operation releases
+its source owner.
 This excludes replacement writers while an acquired operation can still create
 files. Snapshot roots instead retain shared locks on their exact immutable files,
 so they can coexist with a replacement writer's independent pin registry.
@@ -301,8 +305,18 @@ Finish drops the job pin first, so retirement sees reader pins only. #51 publish
 G+1 with last sequence H only if the current manifest bytes equal the captured ones;
 #52 replaced that compare with the rebase below. The config cannot change for an
 open instance because `collection.bin` is written only at creation. The durable
-manifest is published first, then the read root, the index caches, and the inputs go
-to `retire_or_reclaim`. Writes after begin stay
+manifest is published first, then the read root and retirement queue; the foreground
+path also publishes its index caches before leaving the writer lock. Since
+2026-10-13, successful foreground and background compaction enqueue obsolete inputs,
+then detach and reclaim an owned batch outside the writer lock. Opening the directory
+and detaching/restoring the queue remain serialized. An open failure leaves the
+shared queue intact; an unlink/fsync failure restores the full retry batch alongside
+newly queued paths. The directory descriptor anchors the detached I/O. Public
+foreground compaction waits for its reclaim attempt; background close joins the
+worker. Job-pin release, rejected-output cleanup, flush and point-store retirement
+retain their existing I/O boundaries. See the
+[port and verification](../benchmarks/2026-10-13-unlocked-reclaim-port.md).
+Writes after begin stay
 in the memtable and WAL; publish does not rotate the WAL. On a lost race the output
 is removed and `compact()` recaptures from the newer manifest. After 4 attempts it
 raises "compaction retry budget exhausted". `compaction_attempts()` and
