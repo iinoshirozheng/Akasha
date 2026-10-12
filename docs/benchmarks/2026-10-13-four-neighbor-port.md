@@ -207,5 +207,6 @@ candidate binary hash 未變。Linux preparation 的錯誤測試檔名，以及 
 時尚未建立 `.build/c` 的失敗亦保留；皆在執行對應 build/test 之前修正。
 先前二候選草稿未編譯／未量測，發現既有四候選實作後停止，未採用。
 
-Archive SHA-256：`0ff223ebad799a465b85b1500eb8978fe214ede9b894929d35a24634a4459e41`
-（239 files，3,685,015 bytes）。
+Archive SHA-256：`d3776072a8582bc53e1a65fec557c6c9f6464cca442beccd2af15cf0ffcc9dcc`
+（242 files，18,817,326 bytes）。附件包含三份實際使用的 frozen mixed write plans；
+相較初版只補入計畫與修正 archive builder 的固定 base reference，沒有重跑量測。
