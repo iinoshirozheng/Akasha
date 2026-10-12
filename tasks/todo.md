@@ -6,7 +6,16 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 reader 實驗（2026-10-13）：** 三個隔離版本皆未提升正式引擎。
+**最新 mapped owner 候選（2026-10-13，未採用）：** 已整合 legacy/v4 numeric authority、
+精確來源檔案 lease、公開 List cache，以及 batch／具名索引／Python／Arrow／GPU
+consumer。最終 359 Python、23 crash、C ABI 與相關 Mojo／Metal 驗證通過。兩組
+1536D 在 128 MiB QEMU 下均完成，取代此前 OOM；五試次共 1,340 exact／1,340 ANN
+checks。real 6 GiB control 的 open anon 約 163→114 MiB，但不是總 RSS 降幅。
+同批暖速度 **21/36→15/36**，六格 pass→fail，品質前後皆 36/36，正式引擎不變。
+下一步定位映射 reader 成本；legacy live-write rebasing、mixed 與持續 nonresident
+gate 尚未完成。[實作、限制、失敗與完整證據](../docs/research/2026-10-13-mapped-numeric-owner.md)。
+
+**此前 reader 實驗（2026-10-13）：** 三個隔離版本皆未提升正式引擎。
 checked／inline 各通過 74 Mojo，bounded 通過 23 Mojo；checked／bounded 各通過
 完整 Python 359。三批暖查詢前後品質皆 36/36，速度分別 21→21、22→20、25→23
 （每批 36 格），pass→fail 分別 1／3／3。bounded 高維全量 exact QPS 仍低
@@ -14,13 +23,13 @@ checked／inline 各通過 74 Mojo，bounded 通過 23 Mojo；checked／bounded 
 Mojo 允許清空被借用 List，已加 live bounds regression；所有失敗與退步均保留。
 [來源、組語、驗證與逐格結果](../docs/research/2026-10-13-numeric-read-view.md)。
 
-**目前實作方向（2026-10-13）：** immutable numeric authority 直接映射既有檔案，
+**此前設計起點（2026-10-13）：** immutable numeric authority 直接映射既有檔案，
 內部讀取不建立 List，明確公開 getter 保留一次性的 owned List 與 non-raising 契約。
 隔離 F32 probe 四項通過，另通過唯讀修改的預期編譯拒絕；尚未接入正式引擎，
 未宣稱容量或效能改善。[設計與分層步驟](../docs/plans/2026-10-13-mapped-numeric-ownership.md)、
 [compiler proof 與限制](../docs/research/2026-10-13-mapped-list-probe.md)。
 
-**最新診斷（2026-10-13）：** 七個隔離 open-memory workers，五成功、兩個高維
+**此前診斷（2026-10-13）：** 七個隔離 open-memory workers，五成功、兩個高維
 128 MiB OOM；最後觀測在第二個 segment decode 內。1,340 exact／1,340 ANN
 checks 通過，正式 source／binary 未改。6 GiB real control 在 recovery 後約
 134 MiB anon、HNSW 後約 155 MiB、open 後約 163 MiB，包含 Python／allocator／

@@ -30,6 +30,17 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The complete isolated owner/consumer candidate is now implemented and frozen in the
+[mapped numeric owner report](../research/2026-10-13-mapped-numeric-owner.md). Final
+359 Python, 23 crash, C ABI and relevant actual-device/storage/consumer tests pass.
+Both 1536D 128 MiB Linux QEMU diagnostics now finish without OOM, with separately
+measured authority/HNSW residency. This does not establish sustained nonresident
+performance. Native warm strict speed regresses 21/36→15/36 with six pass→fail cells;
+the candidate is not eligible for production adoption while those regressions remain.
+Next: profile the mapped-reader exact path, preserve its checks while reducing cost,
+then address legacy write rebasing and mixed/nonresident gates. The report records
+the changed source-lease test expectation and every retained failure.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up
