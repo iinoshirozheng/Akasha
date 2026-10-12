@@ -34,6 +34,10 @@ CI 仍未驗證。Metal snapshot／cache 9 項通過，含實機路徑與故障 
 4 clients 14/36 達速度門檻，72 格配對品質皆通過。此為獨立服務邊界，不能與
 binding-only 矩陣合併；完整結果仍為 FAILED。相關 19 項 Python 測試通過。
 
+[首輪受控記憶體診斷](docs/benchmarks/2026-10-13-memory-cap-probe.md)：real-1536 在
+256 MiB 下 Akasha 完成但保持駐留；224／192／128 MiB 在 open 階段 OOM。
+Qdrant 各上限皆完成，部分查詢具持續非駐留證據；單次模擬 Linux 診斷不代表全矩陣。
+
 未完成：M5/M6 全效能矩陣、持續 non-resident／memory-limit 對照，以及尚未執行的
 環境／整合 gate。Qdrant 門檻已定案：相同 recall 下，
 **每格 QPS ≥ Qdrant 且 p95 ≤ Qdrant**，不能跨格抵銷。新暖查詢 baseline 19/36、

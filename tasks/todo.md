@@ -16,7 +16,11 @@ C ABI；Metal snapshot／cache 9 項通過（含故障 fallback）。完整 nati
 與未觸及 GPU suites 未列為通過。[環境驗證](../docs/research/2026-10-13-linux-gpu-validation.md)。
 八組 HNSW accumulator 原型通過 33 Mojo，但公開長診斷未見穩定收益，未採用。
 [全部試次](../docs/benchmarks/2026-10-13-hnsw-eight-groups.md)。
-持續 non-resident／memory limit 與未達標效能格仍待完成。
+首輪 emulated Linux memory-cap 診斷：real-1536 下 Akasha 在 256 MiB 完成但向量
+保持駐留，224／192／128 MiB 在 open 階段 OOM；Qdrant 各上限皆完成，部分格符合
+預先定義的持續 faults／低駐留證據。全部 OOM、非單調曲線及原始失敗保留。
+[診斷與限制](../docs/benchmarks/2026-10-13-memory-cap-probe.md)。
+完整持續 non-resident／memory limit 矩陣與未達標效能格仍待完成。
 
 **2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance
 shared-state 覆寫與 deadlock，已由 `be3be53` 修正；44 項相關 Mojo、完整 Python 的
