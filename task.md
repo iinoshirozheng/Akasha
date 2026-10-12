@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [最新 mapped segment 恢復修正與完整量測](docs/benchmarks/2026-10-13-mapped-segment-read.md)
+1. [三資料集受控記憶體矩陣](docs/benchmarks/2026-10-13-memory-cap-matrix.md) 與
+   [mapped segment 恢復修正](docs/benchmarks/2026-10-13-mapped-segment-read.md)
 2. [本次修正、驗證與 mixed 原始結果](docs/research/2026-10-12-maintenance-shared-state.md)
 3. [本次 profiling、暖查詢與未採用原型](docs/benchmarks/2026-10-12-mapped-probes.md)
 4. [外部並行客戶端矩陣](docs/benchmarks/2026-10-13-concurrent-clients.md)
@@ -43,8 +44,15 @@ binding-only 矩陣合併；完整結果仍為 FAILED。相關 19 項 Python 測
 相關驗證為 105 Mojo、23 crash、完整 Python 355 項加 1 項新編譯檢查，以及 C ABI；
 Linux 原型另有 22 targeted Mojo 通過。這些診斷仍不代表全效能矩陣通過。
 
-未完成：M5/M6 全效能矩陣、持續 non-resident／memory-limit 對照，以及尚未執行的
-環境／整合 gate。Qdrant 門檻已定案：相同 recall 下，
+三資料集受控記憶體矩陣已執行完成：128／192／256 MiB 各三次對照，54 個受限
+worker 中 48 完成、6 次 Akasha 初始化 OOM，無逾時；配對品質 84/108、速度
+57/108，整體 FAILED。另有 6 個 6 GiB 控制 worker。所有完成者共 14,472 exact
+checks／110,592 timed response checks 通過。Akasha 9 格、Qdrant 28 格各自具
+持續壓力證據，但同一 cap／trial 雙方皆符合者為 0/108；owned exact 向量仍無
+非駐留證據。這是 emulated Linux 結果，不能列為 native Linux performance。
+
+未完成：M5/M6 逐格速度與記憶體容量門檻、雙方持續 non-resident 對照，以及尚未
+執行的環境／整合 gate。Qdrant 門檻已定案：相同 recall 下，
 **每格 QPS ≥ Qdrant 且 p95 ≤ Qdrant**，不能跨格抵銷。新暖查詢 baseline 19/36、
 修正後 mixed 17/36 通過；這不是與 10/02 結果的配對效能比較。
 

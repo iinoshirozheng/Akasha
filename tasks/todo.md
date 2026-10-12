@@ -32,7 +32,14 @@ independent 具持續 faults 與低駐留證據，selective exact 仍為 owned r
 入口 SIMD finite validation 原型也未採用：51 Mojo 通過、暖查詢品質皆 36/36，
 同批速度 17/36 → 16/36，未見穩定收益。
 [原始矩陣與驗證](../docs/benchmarks/2026-10-13-simd-entry-validation.md)。
-完整持續 non-resident／memory limit 矩陣與未達標效能格仍待完成。
+三資料集受控記憶體矩陣已完整執行：128／192／256 MiB 各三次對照，配對品質
+84/108、速度 57/108，整體 FAILED；54 個受限 worker 中 48 完成、6 次 Akasha
+初始化 OOM，無逾時。另有 6 個 6 GiB 控制 worker；所有完成者共 14,472 exact
+checks／110,592 timed response checks 通過。Akasha 9 格、Qdrant 28 格各自符合
+持續壓力 criterion，但同 cap／trial 雙方皆符合者為 0/108；owned exact 仍不具
+非駐留證據。全部慢樣本、OOM 與缺失欄位保留。
+[完整矩陣與原始證據](../docs/benchmarks/2026-10-13-memory-cap-matrix.md)。
+逐格效能／容量門檻、雙方持續 non-resident 與 native Linux performance 仍未完成。
 
 **2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance
 shared-state 覆寫與 deadlock，已由 `be3be53` 修正；44 項相關 Mojo、完整 Python 的
