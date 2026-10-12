@@ -50,6 +50,12 @@ negative compile checks, without a new capacity/mixed gate. Next inspect the fou
 remaining out-of-line reader factory calls in the actual collection caller. No
 candidate is adopted; Task 5 remains unfinished.
 
+The subsequent [factory-inline candidate](../research/2026-10-13-mapped-kernel-inline.md)
+eliminates all four reader factory calls and passes 61 selected Mojo, 359 Python and
+five negative compile checks. Its own warm batch is 20/36→19/36 with two pass→fail
+cells, so it remains isolated. Next remove the duplicated default-field lookup in
+the exact loop using existing field accessors. No capacity/mixed gate is inherited.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up

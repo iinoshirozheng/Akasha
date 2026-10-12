@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 kernel factory 內聯（2026-10-13，未採用）：** 61 Mojo、359 Python、五項
+negative compile 通過；同批暖速度 **20/36→19/36**，兩格 pass→fail、一格 fail→pass，
+品質皆 36/36、結果與 stats 一致。128D 全量 exact QPS 為同批現行版本 82.3–83.3%；
+仍不採用，也不以其他批次的通過格數相減。下一步移除 exact loop 重複的 default
+field lookup；正式引擎與容量／mixed gate 狀態不變。
+[逐格證據與封存](../docs/research/2026-10-13-mapped-kernel-inline.md)。
+
 **最新 mapped reader follow-up（2026-10-13，未採用）：** Variant 與 kernel snapshot
 兩批各 27 個 serial warm workers，速度各為 **20/36→15/36**，各六格 pass→fail；
 品質皆 36/36，IDs／F32 bits／stats 相同。Snapshot 通過 61 Mojo、359 Python 與五項
