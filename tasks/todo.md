@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-13）：** 外部客戶端使用相同 HTTP shim／單一 engine handle，
+**最新進展（2026-10-13）：** 已移植既有 `c00494f` 的四候選 F32 HNSW 實作，
+同批暖查詢速度 16/36 → 19/36、mixed 15/36 → 19/36，前後品質各 36/36，無
+通過轉失敗格。real-1536 暖 ANN 九格 QPS 提高 21.6–40.1%，p95 皆降低；
+仍保留 exact 格波動與 mixed selective 尾延遲退步，write + flush 前後皆 3/9。
+97 項相關 Mojo、完整 Python 356、C ABI、三個範例通過，Linux 模擬另通過
+31 項 Mojo；未宣稱 native Linux／AVX 驗收。完整 M5/M6 仍 FAILED。
+[移植來源、逐格結果及完整證據](../docs/benchmarks/2026-10-13-four-neighbor-port.md)。
+
+外部客戶端使用相同 HTTP shim／單一 engine handle，
 1 client 控制組速度 21/36、4 clients 14/36，72 格配對品質全通過，整體仍 FAILED。
 9,648 exact checks／73,728 timed response checks 全通過，相關 Python 19 項通過。
 此服務邊界不能與 binding-only 矩陣合併；所有慢樣本、工具初始失敗均保留。

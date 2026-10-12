@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [三資料集受控記憶體矩陣](docs/benchmarks/2026-10-13-memory-cap-matrix.md) 與
+1. [四候選 HNSW 移植與配對驗證](docs/benchmarks/2026-10-13-four-neighbor-port.md)、
+   [三資料集受控記憶體矩陣](docs/benchmarks/2026-10-13-memory-cap-matrix.md) 與
    [mapped segment 恢復修正](docs/benchmarks/2026-10-13-mapped-segment-read.md)
 2. [本次修正、驗證與 mixed 原始結果](docs/research/2026-10-12-maintenance-shared-state.md)
 3. [本次 profiling、暖查詢與未採用原型](docs/benchmarks/2026-10-12-mapped-probes.md)
@@ -53,8 +54,14 @@ checks／110,592 timed response checks 通過。Akasha 9 格、Qdrant 28 格各�
 
 未完成：M5/M6 逐格速度與記憶體容量門檻、雙方持續 non-resident 對照，以及尚未
 執行的環境／整合 gate。Qdrant 門檻已定案：相同 recall 下，
-**每格 QPS ≥ Qdrant 且 p95 ≤ Qdrant**，不能跨格抵銷。新暖查詢 baseline 19/36、
-修正後 mixed 17/36 通過；這不是與 10/02 結果的配對效能比較。
+**每格 QPS ≥ Qdrant 且 p95 ≤ Qdrant**，不能跨格抵銷。
+
+最新採用既有 `c00494f` 的四候選 F32 HNSW 實作，只移植三個來源檔與兩個測試。
+同批暖查詢速度 16/36 → 19/36、mixed 15/36 → 19/36，前後品質皆 36/36，無
+通過轉失敗格；real-1536 九格暖 ANN QPS 提高 21.6–40.1%、p95 皆降低。
+所有 exact 波動、mixed selective 尾延遲退步均保留；write + flush 仍僅 3/9。
+97 Mojo、完整 Python 356、C ABI、三個範例通過；Linux 模擬另通過 31 Mojo。
+此結果不能與其他批次直接計算效能差值，完整 M5/M6 仍 FAILED。
 
 工作目錄：`/Users/ray/Projects/Akasha`，分支 `main`。
 `.build/m5-resume/` 保留重建資料庫、隔離 binary 與所有實驗。
