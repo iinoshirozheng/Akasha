@@ -6,7 +6,16 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-13）：** 已移植既有 `7dd8647` 的 compaction 鎖外回收，
+**最新進展（2026-10-13）：** 已移植 `cc15f37` 的 filtered HNSW live-radius
+正確性修正，inactive 節點仍可作通路，但不占 retained radius。100 Mojo、
+完整 Python 359、C ABI、三個範例與 Linux 模擬 25 Mojo 通過；三個漏查案例
+涵蓋 generic／專用 F32 L2。新同批暖速度 23/36 → 22/36、mixed 24/36 → 26/36，
+前後品質皆 36/36，各有 1 格 pass→fail，write + flush 仍 3/9；不宣稱速度改善。
+配對 IDs／score bits 相同，mixed 120 組 traversal stats 差異已保存。
+整體 M5/M6 仍 FAILED。
+[行為、逐格結果與原始證據](../docs/benchmarks/2026-10-13-live-radius-port.md)。
+
+此前已移植既有 `7dd8647` 的 compaction 鎖外回收，
 保留本輪 shared-state `Pointer` 修正。新同批暖查詢速度 23/36 → 25/36，
 mixed 17/36 → 28/36，前後品質皆 36/36；兩組各有 1 格通過轉失敗，完整保留。
 write + flush 仍為 3/9，整體 M5/M6 未達標。103 項不同 Mojo、23 crash、

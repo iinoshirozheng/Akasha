@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [Compaction 鎖外回收](docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)、
+1. [Filtered HNSW live radius 修正](docs/benchmarks/2026-10-13-live-radius-port.md)、
+   [Compaction 鎖外回收](docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)、
    [篩選 exact 雙候選移植](docs/benchmarks/2026-10-13-paired-exact-port.md)、
    [四候選 HNSW 移植與配對驗證](docs/benchmarks/2026-10-13-four-neighbor-port.md)、
    [三資料集受控記憶體矩陣](docs/benchmarks/2026-10-13-memory-cap-matrix.md) 與
@@ -72,12 +73,20 @@ checks／110,592 timed response checks 通過。Akasha 9 格、Qdrant 28 格各�
 66 Mojo、完整 Python 359、C ABI、三個範例與 Linux 模擬 14 Mojo 通過。
 此為局部改善，mixed 尾延遲、ANN 差距與整體 M5/M6 仍未完成。
 
-最新移植 `7dd8647` 的 compaction 鎖外回收，保留本輪 shared-state `Pointer`
+接著移植 `7dd8647` 的 compaction 鎖外回收，保留本輪 shared-state `Pointer`
 修正。新同批暖查詢速度 23/36 → 25/36、mixed 17/36 → 28/36，前後品質皆
 36/36；兩組各有 1 格通過轉失敗，已保留，write + flush 仍僅 3/9。
 103 項不同 Mojo、23 crash、完整 Python 359、C ABI、三個範例，以及 Linux
 模擬 13 Mojo 通過。原版 blocked reclaim 阻止 close 前進的案例已修正，source
 owner 仍保護新 writer 排他；ADR 已更新。M5/M6 每格速度與容量門檻仍未達標。
+
+最新移植 `cc15f37` 的 filtered HNSW live-radius 正確性修正：inactive 節點
+仍可當通路，但不占 retained radius。三個漏查 regression 已在 generic／專用
+F32 L2 通過；共 100 Mojo、完整 Python 359、C ABI、三個範例與 Linux 模擬
+25 Mojo 通過。同批暖速度 23/36 → 22/36、mixed 24/36 → 26/36，品質皆 36/36，
+兩組各有 1 格通過轉失敗，write + flush 仍 3/9；採用不代表速度改善。
+配對 IDs／score bits 相同，mixed 120 組 traversal stats 差異完整保留。
+整體 M5/M6 仍 FAILED。
 
 工作目錄：`/Users/ray/Projects/Akasha`，分支 `main`。
 `.build/m5-resume/` 保留重建資料庫、隔離 binary 與所有實驗。
