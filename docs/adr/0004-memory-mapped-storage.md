@@ -175,8 +175,11 @@ pixi run mojo build \
   -o /tmp/test_mapped_file_linux.o
 ```
 
-The Linux Mojo run remains a CI execution gate, not a locally claimed runtime
-result. The repository's `ubuntu-latest` matrix runs:
+The original cross-compile did not establish Linux runtime behavior. The
+[October 2026 targeted validation](../research/2026-10-13-linux-gpu-validation.md)
+subsequently passed the capability tests and native-header ABI probe under
+Docker's emulated Linux x86-64 runtime on the ARM64 Mac. Native Linux CI remains
+a separate environment gate. The repository's `ubuntu-latest` matrix runs:
 
 ```bash
 pixi run mojo run -I src tests/mojo/test_mapped_file.mojo
