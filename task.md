@@ -6,7 +6,9 @@
 
 ## 閱讀順序
 
-1. [Open 記憶體分段診斷](docs/benchmarks/2026-10-13-open-memory-phases.md)、
+1. [Mapped numeric 所有權實作計畫](docs/plans/2026-10-13-mapped-numeric-ownership.md)、
+   [F32 compiler proof](docs/research/2026-10-13-mapped-list-probe.md)、
+   [Open 記憶體分段診斷](docs/benchmarks/2026-10-13-open-memory-phases.md)、
    [未採用 visit 參數縮減](docs/benchmarks/2026-10-13-visit-args-port.md)、
    [Filtered HNSW live radius 修正](docs/benchmarks/2026-10-13-live-radius-port.md)、
    [Compaction 鎖外回收](docs/benchmarks/2026-10-13-unlocked-reclaim-port.md)、

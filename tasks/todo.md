@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**目前實作方向（2026-10-13）：** immutable numeric authority 直接映射既有檔案，
+內部讀取不建立 List，明確公開 getter 保留一次性的 owned List 與 non-raising 契約。
+隔離 F32 probe 四項通過，另通過唯讀修改的預期編譯拒絕；尚未接入正式引擎，
+未宣稱容量或效能改善。[設計與分層步驟](../docs/plans/2026-10-13-mapped-numeric-ownership.md)、
+[compiler proof 與限制](../docs/research/2026-10-13-mapped-list-probe.md)。
+
 **最新診斷（2026-10-13）：** 七個隔離 open-memory workers，五成功、兩個高維
 128 MiB OOM；最後觀測在第二個 segment decode 內。1,340 exact／1,340 ANN
 checks 通過，正式 source／binary 未改。6 GiB real control 在 recovery 後約
