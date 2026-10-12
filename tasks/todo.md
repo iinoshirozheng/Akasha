@@ -29,6 +29,9 @@ independent 具持續 faults 與低駐留證據，selective exact 仍為 owned r
 候選向量 finite／F32 norm 快取的四個原型未採用：長診斷有改善，但固定完整暖查詢
 仍有 high-dimensional selective 退步；全部試次、組語與 131 Mojo／356 Python
 原型驗證保留。[候選快取實驗](../docs/benchmarks/2026-10-13-candidate-summary-probes.md)。
+入口 SIMD finite validation 原型也未採用：51 Mojo 通過、暖查詢品質皆 36/36，
+同批速度 17/36 → 16/36，未見穩定收益。
+[原始矩陣與驗證](../docs/benchmarks/2026-10-13-simd-entry-validation.md)。
 完整持續 non-resident／memory limit 矩陣與未達標效能格仍待完成。
 
 **2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance
