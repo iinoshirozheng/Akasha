@@ -6,7 +6,17 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**目前狀態（2026-10-02）：** named／typed point 的遷移、原子提交、查詢、Python／Arrow、
+**最新進展（2026-10-12）：** resumed profiling 發現 baseline mixed 的 maintenance
+shared-state 覆寫與 deadlock，已由 `be3be53` 修正；44 項相關 Mojo、完整 Python 的
+351 項與補跑的 1 項 Qdrant adapter 通過。新的 resident mixed 品質 36/36、速度
+17/36，仍為 FAILED；新暖查詢 baseline 品質 36/36、速度 19/36。
+這些新試次不能與 10/02 結果直接當作前後效能差值。兩個 mapped-vector 原型未採用。
+先前受 sandbox 阻擋的本機 distributed suite 已在重建 baseline 通過 10 項；
+Linux runtime／GPU device、持續 non-resident／memory limit／concurrent-client
+對照仍待完成。[修正與 mixed 證據](../docs/research/2026-10-12-maintenance-shared-state.md)／
+[profiling、暖查詢與未採用原型](../docs/benchmarks/2026-10-12-mapped-probes.md)。
+
+**前次狀態（2026-10-02）：** named／typed point 的遷移、原子提交、查詢、Python／Arrow、
 原生 F16／BF16／I8／U8、Binary／MaxSim 與 typed NDJSON 匯出／匯入已實作驗證。
 最近完整 CPU 整合為 **957 Mojo／23 crash／344 Python／C ABI／三個範例**，
 涵蓋 NDJSON 與 CRC 改動。其後 exact scan query preparation 已通過 **88 項受影響
