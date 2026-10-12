@@ -45,9 +45,12 @@ def _crc32_update_arm(register: UInt32, data: Span[UInt8, _]) -> UInt32:
     while len(data) - offset >= 8:
         # The loop proves all eight bytes are within this borrowed Span.
         # Explicit byte alignment permits sliced buffers without over-reading.
-        var word = data.unsafe_ptr().unsafe_offset(offset).unsafe_bitcast[
-            UInt64
-        ]().unsafe_load[alignment=1]()
+        var word = (
+            data.unsafe_ptr()
+            .unsafe_offset(offset)
+            .unsafe_bitcast[UInt64]()
+            .unsafe_load[alignment=1]()
+        )
         result = llvm_intrinsic[
             "llvm.aarch64.crc32x", UInt32, has_side_effect=False
         ](result, word)
@@ -295,7 +298,35 @@ struct BorrowedBinaryReader[origin: ImmOrigin](Movable):
         return bitcast[DType.float64](self.read_u64())
 
 
-struct BinaryReader:
+trait BinaryReaderSource(Movable):
+    """The owned-value decoding operations used by segment readers."""
+
+    def remaining(self) -> Int:
+        ...
+
+    def read_u8(mut self) raises -> UInt8:
+        ...
+
+    def read_u16(mut self) raises -> UInt16:
+        ...
+
+    def read_u32(mut self) raises -> UInt32:
+        ...
+
+    def read_u64(mut self) raises -> UInt64:
+        ...
+
+    def read_i64(mut self) raises -> Int64:
+        ...
+
+    def read_f32s(mut self, count: Int) raises -> List[Float32]:
+        ...
+
+    def read_bytes(mut self, count: Int) raises -> List[UInt8]:
+        ...
+
+
+struct BinaryReader(BinaryReaderSource):
     """A bounds-checked little-endian reader over owned bytes."""
 
     var _bytes: List[UInt8]

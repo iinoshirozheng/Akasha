@@ -2,10 +2,13 @@ from akasha.document.codec import decode_payload, encode_payload
 from akasha.document.record import DocumentField
 from akasha.storage.checksum import (
     BinaryReader,
+    BinaryReaderSource,
     BinaryWriter,
     crc32_range,
 )
-from akasha.storage.filesystem import read_file_bytes, write_file_sync
+from akasha.storage.filesystem import write_file_sync
+from akasha.storage.mapped_file import MappedFile
+from akasha.storage.mapped_reader import MappedBinaryReader
 from akasha.storage.memtable import MemTableEntry
 
 
@@ -130,6 +133,19 @@ def decode_segment_bytes(
         raise Error("segment checksum mismatch")
 
     var reader = BinaryReader(bytes^)
+    return _decode_segment_reader(
+        reader, encoded_size, expected_dimension, stored_checksum
+    )
+
+
+def _decode_segment_reader[
+    Reader: BinaryReaderSource
+](
+    mut reader: Reader,
+    encoded_size: Int,
+    expected_dimension: Int,
+    stored_checksum: UInt32,
+) raises -> SegmentSnapshot:
     if (
         reader.read_u8() != _MAGIC_0
         or reader.read_u8() != _MAGIC_1
@@ -268,8 +284,22 @@ def write_segment_v3(
 
 
 def read_segment(path: String, dimension: Int) raises -> SegmentSnapshot:
-    var bytes = read_file_bytes(path)
-    return decode_segment_bytes(bytes^, dimension)
+    """Validate an immutable committed file without an owned file-sized tape."""
+    var mapping = MappedFile.open_readonly(path)
+    if dimension <= 0:
+        raise Error("segment dimension must be positive")
+    var encoded_size = mapping.byte_length()
+    if encoded_size < _FIXED_SIZE_LEGACY:
+        raise Error("truncated segment")
+    var stored_checksum = mapping.load_scalars[DType.uint32, 1](
+        encoded_size - 4
+    )
+    if mapping.checksum(4, UInt64(encoded_size - 8)) != stored_checksum:
+        raise Error("segment checksum mismatch")
+    var reader = MappedBinaryReader(Pointer(to=mapping).as_imm())
+    return _decode_segment_reader(
+        reader, encoded_size, dimension, stored_checksum
+    )
 
 
 def _validate_entries(

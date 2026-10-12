@@ -20,6 +20,12 @@ C ABI；Metal snapshot／cache 9 項通過（含故障 fallback）。完整 nati
 保持駐留，224／192／128 MiB 在 open 階段 OOM；Qdrant 各上限皆完成，部分格符合
 預先定義的持續 faults／低駐留證據。全部 OOM、非單調曲線及原始失敗保留。
 [診斷與限制](../docs/benchmarks/2026-10-13-memory-cap-probe.md)。
+後續採用 mapped segment reader，移除 recovery 的整份 encoded file 副本；相同
+real-1536 在 224／192 MiB 下完成，128 MiB 仍 OOM。192 MiB 的 all／correlated／
+independent 具持續 faults 與低駐留證據，selective exact 仍為 owned resident vectors。
+新三方暖查詢前後品質皆 36/36、速度皆 16/36，保留退步格。105 項相關 Mojo、
+23 crash、完整 Python 355 項與新增 1 項 compile contract、C ABI 通過；Linux 原型
+另通過 22 項 targeted Mojo。[修正與完整證據](../docs/benchmarks/2026-10-13-mapped-segment-read.md)。
 完整持續 non-resident／memory limit 矩陣與未達標效能格仍待完成。
 
 **2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance

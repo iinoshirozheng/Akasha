@@ -6,13 +6,14 @@
 
 ## 閱讀順序
 
-1. [本次修正、驗證與 mixed 原始結果](docs/research/2026-10-12-maintenance-shared-state.md)
-2. [本次 profiling、暖查詢與未採用原型](docs/benchmarks/2026-10-12-mapped-probes.md)
-3. [外部並行客戶端矩陣](docs/benchmarks/2026-10-13-concurrent-clients.md)
-4. [Linux runtime／Metal device 驗證](docs/research/2026-10-13-linux-gpu-validation.md)
-5. [前次交接狀態、測試證據與重現指令](docs/handoff/2026-10-02-status-and-tests.md)
-6. [前次 Git 交付紀錄](docs/handoff/2026-10-02-git-delivery.md)
-7. [唯一工作項目 checklist](tasks/todo.md) 與 [驗收計畫](tasks/plan.md)
+1. [最新 mapped segment 恢復修正與完整量測](docs/benchmarks/2026-10-13-mapped-segment-read.md)
+2. [本次修正、驗證與 mixed 原始結果](docs/research/2026-10-12-maintenance-shared-state.md)
+3. [本次 profiling、暖查詢與未採用原型](docs/benchmarks/2026-10-12-mapped-probes.md)
+4. [外部並行客戶端矩陣](docs/benchmarks/2026-10-13-concurrent-clients.md)
+5. [Linux runtime／Metal device 驗證](docs/research/2026-10-13-linux-gpu-validation.md)
+6. [前次交接狀態、測試證據與重現指令](docs/handoff/2026-10-02-status-and-tests.md)
+7. [前次 Git 交付紀錄](docs/handoff/2026-10-02-git-delivery.md)
+8. [唯一工作項目 checklist](tasks/todo.md) 與 [驗收計畫](tasks/plan.md)
 
 ## 現況
 
@@ -34,9 +35,13 @@ CI 仍未驗證。Metal snapshot／cache 9 項通過，含實機路徑與故障 
 4 clients 14/36 達速度門檻，72 格配對品質皆通過。此為獨立服務邊界，不能與
 binding-only 矩陣合併；完整結果仍為 FAILED。相關 19 項 Python 測試通過。
 
-[首輪受控記憶體診斷](docs/benchmarks/2026-10-13-memory-cap-probe.md)：real-1536 在
-256 MiB 下 Akasha 完成但保持駐留；224／192／128 MiB 在 open 階段 OOM。
-Qdrant 各上限皆完成，部分查詢具持續非駐留證據；單次模擬 Linux 診斷不代表全矩陣。
+[首輪受控記憶體診斷](docs/benchmarks/2026-10-13-memory-cap-probe.md) 的 open OOM
+促成 [mapped segment 讀取修正](docs/benchmarks/2026-10-13-mapped-segment-read.md)：
+移除整份 encoded segment 副本，real-1536 現在可於 224／192 MiB 下完成恢復與查詢；
+128 MiB 仍 OOM。192 MiB 的三個 ANN 模式具持續非駐留證據，selective exact 不具此證據。
+完整暖查詢前後品質皆 36/36、速度皆 16/36；包含退步格，不宣稱查詢速度改善。
+相關驗證為 105 Mojo、23 crash、完整 Python 355 項加 1 項新編譯檢查，以及 C ABI；
+Linux 原型另有 22 targeted Mojo 通過。這些診斷仍不代表全效能矩陣通過。
 
 未完成：M5/M6 全效能矩陣、持續 non-resident／memory-limit 對照，以及尚未執行的
 環境／整合 gate。Qdrant 門檻已定案：相同 recall 下，

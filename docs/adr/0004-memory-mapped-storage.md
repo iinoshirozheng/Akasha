@@ -103,6 +103,23 @@ and file bounds. Slice validation uses `length <= file_length - offset`, after
 first checking `offset <= file_length`, so `offset + length` cannot overflow.
 Zero-length slices at end-of-file are valid.
 
+Checked scalar loads return values rather than mapping pointers. Bulk
+`copy_scalars` validates the count with division before multiplying or
+allocating, then copies into an independent owned list. A zero-length copy
+does not dereference the absent base of an empty mapping. These operations
+use native little endian, as required by the supported ABI assertions.
+
+Legacy segment recovery uses an origin-bound `MappedBinaryReader` and the
+same parser as the owned byte API. The reader holds a safe pointer to the
+mapping owner, checks each read through that owner, and returns only scalar
+values or owned lists. Its offset advances only after successful reads.
+The synchronous read validates the full checksum before decoding and closes
+the mapping when it returns; decoded records do not retain mapped pointers.
+This removes the transient encoded-file copy while preserving v1/v2/v3 bytes
+and validation. Committed segment inodes, like HNSW sidecars, must remain
+immutable throughout the read. See the
+[recovery measurements and compatibility tests](../benchmarks/2026-10-13-mapped-segment-read.md).
+
 The wrapper does not silently fall back. An unsupported ABI is a compile-time
 error: an owned loader for such a target must be selected at compile time,
 before instantiating `open_readonly`. The collection's runtime mmap fallback
@@ -154,9 +171,9 @@ close, post-close slice rejection, observable descriptor cleanup after scope
 exit, and explicit-move exactly-once ownership. The descriptor assertions use
 `fcntl(F_GETFD)` and require `EBADF` after cleanup. A native SDK C probe reported
 `sizeof(struct stat) == 144` and `offsetof(st_size) == 96`.
-Two reproducible compile contracts confirm that the raw-parts constructor is
-not callable and that `MappedBytes[origin_of(mapped)]` cannot be returned as an
-untracked-origin value, so its safe owner pointer cannot outlive the
+Three reproducible compile contracts confirm that the raw-parts constructor is
+not callable and that `MappedBytes` and `MappedBinaryReader` cannot be returned
+as untracked-origin values, so their safe owner pointers cannot outlive the
 `MappedFile`. Run them with:
 
 ```bash

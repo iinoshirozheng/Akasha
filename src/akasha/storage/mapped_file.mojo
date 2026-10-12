@@ -2,6 +2,7 @@ from std.ffi import c_int, c_long, c_size_t, external_call
 from akasha.storage.checksum import CRC32_INITIAL, crc32_update
 from std.io.file import O_RDONLY
 from std.memory.alloc import alloc, Layout
+from std.memory import unsafe_memcpy
 from std.stat import S_ISREG
 from std.sys.info import (
     CompilationTarget,
@@ -188,6 +189,29 @@ struct MappedFile(Movable):
             .unsafe_bitcast[Scalar[dtype]]()
             .unsafe_load[width=width, alignment=1]()
         )
+
+    def copy_scalars[
+        dtype: DType
+    ](self, byte_offset: Int, count: Int) raises -> List[Scalar[dtype]]:
+        """Copy a checked native-endian range into independent owned storage."""
+        self._ensure_open()
+        comptime scalar_bytes = size_of[Scalar[dtype]]()
+        if (
+            byte_offset < 0
+            or byte_offset > self._length
+            or count < 0
+            or count > (self._length - byte_offset) // scalar_bytes
+        ):
+            raise Error("mapped scalar tape is out of bounds")
+        if count == 0:
+            return List[Scalar[dtype]]()
+        var values = List[Scalar[dtype]](unsafe_uninit_length=count)
+        unsafe_memcpy(
+            dest=values.unsafe_ptr().unsafe_bitcast[UInt8](),
+            src=self._base.value().unsafe_offset(byte_offset),
+            count=count * scalar_bytes,
+        )
+        return values^
 
     def checked_slice(
         ref self, offset: UInt64, length: UInt64

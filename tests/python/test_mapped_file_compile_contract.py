@@ -64,3 +64,24 @@ def main():
 
     assert result.returncode != 0, "owner-borrowing mapped slice unexpectedly escaped"
     assert "cannot implicitly convert" in result.stderr
+
+
+def test_mapped_reader_cannot_escape_as_untracked_origin(tmp_path: Path) -> None:
+    result = _compile_mojo(
+        tmp_path,
+        "escaped_mapping_reader",
+        """
+from akasha.storage.mapped_file import MappedFile
+from akasha.storage.mapped_reader import MappedBinaryReader
+
+def escaped(path: String) raises -> MappedBinaryReader[ImmUntrackedOrigin]:
+    var mapped = MappedFile.open_readonly(path)
+    return MappedBinaryReader(Pointer(to=mapped).as_imm())
+
+def main():
+    pass
+""",
+    )
+
+    assert result.returncode != 0, "owner-borrowing mapped reader unexpectedly escaped"
+    assert "cannot implicitly convert" in result.stderr
