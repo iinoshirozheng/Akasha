@@ -7,6 +7,7 @@ from akasha.storage.filesystem import (
 )
 from akasha.storage.manifest import load_manifest
 from std.utils import BlockingScopedLock
+from std.time import perf_counter_ns, sleep
 from std.testing import (
     assert_equal,
     assert_false,
@@ -78,6 +79,28 @@ def test_background_worker_compacts_threshold_and_close_joins() raises:
     assert_equal(len(reopened.search_dot([1.0], 10)), 5)
     _assert_captures_manifest_generation(reopened, path)
     reopened.close()
+
+
+def test_waiting_merge_preserves_concurrent_cancellation_and_status() raises:
+    var path = String("/tmp/akasha-maintenance-shared-state")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 1)
+    assert_true(collection.background_maintenance_enabled())
+    with BlockingScopedLock(collection._writer_lock[]):
+        collection._maintenance.request_merge()
+        var deadline = perf_counter_ns() + 5_000_000_000
+        while not collection._maintenance._worker.value().is_running():
+            assert_true(perf_counter_ns() < deadline)
+            sleep(0.001)
+        # Let the callback reach the writer lock, which this thread holds.
+        # Its argument must not snapshot and later restore the shared state.
+        sleep(0.05)
+        collection._maintenance.cancel()
+        collection._maintenance._state[].record_success(False)
+    assert_true(collection.wait_for_maintenance())
+    assert_true(collection._maintenance._state[].cancelled)
+    assert_equal(collection._maintenance._state[].runs(), 2)
+    collection.close()
 
 
 def test_missing_worker_library_uses_synchronous_fallback() raises:

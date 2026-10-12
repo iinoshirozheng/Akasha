@@ -9,7 +9,7 @@ from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.native_worker import NativeWorker
 from akasha.storage.read_generation import ReadGenerationCache, SealedMerge
 from akasha.storage.retired_files import RetiredFileQueue
-from std.memory import ArcPointer
+from std.memory import ArcPointer, Pointer
 from std.time import sleep
 from std.utils import BlockingScopedLock, BlockingSpinLock
 
@@ -119,10 +119,10 @@ struct _MaintenanceState(Movable):
 def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
     var state = context.unsafe_bitcast[_MaintenanceState]()
     try:
-        _merge_sealed_runs(state[])
+        _merge_sealed_runs(state)
         var compacted = False
         if state[].take_compaction_request():
-            compacted = _compact(state[])
+            compacted = _compact(state)
         state[].record_success(compacted)
         return 0
     except error:
@@ -130,64 +130,70 @@ def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
         return 1
 
 
-def _merge_sealed_runs(mut state: _MaintenanceState) raises:
+def _merge_sealed_runs[origin: MutOrigin](
+    state: Pointer[_MaintenanceState, origin],
+) raises:
     """Merge the sealed-run prefix outside the writer lock, then publish it.
 
     A merge captured before the publisher reset is stale; publish drops it.
+    Pass the shared pointer across lock waits. Borrowing the whole state
+    can restore stale fields, including the status lock, on return.
     """
     var merge: Optional[SealedMerge]
-    with BlockingScopedLock(state.writer_lock[]):
-        if state.cancelled or not state.read_generations[].merge_due():
+    with BlockingScopedLock(state[].writer_lock[]):
+        if state[].cancelled or not state[].read_generations[].merge_due():
             return
-        merge = Optional(state.read_generations[].capture_merge())
+        merge = Optional(state[].read_generations[].capture_merge())
     merge.value().build()
-    with BlockingScopedLock(state.writer_lock[]):
-        if not state.cancelled:
-            _ = state.read_generations[].publish_merge(merge.take())
+    with BlockingScopedLock(state[].writer_lock[]):
+        if not state[].cancelled:
+            _ = state[].read_generations[].publish_merge(merge.take())
 
 
-def _compact(mut state: _MaintenanceState) raises -> Bool:
+def _compact[origin: MutOrigin](
+    state: Pointer[_MaintenanceState, origin],
+) raises -> Bool:
     """Run the foreground job's steps; the build holds no writer lock.
 
     Spending the retry budget is counted, not a failure: a failure closes
     every operation of the owner, while the next request simply retries.
     A cancelled job discards its output and is not a failure either.
     """
-    with BlockingScopedLock(state.compaction_lock[]):
+    with BlockingScopedLock(state[].compaction_lock[]):
         for _ in range(COMPACTION_ATTEMPTS):
             var inputs: Optional[CompactionInputs]
-            with BlockingScopedLock(state.writer_lock[]):
-                if state.cancelled:
+            with BlockingScopedLock(state[].writer_lock[]):
+                if state[].cancelled:
                     return False
                 inputs = begin_compaction(
-                    state.path, state.dimension, state.pins
+                    state[].path, state[].dimension, state[].pins
                 )
                 if inputs:
-                    state.count_attempt()
+                    state[].count_attempt()
             if not inputs:
                 return False
-            if state.compaction_delay_for_test > 0:
-                sleep(state.compaction_delay_for_test)
+            if state[].compaction_delay_for_test > 0:
+                sleep(state[].compaction_delay_for_test)
             var output = build_compaction(
-                state.path, state.dimension, inputs.value(), state.pins
+                state[].path, state[].dimension, inputs.value(), state[].pins
             )
-            with BlockingScopedLock(state.writer_lock[]):
-                var cancelled = state.cancelled
+            with BlockingScopedLock(state[].writer_lock[]):
+                var cancelled = state[].cancelled
                 if finish_compaction(
-                    state.path,
-                    state.dimension,
+                    state[].path,
+                    state[].dimension,
                     inputs.value(),
                     output,
                     cancelled,
-                    state.pins,
-                    state.retired,
-                    state.read_generations,
+                    state[].pins,
+                    state[].retired,
+                    state[].read_generations,
                 ):
                     return True
                 if cancelled:
                     return False
-                state.count_conflict()
-        state.count_exhausted()
+                state[].count_conflict()
+        state[].count_exhausted()
         return False
 
 
