@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 reader 實驗（2026-10-13）：** 三個隔離版本皆未提升正式引擎。
+checked／inline 各通過 74 Mojo，bounded 通過 23 Mojo；checked／bounded 各通過
+完整 Python 359。三批暖查詢前後品質皆 36/36，速度分別 21→21、22→20、25→23
+（每批 36 格），pass→fail 分別 1／3／3。bounded 高維全量 exact QPS 仍低
+3.1–6.2%，保留為 mapped owner 的隔離實作基底；尚無容量改善。
+Mojo 允許清空被借用 List，已加 live bounds regression；所有失敗與退步均保留。
+[來源、組語、驗證與逐格結果](../docs/research/2026-10-13-numeric-read-view.md)。
+
 **目前實作方向（2026-10-13）：** immutable numeric authority 直接映射既有檔案，
 內部讀取不建立 List，明確公開 getter 保留一次性的 owned List 與 non-raising 契約。
 隔離 F32 probe 四項通過，另通過唯讀修改的預期編譯拒絕；尚未接入正式引擎，

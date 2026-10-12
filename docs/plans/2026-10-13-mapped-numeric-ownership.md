@@ -28,6 +28,22 @@ readonly negative compile. Its `_MappedRowState`, `_MappedRow.load`, `_MappedRow
 and explicit-capture parallel test are the starting point; do not copy its test delay
 or absence of file lease into production. This proof does not validate the entire design.
 
+## Execution checkpoint — 2026-10-13
+
+Task 1 has three complete isolated reader candidates; production adoption is pending.
+[Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
+are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up
+passes 23 directly relevant Mojo and full 359 Python cases. The bounded candidate is
+the next isolated implementation base, but has three pass→fail warm cells and a
+3.1–6.2% high-dimensional full-exact QPS decrease; no storage/capacity benefit exists yet.
+Do not promote it merely because its behavior tests pass.
+
+Mojo 1.0 permits clearing an owned List while the reader is live. Keep the new live
+bounds check and the independent operation-owner invariant. Explicit mapping close is
+also checked. The next owner layer must establish immutable source lifetime before
+moving any range/state validation out of per-chunk access. Do not discard these checks
+based only on origin annotations, and do not repeat the rejected warm trials unchanged.
+
 ## Alternatives and decision
 
 | Approach | Result |
