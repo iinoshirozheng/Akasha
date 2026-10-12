@@ -6,14 +6,26 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新進展（2026-10-12）：** resumed profiling 發現 baseline mixed 的 maintenance
+**最新進展（2026-10-13）：** 外部客戶端使用相同 HTTP shim／單一 engine handle，
+1 client 控制組速度 21/36、4 clients 14/36，72 格配對品質全通過，整體仍 FAILED。
+9,648 exact checks／73,728 timed response checks 全通過，相關 Python 19 項通過。
+此服務邊界不能與 binding-only 矩陣合併；所有慢樣本、工具初始失敗均保留。
+[完整並行矩陣](../docs/benchmarks/2026-10-13-concurrent-clients.md)。
+Linux x86-64 的 Docker 模擬 runtime 通過 45 個不同 Mojo、350 個不同 Python 與
+C ABI；Metal snapshot／cache 9 項通過（含故障 fallback）。完整 native Linux CI
+與未觸及 GPU suites 未列為通過。[環境驗證](../docs/research/2026-10-13-linux-gpu-validation.md)。
+八組 HNSW accumulator 原型通過 33 Mojo，但公開長診斷未見穩定收益，未採用。
+[全部試次](../docs/benchmarks/2026-10-13-hnsw-eight-groups.md)。
+持續 non-resident／memory limit 與未達標效能格仍待完成。
+
+**2026-10-12 進展：** resumed profiling 發現 baseline mixed 的 maintenance
 shared-state 覆寫與 deadlock，已由 `be3be53` 修正；44 項相關 Mojo、完整 Python 的
 351 項與補跑的 1 項 Qdrant adapter 通過。新的 resident mixed 品質 36/36、速度
 17/36，仍為 FAILED；新暖查詢 baseline 品質 36/36、速度 19/36。
 這些新試次不能與 10/02 結果直接當作前後效能差值。兩個 mapped-vector 原型未採用。
 先前受 sandbox 阻擋的本機 distributed suite 已在重建 baseline 通過 10 項；
-Linux runtime／GPU device、持續 non-resident／memory limit／concurrent-client
-對照仍待完成。[修正與 mixed 證據](../docs/research/2026-10-12-maintenance-shared-state.md)／
+當時未完成的環境／並行驗證已依上方最新結果更新；持續 non-resident／memory limit
+仍待完成。[修正與 mixed 證據](../docs/research/2026-10-12-maintenance-shared-state.md)／
 [profiling、暖查詢與未採用原型](../docs/benchmarks/2026-10-12-mapped-probes.md)。
 
 **前次狀態（2026-10-02）：** named／typed point 的遷移、原子提交、查詢、Python／Arrow、
