@@ -30,6 +30,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [2026-10-14 legacy live ownership follow-up](../research/2026-10-14-mapped-live-compaction.md)
+now rebases flush/compaction authority, preserves newer writes and releases retired
+owners outside the writer lock. Current-source validation passes 151 selected Mojo,
+23 crash, 359 Python and C ABI. Its own strict mixed batch falls 21/36→12/36
+with eleven pass→fail cells; warm falls 23/36→17/36 with six. Quality and all
+audited results remain identical. It is frozen and unadopted. Next isolate the
+flush read-cache reset: preserve existing immutable indexes while replacing
+changed numeric owners, including sealed-head and snapshot lifetime tests.
+Typed live compaction and all new capacity gates remain unfinished.
+
 The complete isolated owner/consumer candidate is now implemented and frozen in the
 [mapped numeric owner report](../research/2026-10-13-mapped-numeric-owner.md). Final
 359 Python, 23 crash, C ABI and relevant actual-device/storage/consumer tests pass.

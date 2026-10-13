@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 mapped descriptor（2026-10-13，未採用）：** 100 Mojo、359 Python、五項
+**最新 legacy live ownership（2026-10-14，未採用）：** 隔離版補齊 legacy flush／
+compaction 的 mapped owner 替換與鎖外釋放；151 Mojo、23 crash、359 Python、
+C ABI 通過。同批 mixed 速度 **21/36→12/36**（11 格 pass→fail、2 格 fail→pass），
+暖查詢 **23/36→17/36**（6 格 pass→fail），品質皆 36/36、IDs／bits／stats 相同。
+write + flush 仍 3/9。正式引擎不變。下一步隔離驗證 flush 保留既有 read indexes、
+只替換 owner，避免每次重建完整 base；typed live compaction、容量與既有暖退步仍待完成。
+[實作、失敗與完整封存](../docs/research/2026-10-14-mapped-live-compaction.md)。
+
+**此前 mapped descriptor（2026-10-13，未採用）：** 100 Mojo、359 Python、五項
 negative compile 通過；同批暖速度 **22/36→17/36**，六格 pass→fail、一格
 fail→pass，品質 36/36、IDs／bits／stats 相同。8,192 列同程序控制也未證明布局改善；
 正式來源與 binary 不變。停止此布局分支，從 kernel-inline 隔離基底補齊 legacy
