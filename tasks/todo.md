@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 flush read runs（2026-10-14，未採用）：** flush 保留未變動的 metadata／sparse
+**最新 compaction 分段診斷（2026-10-14）：** 三組固定 mixed 各 11 次 compaction，
+writer lock 內量測區間中位數 10.262–17.733 ms，其中輸出映射／CRC／解碼為
+6.087–13.539 ms。每組僅初始 Arrow export 與最終重開 exact 建立兩次 read base，
+推翻「mixed 每次 compaction 後重建 base」的主要成本假設。864 組配對查詢
+IDs／bits／stats／execution 一致。這是插樁診斷，不是速度驗收；下一步將已驗證的
+輸出 owner 準備移至鎖外，保留版本／提交檢查與錯誤清理。
+[分段數字、限制及完整 traces](../docs/research/2026-10-14-mapped-compaction-phases.md)。
+
+**此前 flush read runs（2026-10-14，未採用）：** flush 保留未變動的 metadata／sparse
 索引，三個回歸案例確認 owner 替換、舊 snapshot 與失敗重試；103 Mojo、359 Python、
 C ABI 通過。同批 mixed **25/36→12/36**（15 格 pass→fail、2 格 fail→pass），
 暖查詢 **24/36→21/36**（3 格 pass→fail），兩組品質皆 36/36、IDs／bits／stats 相同。

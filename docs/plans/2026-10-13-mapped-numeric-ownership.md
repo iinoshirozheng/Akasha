@@ -30,6 +30,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+[Instrumented mixed phase localization](../research/2026-10-14-mapped-compaction-phases.md)
+now identifies persisted output mapping/CRC/decode under writer exclusion as
+6.087–13.539 ms of a 10.262–17.733 ms median publication interval. All 864
+paired query audits match. There are only two base builds per worker, at initial
+Arrow export and final reopened exact validation, so repeated snapshot-base
+rebuilds do not explain this mixed workload. Next move checked output preparation
+to the unlocked build phase, retaining source owners and all failure boundaries.
+The instrumented binary is not a performance gate or adopted implementation.
+
 The [flush read-run follow-up](../research/2026-10-14-mapped-flush-runs.md) removes
 ordinary flush base rebuilds and preserves immutable indexes, with three new
 regressions and 103 selected Mojo, 359 Python and C ABI passing. Its own mixed
