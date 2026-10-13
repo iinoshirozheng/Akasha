@@ -30,6 +30,14 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [flush read-run follow-up](../research/2026-10-14-mapped-flush-runs.md) removes
+ordinary flush base rebuilds and preserves immutable indexes, with three new
+regressions and 103 selected Mojo, 359 Python and C ABI passing. Its own mixed
+gate is 25/36→12/36 (fifteen pass→fail), warm 24/36→21/36 (three pass→fail).
+Quality and audited results match. It remains isolated. Next instrument the
+remaining compaction decode/owner publication and post-compaction base rebuild
+before changing their lock boundary; no typed/capacity result is inherited.
+
 The [2026-10-14 legacy live ownership follow-up](../research/2026-10-14-mapped-live-compaction.md)
 now rebases flush/compaction authority, preserves newer writes and releases retired
 owners outside the writer lock. Current-source validation passes 151 selected Mojo,

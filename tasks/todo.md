@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 legacy live ownership（2026-10-14，未採用）：** 隔離版補齊 legacy flush／
+**最新 flush read runs（2026-10-14，未採用）：** flush 保留未變動的 metadata／sparse
+索引，三個回歸案例確認 owner 替換、舊 snapshot 與失敗重試；103 Mojo、359 Python、
+C ABI 通過。同批 mixed **25/36→12/36**（15 格 pass→fail、2 格 fail→pass），
+暖查詢 **24/36→21/36**（3 格 pass→fail），兩組品質皆 36/36、IDs／bits／stats 相同。
+消除逐次 flush 的完整 base 重建仍不足。下一步量測 compaction 各階段及其後讀取
+重建成本，正式引擎不變；typed／容量及既有暖退步仍待完成。
+[行為、慢樣本與完整封存](../docs/research/2026-10-14-mapped-flush-runs.md)。
+
+**此前 legacy live ownership（2026-10-14，未採用）：** 隔離版補齊 legacy flush／
 compaction 的 mapped owner 替換與鎖外釋放；151 Mojo、23 crash、359 Python、
 C ABI 通過。同批 mixed 速度 **21/36→12/36**（11 格 pass→fail、2 格 fail→pass），
 暖查詢 **23/36→17/36**（6 格 pass→fail），品質皆 36/36、IDs／bits／stats 相同。
