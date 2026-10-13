@@ -40,6 +40,16 @@ match every counted run and the built binaries. Earlier compiler failures,
 stale-source runs and the flush-only regression are preserved but not counted.
 This is not a full CPU, Linux or capacity certification.
 
+A post-run wrapper audit found that Python's child compiler redirected root
+`src` arguments to kernel-inline, although direct Mojo runs and builds used
+the explicit live-compaction path and binding tests used its binary. The four
+Python suites that invoke the compiler were therefore rerun with the correct
+source redirect: **13/13 pass**, 14 effective compiler commands recorded.
+They replace those tests' earlier evidence and do not increase the 359 count.
+[Correction logs and wrapper](2026-10-14-mapped-live-compaction-child-checks.json.gz),
+SHA-256 `5dd7a3ea2a4c3cf9c0c38f3aa12ca8a27578d77e08afe857bea31d2a31c026ce`,
+are separately frozen so the original archive remains intact.
+
 Candidate directory: `.build/m5-resume/mapped-live-compaction`.
 Python binary SHA-256:
 `f87a62ddfab701d85838aea963a45ee3e758daad9c0f9cb90b0e4e498b724cb9`.
