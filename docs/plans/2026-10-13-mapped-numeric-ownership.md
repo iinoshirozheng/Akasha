@@ -77,6 +77,13 @@ or capacity gate. The next isolated kernel-inline follow-up bounds the complete 
 SIMD prefix, keeps a checked first-failure chunk before finite reduction, and retains
 checked scalar tails. It must preserve stale-source/closed-map/paired error order.
 
+The [bounded SIMD-prefix candidate](../research/2026-10-13-mapped-kernel-prefix.md)
+passes 65 selected Mojo, 359 Python and five negative compile checks while preserving
+first-fault ordering. Its warm batch is 19/36→19/36, but one pass→fail remains and
+cannot be offset. It is not adopted. Next scale the same-process alternating
+reader/entry diagnostic to 8,192 rows on the frozen kernel-inline source; this is
+cost localization, not another acceptance gate.
+
 Task 1 has three complete isolated reader candidates; production adoption is pending.
 [Behavior, compiler limitations and all fixed warm comparisons](../research/2026-10-13-numeric-read-view.md)
 are frozen. Checked and inline variants each pass 74 Mojo cases; the bounded follow-up

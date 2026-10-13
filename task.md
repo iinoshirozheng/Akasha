@@ -6,7 +6,8 @@
 
 ## 閱讀順序
 
-1. [Mapped exact 原生取樣](docs/research/2026-10-13-mapped-native-sample.md)、
+1. [Mapped SIMD prefix](docs/research/2026-10-13-mapped-kernel-prefix.md)、
+   [Mapped exact 原生取樣](docs/research/2026-10-13-mapped-native-sample.md)、
    [Query-level metric／width 分派](docs/research/2026-10-13-mapped-query-dispatch.md)、
    [Exact 欄位位置重用](docs/research/2026-10-13-mapped-exact-field-lookup.md)、
    [Kernel reader factory 內聯](docs/research/2026-10-13-mapped-kernel-inline.md)、

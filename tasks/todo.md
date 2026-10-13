@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 SIMD prefix（2026-10-13，未採用）：** 65 Mojo、359 Python、五項 negative
+compile 通過，保留 shortened／closed source 與 finite／tail 的原始錯誤順序。同批
+暖速度 **19/36→19/36**，仍有一格 pass→fail，不能用一格 fail→pass 抵銷；品質
+36/36、IDs／bits／stats 相同。下一步將同程序交替 reader／entry 微實驗擴至
+8,192 列，釐清資料存取成本；仍不是驗收。正式引擎及容量／mixed gate 狀態不變。
+[原始失敗格、實作與封存](../docs/research/2026-10-13-mapped-kernel-prefix.md)。
+
 **最新 native 取樣（2026-10-13）：** production 與 kernel-inline 各完成一個 serial
 10 秒 sample；各 67 個查詢的前後 IDs／F32 bits／stats 全部一致。合併的熱門 PCs
 位於 SIMD 計分迴圈，附近仍有逐 chunk 範圍比較與旗標計算。這是成本定位線索，
