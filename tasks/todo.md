@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 mapped descriptor（2026-10-13，未採用）：** 100 Mojo、359 Python、五項
+negative compile 通過；同批暖速度 **22/36→17/36**，六格 pass→fail、一格
+fail→pass，品質 36/36、IDs／bits／stats 相同。8,192 列同程序控制也未證明布局改善；
+正式來源與 binary 不變。停止此布局分支，從 kernel-inline 隔離基底補齊 legacy
+flush／compaction 的 mapped authority，再驗證 mixed／容量；既有暖查詢退步仍須解決。
+[完整控制、逐格退步與封存](../docs/research/2026-10-13-mapped-hot-descriptor.md)。
+
 **最新 SIMD prefix（2026-10-13，未採用）：** 65 Mojo、359 Python、五項 negative
 compile 通過，保留 shortened／closed source 與 finite／tail 的原始錯誤順序。同批
 暖速度 **19/36→19/36**，仍有一格 pass→fail，不能用一格 fail→pass 抵銷；品質
