@@ -6,7 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 compaction 分段診斷（2026-10-14）：** 三組固定 mixed 各 11 次 compaction，
+**最新鎖外輸出準備（2026-10-14，未採用）：** 將 mapped output 驗證／解碼移到 writer
+lock 外，保留提交身分、新寫入與清理邊界；64 Mojo、23 crash、359 Python、C ABI
+通過。同批 mixed **24/36→18/36**（7 格 pass→fail、1 格 fail→pass），暖查詢
+**23/36→17/36**（6 格 pass→fail），品質皆 36/36、IDs／bits／stats 相同。
+正式引擎不變。下一步移除 dense owner 替換的整列重複 clone；必須保留 sparse-only
+寫入，其 collection sequence 會增加而 dense row sequence 不變。
+[實作、限制與完整封存](../docs/research/2026-10-14-mapped-compaction-prepare.md)。
+
+**此前 compaction 分段診斷（2026-10-14）：** 三組固定 mixed 各 11 次 compaction，
 writer lock 內量測區間中位數 10.262–17.733 ms，其中輸出映射／CRC／解碼為
 6.087–13.539 ms。每組僅初始 Arrow export 與最終重開 exact 建立兩次 read base，
 推翻「mixed 每次 compaction 後重建 base」的主要成本假設。864 組配對查詢

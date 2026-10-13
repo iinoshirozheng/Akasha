@@ -30,6 +30,14 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [unlocked output preparation candidate](../research/2026-10-14-mapped-compaction-prepare.md)
+now passes 64 selected Mojo, 23 crash, 359 Python and C ABI. Its own mixed
+gate remains 24/36→18/36 (seven pass→fail), warm 23/36→17/36 (six pass→fail),
+with identical quality/results. It is not adopted. Next eliminate repeated
+whole-row cloning for dense-owner exchange, retaining old/new numeric fields
+until outside writer and preserving newer sparse-only writes. Such writes do
+not advance legacy dense row sequence; a whole-table sequence catch-up is unsafe.
+
 [Instrumented mixed phase localization](../research/2026-10-14-mapped-compaction-phases.md)
 now identifies persisted output mapping/CRC/decode under writer exclusion as
 6.087–13.539 ms of a 10.262–17.733 ms median publication interval. All 864
