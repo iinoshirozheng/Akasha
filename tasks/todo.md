@@ -6,7 +6,16 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新鎖外輸出準備（2026-10-14，未採用）：** 將 mapped output 驗證／解碼移到 writer
+**最新 dense field owner 發佈（2026-10-14，未採用）：** 移除 compaction staging／
+exchange 的整列 clone，只替換 dense field 並將舊 owner 保留至鎖外；新增控制確認
+sparse-only 新寫入、payload／版本／slot、舊 snapshot 與檔案回收不變。79 Mojo、
+23 crash、359 Python、C ABI 通過。同批 mixed **29/36→26/36**（4 格 pass→fail、
+1 格 fail→pass），暖查詢 **20/36→14/36**（6 格 pass→fail），品質皆 36/36，
+IDs／bits／stats 一致。正式引擎不變；不能跨批用通過總數宣稱改善。
+Legacy 分支已封存，typed live authority、暖 reader 退步及容量／nonresident 門檻仍待完成。
+[完整實作、逐格失敗與封存](../docs/research/2026-10-14-mapped-compaction-fields.md)。
+
+**此前鎖外輸出準備（2026-10-14，未採用）：** 將 mapped output 驗證／解碼移到 writer
 lock 外，保留提交身分、新寫入與清理邊界；64 Mojo、23 crash、359 Python、C ABI
 通過。同批 mixed **24/36→18/36**（7 格 pass→fail、1 格 fail→pass），暖查詢
 **23/36→17/36**（6 格 pass→fail），品質皆 36/36、IDs／bits／stats 相同。

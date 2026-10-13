@@ -30,6 +30,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [direct dense-field publication candidate](../research/2026-10-14-mapped-compaction-fields.md)
+eliminates whole-row compaction clones while retaining old numeric owners until
+outside writer. The sparse-only update/lifetime control passes on parent and
+candidate; current validation is 79 selected Mojo, 23 crash, 359 Python and C ABI.
+Its own mixed gate is 29/36→26/36 (four pass→fail), warm 20/36→14/36 (six
+pass→fail), with identical quality/results. It is frozen and unadopted. Continue
+typed live authority from this isolated base before new capacity certification;
+warm mapped-read regressions remain a separate unresolved gate.
+
 The [unlocked output preparation candidate](../research/2026-10-14-mapped-compaction-prepare.md)
 now passes 64 selected Mojo, 23 crash, 359 Python and C ABI. Its own mixed
 gate remains 24/36→18/36 (seven pass→fail), warm 23/36→17/36 (six pass→fail),
