@@ -31,6 +31,13 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+Four [real filtered ANN native captures](../research/2026-10-14-filtered-ann-native-sample.md)
+complete with all67 pre/post and cross-version query audits equal. Mapped four-row
+distance accounts for33–35% of main-thread top samples, with four range guards
+inside the emitted SIMD loop. A separate production-based grouped-load candidate
+is being validated; mapping lifetime and all bounds must remain checked. This
+sampling does not close any speed or capacity gate.
+
 The [shared result-key experiment](../research/2026-10-14-shared-result-keys.md)
 passes 369 Python tests and 30 actual-binding comparison cases. Its complete
 54-worker batch has warm speed22→22/36 and mixed25→24/36, retaining both

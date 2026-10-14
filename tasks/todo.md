@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 filtered ANN 取樣（2026-10-14）：** 正式／mapped 修正版各取樣 correlated
+與 independent，四個 serial workers 全成功；67 筆查詢前後及跨版 IDs／bits／stats
+一致。mapped 四候選計分佔主執行緒樣本 33–35%，組語每 chunk 有四組 range guards。
+正在隔離驗證合併四個 copied loads 的完整邊界檢查，不放寬 owner／bounds 契約；
+取樣不是速度門檻。[完整 traces 與組語](../docs/research/2026-10-14-filtered-ann-native-sample.md)。
+
 **最新結果字典實驗（2026-10-14，未採用）：** 每批重用 `id`／`score` keys，
 微型十列組裝中位數 2.45→0.72 微秒；369 Python 與 30 項實際 binding 對照通過。
 完整 54 workers 全完成，品質皆通過；暖速度 22→22/36、mixed 25→24/36，兩格
