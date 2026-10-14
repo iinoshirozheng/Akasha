@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新四 chunk 檢查實驗（2026-10-14，未採用）：** 兩版各通過 70 Mojo／369 Python；
+明確共同 offset 版將 hot loop 61→54 指令，54 workers 全完成且結果一致。
+暖速度 21→21/36、mixed 19→22/36，仍有五格 pass→fail；不採用、正式版不變。
+接續分開觀察 graph 計分後的 rejection 與 delta 計分前的 rejection，不能拿合併
+counter 直接推論浪費的距離比例。[兩版來源、驗證及完整失敗](../docs/research/2026-10-14-four-chunk-offset.md)。
+
 **最新 filtered ANN 取樣（2026-10-14）：** 正式／mapped 修正版各取樣 correlated
 與 independent，四個 serial workers 全成功；67 筆查詢前後及跨版 IDs／bits／stats
 一致。mapped 四候選計分佔主執行緒樣本 33–35%，組語每 chunk 有四組 range guards。

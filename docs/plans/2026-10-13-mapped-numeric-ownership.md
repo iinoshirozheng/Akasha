@@ -31,6 +31,14 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [grouped mapped chunk experiment](../research/2026-10-14-four-chunk-offset.md)
+retains two revisions, each70 Mojo/369 Python passing. Explicit common offset
+reduces the emitted loop61→54 instructions, but its54-worker matrix remains
+warm21→21/36 and mixed19→22/36 with five pass→fail cells. Do not adopt.
+Next isolate source counters: graph bridges are scored before admission while
+delta scans filter before scoring, so merged rejection counts cannot quantify
+wasted graph distance work. Production stays96e05e2c.
+
 Four [real filtered ANN native captures](../research/2026-10-14-filtered-ann-native-sample.md)
 complete with all67 pre/post and cross-version query audits equal. Mapped four-row
 distance accounts for33–35% of main-thread top samples, with four range guards
