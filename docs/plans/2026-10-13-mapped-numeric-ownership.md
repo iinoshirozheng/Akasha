@@ -31,6 +31,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [mapped adjacency metadata experiment](../research/2026-10-14-mapped-neighbor-metadata.md)
+is complete and unadopted. One validated node/count base replaces repeated
+lookups within `neighbor_range`; all mapping and edge guards remain. It passes
+88 Mojo/369 Python and all 54 workers preserve IDs/bits/stats/execution. Warm
+speed is 29→27/36, mixed 19→23/36, write+flush 3/9 for both, with four pass→fail
+cells retained. No Linux/capacity/C/crash/GPU acceptance is claimed. October 2
+already tested broad mapped accessor/scalar-reader inlining; do not repeat it
+without new evidence. Next inspect write/flush phase costs and prior maintenance
+experiments. Production remains unchanged and every M5/M6 gate stays active.
+
 The [block-stamped visited-state experiment](../research/2026-10-14-hnsw-block-visits.md)
 is complete and unadopted. Retained visit payload for 8,192 slots decreases
 32 KiB→2 KiB with the same UInt32 epoch and normal O(1) reset. Five semantic

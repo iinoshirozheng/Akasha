@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 mapped 鄰接實驗（2026-10-14，未採用）：** `neighbor_range` 每次只定位一次
+node 並重用 count base，保留 level／capacity／overflow／owner／bounds 檢查。
+88 Mojo／369 Python 通過，54 warm／mixed workers 全完成且結果一致。暖速度
+29→27/36、mixed 19→23/36，write＋flush 仍 3/9；四格 pass→fail 全保留。
+已核對 10/2 的 accessor inline-only 原型涵蓋 scalar readers，避免重複該實驗。
+正式版不變，接續依現有分階段量測與維護實驗查驗 write／flush 差距；M5/M6 未達標。
+[實作、全部矩陣與封存](../docs/research/2026-10-14-mapped-neighbor-metadata.md)。
+
 **最新 visited-state 實驗（2026-10-14，未採用）：** 每 64 個 slot 共用 UInt32 epoch
 與 UInt64 mask，8,192 slots 的實際 retained payload 由 32 KiB 降到 2 KiB，維持
 O(1) 正常重設與原 wrap 頻率。111 Mojo／369 Python 通過，54 warm／mixed workers
