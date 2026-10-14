@@ -10,8 +10,10 @@ M5/M6 are not accepted.
 
 Only two production-based files change. `BinaryWriter.write_bytes` takes a
 borrowed `Span[UInt8, _]` and extends its existing owned byte List. The installed
-Mojo **1.0.0 (ed45d567)** compiler accepts all original List callers through its
-implicit conversion; no extra overload or compatibility path is needed.
+Mojo **1.0.0 (ed45d567)** compiler accepts explicitly typed List arguments through
+implicit conversion. Direct list literals need an explicit List type; the later
+fixture audit below corrects the initial broader claim. No extra overload or
+compatibility path is needed.
 `encode_payload` passes string/name byte spans and borrows the tagged string
 field directly instead of first copying it. Field order, all validation,
 length prefixes, numeric encodings and the final 16 MiB check remain unchanged.
@@ -95,3 +97,13 @@ Next verify their composition in another isolated tree: it should reduce two
 distinct measured flush costs, but no combined benefit is assumed and all fixed
 query gates still apply. No new Linux, capacity/nonresident, C ABI, full CPU or
 GPU acceptance is claimed. All jobs run serially; production remains unchanged.
+
+A later expanded CRC validation found three previously unrun fixtures passing
+list literals directly to `write_bytes`: WAL streaming, borrowed binary reader
+and mapped binary reader. All three fail to compile against the frozen parent
+because the compiler cannot infer the Span origin from a list literal. Explicit
+`List[UInt8]` fixture variables preserve every byte and assertion; all 17 cases
+then pass against both production and the frozen span-based parent. This updates
+the earlier caller-compatibility claim without changing the original archived
+validation scope. The CRC experiment retains the three parent failures, original
+and corrected fixture sources, and both successful runs.

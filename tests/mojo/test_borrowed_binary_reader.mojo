@@ -40,7 +40,8 @@ def test_borrowed_reader_preserves_scalar_bits_and_subspan_pointer() raises:
     writer.write_i64(Int64.MIN)
     writer.write_u32(0x80000000)
     writer.write_u64(0x7FF8000000001234)
-    writer.write_bytes([UInt8(97), UInt8(98), UInt8(99)])
+    var payload: List[UInt8] = [97, 98, 99]
+    writer.write_bytes(payload)
     var bytes = writer.take_bytes()
     _check_values(bytes)
     assert_equal(bytes[0], UInt8(0xAB))

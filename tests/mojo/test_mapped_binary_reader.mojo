@@ -24,7 +24,8 @@ def test_mapped_reader_preserves_unaligned_scalars_and_owned_float_bits() raises
     ]
     for value in bits:
         writer.write_u32(value)
-    writer.write_bytes([UInt8(97), UInt8(98), UInt8(255)])
+    var payload: List[UInt8] = [97, 98, 255]
+    writer.write_bytes(payload)
     var path = String("/tmp/akasha-mapped-reader-bits.bin")
     write_file_sync(path, writer.take_bytes())
     var mapping = MappedFile.open_readonly(path)

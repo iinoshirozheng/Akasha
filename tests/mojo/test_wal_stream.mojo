@@ -23,7 +23,8 @@ from std.testing import assert_equal, assert_raises, TestSuite
 
 def _mixed_wal() raises -> List[UInt8]:
     var writer = BinaryWriter()
-    writer.write_bytes([UInt8(0x41), 0x4B, 0x57, 0x4C])
+    var magic: List[UInt8] = [0x41, 0x4B, 0x57, 0x4C]
+    writer.write_bytes(magic)
     writer.write_u16(1)
     writer.write_u8(1)
     writer.write_u8(0)
