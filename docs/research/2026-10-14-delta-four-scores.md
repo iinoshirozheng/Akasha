@@ -59,9 +59,12 @@ causal claim or tolerance.
 Mixed gains real-1536 correlated trial 0 but loses real-1536 all trial 2: QPS
 2,002.26 → 1,830.49 versus Qdrant 1,942.71, and p95 662.459 → 735.667 µs versus
 672.084 µs. All three real unfiltered mixed QPS pairs regress **5.8–8.6%**, and
-p95 rises 3.5–11.1%. That mode's low ef routes the initial delta through graph
-search; the four-row scan cannot be credited with its performance. The complete
-raw results retain these regressions.
+p95 rises 3.5–11.1%. A subsequent per-query path audit finds **13 graph and
+59 delta-scan queries per mixed trial**, while all 64 timed warm unfiltered
+queries use graph search. Low ef routes the initial delta through the graph,
+but later mixed maintenance changes the source geometry. The mixed regression
+cannot be attributed solely to the graph branch. The complete raw results retain
+both paths and these regressions.
 
 | Real 1536D warm mode | QPS after/before, trials 0 / 1 / 2 | p95 after/before, trials 0 / 1 / 2 |
 | --- | --- | --- |
