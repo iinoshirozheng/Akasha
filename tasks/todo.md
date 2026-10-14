@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 flush 診斷（2026-10-14）：** 3 workers／96 次 flush，沿用仍適用的正式版
+control，864 筆 IDs／bits／stats／execution 全吻合且 lease／reopen 通過。Derived
+cache group 占 flush 合計約 95–96%；高維 fingerprint 約 9 ms、metadata encode
+約 4.5 ms，delta snapshot prepared-vector 驗證（含逐列複製）約 3.8–5.1 ms。
+接續測試既有 List／Span 的 F32 連續列複製，保留原 validator；這是定位證據，
+無速度驗收，正式版不變。[全部事件及封存](../docs/research/2026-10-14-legacy-flush-phases.md)。
+
 **最新四列剪枝實驗（2026-10-14，未採用）：** 使用 immediate Span 重用四列 F32
 核心，只批次計算溢位剪枝必算的 center/member 距離，維持 bits／順序／計數。
 127 Mojo／369 Python 通過，54 workers 全完成且查詢一致；暖速度 25→23/36、

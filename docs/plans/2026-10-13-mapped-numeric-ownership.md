@@ -31,6 +31,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [flush diagnostic](../research/2026-10-14-legacy-flush-phases.md) completes
+three workers and 96 public flushes, with all 864 exact query pairs matching
+reused production controls. Derived cache groups occupy 95–96% of aggregate
+flush time. High-dimensional fingerprinting is about 9 ms, metadata encoding
+4.5 ms, and prepared-vector validation including row copies 3.8–5.1 ms per
+snapshot. Next test checked contiguous F32 row copying via existing List/Span
+while keeping the validator and serialized bytes. This is localization only;
+no fresh performance, Linux, capacity, C, crash or GPU acceptance is claimed.
+
 The [four-row pruning prototype](../research/2026-10-14-hnsw-four-pruning.md)
 passes 127 Mojo / 369 Python cases and completes 54 native workers with exact
 query results/stats. Immediate Span reuse preserves required center/member
