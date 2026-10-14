@@ -31,6 +31,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [mixed-query boundary investigation](../research/2026-10-14-mixed-query-boundaries.md)
+completes 12 workers and 3,456 exact paired query audits. Native lock events
+locate reproduced tails in compaction capture/publication waits for both variants;
+there is no GC overlap in timed queries. Planned exact retains the approximate
+entry point's writer lock and does not construct a snapshot. Do not waive the
+earlier failed cell or unlock durable publication without a validated predicate.
+Next inspect the shared payload codec's scalar byte encoding, independently
+localized in flush fingerprint/metadata costs. Production remains unchanged.
+
 The [checked F32 row-copy candidate](../research/2026-10-14-hnsw-validation-row-copy.md)
 passes 104 Mojo, 9 crash-state and 369 Python cases. All 54 native workers
 complete with exact query audits; all 18 cache payload pairs are byte-identical.
