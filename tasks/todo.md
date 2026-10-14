@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新容量矩陣（2026-10-14，未採用）：** 同源 Linux build 與 8 項生命週期測試通過。
+60 workers 全數執行，限額組 51/54 完成、3 次後段 OOM；品質 96/108、嚴格速度
+42/108，雙方 sustained pressure 12/108，其中 6 格也通過速度。完整原始失敗保留。
+獨立追蹤將持續配置增長縮小到 Python／Mojo 查詢回傳邊界，接續檢查物件所有權。
+Linux 為 QEMU，正式引擎未變，M5/M6 仍未達標。
+[完整矩陣、診斷與封存](../docs/research/2026-10-14-typed-live-capacity.md)。
+
 **最新 typed live compaction（2026-10-14，未採用）：** PointStore 與 maintenance
 共享 heap-stable PointTable，在 manifest 提交後同步替換 authority／projection 的
 numeric owners，保留較新寫入與舊讀者，並在 writer lock 外釋放舊 owner。補齊首次

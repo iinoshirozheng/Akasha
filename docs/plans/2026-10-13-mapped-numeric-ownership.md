@@ -30,6 +30,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [complete constrained-memory matrix](../research/2026-10-14-typed-live-capacity.md)
+now retains all 60 workers: 51/54 constrained workers complete, three late OOMs;
+quality 96/108, strict speed 42/108, paired sustained pressure 12/108 (six also
+pass speed). All control/failed-worker preflights match. Linux lifecycle tests
+pass on the same source; QEMU results do not certify native Linux performance.
+Separate full-work allocation traces localize retained query allocations to the
+Python/Mojo boundary. Investigate result ownership in a fresh candidate before
+repeating the fixed matrix. Production remains unchanged and M5/M6 unresolved.
+
 The [typed live-compaction candidate](../research/2026-10-14-mapped-typed-compaction.md)
 now shares heap-stable PointTable authority with maintenance and publishes mapped
 numeric owners to the point table and read projection together. It preserves newer
