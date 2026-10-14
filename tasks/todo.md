@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新四列剪枝實驗（2026-10-14，未採用）：** 使用 immediate Span 重用四列 F32
+核心，只批次計算溢位剪枝必算的 center/member 距離，維持 bits／順序／計數。
+127 Mojo／369 Python 通過，54 workers 全完成且查詢一致；暖速度 25→23/36、
+mixed 18→19/36、write＋flush 仍 3/9，四格暖 pass→fail 保留。真實資料寫入 QPS
+三次改善約 1.8–4.5%，不足以支持採用；正式版不變。接續查驗 flush 成本與既有
+overlay cache 契約／實驗，M5/M6 未達標。
+[來源、邊界案例、完整矩陣與封存](../docs/research/2026-10-14-hnsw-four-pruning.md)。
+
 **最新寫入幾何診斷／快取實驗（2026-10-14，未採用）：** 兩輪分段診斷各 6 workers
 定位高維連線的 planning／pruning 約占 75–84%，保留 WAL 141 ms 異常值。逐連線
 ordered-pair 快取通過 115 Mojo／369 Python，但九組寫入 QPS 全下降；54 workers

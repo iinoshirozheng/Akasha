@@ -31,6 +31,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [four-row pruning prototype](../research/2026-10-14-hnsw-four-pruning.md)
+passes 127 Mojo / 369 Python cases and completes 54 native workers with exact
+query results/stats. Immediate Span reuse preserves required center/member
+score bits, pruning order and build counts. Warm speed is 25→23/36, mixed
+18→19/36 and write+flush 3/9 for both; four warm pass→fail cells remain.
+Real writes improve 1.8–4.5% in three pairs, which does not establish acceptance.
+Do not adopt. Next inspect remaining flush costs and existing overlay-cache
+contracts before another pruning variation. No fresh Linux/capacity/C/crash/GPU
+gate is claimed; production and all M5/M6 requirements remain unchanged.
+
 The [write geometry investigation](../research/2026-10-14-legacy-write-geometry.md)
 completes two six-worker diagnostics, locating 75–84% of high-dimensional link
 time in planning/pruning. A per-connection ordered-pair cache passes 115 Mojo /
