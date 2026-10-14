@@ -65,8 +65,11 @@ assigned to those changes.
 
 A per-query audit corrects the previous mixed path interpretation. Real
 unfiltered warm queries all use graph search. In **each mixed trial**, 13 queries
-use graph search and 59 use delta scan, in both versions: maintenance changes
-source geometry. The earlier report now states this explicitly. The following
+use graph search and 59 use delta scan, in both versions. The fixed mixed all
+ef is 32, versus warm ef 16: the **first 59 mixed queries scan**, then block 26
+switches to graph as writes change physical source geometry. Earlier explanatory
+prose had reversed that order; neither run changed its original plan or ef. The
+earlier report now states this explicitly. The following
 post-hoc subsets retain their original samples and are descriptive, not new
 acceptance cells or independent trials.
 

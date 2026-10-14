@@ -61,8 +61,11 @@ Mixed gains real-1536 correlated trial 0 but loses real-1536 all trial 2: QPS
 672.084 µs. All three real unfiltered mixed QPS pairs regress **5.8–8.6%**, and
 p95 rises 3.5–11.1%. A subsequent per-query path audit finds **13 graph and
 59 delta-scan queries per mixed trial**, while all 64 timed warm unfiltered
-queries use graph search. Low ef routes the initial delta through the graph,
-but later mixed maintenance changes the source geometry. The mixed regression
+queries use graph search. The original warm all ef is 16; the original mixed
+plan uses all ef 32. Mixed starts with **59 scan queries**, then switches to
+graph at all-query ordinal 59, block 26, as writes change the physical source
+geometry. Earlier prose incorrectly reversed that order; no workload or ef
+changed in either run. The mixed regression
 cannot be attributed solely to the graph branch. The complete raw results retain
 both paths and these regressions.
 
