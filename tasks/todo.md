@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新結果字典實驗（2026-10-14，未採用）：** 每批重用 `id`／`score` keys，
+微型十列組裝中位數 2.45→0.72 微秒；369 Python 與 30 項實際 binding 對照通過。
+完整 54 workers 全完成，品質皆通過；暖速度 22→22/36、mixed 25→24/36，兩格
+pass→fail 保留，正式版仍為 `96e05e2c…`。接續取樣真實資料 filtered ANN；
+immutable candidate norm 快取已有四個拒絕實驗，不重複該方向。M5/M6 仍未達標。
+[完整實驗與封存](../docs/research/2026-10-14-shared-result-keys.md)。
+
 **最新正式修復（2026-10-14，已整合）：** 單獨將 Python 搜尋結果與批次 list 的
 所有權修正攜回正式引擎，沒有採用 mapped storage。10 個新案例先在正式舊版失敗，
 再於新 Mac／Linux 全通過；完整既有 Python 359 通過，工作區 binary 安裝後 10 案再過。

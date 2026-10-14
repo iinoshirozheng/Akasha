@@ -31,6 +31,14 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [shared result-key experiment](../research/2026-10-14-shared-result-keys.md)
+passes 369 Python tests and 30 actual-binding comparison cases. Its complete
+54-worker batch has warm speed22→22/36 and mixed25→24/36, retaining both
+pass→fail cells. It is frozen and unadopted; production stays96e05e2c. Next sample
+real-1536 filtered ANN on production and the mapped ownership-fixed candidate.
+Do not repeat immutable candidate norm caching: four rejected prototypes already
+exist in the [candidate-summary report](../benchmarks/2026-10-13-candidate-summary-probes.md).
+
 The [production-only result ownership fix](../research/2026-10-14-production-result-ownership.md)
 is now adopted as a correctness fix, without mapped storage. Mac/root binary is
 `96e05e2c…`; ten new lifetime tests pass on Mac/Linux, the existing359 Python tests
