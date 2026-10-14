@@ -6,7 +6,17 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新 dense field owner 發佈（2026-10-14，未採用）：** 移除 compaction staging／
+**最新 typed live compaction（2026-10-14，未採用）：** PointStore 與 maintenance
+共享 heap-stable PointTable，在 manifest 提交後同步替換 authority／projection 的
+numeric owners，保留較新寫入與舊讀者，並在 writer lock 外釋放舊 owner。補齊首次
+typed flush 前的 legacy-prefix 遷移邊界；8 項新案例涵蓋五種 dtype、multivector、
+Arrow、背景維護及失敗／衝突／close。122 Mojo、23 crash、359 Python、C ABI 通過。
+磁碟發布測試已改為驗證 store 與最後欄位 lease 釋放後才回收，原失敗保留。
+正式引擎不變；本版尚無新速度／容量 gate。下一步以 authority／HNSW 分開觀測的
+固定矩陣驗證 same-cap／sustained nonresident；暖查詢退步與 M5/M6 全部門檻仍待完成。
+[實作、驗證與完整封存](../docs/research/2026-10-14-mapped-typed-compaction.md)。
+
+**此前 dense field owner 發佈（2026-10-14，未採用）：** 移除 compaction staging／
 exchange 的整列 clone，只替換 dense field 並將舊 owner 保留至鎖外；新增控制確認
 sparse-only 新寫入、payload／版本／slot、舊 snapshot 與檔案回收不變。79 Mojo、
 23 crash、359 Python、C ABI 通過。同批 mixed **29/36→26/36**（4 格 pass→fail、

@@ -30,6 +30,17 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [typed live-compaction candidate](../research/2026-10-14-mapped-typed-compaction.md)
+now shares heap-stable PointTable authority with maintenance and publishes mapped
+numeric owners to the point table and read projection together. It preserves newer
+writes and handles the legacy-prefix migration boundary before the first typed
+flush. Eight new regressions and current-source validation pass: 122 selected Mojo,
+23 crash, 359 Python and C ABI. The disk-only lease fixture now checks last-file-owner
+release; its original failure is retained. This candidate is frozen and unadopted,
+with no new speed/capacity claim. Next run the fixed constrained-memory matrix with
+authority/HNSW input roles separately observed, then fixed warm/mixed pairings.
+Existing warm regressions and every strict M5/M6 gate remain unresolved.
+
 The [direct dense-field publication candidate](../research/2026-10-14-mapped-compaction-fields.md)
 eliminates whole-row compaction clones while retaining old numeric owners until
 outside writer. The sparse-only update/lifetime control passes on parent and
