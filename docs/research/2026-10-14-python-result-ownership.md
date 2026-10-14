@@ -43,7 +43,8 @@ its applicable Mojo/crash/C evidence is reused rather than rerun. No new GPU gat
 
 Mac Python SHA-256: f500e869935d33082861632d1672e1a12af814a09565239ec507e568eb500b62.
 Linux Python SHA-256: 985c8b992c7caf94043ba79426731ab1674e0f56e0039e5424fde818b7e84ee0.
-Production engine and binaries have not been replaced.
+At this candidate checkpoint production was not replaced. The later
+[standalone production fix](2026-10-14-production-result-ownership.md) is recorded separately.
 
 ## Full-query memory diagnostic
 
@@ -145,6 +146,7 @@ The first green test invocation had reported all passes before its wrapper was
 reaped when a small allocation probe started. Both are repeated serially and
 retained; no accepted timing run overlaps builds/tests/profiling/compression.
 
-Next independently validate the production-only result fix. The full mapped
+The [production-only fix](2026-10-14-production-result-ownership.md) is now independently
+verified and adopted as a correctness repair. The full mapped
 candidate, remaining real-cosine/filtered-delta costs, strict per-cell speed gates
 and native Linux performance requirements remain unresolved. M5/M6 are not done.

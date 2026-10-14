@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新正式修復（2026-10-14，已整合）：** 單獨將 Python 搜尋結果與批次 list 的
+所有權修正攜回正式引擎，沒有採用 mapped storage。10 個新案例先在正式舊版失敗，
+再於新 Mac／Linux 全通過；完整既有 Python 359 通過，工作區 binary 安裝後 10 案再過。
+新正式 Python SHA `96e05e2c…`，C binary 不變。暖查詢 23→25/36、mixed 27→24/36，
+六個 pass→fail 均保留，這是洩漏修復，不是效能驗收。M5/M6 仍未達標。
+[修復、回歸與全部原始證據](../docs/research/2026-10-14-production-result-ownership.md)。
+
 **最新結果所有權修正（2026-10-14，mapped 候選未採用）：** 確認 Mojo 1.0.0 的
 動態 Python append 留住結果列；改以 typed List／Span 轉出。10 個生命週期案例在
 父版全失敗、修正後 Mac／Linux 全通過，完整 Python 359 通過。新容量矩陣 60/60

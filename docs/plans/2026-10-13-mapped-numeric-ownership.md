@@ -12,8 +12,9 @@
 
 ## Status and established requirements
 
-This is the implementation direction, not an adopted storage change. Production engine
-remains `6d01819`; current HEAD also contains diagnostic records. User authorization is
+This is the implementation direction, not an adopted storage change. Production keeps the `6d01819` storage/query engine with the
+[standalone Python result ownership fix](../research/2026-10-14-production-result-ownership.md);
+current HEAD also contains diagnostic records. User authorization is
 continuation of M5/M6; public API/format preservation remains mandatory.
 
 [Open-memory evidence](../benchmarks/2026-10-13-open-memory-phases.md) localizes both
@@ -29,6 +30,14 @@ and explicit-capture parallel test are the starting point; do not copy its test 
 or absence of file lease into production. This proof does not validate the entire design.
 
 ## Execution checkpoint — 2026-10-13
+
+The [production-only result ownership fix](../research/2026-10-14-production-result-ownership.md)
+is now adopted as a correctness fix, without mapped storage. Mac/root binary is
+`96e05e2c…`; ten new lifetime tests pass on Mac/Linux, the existing359 Python tests
+pass, and the root artifact passes the ten tests after atomic installation.
+Warm is23→25/36, mixed27→24/36; all six pass→fail cells remain failures. C is
+unchanged. Use the frozen production-python-results package as the next baseline;
+this adoption does not close a performance or mapped-capacity gate.
 
 The [Python result ownership fix](../research/2026-10-14-python-result-ownership.md)
 uses typed List/Span instead of leaking dynamic Python append calls. Ten new

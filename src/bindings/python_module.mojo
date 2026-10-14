@@ -894,10 +894,10 @@ struct BoundCollection(Movable, Writable):
             )
         else:
             raise Error("unknown dense metric")
-        var output = Python.list()
+        var output = List[PythonObject](capacity=len(results))
         for query_results in results:
             output.append(_results_to_python(query_results))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def search_batch_where(
@@ -953,10 +953,10 @@ struct BoundCollection(Movable, Writable):
             )
         else:
             raise Error("unknown dense metric")
-        var output = Python.list()
+        var output = List[PythonObject](capacity=len(results))
         for query_results in results:
             output.append(_results_to_python(query_results))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def search_approx[
@@ -1605,14 +1605,16 @@ def _results_to_python[
             ids[index] = Int64(results[index].id)
             scores[index] = results[index].score
         return Python.dict(ids=ids_array, scores=scores_array)
-    var output = Python.list()
+    # Build owned rows without PythonObject's dynamic positional call path.
+    # Mojo 1.0.0 retains an extra argument reference for output.append(row).
+    var output = List[PythonObject](capacity=len(results))
     for result in results:
         output.append(
             Python.dict(
                 id=PythonObject(result.id), score=PythonObject(result.score)
             )
         )
-    return output
+    return Python.list(Span(output))
 
 
 def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
@@ -1859,11 +1861,13 @@ def _field_results_to_python[
             ids[index] = Int64(results[index].id)
             scores[index] = results[index].score
         return Python.dict(ids=ids_array, scores=scores_array)
-    var output = Python.list()
+    # Build owned rows without PythonObject's dynamic positional call path.
+    # Mojo 1.0.0 retains an extra argument reference for output.append(row).
+    var output = List[PythonObject](capacity=len(results))
     for result in results:
         output.append(
             Python.dict(
                 id=PythonObject(result.id), score=PythonObject(result.score)
             )
         )
-    return output
+    return Python.list(Span(output))
