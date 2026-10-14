@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 visited-state 實驗（2026-10-14，未採用）：** 每 64 個 slot 共用 UInt32 epoch
+與 UInt64 mask，8,192 slots 的實際 retained payload 由 32 KiB 降到 2 KiB，維持
+O(1) 正常重設與原 wrap 頻率。111 Mojo／369 Python 通過，54 warm／mixed workers
+全完成且 IDs／bits／stats／execution 一致。暖速度 22→21/36、mixed 18→21/36，
+write＋flush 仍 3/9；兩格暖 pass→fail 全保留，正式版不變。接續檢查 mapped
+鄰接 metadata 的重複存取，M5/M6 仍未達標。
+[完整原型、模型對照、配置與矩陣](../docs/research/2026-10-14-hnsw-block-visits.md)。
+
 **最新單次查找實驗（2026-10-14，兩版皆未採用）：** 使用既有 `Dict.get` 移除三處
 重複查找；另版保留原 admission 呼叫邊界，組語確認函式縮短。兩版各通過
 40 Mojo／369 Python，各 54 個 warm／mixed workers 全完成且結果／bits／stats

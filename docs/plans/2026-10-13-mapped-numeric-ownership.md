@@ -31,6 +31,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [block-stamped visited-state experiment](../research/2026-10-14-hnsw-block-visits.md)
+is complete and unadopted. Retained visit payload for 8,192 slots decreases
+32 KiB→2 KiB with the same UInt32 epoch and normal O(1) reset. Five semantic
+cases pass on both representations; the candidate passes 111 Mojo/369 Python.
+All 54 native workers complete with equal IDs/bits/stats/execution. Warm speed
+is 22→21/36, mixed 18→21/36, write+flush 3/9 for both; two warm pass→fail cells
+remain. No capacity, Linux, C, crash or GPU acceptance is claimed. Production
+stays unchanged. Next inspect mapped adjacency metadata access; scalar integer
+reads already use checked copied loads. M5/M6 remain unresolved.
+
 The [single-probe lookup experiments](../research/2026-10-14-hnsw-single-lookup.md)
 are complete and unadopted. Both variants pass 40 Mojo and 369 Python cases and
 each completes 54 warm/mixed workers with identical IDs, bits, stats and
