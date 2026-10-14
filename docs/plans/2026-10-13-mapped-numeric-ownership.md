@@ -31,6 +31,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [source-counter diagnostic](../research/2026-10-14-filtered-source-counts.md)
+preserves all134 fixed real filtered queries/public stats and verifies every
+base+delta counter sum. Base level-0 scores are subsequently rejected at78.07%
+and78.21%; delta already filters75% before scoring. Investigate predicate-aware
+neighborhood expansion separately, preserving the established search_layer
+contract and distinguishing algorithm changes from representation-only audits.
+These bridge scores cannot simply be dropped; no speed benefit or adoption is
+claimed. Mapped authority and all M5/M6 acceptance gates remain unresolved.
+
 The [grouped mapped chunk experiment](../research/2026-10-14-four-chunk-offset.md)
 retains two revisions, each70 Mojo/369 Python passing. Explicit common offset
 reduces the emitted loop61→54 instructions, but its54-worker matrix remains

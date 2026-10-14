@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新分來源診斷（2026-10-14）：** 僅在 stats merge 加兩個輸出，134 筆固定 real
+filtered ANN 的 IDs／bits／recall／public stats 全部吻合；每筆 base+delta counters
+均吻合合計。Base level-0 計分後被 admission 拒絕比例 78.07%／78.21%；delta 已
+在計分前拒絕 75%，不能混算。這些 graph bridge 仍維持連通性，不能直接省略；
+接續驗證 predicate-aware neighborhood expansion，保留既有 search_layer 契約。
+[原始計數、限制與參考](../docs/research/2026-10-14-filtered-source-counts.md)。
+
 **最新四 chunk 檢查實驗（2026-10-14，未採用）：** 兩版各通過 70 Mojo／369 Python；
 明確共同 offset 版將 hot loop 61→54 指令，54 workers 全完成且結果一致。
 暖速度 21→21/36、mixed 19→22/36，仍有五格 pass→fail；不採用、正式版不變。
