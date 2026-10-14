@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 F32 validation row copy（2026-10-14，候選保留、尚未整合）：** checked Span
+複製保留原 validator；104 Mojo、9 crash-state、369 Python 通過。54 workers 全完成，
+結果一致且 18 組 cache payload 逐 byte 相同。高維六組 flush QPS 改善 5.6–19.7%；
+暖速度 22→27/36、mixed 20→21/36、write＋flush 仍 3/9。Mixed uniform-128 selective
+trial 2 pass→fail 保留；接續定位 flush 後首筆查詢的尾延遲，正式版不變，M5/M6 未達標。
+[完整驗證、矩陣與封存](../docs/research/2026-10-14-hnsw-validation-row-copy.md)。
+
 **最新 flush 診斷（2026-10-14）：** 3 workers／96 次 flush，沿用仍適用的正式版
 control，864 筆 IDs／bits／stats／execution 全吻合且 lease／reopen 通過。Derived
 cache group 占 flush 合計約 95–96%；高維 fingerprint 約 9 ms、metadata encode

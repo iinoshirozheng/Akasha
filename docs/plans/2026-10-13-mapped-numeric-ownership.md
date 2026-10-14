@@ -31,6 +31,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [checked F32 row-copy candidate](../research/2026-10-14-hnsw-validation-row-copy.md)
+passes 104 Mojo, 9 crash-state and 369 Python cases. All 54 native workers
+complete with exact query audits; all 18 cache payload pairs are byte-identical.
+Six high-dimensional flush QPS pairs improve 5.6–19.7%. Warm speed is 22→27/36,
+mixed 20→21/36 and write+flush remains 3/9. One mixed uniform-128 selective
+trial changes pass→fail. Retain the isolated candidate while investigating the
+first post-flush query tail; do not integrate or waive that failure. Production
+and all M5/M6 requirements remain unchanged.
+
 The [flush diagnostic](../research/2026-10-14-legacy-flush-phases.md) completes
 three workers and 96 public flushes, with all 864 exact query pairs matching
 reused production controls. Derived cache groups occupy 95–96% of aggregate
