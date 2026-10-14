@@ -44,11 +44,11 @@ synthetic vectors, resident physical pages, fixed context ordering and absence
 of historical delta rows limit generalization. Native phase and uninstrumented
 acceptance evidence remain separate.
 
-The result supports testing the smallest next candidate: apply four-row scoring
-only to filtered F32 delta scans, retaining the original serial loop for
-unfiltered and compact-scalar scans. No cache-size threshold or user-facing
-configuration follows from this probe. The candidate still requires original
-semantic, durability and full native comparison gates before adoption.
+The result supports the subsequent [filtered-only candidate](2026-10-14-delta-filtered-four.md):
+apply four-row scoring only to filtered F32 delta scans, retaining the original
+serial loop for unfiltered and compact-scalar scans. No cache-size threshold or
+user-facing configuration follows from this probe. That candidate passes its
+semantic and durability checks but remains unadopted after native warm failures.
 
 The [archive](2026-10-14-delta-memory-context.json.gz) contains **133 files,
 287,364 bytes**, full frozen sources, runnable harness, raw observations,

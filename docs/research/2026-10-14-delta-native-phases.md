@@ -77,5 +77,7 @@ Archive SHA-256:
 Production engine and Python/C binaries remain unchanged. Existing full CPU,
 Python, crash and C tests are not claimed as new diagnostic results. No Qdrant,
 native Linux, capacity, HTTP or GPU acceptance gate closes; M5/M6 remain
-incomplete. Next test whether the resident synthetic benefit survives a larger
-intervening memory working set before choosing another production candidate.
+incomplete. The subsequent [memory-context probe](2026-10-14-delta-memory-context.md)
+tests whether the resident synthetic benefit survives a larger intervening
+working set; the [filtered-only candidate](2026-10-14-delta-filtered-four.md)
+retains the resulting native acceptance failures.
