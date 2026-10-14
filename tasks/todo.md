@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新結果所有權修正（2026-10-14，mapped 候選未採用）：** 確認 Mojo 1.0.0 的
+動態 Python append 留住結果列；改以 typed List／Span 轉出。10 個生命週期案例在
+父版全失敗、修正後 Mac／Linux 全通過，完整 Python 359 通過。新容量矩陣 60/60
+workers 完成，零 OOM／超時；品質 108/108、速度 65/108、雙方 pressure 31/108，
+其中 18 格也過速度。Mac 暖查詢 23→20/36，mixed 25→25/36，仍有退步。
+接續單獨驗證正式版本的 binding 修正；mapped 引擎與完整 M5/M6 仍未驗收。
+[實作、全部矩陣與封存](../docs/research/2026-10-14-python-result-ownership.md)。
+
 **最新容量矩陣（2026-10-14，未採用）：** 同源 Linux build 與 8 項生命週期測試通過。
 60 workers 全數執行，限額組 51/54 完成、3 次後段 OOM；品質 96/108、嚴格速度
 42/108，雙方 sustained pressure 12/108，其中 6 格也通過速度。完整原始失敗保留。

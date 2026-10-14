@@ -30,6 +30,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [Python result ownership fix](../research/2026-10-14-python-result-ownership.md)
+uses typed List/Span instead of leaking dynamic Python append calls. Ten new
+weakref tests fail on the parent and pass on Mac/Linux; full Python359 passes.
+Its complete fixed capacity batch finishes 60/60 workers, no OOM/timeouts,
+quality108/108, speed65/108 and paired pressure31/108 (18 also pass speed).
+Native warm is23→20/36 and mixed25→25/36, retaining all regressions. The mapped
+candidate remains unadopted. Independently verify the production-only binding fix;
+then investigate remaining real-cosine/filtered-delta cost without repeating
+rejected reader variants or relaxing any strict M5/M6 requirement.
+
 The [complete constrained-memory matrix](../research/2026-10-14-typed-live-capacity.md)
 now retains all 60 workers: 51/54 constrained workers complete, three late OOMs;
 quality 96/108, strict speed 42/108, paired sustained pressure 12/108 (six also
