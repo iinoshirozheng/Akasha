@@ -31,6 +31,15 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [copy composition](../research/2026-10-14-checkpoint-bulk-copy.md) passes
+49 joint Mojo, 13 crash-state and 369 Python cases, reusing applicable standalone
+evidence. All 54 workers complete and 18 cache payload pairs match byte-for-byte.
+Nine flush QPS pairs improve 10.9–18.5%, with all flush p95 values improved.
+Warm speed is 23→26/36, mixed 20→24/36, write+flush still 3/9. One mixed real
+selective pass→fail and one 1.8% combined p95 regression remain. Keep isolated.
+Next establish and test live-query versus durable-writer lock responsibilities
+before changing the contention identified in the native diagnostic.
+
 The [payload Span candidate](../research/2026-10-14-payload-span-encoding.md)
 passes 102 Mojo, 9 crash-state and 369 Python cases. All 54 workers complete;
 18 cache payload pairs are byte-identical. Nine flush QPS pairs improve 3.5–11.1%

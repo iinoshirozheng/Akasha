@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新兩項複製優化組合（2026-10-14，尚未整合）：** 三個來源檔精確組合前兩候選；
+49 Mojo、13 crash-state、369 Python 通過。54 workers 全完成，查詢與 18 組 cache
+payload 完全一致；九組 flush QPS 改善 10.9–18.5%，p95 全改善。暖速度 23→26/36、
+mixed 20→24/36、write＋flush 仍 3/9；real-1536 selective trial 1 pass→fail 與
+uniform-1536 trial 2 combined p95 退步 1.8% 均保留。接續驗證 live-query／durable
+publication 的鎖分工及並行不變量，正式版不變，M5/M6 未達標。
+[組合驗證、全部矩陣與封存](../docs/research/2026-10-14-checkpoint-bulk-copy.md)。
+
 **最新 payload Span 編碼（2026-10-14，尚未整合）：** 借用字串 bytes 寫入既有
 BinaryWriter，原 List callers 由編譯器隱式轉換；102 Mojo、9 crash-state、369 Python
 通過。54 workers 全完成，18 組 cache payload 逐 byte 相同；九組 flush QPS 改善
