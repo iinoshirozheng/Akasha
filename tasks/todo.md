@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新 payload Span 編碼（2026-10-14，尚未整合）：** 借用字串 bytes 寫入既有
+BinaryWriter，原 List callers 由編譯器隱式轉換；102 Mojo、9 crash-state、369 Python
+通過。54 workers 全完成，18 組 cache payload 逐 byte 相同；九組 flush QPS 改善
+3.5–11.1%、p95 全改善。暖速度仍 21/36、mixed 26→24/36、write＋flush 仍 3/9，
+六格 query pass→fail 保留。接續隔離驗證與 F32 row-copy 的組合，兩個單項候選
+均保留，正式版不變，M5/M6 未達標。
+[全部邊界測試、矩陣與封存](../docs/research/2026-10-14-payload-span-encoding.md)。
+
 **最新 mixed 尾延遲診斷（2026-10-14）：** 12 workers、3,456 筆 paired queries
 全一致；兩版慢樣本主要位於 native 呼叫，計時查詢皆無 GC 重疊。原始碼及鎖事件
 確認 selective planned-exact 沿用 writer lock，與背景 compaction capture／publish

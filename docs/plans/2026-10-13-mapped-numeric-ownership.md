@@ -31,6 +31,14 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [payload Span candidate](../research/2026-10-14-payload-span-encoding.md)
+passes 102 Mojo, 9 crash-state and 369 Python cases. All 54 workers complete;
+18 cache payload pairs are byte-identical. Nine flush QPS pairs improve 3.5–11.1%
+and all flush/combined p95 values improve. Warm speed stays 21/36, mixed falls
+26→24/36 and write+flush remains 3/9, retaining six query pass→fail cells. Keep
+it isolated; next verify composition with the separately frozen F32 row-copy
+candidate without assuming additive gains or waiving any fixed gate.
+
 The [mixed-query boundary investigation](../research/2026-10-14-mixed-query-boundaries.md)
 completes 12 workers and 3,456 exact paired query audits. Native lock events
 locate reproduced tails in compaction capture/publication waits for both variants;
