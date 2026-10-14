@@ -31,6 +31,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [write geometry investigation](../research/2026-10-14-legacy-write-geometry.md)
+completes two six-worker diagnostics, locating 75–84% of high-dimensional link
+time in planning/pruning. A per-connection ordered-pair cache passes 115 Mojo /
+369 Python but slows all nine write pairs. Its 54 workers retain warm 26→24/36,
+mixed 22→21/36, write+flush 6→5/9 and seven query pass→fail cells. Three counter
+workers show only 1.5–4.9% distance reuse. All 69 workers and the 141 ms WAL
+outlier are frozen. Stop this cache branch; next inspect four-row batching of
+required center/member scores during adjacency overflow. No Linux/capacity/C/
+crash/GPU acceptance is claimed. Production and all M5/M6 requirements remain.
+
 The [mapped adjacency metadata experiment](../research/2026-10-14-mapped-neighbor-metadata.md)
 is complete and unadopted. One validated node/count base replaces repeated
 lookups within `neighbor_range`; all mapping and edge guards remain. It passes

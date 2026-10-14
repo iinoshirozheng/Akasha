@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新寫入幾何診斷／快取實驗（2026-10-14，未採用）：** 兩輪分段診斷各 6 workers
+定位高維連線的 planning／pruning 約占 75–84%，保留 WAL 141 ms 異常值。逐連線
+ordered-pair 快取通過 115 Mojo／369 Python，但九組寫入 QPS 全下降；54 workers
+全完成，暖速度 26→24/36、mixed 22→21/36、write＋flush 6→5/9，七格查詢
+pass→fail 保留。另 3 workers 計數確認僅省 1.5–4.9% 距離計算。停止該快取分支，
+接續查驗剪枝時必算 center/member 距離的四列批次計算；正式版不變，M5/M6 未達標。
+[69 workers、全部來源與失敗證據](../docs/research/2026-10-14-legacy-write-geometry.md)。
+
 **最新 mapped 鄰接實驗（2026-10-14，未採用）：** `neighbor_range` 每次只定位一次
 node 並重用 count base，保留 level／capacity／overflow／owner／bounds 檢查。
 88 Mojo／369 Python 通過，54 warm／mixed workers 全完成且結果一致。暖速度
