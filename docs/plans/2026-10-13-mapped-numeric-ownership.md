@@ -31,6 +31,16 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [two-hop experiments](../research/2026-10-14-filtered-two-hop.md) are
+complete and rejected. The first loses historical-source bridge chains in two
+existing tests. Scoring historical bridges fixes both; a further m0 limit has
+its own failing-before/passing-after case. Each built version retains all27
+warm workers and36/36 quality cells, but real filtered QPS is only.246–.280
+and.296–.334 of production. Six pass→fail cells remain across the two matrices.
+No full Python, mixed, capacity or Linux acceptance is claimed. Stop this branch;
+return to the original traversal and inspect redundant per-node lookup work.
+Production source/binary remain unchanged; M5/M6 acceptance remains outstanding.
+
 The [source-counter diagnostic](../research/2026-10-14-filtered-source-counts.md)
 preserves all134 fixed real filtered queries/public stats and verifies every
 base+delta counter sum. Base level-0 scores are subsequently rejected at78.07%

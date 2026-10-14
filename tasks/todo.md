@@ -6,6 +6,13 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新兩跳搜尋實驗（2026-10-14，三版皆未採用）：** 初版破壞兩個既有連續舊來源
+橋接案例；保留計分的舊來源修正版通過 24 Mojo，bounded 版再多一個上限案例。
+兩版各完成 27 個 warm workers、品質皆 36/36；真實 filtered QPS 僅為正式版
+約 25–28%／30–33%，嚴格速度 21→22/36／21→19/36，六格 pass→fail 全保留。
+停止這個圖上的兩跳分支，回到原演算法查驗每節點重複查找成本；主工作區不变，
+M5/M6 仍未達標。[三版來源、失敗與完整 warm 證據](../docs/research/2026-10-14-filtered-two-hop.md)。
+
 **最新分來源診斷（2026-10-14）：** 僅在 stats merge 加兩個輸出，134 筆固定 real
 filtered ANN 的 IDs／bits／recall／public stats 全部吻合；每筆 base+delta counters
 均吻合合計。Base level-0 計分後被 admission 拒絕比例 78.07%／78.21%；delta 已
