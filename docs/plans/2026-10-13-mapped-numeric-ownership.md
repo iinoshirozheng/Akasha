@@ -31,12 +31,22 @@ or absence of file lease into production. This proof does not validate the entir
 
 ## Execution checkpoint — 2026-10-13
 
+The [single-probe lookup experiments](../research/2026-10-14-hnsw-single-lookup.md)
+are complete and unadopted. Both variants pass 40 Mojo and 369 Python cases and
+each completes 54 warm/mixed workers with identical IDs, bits, stats and
+execution. Get-only is warm 19→23/36, mixed 22→19/36; preserving admission call
+boundaries is warm 30→27/36, mixed 20→21/36. Nine pass→fail cells remain across
+both experiments. The emitted methods shrink, but this does not establish
+overall improvement. Production is unchanged. Inspect dominant mapped scoring
+and adjacency data access before another dictionary variation; no new capacity,
+Linux, C, crash or GPU acceptance is claimed.
+
 The [two-hop experiments](../research/2026-10-14-filtered-two-hop.md) are
 complete and rejected. The first loses historical-source bridge chains in two
 existing tests. Scoring historical bridges fixes both; a further m0 limit has
-its own failing-before/passing-after case. Each built version retains all27
-warm workers and36/36 quality cells, but real filtered QPS is only.246–.280
-and.296–.334 of production. Six pass→fail cells remain across the two matrices.
+its own failing-before/passing-after case. Each built version retains all 27
+warm workers and 36/36 quality cells, but real filtered QPS is only .246–.280
+and .296–.334 of production. Six pass→fail cells remain across the two matrices.
 No full Python, mixed, capacity or Linux acceptance is claimed. Stop this branch;
 return to the original traversal and inspect redundant per-node lookup work.
 Production source/binary remain unchanged; M5/M6 acceptance remains outstanding.
