@@ -1,3 +1,4 @@
+from legacy_fixture_helpers import copy_legacy_fixture
 from akasha import (
     CollectionConfig,
     MetricKind,
@@ -5,7 +6,8 @@ from akasha import (
     ScalarKind,
     SparseElement,
 )
-from akasha.storage import collection_config_exists, load_collection_config
+from akasha.storage import collection_config_exists
+from akasha.storage.field_catalog import load_field_catalog
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -114,8 +116,9 @@ def test_new_two_argument_open_publishes_default_identity_immediately() raises:
     var collection = PersistentCollection.open(path, 3)
 
     assert_true(collection_config_exists(path))
-    assert_equal(path_exists(path + "/wal.bin"), False)
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(3))
+    assert_equal(len(read_file_bytes(path + "/wal.bin")), 0)
+    assert_equal(load_field_catalog(path).format_version, 2)
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(3))
     assert_equal(collection.dimension, 3)
     assert_equal(collection.ann_metric(), MetricKind.l2())
     assert_equal(collection.collection_config(), CollectionConfig.defaults(3))
@@ -131,7 +134,7 @@ def test_open_with_config_persists_every_field_and_reopens() raises:
     assert_equal(collection.collection_config(), requested)
     assert_equal(collection.ann_metric(), MetricKind.cosine())
     assert_equal(collection.dimension, 7)
-    assert_equal(load_collection_config(path), requested)
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), requested)
 
     # Accessors return a copy and cannot mutate the durable collection identity.
     var returned = collection.collection_config()
@@ -227,15 +230,13 @@ def test_config_mismatch_reports_field_and_both_fingerprints() raises:
 def test_wal_only_legacy_migration_preserves_wal_and_recovers_records() raises:
     var path = _test_directory("legacy-wal")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(11, [1.0, 2.0])
-    legacy.close()
+    copy_legacy_fixture("config-wal_only_legacy_migration_preserves_wal_and_recovers_records", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
 
     var migrated = PersistentCollection.open(path, 2)
 
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(2))
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     assert_equal(migrated.get(11).value().vector[1], Float32(2.0))
     assert_equal(migrated.last_sequence(), UInt64(1))
@@ -245,11 +246,7 @@ def test_wal_only_legacy_migration_preserves_wal_and_recovers_records() raises:
 def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
     var path = _test_directory("legacy-snapshot")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(1, [1.0, 0.0])
-    legacy.flush()
-    legacy.upsert(2, [0.0, 2.0])
-    legacy.close()
+    copy_legacy_fixture("config-snapshot_legacy_migration_preserves_all_authoritative_bytes", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_segment = read_file_bytes(path + "/segment-base-1.bin")
@@ -257,7 +254,7 @@ def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
 
     var migrated = PersistentCollection.open(path, 2)
 
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(2))
     _assert_bytes_equal(
         read_file_bytes(path + "/manifest.bin"), before_manifest
     )
@@ -273,9 +270,7 @@ def test_snapshot_legacy_migration_preserves_all_authoritative_bytes() raises:
 def test_wrong_dimension_does_not_poison_wal_only_legacy_identity() raises:
     var path = _test_directory("legacy-wal-wrong-dimension")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(21, [1.0, 2.0])
-    legacy.close()
+    copy_legacy_fixture("config-wrong_dimension_does_not_poison_wal_only_legacy_identity", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
 
@@ -285,7 +280,7 @@ def test_wrong_dimension_does_not_poison_wal_only_legacy_identity() raises:
     assert_equal(collection_config_exists(path), False)
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     var compatible = PersistentCollection.open(path, 2)
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(2))
     assert_equal(compatible.get(21).value().vector[1], Float32(2.0))
     compatible.close()
 
@@ -293,12 +288,7 @@ def test_wrong_dimension_does_not_poison_wal_only_legacy_identity() raises:
 def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
     var path = _test_directory("legacy-snapshot-wrong-dimension")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(31, [3.0, 1.0])
-    legacy.flush()
-    # Retain a complete post-checkpoint WAL record as a second identity source.
-    legacy.upsert(32, [4.0, 2.0])
-    legacy.close()
+    copy_legacy_fixture("config-wrong_dimension_does_not_poison_snapshot_legacy_identity", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_segment = read_file_bytes(path + "/segment-base-1.bin")
@@ -316,7 +306,7 @@ def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
     )
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     var compatible = PersistentCollection.open(path, 2)
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(2))
     assert_equal(compatible.get(31).value().vector[0], Float32(3.0))
     assert_equal(compatible.get(32).value().vector[1], Float32(2.0))
     compatible.close()
@@ -325,10 +315,7 @@ def test_wrong_dimension_does_not_poison_snapshot_legacy_identity() raises:
 def test_corrupt_legacy_segment_fails_before_config_publication() raises:
     var path = _test_directory("legacy-corrupt-segment")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(41, [1.0, 4.0])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("config-corrupt_legacy_segment_fails_before_config_publication", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var corrupt_segment = _corrupt_last_byte(path + "/segment-base-1.bin")
@@ -351,11 +338,7 @@ def test_corrupt_legacy_segment_fails_before_config_publication() raises:
 def test_corrupt_legacy_sparse_snapshot_fails_before_config_publication() raises:
     var path = _test_directory("legacy-corrupt-sparse-snapshot")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(51, [1.0, 5.0])
-    legacy.upsert_sparse(51, [SparseElement(7, 2.0)])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("config-corrupt_legacy_sparse_snapshot_fails_before_config_publication", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_segment = read_file_bytes(path + "/segment-base-2.bin")
@@ -382,10 +365,7 @@ def test_corrupt_legacy_sparse_snapshot_fails_before_config_publication() raises
 def test_corrupt_legacy_sparse_wal_fails_before_config_publication() raises:
     var path = _test_directory("legacy-corrupt-sparse-wal")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(61, [1.0, 6.0])
-    legacy.upsert_sparse(61, [SparseElement(8, 3.0)])
-    legacy.close()
+    copy_legacy_fixture("config-corrupt_legacy_sparse_wal_fails_before_config_publication", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
     var corrupt_sparse_wal = _corrupt_last_byte(path + "/sparse.wal")
@@ -404,12 +384,7 @@ def test_corrupt_legacy_sparse_wal_fails_before_config_publication() raises:
 def test_corrupt_legacy_dense_delta_blocks_identity_publication() raises:
     var path = _test_directory("legacy-corrupt-dense-delta")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(81, [1.0, 8.0])
-    legacy.flush()
-    legacy.upsert(82, [2.0, 8.0])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("config-corrupt_legacy_dense_delta_blocks_identity_publication", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_base = read_file_bytes(path + "/segment-base-1.bin")
@@ -434,14 +409,7 @@ def test_corrupt_legacy_dense_delta_blocks_identity_publication() raises:
 def test_late_sparse_delta_failure_does_not_repair_dense_wal() raises:
     var path = _test_directory("legacy-corrupt-sparse-delta")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(91, [1.0, 9.0])
-    legacy.upsert_sparse(91, [SparseElement(9, 1.0)])
-    legacy.flush()
-    legacy.upsert(92, [2.0, 9.0])
-    legacy.upsert_sparse(92, [SparseElement(10, 2.0)])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("config-late_sparse_delta_failure_does_not_repair_dense_wal", path)
     remove_file_if_exists(path + "/collection.bin")
 
     var before_manifest = read_file_bytes(path + "/manifest.bin")
@@ -476,13 +444,7 @@ def test_late_sparse_delta_failure_does_not_repair_dense_wal() raises:
 def test_late_legacy_preflight_failure_preserves_every_source() raises:
     var path = _test_directory("legacy-late-preflight")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(71, [1.0, 7.0])
-    legacy.upsert_sparse(71, [SparseElement(9, 4.0)])
-    legacy.flush()
-    legacy.upsert(72, [2.0, 7.0])
-    legacy.upsert_sparse(72, [SparseElement(10, 5.0)])
-    legacy.close()
+    copy_legacy_fixture("config-late_legacy_preflight_failure_preserves_every_source", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_manifest = read_file_bytes(path + "/manifest.bin")
     var before_segment = read_file_bytes(path + "/segment-base-2.bin")
@@ -517,9 +479,7 @@ def test_late_legacy_preflight_failure_preserves_every_source() raises:
 def test_non_default_config_is_rejected_for_legacy_data_without_mutation() raises:
     var path = _test_directory("legacy-incompatible")
     _reset(path)
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(9, [4.0, 5.0])
-    legacy.close()
+    copy_legacy_fixture("config-non_default_config_is_rejected_for_legacy_data_without_mutation", path)
     remove_file_if_exists(path + "/collection.bin")
     var before_wal = read_file_bytes(path + "/wal.bin")
 
@@ -530,7 +490,7 @@ def test_non_default_config_is_rejected_for_legacy_data_without_mutation() raise
     _assert_bytes_equal(read_file_bytes(path + "/wal.bin"), before_wal)
     var compatible = PersistentCollection.open(path, 2)
     assert_equal(compatible.get(9).value().vector[0], Float32(4.0))
-    assert_equal(load_collection_config(path), CollectionConfig.defaults(2))
+    assert_equal(load_field_catalog(path).field_at(0).hnsw.value(), CollectionConfig.defaults(2))
     compatible.close()
 
 

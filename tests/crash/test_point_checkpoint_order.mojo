@@ -12,6 +12,7 @@ from akasha.storage.filesystem import (
 from akasha.storage.manifest import load_manifest
 from std.ffi import c_int, external_call
 from std.os import listdir
+from std.python import Python
 from std.testing import assert_equal, assert_false, TestSuite
 
 
@@ -32,11 +33,13 @@ def _fields() raises -> List[VectorFieldSpec]:
 
 def test_migration_and_first_point_checkpoint_recover_each_publication_boundary() raises:
     var source = _path("source")
-    var legacy = PersistentCollection.open(source, 2)
-    legacy.upsert(1, [1, 0])
-    legacy.upsert_sparse(1, [SparseElement(9, 2)])
-    legacy.flush()
-    legacy.close()
+    # Frozen pre-migration writer output: do not seed legacy storage with
+    # the current writer, which always publishes a point-field catalog.
+    _ = Python.import_module("shutil").copytree(
+        "tests/fixtures/default-legacy/"
+        "named-public_migration_and_invalid_late_field_leave_wal_unchanged",
+        source,
+    )
     var names = listdir(source)
     var old_files = List[List[UInt8]]()
     for name in names:
@@ -117,7 +120,7 @@ def test_migration_and_first_point_checkpoint_recover_each_publication_boundary(
             Float32(3 if boundary >= 3 else 1),
         )
         assert_equal(
-            recovered.search_sparse_dot([SparseElement(9, 1)], 1)[0].id, 1
+            recovered.search_sparse_dot([SparseElement(1, 1)], 1)[0].id, 1
         )
         assert_equal(Bool(recovered.get_point(2)), boundary >= 3)
         if boundary >= 3:

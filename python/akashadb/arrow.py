@@ -136,7 +136,7 @@ def search_field_record_batch(
 
 def search_fields_record_batch(
     collection: Collection, queries: list["FieldQuery"], k: int, *,
-    fetch_k: int = 100, rank_constant: int = 60,
+    fetch_k: int = 100, rank_constant: int = 2,
     filter: Mapping[str, Any] | None = None,
     rerank: "FieldQuery | None" = None,
     cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
@@ -373,19 +373,21 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
             len(sparse_terms) != len(sparse_weights)
             or sparse_offsets[0] < 0
             or sparse_offsets[-1] > len(sparse_terms)
-            or np.any(sparse_offsets[1:] <= sparse_offsets[:-1])
+            or np.any(sparse_offsets[1:] < sparse_offsets[:-1])
         ):
-            raise ValueError("sparse offsets must identify non-empty bounded rows")
+            raise ValueError("sparse offsets must identify ordered bounded rows")
         begin, end = int(sparse_offsets[0]), int(sparse_offsets[-1])
         active_terms = sparse_terms[begin:end]
         active_weights = sparse_weights[begin:end]
         invalid_order = active_terms[1:] <= active_terms[:-1]
         # Adjacent values in different rows need not be ascending.
-        invalid_order[sparse_offsets[1:-1] - begin - 1] = False
+        boundaries = sparse_offsets[1:-1] - begin - 1
+        boundaries = boundaries[(boundaries >= 0) & (boundaries < len(invalid_order))]
+        invalid_order[boundaries] = False
         if np.any(active_terms < 0) or np.any(invalid_order):
             raise ValueError("sparse term IDs must be non-negative and ascending")
-        if not np.all(np.isfinite(active_weights)) or np.any(active_weights == 0.0):
-            raise ValueError("sparse weights must be finite and non-zero")
+        if not np.all(np.isfinite(active_weights)):
+            raise ValueError("sparse weights must be finite")
 
     payloads: list[dict[str, Any]] = []
     type_names = {

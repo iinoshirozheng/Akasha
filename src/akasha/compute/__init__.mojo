@@ -17,7 +17,6 @@ from .quantization import (
     encode_symmetric_i8,
     i8_dot_f32,
     normalize_for_cosine_i8,
-    round_clamp_u8,
     symmetric_i8_scale,
 )
 from .simd import (

@@ -1,10 +1,9 @@
+from hnsw_search_helpers import greedy_descent, search_layer
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     HnswSearchAdmission,
     HnswSearchStats,
-    greedy_descent,
-    search_layer,
 )
 from akasha.index.hnsw_heap import HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
@@ -80,13 +79,13 @@ def test_upper_greedy_descends_multiple_hops_and_stops_locally() raises:
 
     assert_equal(actual.slot, UInt32(2))
     assert_equal(actual.distance, Float32(1.0))
-    # Entry plus the three distinct neighbors evaluated across both hops.
-    assert_equal(stats.upper_visited, 4)
+    # Qdrant rescans each expanded row; repeated neighbors are scored again.
+    assert_equal(stats.upper_visited, 7)
     assert_equal(stats.base_visited, 0)
-    assert_equal(stats.distance_evaluations, 4)
+    assert_equal(stats.distance_evaluations, 7)
 
 
-def test_upper_greedy_equal_distance_uses_public_id_tie_break() raises:
+def test_upper_greedy_moves_only_on_strictly_better_distance() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 50, 5.0, 1)
     _ = _append(graph, 20, 3.0, 1)
@@ -102,7 +101,7 @@ def test_upper_greedy_equal_distance_uses_public_id_tie_break() raises:
     var stats = HnswSearchStats()
     var actual = greedy_descent(graph, metric, query, UInt32(0), 1, stats)
 
-    assert_equal(actual.slot, UInt32(2))
+    assert_equal(actual.slot, UInt32(1))
     assert_equal(actual.distance, Float32(9.0))
     assert_equal(stats.upper_visited, 3)
     assert_equal(stats.distance_evaluations, 3)
@@ -174,7 +173,7 @@ def test_radius_termination_does_not_expand_far_branch() raises:
     assert_equal(stats.retained_candidates, 2)
 
 
-def test_equal_radius_neighbor_is_admitted_to_frontier_as_bridge() raises:
+def test_rejected_nearest_tie_does_not_enter_frontier() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 10, 1.0)
     _ = _append(graph, 20, -1.0)
@@ -195,12 +194,12 @@ def test_equal_radius_neighbor_is_admitted_to_frontier_as_bridge() raises:
         graph, metric, query, UInt32(0), 0, 1, 1, admission, scratch, stats
     )
 
-    # Slot one is tied with the retained radius but has a worse public ID. It
-    # must still enter the frontier so its strictly closer neighbor is found.
+    # Only nearest-queue admissions enter the frontier. A rejected tie
+    # cannot expose its closer neighbor.
     assert_equal(len(results), 1)
-    _assert_item(results, 0, 2, 5, 0.0)
-    assert_equal(stats.base_visited, 3)
-    assert_equal(stats.distance_evaluations, 3)
+    _assert_item(results, 0, 0, 10, 1.0)
+    assert_equal(stats.base_visited, 2)
+    assert_equal(stats.distance_evaluations, 2)
     assert_equal(stats.retained_candidates, 1)
 
 
@@ -261,7 +260,7 @@ def test_disconnected_slots_are_not_visited() raises:
     assert_equal(stats.distance_evaluations, 2)
 
 
-def test_inactive_entry_is_a_bridge_but_never_a_result() raises:
+def test_inactive_entry_cannot_seed_a_layer() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 50, 3.0)
     _ = _append(graph, 10, 0.0)
@@ -281,14 +280,13 @@ def test_inactive_entry_is_a_bridge_but_never_a_result() raises:
         graph, metric, query, UInt32(0), 0, 4, 4, admission, scratch, stats
     )
 
-    assert_equal(len(results), 1)
-    _assert_item(results, 0, 1, 10, 0.0)
-    assert_equal(stats.base_visited, 2)
-    assert_equal(stats.inactive_rejections, 1)
+    assert_equal(len(results), 0)
+    assert_equal(stats.base_visited, 0)
+    assert_equal(stats.inactive_rejections, 0)
     assert_equal(stats.filtered_rejections, 0)
 
 
-def test_deleted_middle_slot_is_a_bridge_but_never_a_result() raises:
+def test_deleted_middle_slot_is_filtered_before_scoring() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 30, 3.0)
     _ = _append(graph, 20, 2.0)
@@ -310,15 +308,14 @@ def test_deleted_middle_slot_is_a_bridge_but_never_a_result() raises:
         graph, metric, query, UInt32(0), 0, 3, 3, admission, scratch, stats
     )
 
-    assert_equal(len(results), 2)
-    _assert_item(results, 0, 2, 10, 0.0)
-    _assert_item(results, 1, 0, 30, 9.0)
-    assert_equal(stats.base_visited, 3)
-    assert_equal(stats.distance_evaluations, 3)
+    assert_equal(len(results), 1)
+    _assert_item(results, 0, 0, 30, 9.0)
+    assert_equal(stats.base_visited, 1)
+    assert_equal(stats.distance_evaluations, 1)
     assert_equal(stats.inactive_rejections, 1)
 
 
-def test_disallowed_slots_remain_traversable_and_count_once() raises:
+def test_rejected_slots_are_unvisited_and_checked_from_each_row() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 30, 3.0)
     _ = _append(graph, 20, 2.0)
@@ -335,8 +332,8 @@ def test_disallowed_slots_remain_traversable_and_count_once() raises:
     _set(graph, 2, 0, target^)
     _set(graph, 3, 0, right^)
     _set(graph, 4, 0, final_target^)
-    # Slot two is reached independently through slots one and three. It must
-    # be rejected exactly once but still traversed to reach slot four.
+    # Slot two is encountered from slots one and three. Filtering does not
+    # mark it visited, and neither encounter can reach slot four.
     var flags: List[Bool] = [True, True, False, True, True]
     var admission = HnswSearchAdmission(flags^)
     assert_true(admission.allows(UInt32(0)))
@@ -350,15 +347,15 @@ def test_disallowed_slots_remain_traversable_and_count_once() raises:
         graph, metric, query, UInt32(0), 0, 5, 5, admission, scratch, stats
     )
 
-    assert_equal(len(results), 4)
-    _assert_item(results, 0, 4, 5, 0.0)
-    assert_equal(stats.base_visited, 5)
-    assert_equal(stats.distance_evaluations, 5)
-    assert_equal(stats.filtered_rejections, 1)
+    assert_equal(len(results), 3)
+    _assert_item(results, 0, 1, 20, 4.0)
+    assert_equal(stats.base_visited, 3)
+    assert_equal(stats.distance_evaluations, 3)
+    assert_equal(stats.filtered_rejections, 2)
     assert_equal(stats.inactive_rejections, 0)
 
 
-def test_disallowed_entry_still_seeds_traversal() raises:
+def test_disallowed_entry_cannot_seed_a_layer() raises:
     var graph = HnswStorage(1, 4, 8)
     _ = _append(graph, 20, 2.0)
     _ = _append(graph, 10, 0.0)
@@ -376,10 +373,9 @@ def test_disallowed_entry_still_seeds_traversal() raises:
     var results = search_layer(
         graph, metric, query, UInt32(0), 0, 2, 2, admission, scratch, stats
     )
-    assert_equal(len(results), 1)
-    _assert_item(results, 0, 1, 10, 0.0)
-    assert_equal(stats.filtered_rejections, 1)
-    assert_equal(stats.base_visited, 2)
+    assert_equal(len(results), 0)
+    assert_equal(stats.filtered_rejections, 0)
+    assert_equal(stats.base_visited, 0)
 
 
 def test_invalid_inputs_do_not_mutate_scratch_or_stats() raises:

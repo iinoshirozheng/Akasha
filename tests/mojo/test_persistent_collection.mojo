@@ -1,3 +1,6 @@
+from akasha.document.point_state import PointState
+from akasha.storage.field_catalog import load_field_catalog
+from akasha.storage.point_segment import encode_point_segment
 from akasha import PersistentCollection
 from akasha.storage.filesystem import (
     ensure_directory,
@@ -300,8 +303,8 @@ def test_later_flush_appends_delta_and_preserves_referenced_base() raises:
     assert_equal(len(manifest.segments), 2)
     assert_equal(manifest.segments[0].level, 1)
     assert_equal(manifest.segments[1].level, 0)
-    assert_equal(path_exists(path + "/segment-base-1.bin"), True)
-    assert_equal(path_exists(path + "/segment-delta-3.bin"), True)
+    assert_equal(path_exists(path + "/" + manifest.segments[0].name), True)
+    assert_equal(path_exists(path + "/" + manifest.segments[1].name), True)
     assert_equal(path_exists(path + "/segment-stray.bin"), True)
     collection.close()
 
@@ -335,29 +338,32 @@ def test_flush_preserves_base_delta_bytes_and_noop_checkpoint() raises:
     collection.upsert(10, [1.0, 2.0])
     collection.upsert(20, [3.0, 4.0])
     collection.flush()
-    var base = List[MemTableEntry]()
-    base.append(MemTableEntry(10, 1, False, [1.0, 2.0]))
-    base.append(MemTableEntry(20, 2, False, [3.0, 4.0]))
-    var expected_base = encode_segment_v3(2, SEGMENT_KIND_BASE, 0, 2, base)
-    assert_equal(read_file_bytes(path + "/segment-base-2.bin"), expected_base)
+    var catalog = load_field_catalog(path)
+    var base_path = path + "/" + load_manifest(path, 2).segments[0].name
+    var base = List[PointState]()
+    base.append(MemTableEntry(10, 1, False, [1.0, 2.0]).to_point())
+    base.append(MemTableEntry(20, 2, False, [3.0, 4.0]).to_point())
+    var expected_base = encode_point_segment(1, 0, 2, base, catalog)
+    assert_equal(read_file_bytes(base_path), expected_base)
 
     collection.upsert(10, [5.0, 6.0])
     collection.delete(20)
     collection.upsert(30, [7.0, 8.0])
     collection.flush()
-    var delta = List[MemTableEntry]()
-    delta.append(MemTableEntry(10, 3, False, [5.0, 6.0]))
-    delta.append(MemTableEntry(20, 4, True, List[Float32]()))
-    delta.append(MemTableEntry(30, 5, False, [7.0, 8.0]))
-    var expected_delta = encode_segment_v3(2, SEGMENT_KIND_DELTA, 3, 5, delta)
-    assert_equal(read_file_bytes(path + "/segment-base-2.bin"), expected_base)
-    assert_equal(read_file_bytes(path + "/segment-delta-5.bin"), expected_delta)
+    var delta_path = path + "/" + load_manifest(path, 2).segments[1].name
+    var delta = List[PointState]()
+    delta.append(MemTableEntry(10, 3, False, [5.0, 6.0]).to_point())
+    delta.append(MemTableEntry(20, 4, True, List[Float32]()).to_point())
+    delta.append(MemTableEntry(30, 5, False, [7.0, 8.0]).to_point())
+    var expected_delta = encode_point_segment(2, 3, 5, delta, catalog)
+    assert_equal(read_file_bytes(base_path), expected_base)
+    assert_equal(read_file_bytes(delta_path), expected_delta)
     var manifest = load_manifest(path, 2)
     collection.flush()
     var unchanged = load_manifest(path, 2)
     assert_equal(unchanged.last_sequence, manifest.last_sequence)
     assert_equal(len(unchanged.segments), len(manifest.segments))
-    assert_equal(read_file_bytes(path + "/segment-delta-5.bin"), expected_delta)
+    assert_equal(read_file_bytes(delta_path), expected_delta)
     assert_equal(len(read_file_bytes(path + "/wal.bin")), 0)
     collection.close()
 

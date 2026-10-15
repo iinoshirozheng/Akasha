@@ -285,11 +285,6 @@ def _execute_gpu_batch(
         if filtered:
             for ordinal in candidates[query_index]:
                 var position = cache.positions[ordinal]
-                if (
-                    metric == BATCH_COSINE_METRIC
-                    and cache.point_norms[position] == 0.0
-                ):
-                    raise Error("cosine similarity requires non-zero vectors")
                 positions.append(position)
             offsets.append(len(positions))
         else:
@@ -300,10 +295,6 @@ def _execute_gpu_batch(
                 offsets[query_index + 1] - offsets[query_index], GPU_TILE_POINTS
             )
         )
-    if not filtered and metric == BATCH_COSINE_METRIC:
-        for norm in cache.point_norms:
-            if norm == 0.0:
-                raise Error("cosine similarity requires non-zero vectors")
     var jobs = offsets[len(offsets) - 1]
     if max(point_count, query_count, cache.dimension, jobs) > Int(Int32.MAX):
         raise Error("GPU query shape exceeds Int32 launch format")
@@ -506,13 +497,9 @@ def _validate_gpu_inputs(
     for query_index in range(len(queries)):
         if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
-        var norm: Float32 = 0.0
         for value in queries[query_index]:
             if not isfinite(value):
                 raise Error("query vector must contain only finite values")
-            norm += value * value
-        if metric == BATCH_COSINE_METRIC and norm == 0.0:
-            raise Error("cosine similarity requires non-zero vectors")
         if filtered:
             var previous = -1
             for ordinal in candidates[query_index]:

@@ -1,3 +1,4 @@
+from legacy_fixture_helpers import copy_legacy_fixture
 from akasha import CollectionConfig, PersistentCollection, SparseElement
 from akasha.document.point_state import FieldUpdate, PointMutation
 from akasha.document.vector_schema import (
@@ -45,18 +46,8 @@ def _catalog(cutover: UInt64) raises -> ArcPointer[FieldCatalog]:
 
 
 def _seed(path: String, checkpoint: Bool) raises -> UInt64:
-    var collection = PersistentCollection.open(path, 2)
-    collection.upsert(1, [1, 2])
-    collection.upsert_sparse(1, [SparseElement(9, 3)])
-    collection.upsert(2, [4, 5])
-    if checkpoint:
-        collection.flush()
-    collection.delete(2)
-    collection.upsert(2, [6, 7])
-    collection.upsert_sparse(2, [SparseElement(8, 2)])
-    var last = collection.last_sequence()
-    collection.close()
-    return last
+    copy_legacy_fixture("point-cutover-" + String(Int(checkpoint)), path)
+    return UInt64(6)
 
 
 def test_legacy_cutover_preserves_document_versions_and_publishes_reopenable_identity() raises:

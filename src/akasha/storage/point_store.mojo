@@ -8,7 +8,6 @@ from akasha.document.vector_schema import (
     VectorFieldSpec,
     MAX_FIELD_CATALOG_BYTES,
 )
-from akasha.storage.compaction import LEVEL_ZERO_SEGMENT_LIMIT
 from akasha.storage.field_catalog import (
     decode_field_catalog_bytes,
     encode_field_catalog,
@@ -118,6 +117,8 @@ struct PointStore(Movable):
             elif (
                 path_exists(path + "/wal.bin")
                 or path_exists(path + "/manifest.bin")
+                or path_exists(path + "/sparse.wal")
+                or path_exists(path + "/sparse-0.bin")
             ) and config != CollectionConfig.defaults(config.dimension):
                 raise Error(
                     "legacy data without identity requires default"
@@ -245,44 +246,46 @@ struct PointStore(Movable):
                 raise Error("point checkpoint generation exhausted")
             generation = self._manifest.value().generation + 1
             if self._point_checkpoint and previous == sequence and not compact:
-                if hnsw:
+                var drop_hnsw = (
+                    Bool(self._manifest.value().hnsw_name)
+                    and not self._hnsw_reference_valid
+                )
+                if hnsw or drop_hnsw:
                     var descriptors = List[SegmentDescriptor]()
                     for index in range(len(self._manifest.value().segments)):
-                        descriptors.append(
-                            self._manifest.value().segments[index].clone()
+                        descriptors.append(self._manifest.value().segments[index].clone())
+                    var updated: Manifest
+                    if hnsw:
+                        updated = Manifest.with_hnsw(
+                            self._catalog[].field_at(0).dimension,
+                            generation, sequence, descriptors^,
+                            hnsw.value().name, hnsw.value().info.checksum,
+                            hnsw.value().info.config_fingerprint,
+                            hnsw.value().info.live_point_count,
+                            format_version=4 if hnsw.value().info.sequence == sequence else 5,
                         )
-                    var updated = Manifest.with_hnsw(
-                        self._catalog[].field_at(0).dimension,
-                        generation,
-                        sequence,
-                        descriptors^,
-                        hnsw.value().name,
-                        hnsw.value().info.checksum,
-                        hnsw.value().info.config_fingerprint,
-                        hnsw.value().info.live_point_count,
-                        format_version=4 if hnsw.value().info.sequence
-                        == sequence else 5,
-                    )
+                    else:
+                        updated = Manifest.with_segments(
+                            self._catalog[].field_at(0).dimension,
+                            generation, sequence, descriptors^,
+                        )
                     var retired = List[String]()
                     if self._manifest.value().hnsw_name:
-                        retired.append(
-                            self._path
-                            + "/"
-                            + self._manifest.value().hnsw_name.value()
-                        )
+                        retired.append(self._path + "/" + self._manifest.value().hnsw_name.value())
                     self._io_failed = True
                     publish_manifest(self._path, updated)
                     self._manifest = Optional(updated^)
-                    self._hnsw_reference_valid = True
+                    self._hnsw_reference_valid = Bool(hnsw)
+                    # Retained prefixes must be rotated before obsolete graph
+                    # cleanup, including a same-sequence sidecar downgrade.
+                    rotate_wal(self._path)
+                    rotate_sparse_wal(self._path)
                     self._retired.retire_or_reclaim(self._path, retired)
                     self._io_failed = False
                 return
         var full = compact or not self._point_checkpoint
-        if (
-            self._manifest
-            and len(self._manifest.value().segments) >= LEVEL_ZERO_SEGMENT_LIMIT
-        ):
-            full = True
+        # The collection owns compaction admission and builds outside its writer
+        # lock. A checkpoint must not silently compact the full table here.
         var states = (
             self._table.live_points() if full else self._table.points_after(
                 previous

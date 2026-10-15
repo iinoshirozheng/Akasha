@@ -6,6 +6,7 @@ import pytest
 
 from akashadb import Collection, FieldQuery, IvfOptions, PayloadField, PointMutation, SparseElement, ValidationError, VectorField
 from akashadb.arrow import search_field_record_batch, search_fields_record_batch
+from score_oracles import f16_cosine
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16", "f16", "i8", "u8"])
@@ -29,6 +30,7 @@ def test_ivf_full_probe_native_oracle_arrow_fusion_and_reopen(tmp_path, dtype, m
                 row = data[i].astype(np.float64)
                 scores[i-32] = (float(q @ row) if metric == "dot" else
                                 float(np.sum((q-row)**2)) if metric == "l2" else
+                                f16_cosine(q, row) if dtype == "f16" else
                                 float(q @ row / (np.linalg.norm(q) * np.linalg.norm(row))))
             expected = sorted(scores, key=lambda id: (scores[id] if metric == "l2" else -scores[id], id))[:8]
             predicate = condition if filtered else None
@@ -46,8 +48,8 @@ def test_ivf_full_probe_native_oracle_arrow_fusion_and_reopen(tmp_path, dtype, m
         ranks = [collection.search_field("x", query, 12), collection.search_field("s", [SparseElement(1, 1)], 12)]
         rrf = {}
         for branch in ranks:
-            for rank, hit in enumerate(branch, 1):
-                rrf[hit.id] = rrf.get(hit.id, 0) + 1 / (60 + rank)
+            for rank, hit in enumerate(branch):
+                rrf[hit.id] = float(np.float32(np.float32(rrf.get(hit.id, 0)) + np.float32(1) / np.float32(2 + rank)))
         assert [hit.id for hit in fused] == sorted(rrf, key=lambda id: (-rrf[id], id))[:5]
         assert search_fields_record_batch(collection, branches, 5, fetch_k=12)["score"].to_pylist() == [hit.score for hit in fused]
         collection.apply_point_batch([PointMutation.delete(-31), PointMutation.update(-30, vectors={"x": query})])

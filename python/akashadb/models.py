@@ -249,7 +249,7 @@ class SearchRequest:
     mode: Literal["exact", "approx", "sparse", "hybrid"] = "exact"
     ef_search: int = 64
     fetch_k: int = 50
-    rank_constant: int = 60
+    rank_constant: int = 2
     filter: dict[str, Any] | None = None
 
 

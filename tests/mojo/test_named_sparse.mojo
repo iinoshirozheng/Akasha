@@ -15,7 +15,7 @@ from std.python import Python
 from std.testing import assert_equal, TestSuite
 
 
-def test_named_postings_preserve_f64_zero_negative_and_root_visibility() raises:
+def test_named_postings_exclude_f32_zero_preserve_negative_and_root_visibility() raises:
     var path = String(
         py=Python.import_module("tempfile").mkdtemp(
             prefix="akasha-named-sparse-"
@@ -61,27 +61,25 @@ def test_named_postings_preserve_f64_zero_negative_and_root_visibility() raises:
     var result = snapshot.search_field_reported("terms", query, 10)
     assert_equal(result.reason, "field_sparse")
     assert_equal(result.stats.storage_name, "field-postings")
-    var expected_ids: List[Int] = [-8, -3, 5, 10]
-    var expected_scores: List[Float64] = [1, 0, 0, -1]
-    for i in range(4):
-        assert_equal(result.results[i].id, expected_ids[i])
-        assert_equal(result.results[i].score, expected_scores[i])
+    # F32 cancellation, empty rows and non-overlapping rows are not results.
+    assert_equal(len(result.results), 1)
+    assert_equal(result.results[0].id, 10)
+    assert_equal(result.results[0].score, Float64(-1))
     var expression = Optional(
         FilterExpression.condition(
             FilterCondition.equal("keep", PayloadValue.boolean(True))
         )
     )
     var filtered = snapshot.search_field("terms", query, 10, expression^)
-    assert_equal(len(filtered), 3)
-    assert_equal(filtered[0].id, -3)
-    assert_equal(filtered[2].score, Float64(-1))
+    assert_equal(len(filtered), 1)
+    assert_equal(filtered[0].id, 10)
+    assert_equal(filtered[0].score, Float64(-1))
     var other = snapshot.search_field("other", query, 1)
     assert_equal(other[0].id, 0)
     assert_equal(other[0].score, Float64(5))
     var empty_query = VectorValue.sparse([])
     var empty = snapshot.search_field("terms", empty_query, 2)
-    assert_equal(empty[0].id, -8)
-    assert_equal(empty[0].score, Float64(0))
+    assert_equal(len(empty), 0)
     var root = snapshot._acquire()
     assert_equal(root[].field_sparse[].get(2)[].build_count, 1)
     assert_equal(root[].field_sparse[].get(3)[].build_count, 1)
@@ -94,10 +92,10 @@ def test_named_postings_preserve_f64_zero_negative_and_root_visibility() raises:
         PointMutation(-8, 3, [FieldUpdate.remove(2)])
     ]
     _ = collection.apply_point_batch(remove)
-    assert_equal(collection.search_field("terms", query, 1)[0].id, -3)
+    assert_equal(collection.search_field("terms", query, 1)[0].id, 10)
     collection.flush()
     collection.close()
-    assert_equal(snapshot.search_field("terms", query, 1)[0].id, -8)
+    assert_equal(snapshot.search_field("terms", query, 1)[0].id, 10)
     var fused_after = snapshot.search_fields(queries, 4, fetch_k=4)
     for i in range(len(fused)):
         assert_equal(fused_after[i].id, fused[i].id)
@@ -106,7 +104,7 @@ def test_named_postings_preserve_f64_zero_negative_and_root_visibility() raises:
     var reopened = PersistentCollection.open_with_fields(
         path, fields.copy(), maintenance_library_path=""
     )
-    assert_equal(reopened.search_field("terms", query, 1)[0].id, -3)
+    assert_equal(reopened.search_field("terms", query, 1)[0].id, 10)
     reopened.close()
     Python.import_module("shutil").rmtree(path)
 
@@ -183,4 +181,24 @@ def test_sparse_artifact_deadline_retry_and_concurrent_readers() raises:
         _ = snapshot.search_fields(queries, 2, fetch_k=3, control=limited)
     collection.close()
     snapshot.close()
+    Python.import_module("shutil").rmtree(path)
+
+
+def test_sparse_overflow_candidates_match_qdrant_threshold() raises:
+    var path = String(py=Python.import_module("tempfile").mkdtemp(prefix="akasha-sparse-overflow-"))
+    var fields = legacy_vector_fields(CollectionConfig.defaults(1))
+    fields.append(VectorFieldSpec(2, "s", 1, 0, 0, 2, 0))
+    var collection = PersistentCollection.open_with_fields(path, fields^, maintenance_library_path="")
+    var values: List[PointMutation] = [
+        PointMutation(1, 1, [FieldUpdate.set(2, VectorValue.sparse([SparseElement(1, 3e38), SparseElement(2, -3e38)]))]),
+        PointMutation(2, 1, [FieldUpdate.set(2, VectorValue.sparse([SparseElement(1, 3e38)]))]),
+        PointMutation(3, 1, [FieldUpdate.set(2, VectorValue.sparse([SparseElement(1, -3e38)]))]),
+    ]
+    _ = collection.apply_point_batch(values)
+    var query = VectorValue.sparse([SparseElement(1, 3e38), SparseElement(2, 3e38)])
+    var results = collection.search_field("s", query, 10)
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 2)
+    assert_true(results[0].score > Float64(1e300))
+    collection.close()
     Python.import_module("shutil").rmtree(path)

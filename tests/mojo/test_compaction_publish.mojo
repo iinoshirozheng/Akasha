@@ -99,12 +99,9 @@ def test_compact_publishes_one_job_unique_base_at_disk_generation() raises:
     assert_equal(after.last_sequence, before.last_sequence)
     assert_equal(len(after.segments), 1)
     assert_true(after.segments[0].name.startswith("segment-compact-"))
-    assert_true(after.segments[0].sparse_name.startswith("sparse-compact-"))
+    assert_equal(after.segments[0].sparse_name, "")
     for index in range(len(before.segments)):
         assert_false(path_exists(path + "/" + before.segments[index].name))
-        assert_false(
-            path_exists(path + "/" + before.segments[index].sparse_name)
-        )
     assert_equal(collection.compaction_attempts(), 1)
     assert_equal(collection.compaction_conflicts(), 0)
     _assert_disk_generation(collection, path)
@@ -293,28 +290,19 @@ def test_losing_job_pin_keeps_inputs_until_released() raises:
     var first_output = collection._build_compaction(first.value())
     var second_output = collection._build_compaction(second.value())
     assert_true(first_output.segment_name != second_output.segment_name)
-    assert_true(first_output.sparse_name != second_output.sparse_name)
 
     assert_true(collection._finish_compaction(first.value(), first_output))
     # The second job still leases the captured inputs.
     for index in range(len(captured.segments)):
         assert_true(path_exists(path + "/" + captured.segments[index].name))
-        assert_true(
-            path_exists(path + "/" + captured.segments[index].sparse_name)
-        )
 
     assert_false(collection._finish_compaction(second.value(), second_output))
     assert_false(path_exists(path + "/" + second_output.segment_name))
-    assert_false(path_exists(path + "/" + second_output.sparse_name))
     assert_true(path_exists(path + "/" + first_output.segment_name))
-    assert_true(path_exists(path + "/" + first_output.sparse_name))
 
     # The last lease release reclaims the inputs without another checkpoint.
     for index in range(len(captured.segments)):
         assert_false(path_exists(path + "/" + captured.segments[index].name))
-        assert_false(
-            path_exists(path + "/" + captured.segments[index].sparse_name)
-        )
     _assert_committed_records(collection)
     collection.close()
 
@@ -422,7 +410,6 @@ def test_restart_removes_unpublished_outputs_but_keeps_leased_inputs() raises:
     collection.compact()
     var compacted = load_manifest(path, 1)
     var leased = compacted.segments[0].name.copy()
-    var leased_sparse = compacted.segments[0].sparse_name.copy()
     var snapshot = collection.snapshot()
     collection.upsert(41, [41.0])
     collection.flush()
@@ -441,9 +428,7 @@ def test_restart_removes_unpublished_outputs_but_keeps_leased_inputs() raises:
 
     var reopened = PersistentCollection.open(path, 1)
     assert_false(path_exists(path + "/" + orphan.segment_name))
-    assert_false(path_exists(path + "/" + orphan.sparse_name))
     assert_true(path_exists(path + "/" + leased))
-    assert_true(path_exists(path + "/" + leased_sparse))
     assert_equal(len(snapshot.search_dot([1.0], 64)), 39)
     snapshot.close()
     _assert_committed_records(reopened)

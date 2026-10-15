@@ -83,10 +83,27 @@ def _matches_condition(
 def _matches_value(
     stored: PayloadValue, condition: FilterCondition
 ) raises -> Bool:
+    var operator_kind = condition.operator_kind()
+    # Qdrant MatchExcept excludes only matching values of the literal type;
+    # other present scalar types still match. Missing fields are handled above.
+    if operator_kind == FilterCondition.NOT_EQUAL:
+        if condition.value.is_string():
+            return not stored.is_string() or stored.as_string() != condition.value.as_string()
+        if condition.value.is_integer():
+            return not stored.is_integer() or stored.as_int() != condition.value.as_int()
+    # Qdrant Range converts every JSON number to F64. Floating equality and
+    # inequality are range predicates; integer equality remains an exact match.
+    if condition.value.is_floating() or (
+        condition.value.is_integer() and operator_kind != FilterCondition.EQUAL
+    ):
+        if not (stored.is_integer() or stored.is_floating()):
+            return False
+        var left = Float64(stored.as_int()) if stored.is_integer() else stored.as_float()
+        var right = Float64(condition.value.as_int()) if condition.value.is_integer() else condition.value.as_float()
+        return _compare_floats(left, right, operator_kind)
     if stored.kind() != condition.value.kind():
         return False
 
-    var operator_kind = condition.operator_kind()
     if stored.is_string():
         var left = stored.as_string()
         var right = condition.value.as_string()

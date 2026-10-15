@@ -93,7 +93,7 @@ def test_indexed_boolean_evaluator_handles_nested_and_empty_nodes() raises:
     assert_equal(empty_any.count(), 0)
 
 
-def test_index_preserves_missing_and_type_mismatch_semantics() raises:
+def test_match_except_includes_other_present_scalar_types() raises:
     var index = MetadataIndex()
     var string_field = List[DocumentField]()
     string_field.append(
@@ -108,9 +108,9 @@ def test_index_preserves_missing_and_type_mismatch_semantics() raises:
     var not_equal = index.evaluate_condition(
         FilterCondition.not_equal("value", PayloadValue.string("target"))
     )
-    assert_equal(not_equal.count(), 1)
+    assert_equal(not_equal.count(), 2)
     assert_true(not_equal.contains(0))
-    assert_false(not_equal.contains(1))
+    assert_true(not_equal.contains(1))
     assert_false(not_equal.contains(2))
 
 

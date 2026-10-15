@@ -14,12 +14,13 @@ from typing import Any
 
 from akashadb.database import Collection
 from akashadb.models import (
-    BatchMutation,
     CollectionConfig,
     PayloadField,
     SearchRequest,
     SparseElement,
 )
+
+from akashadb.vectors import PointMutation
 
 from .protocol import (
     ProtocolError,
@@ -31,6 +32,7 @@ from .protocol import (
     decode_envelope,
     payload_checksum,
     validate_replicated_mutation,
+    sync_directory,
 )
 
 
@@ -58,6 +60,7 @@ def _publish_checked(path: Path, payload: dict[str, Any]) -> None:
         output.flush()
         os.fsync(output.fileno())
     os.replace(temporary, path)
+    sync_directory(path.parent)
 
 
 def _load_checked(path: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -89,11 +92,10 @@ def snapshot_checksum(
 
 def _parse_snapshot_rows(
     rows: Any, dimension: int
-) -> tuple[list[BatchMutation], list[tuple[int, list[SparseElement]]]]:
+) -> list[PointMutation]:
     if type(rows) is not list:
         raise ProtocolError("snapshot rows must be a list")
-    mutations: list[BatchMutation] = []
-    sparse_rows: list[tuple[int, list[SparseElement]]] = []
+    mutations: list[PointMutation] = []
     seen_ids: set[int] = set()
     for row in rows:
         if type(row) is not dict or set(row) != SNAPSHOT_ROW_FIELDS:
@@ -173,9 +175,10 @@ def _parse_snapshot_rows(
                 raise ProtocolError("snapshot sparse weights must be finite numbers")
             seen_terms.add(term_id)
             sparse.append(SparseElement(term_id, float(weight)))
-        mutations.append(BatchMutation.upsert(point_id, vector, fields))
-        sparse_rows.append((point_id, sparse))
-    return mutations, sparse_rows
+        mutations.append(PointMutation.upsert(
+            point_id, vector=vector, fields=fields, sparse=sparse or None,
+        ))
+    return mutations
 
 
 def _remove_snapshot_workspace(path: Path, parent: Path, prefix: str) -> None:
@@ -203,19 +206,11 @@ def _recover_snapshot_workspaces(root: Path) -> None:
             )
         else:
             os.replace(backup_root, root)
-            _fsync_directory(parent)
+            sync_directory(parent)
     _remove_snapshot_workspace(stage_root, parent, f".{root.name}.snapshot-stage")
     _remove_snapshot_workspace(
         failed_root, parent, f".{root.name}.snapshot-failed"
     )
-
-
-def _fsync_directory(path: Path) -> None:
-    directory_fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
 
 
 class ReplicaShard:
@@ -308,17 +303,14 @@ class ReplicaShard:
             PayloadField(str(item["name"]), item["type"], item["value"])
             for item in mutation.get("fields", [])
         ]
-        self.collection.upsert(
-            point_id,
-            [float(value) for value in mutation["vector"]],
-            fields,
-        )
         sparse = [
             SparseElement(int(item["term_id"]), float(item["weight"]))
-            for item in mutation.get("sparse", [])
+            for item in mutation["sparse"]
         ]
-        if sparse:
-            self.collection.upsert_sparse(point_id, sparse)
+        self.collection.apply_point_batch([PointMutation.upsert(
+            point_id, vector=[float(value) for value in mutation["vector"]],
+            fields=fields, sparse=sparse or None,
+        )])
 
     def _replay_committed(self) -> None:
         for entry in self.journal.committed_after(self.applied_index):
@@ -339,7 +331,7 @@ class ReplicaShard:
             mode=request.get("mode", "exact"),
             ef_search=int(request.get("ef_search", 64)),
             fetch_k=int(request.get("fetch_k", 50)),
-            rank_constant=int(request.get("rank_constant", 60)),
+            rank_constant=int(request.get("rank_constant", 2)),
             filter=request.get("filter"),
         )
         items = [
@@ -388,7 +380,7 @@ class ReplicaShard:
         current_config = asdict(self.config)
         if incoming_config != current_config:
             raise ProtocolError("snapshot collection config mismatch")
-        mutations, sparse_rows = _parse_snapshot_rows(rows, self.dimension)
+        mutations = _parse_snapshot_rows(rows, self.dimension)
         if checksum != snapshot_checksum(rows, incoming_config, index):
             raise ProtocolError("snapshot checksum mismatch")
 
@@ -405,10 +397,7 @@ class ReplicaShard:
             )
             try:
                 if mutations:
-                    staged_collection.apply_batch(mutations)
-                    for point_id, sparse in sparse_rows:
-                        if sparse:
-                            staged_collection.upsert_sparse(point_id, sparse)
+                    staged_collection.apply_point_batch(mutations)
                 staged_collection.flush()
                 if asdict(staged_collection.collection_config()) != incoming_config:
                     raise ProtocolError("staged snapshot config mismatch")
@@ -424,7 +413,7 @@ class ReplicaShard:
                     "applied_index": index,
                 },
             )
-            _fsync_directory(stage_root)
+            sync_directory(stage_root)
 
             self.collection.close()
             try:
@@ -437,7 +426,7 @@ class ReplicaShard:
             replacement: Collection | None = None
             try:
                 os.replace(stage_root, self.root)
-                _fsync_directory(parent)
+                sync_directory(parent)
                 replacement = Collection(
                     self.root / "collection", self.dimension, config=self.config
                 )
@@ -451,7 +440,7 @@ class ReplicaShard:
                 if self.root.exists():
                     os.replace(self.root, failed_root)
                 os.replace(backup_root, self.root)
-                _fsync_directory(parent)
+                sync_directory(parent)
                 self.collection = Collection(
                     self.root / "collection", self.dimension, config=self.config
                 )
@@ -466,7 +455,7 @@ class ReplicaShard:
             self.placement_epoch = placement_epoch
             self.applied_index = index
             _remove_snapshot_workspace(backup_root, parent, backup_prefix)
-            _fsync_directory(parent)
+            sync_directory(parent)
         finally:
             _remove_snapshot_workspace(stage_root, parent, stage_prefix)
         return self.status()

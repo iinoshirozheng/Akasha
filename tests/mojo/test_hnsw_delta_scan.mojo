@@ -122,7 +122,7 @@ def _check_native_case(
         assert_equal(index._delta.last_search_upper_descents(), 0)
         assert_equal(index._delta.last_search_stats.inactive_rejections, 3)
         assert_equal(index.last_search_query_preparations(), 1)
-        assert_equal(index.last_search_stats().fallback_reason, "")
+        assert_equal(index._delta.last_search_stats.fallback_reason, "")
         # Exercise a heap cutoff in every native backend, including filtered
         # admission. The fixture has well-separated scores and exact ties.
         actual = index.search(query, 2, 2, table, lookup)
@@ -219,10 +219,11 @@ def test_delta_scan_work_bounds_and_integer_extremes() raises:
     assert_false(_should_scan_delta(1, 4096, 1536, 48, 32))
     assert_false(_should_scan_delta(1, 1025, 1, 48, 128))
     assert_false(_should_scan_delta(1, 1024, 1537, 48, 128))
-    assert_false(_should_scan_delta(0, 64, 3, 48, 32))
+    assert_true(_should_scan_delta(0, 64, 3, 48, 32))
     assert_true(_should_scan_delta(Int.MAX, 1024, 1, Int.MAX, Int.MAX))
     for bad in [0, -1, Int.MIN]:
-        assert_false(_should_scan_delta(bad, 64, 3, 48, 32))
+        if bad != 0:
+            assert_false(_should_scan_delta(bad, 64, 3, 48, 32))
         assert_false(_should_scan_delta(1, bad, 3, 48, 32))
         assert_false(_should_scan_delta(1, 64, bad, 48, 32))
         assert_false(_should_scan_delta(1, 64, 3, bad, 32))
@@ -231,7 +232,7 @@ def test_delta_scan_work_bounds_and_integer_extremes() raises:
     assert_false(_should_scan_delta(1, 1, Int.MAX, 48, Int.MAX))
 
 
-def test_physical_history_controls_scan_and_single_source_stays_graph() raises:
+def test_physical_history_bounds_overlay_scan_and_mutable_only_scans() raises:
     var config = _config(MetricKind.l2(), ScalarKind.f32())
     var base = HnswIndex(config.copy())
     var table = MemTable(3)
@@ -262,7 +263,7 @@ def test_physical_history_controls_scan_and_single_source_stays_graph() raises:
     table.apply_delete(1, UInt64(11))
     assert_true(index.delete(1))
     _ = index.search([8.0, 0.0, 0.0], 1, 2, table, lookup)
-    assert_equal(index.last_search_stats().storage_name, "segmented-f32")
+    assert_equal(index.last_search_stats().storage_name, "segmented-delta-scan-f32")
 
 
 def test_delta_scan_candidate_breadth_and_tie_cutoff() raises:

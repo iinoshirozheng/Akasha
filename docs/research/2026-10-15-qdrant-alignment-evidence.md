@@ -1,0 +1,117 @@
+# Qdrant alignment: implementation and validation evidence
+
+Reference: `reference/qdrant-edge-0.8.0`, commit
+`21db2f3ff95d50de3a2b88a741312c056fd1762d`; native `qdrant-edge-py==0.8.0`.
+Akasha worktree: `feat/qdrant-alignment`, based on `f6a938a`, Mojo
+`1.0.0 (ed45d567)`. This is an audit of existing Akasha capabilities, not a
+claim of complete Qdrant API, storage-format, cluster, quality or speed parity.
+The earlier [source baseline](2026-10-14-qdrant-source-baseline.md) describes
+the pre-integration implementation; this document records the subsequent work.
+
+All upstream paths below are relative to that pinned checkout. Checks are
+cumulative: later focused runs supersede the failures they fixed, while earlier
+unaffected passing results remain applicable. Local `.build` artifacts retain
+the failed runs as well as the successful ones.
+
+## Search and construction
+
+| Capability | Upstream implementation inspected | Akasha change and executable evidence | Disposition |
+| --- | --- | --- | --- |
+| Dot/L2/cosine and top-k | `lib/segment/src/spaces/simple.rs`; `lib/segment/src/spaces/metric_{f16,uint}/`; raw scorers | Shared native examples and zero cosine cases in `benchmarks/qdrant_behavior_alignment.py`; scalar/SIMD/paired tests | Shared mathematical behavior; squared L2, F64 typed-field accumulation and stable ID ties remain explicit Akasha contracts. Comparison canonicalizes units/ties and records its tolerance. |
+| Raw F16/U8 fields | `metric_f16/simple_{dot,euclid,cosine}.rs`; `metric_uint/simple_cosine.rs`; `vector_storage/query_scorer/metric_query_scorer.rs` | All twelve compact live/reopen cases pass; twenty additional F16 cosine dense/MaxSim boundary comparisons pass | F16 cosine now uses F32 normalization, half rounding and F32 dot. Dense scalar fixtures match exactly; MaxSim permits F32/F64 aggregation differences. Raw half authority is retained, so the oracle feeds the same canonical half inputs to Qdrant. Qdrant otherwise normalizes original F32 ingestion values before storing half. |
+| BF16, signed I8, binary Hamming/Jaccard | Qdrant storage datatype enum supports F32/F16/U8; learned binary quantization is a different representation | `test_field_metrics`, `test_named_vectors`, `test_quantization`, compact HNSW and frozen sidecar tests | No directly corresponding raw-field contract. Preserve native values, bounds and independent metric oracles; do not equate signed I8 storage with Qdrant scalar quantization. |
+| Learned SQ8/PQ | `lib/quantization/src/encoded_vectors_u8.rs`, `encoded_vectors_pq.rs`, `kmeans.rs`; segment `quantized_vectors.rs` | PQ centroids: 8/20 before, 20/20 exact after. SQ8 native scores: 0/27 before, 45/45 after including constant vectors. PQ native trained-codebook scoring: 14/18 before, 18/18 after normalized cosine and centroid lookup tables. Snapshot SQ8/PQ and IVF tests pass | SQ8 padding is computed without storing padding bytes. PQ uses deterministic reservoir/reseeding, explicit centroid/iteration parameters, and separate normalized/raw artifact registries. Native PQ scoring uses captured native codebooks to isolate its unseeded training; the separate Rust oracle covers training. |
+| HNSW construction | `index/hnsw_index/{graph_layers_builder,links_container}.rs`; `hnsw/build.rs` | Independent directed backlink pruning, no refill, rounded level sampler, payload level-zero edges. Extracted Rust build comparison: 24/24 fixtures and 2,467 ordered adjacency rows (`.build/qdrant-source-reference/build-2/summary.json`) | Algorithm port verified on fixed serial L2 fixtures. Random stream/ties and payload thresholds are explicit adaptations, not identical upstream defaults. |
+| Entries, traversal and connectivity | `entry_points.rs`, `graph_layers.rs`, `point_scorer.rs`, `hnsw/build.rs` | Production owned/mapped traversal 98/98 including distance counts (`cancellation/summary.json`); probabilistic connectivity 128/128 including RNG consumption (`connectivity-2/summary.json`) | Eligible primary/extra entries, filter-before-score and bounded frontier integrated with payload connectivity. Stable ties and extra-entry capacity remain Akasha policy. |
+| Scalar payload filtering | `payload_storage/condition_checker.rs`; payload field indexes | New `test_qdrant_payload`: direct/indexed numeric coercion, exact Int64 equality, MatchExcept and missing fields; native live/reopen mixed payload cases | Integer/string MatchExcept includes other present scalar types. Numeric ranges use F64 across integer/float storage, including rounding beyond 2^53. Missing fields fail predicates; outer negation includes them. Boolean match uses extracted Rust because Edge 0.8.0 binds bool as int. |
+| Exact/ANN planner | `hnsw/read_view/{dispatch,sample_estimation}.rs` | Removed 2*k and dimension/ef scan-cost rules. Planner 10/10; named HNSW 4/4, including failure injection proving exact queries do not build unused graphs | Cardinality dispatch aligned. Akasha N/8 threshold and 64-vector readiness floor differ from Qdrant's configured byte threshold; exact cardinality uses deterministic equality, not sampled estimation. |
+| Base/delta authority and rerank | Segment deleted/current vectors, proxy segments; `index/vector_index_search_common.rs` | `test_segmented_hnsw`, `test_point_hnsw_projection`, `test_hnsw_overlay_cache`, field rerank and lifecycle tests | Current-source eligibility precedes scoring. Reranking remains necessary: tests deliberately make graph rows stale while authoritative rows change, and typed fields promise F64 scores. Qdrant's unquantized no-rescore path cannot be copied without changing that invariant. |
+| Named dense / MaxSim | `vector_storage/query_scorer` multi-dense scorers and named storage | Native Dot/L2/cosine/zero examples, presence and reopen tests | Shared nonempty MaxSim aggregation verified. Empty stored matrices remain present but unscorable; field shapes/scalars retain Akasha validation. |
+| Sparse | `lib/sparse/src/index/search_context.rs` | F32 term-order accumulation, nonzero eligibility, empty/zero/overflow/cancellation examples; posting and snapshot paths; distributed empty hybrid regression | Native differential uses Qdrant sparse index with `full_scan_threshold=0`. Qdrant's filtered plain scan can retain cancellation-zero results; this mode difference is not claimed equivalent. |
+| RRF and final rerank | `lib/segment/src/common/reciprocal_rank_fusion.rs`; query fusion processing | Default 2, zero-based ranks and exact F32 arithmetic; native constants 1/2/17/16777216; field rerank tests | Shared fusion verified. Preserve explicit Akasha stable ties and final metric score units. |
+| IVF | No corresponding Qdrant index exposed | `test_field_ivf` and Python field IVF tests: probe limits, filters, ownership, reopen and cache reuse | Preserve independently verified Akasha index; no Qdrant parity claim. |
+
+The behavior runner currently reports **141/141 passing comparisons**,
+`.build/qdrant-behavior/half-cosine-aligned/summary.json`. F16 cosine previously
+failed two cases (maximum delta `0.00021121312367700096`); the expanded corpus
+also checks zero/tiny/unit normalization boundaries, MaxSim, raw-value retention
+and reopen. Python independent IVF/MaxSim score oracles pass 77/77. It records
+native binary/source hashes, adapters and the Edge boolean-binding limitation.
+It is a finite regression corpus, not proof that every numerical input agrees.
+
+## Durability, concurrency and public boundaries
+
+Qdrant's `lib/shard/src/segment_holder/flush.rs` captures flushers while holding
+consistent segment locks and limits WAL acknowledgement to completed flushes
+and pending cleanup dependencies. `lib/collection/src/update_workers/flush_workers.rs`
+flushes WAL before acknowledging confirmed segment versions, capped by failures
+and `keep_from`. `lib/common/common/src/save_on_disk.rs` publishes atomic files.
+These are ordering/ownership references, not a requirement to copy Qdrant's
+file formats or asynchronous acknowledgement modes.
+
+Akasha validates and encodes a complete point mutation before append/fsync,
+publishes in-memory state afterward, and poisons a handle on uncertain I/O.
+Checkpoint data and manifest publication precede both WAL rotations and old-file
+retirement. Recovery validates source files before migration/repair. Existing
+read leases prevent deleting files still reachable from a captured generation.
+
+| Capability | Upstream reference | Change / evidence | Disposition |
+| --- | --- | --- | --- |
+| Atomic mutation | `lib/shard/src/update/points/upsert.rs`, `update/vectors.rs`, segment updater | One PointStore authority for default/named/dense/sparse/payload; whole-point upsert removes omitted values, partial updates preserve them. WAL v5 records replacement; historical v4 replay preserves merge semantics. Native update/upsert/reopen comparisons pass | Shared operation behavior aligned. Akasha batch durability/error contracts remain explicit. |
+| WAL/checkpoint/recovery | Flush sources above, Edge shard open/flush | Frozen old-writer fixtures (17 cases), mixed v1-v5 WAL, torn/corrupt data and point segment v4/v5 tests; all eight crash files have passing results across `unified-recovery-final`, `unified-crash-fixes` and `integration-final` | Akasha formats retained with versioned migrations. Point segment v5 permits zero sparse weights while frozen v4 validation remains strict. |
+| Mapped HNSW/readiness | Graph links mmap and builder publication | Sidecar v3 stores directed/supplementary adjacency and entry levels. Frozen v1/v2 readers; same-sequence downgrade, failed publication, retained WAL and pin retirement regressions pass | Derived format is Akasha-specific; failure cannot publish a partially ready graph. |
+| Concurrent reads / optimization | Segment holder lock/flush discipline, segment builder and proxy segments | Background publication 20/20; concurrency, compaction rebase/reclaim and lease tests. No-op flush preserves its read root; failed derived-cache publication retries on a later flush | Captured immutable roots and background compaction retain Akasha snapshot isolation. No claim of identical locking implementation. |
+| Snapshot/backup/logical restore | `lib/edge/src/edge_shard/snapshots.rs`, `lib/edge/python/src/snapshots.rs` | Snapshot/backup compaction/Arrow lease tests and backup publication crash test; logical import/export Python tests | Restore atomically validated authoritative state; physical and logical formats remain Akasha-specific. |
+| Python/C/Arrow/HTTP | Edge Python boundary, service handlers | Latest Python/distributed suite: 387 passed, 1 skipped. Latest `pixi run test-c`: pass. Arrow empty sparse rows, typed ownership, schema/offset validation, service behavior covered | Existing APIs verified; no Qdrant HTTP/gRPC compatibility layer added. |
+| Replication/failover | `lib/collection/src/shards/replica_set/execute_read_operation.rs` and transfer/snapshot paths | Replica applies dense+payload+sparse in one point batch. Journal publication fsyncs file then parent; uncertain append blocks retries until recovery. Four new durability tests; protocol/multiprocess suite 28/28, then full suite above | Existing quorum/placement/term protocol retained. Qdrant has configurable read consistency and its own consensus/transfer design; this is not Raft or wire-protocol equivalence. |
+| Query budgets/cancellation/metrics | `graph_layers.rs` stop checks and query-context hardware counters | Owned/mapped descent and beam loops check cancellation; scratch reuse after cancellation, field query controls and public query-control tests pass | Akasha public counter units/resource ceilings remain its contract; no counter-value parity claim. |
+| GPU | Qdrant GPU graph/scorer infrastructure | Actual M4 GPU zero-cosine kernels and snapshot suite pass; latest `tests/gpu/test_gpu_snapshot.mojo` passes after unified authority | Akasha GPU exact search is independently checked against CPU semantics. Qdrant GPU graph construction is not the same API; no GPU performance parity claimed. |
+
+The final integration rerun is
+`.build/qdrant-alignment/integration-final/summary.json`: metadata field indexes,
+HNSW checkpoint cleanup/overlay retry/sidecar publication, snapshot, two HNSW
+crash files and actual-device GPU snapshot all pass. Earlier integration failures
+are retained in their original logs and superseded by the targeted successful runs.
+
+The traversal also now reuses its neighbor and scoring buffers and filters IDs
+in place, following upstream `FilteredScorer`. The 98-case differential remains
+exact, including distance counts; cancellation and scorer-buffer reuse pass.
+The obsolete refill option was removed (15/15 neighbor-selection tests).
+An old/new/old saved-graph diagnostic preserves all result digests and counters
+across twelve cells; measured QPS ratios are 1.026–1.252, with two p95 regressions.
+See the [buffer reuse report](../benchmarks/2026-10-16-qdrant-search-buffers.md)
+for scope, raw artifacts and limitations. It is not a new Qdrant acceptance run.
+
+## Remaining acceptance and implementation work
+
+- Learned PQ training and scoring have separate executable references.
+  `benchmarks/qdrant_pq_reference.py` compiles unedited upstream Lloyd methods
+  with serial execution and deterministic RNG adapters; 20/20 fixtures match
+  exact centroid bits (`.build/qdrant-source-reference/pq-after/summary.json`).
+  The 10,000-row sampling cap uses a deterministic uniform reservoir rather than
+  Qdrant's permutation; source order is restored before training.
+- `benchmarks/qdrant_quantized_reference.py` forces native quantized plain scan with
+  rescore disabled and proves materialized quantization plus a difference from
+  exact scores. All 45 SQ8 query fixtures pass, including all-zero/constant
+  populations (`sq8-constant/summary.json`). With `--codec pq`, 18/18 trained-PQ
+  query fixtures pass (`pq-scores-trained-after/summary.json`); codebook/codes
+  are mapped to logical IDs by exact retrieved-vector bytes. The earlier
+  18/18 case with one centroid per point did not exercise lossy centroid norms;
+  the expanded 512-point case exposed and fixed that difference (14/18 before).
+  Raw and normalized cosine SQ8 artifacts are built independently per read root.
+  The former per-coordinate 0..255 encoder and its unused rounding helper were
+  removed. Offset multiplication must round before adding the shift; allowing
+  FMA contraction changed cancellation-sensitive scores and failed the oracle.
+- F16 cosine uses Qdrant's metric on canonical half inputs without changing
+  stored raw values. Hardware SIMD summation order and original F32 ingestion
+  rounding remain explicit limits on a bitwise score-parity claim.
+- The unchanged Akasha L2 quality gate remains `0.9458333333 < 0.95`.
+  `benchmarks/qdrant_quality_gate_reference.py` produced the same result in
+  three fresh native Qdrant trials on that corpus, each checking exact results
+  against an independent F64 oracle. This diagnoses the gate; it does not waive it.
+- Warm three-corpus, three-trial acceptance completed: matched recall 36/36,
+  speed **3/36**, overall **FAILED**. The existing symmetric ef grid and all
+  thresholds were retained; see the [measurement report](../benchmarks/2026-10-15-qdrant-alignment-warm.md).
+  Full M5/M6 requirements still include lifecycle,
+  concurrent/non-resident/type matrices and actual supported-platform evidence.
+  Source parity and macOS tests cannot substitute for those measurements.

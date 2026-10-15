@@ -1,4 +1,4 @@
-from akasha.index.hnsw_core import HnswValidationStats
+from akasha.index.hnsw_core import HnswValidationStats, validate_bidirectional_links
 from std.time import perf_counter_ns
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.quantization import (
@@ -9,6 +9,7 @@ from akasha.compute.quantization import (
     encode_symmetric_i8,
 )
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_entries import entries_from_legacy, encode_entries, decode_entries
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.checksum import (
     BinaryReader,
@@ -40,6 +41,8 @@ struct HnswOpenStats(Copyable, Movable):
 
 comptime HNSW_SNAPSHOT_VERSION = UInt16(1)
 comptime HNSW_SNAPSHOT_V2_VERSION = UInt16(2)
+comptime HNSW_SNAPSHOT_V3_VERSION = UInt16(3)
+comptime HNSW_SNAPSHOT_V3_HEADER_BYTES = 192
 comptime HNSW_SNAPSHOT_HEADER_BYTES = 160
 comptime HNSW_SNAPSHOT_V2_HEADER_BYTES = 192
 comptime HNSW_SNAPSHOT_NODE_BYTES = 40
@@ -163,7 +166,7 @@ struct _DecodedNodes(Movable):
 def encode_hnsw_snapshot(
     index: HnswIndex, sequence: UInt64
 ) raises -> List[UInt8]:
-    """Encode deterministic F32 v1 or compact-vector v2 graph bytes."""
+    """Encode the v3 directed graph, preserving native scalar storage."""
     _require_snapshot_config(index.config)
     index.validate_structure()
     _validate_snapshot_graph_vectors(index)
@@ -213,7 +216,10 @@ def encode_hnsw_snapshot(
     var scale_offset = _align8(_checked_add_u64(vector_offset, vector_length))
     var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
     var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
-    var body_length = _checked_add_u64(edge_offset, edge_length)
+    var entries = encode_entries(index.entries)
+    var entry_offset = _align8(_checked_add_u64(edge_offset, edge_length))
+    var entry_length = UInt64(len(entries))
+    var body_length = _checked_add_u64(entry_offset, entry_length)
     var file_length = _checked_add_u64(body_length, UInt64(_CHECKSUM_BYTES))
     _require_supported_file_length(file_length)
     _validate_decode_allocation(
@@ -264,8 +270,8 @@ def encode_hnsw_snapshot(
         _write_zeros(writer, 6)
         writer.write_u64(scale_offset)
         writer.write_u64(scale_length)
-        writer.write_u64(UInt64(0))
-        writer.write_u64(UInt64(0))
+        writer.write_u64(entry_offset)
+        writer.write_u64(entry_length)
 
     var count_base = UInt64(0)
     var edge_base = UInt64(0)
@@ -330,6 +336,8 @@ def encode_hnsw_snapshot(
                     index.graph.neighbor_at(slot, level, edge_index)
                 )
 
+    _write_zeros(writer, Int(entry_offset - (edge_offset + edge_length)))
+    writer.write_bytes(entries)
     var body = writer.take_bytes()
     if UInt64(len(body)) != body_length:
         raise Error("HNSW snapshot encoder size mismatch")
@@ -402,9 +410,11 @@ def hnsw_snapshot_eligibility(
         )
         var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
         var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
+        var entry_offset = _align8(_checked_add_u64(edge_offset, edge_length))
+        var entry_length = _checked_add_u64(UInt64(16), _checked_mul_u64(
+            UInt64(len(index.entries.primary) + len(index.entries.extra)), UInt64(8)))
         var file_length = _checked_add_u64(
-            _checked_add_u64(edge_offset, edge_length),
-            UInt64(_CHECKSUM_BYTES),
+            _checked_add_u64(entry_offset, entry_length), UInt64(_CHECKSUM_BYTES)
         )
         if (
             file_length > UInt64(_MAX_SNAPSHOT_BYTES)
@@ -457,7 +467,7 @@ def decode_hnsw_snapshot_owned(
         raise Error("HNSW snapshot is truncated")
     if version == HNSW_SNAPSHOT_VERSION:
         _require_v1_config(config)
-    elif config.scalar_kind == ScalarKind.f32():
+    elif version == HNSW_SNAPSHOT_V2_VERSION and config.scalar_kind == ScalarKind.f32():
         raise Error("HNSW snapshot v2 requires a compact scalar kind")
     if reader.read_u16() != UInt16(0):
         raise Error("unsupported HNSW snapshot flags")
@@ -501,6 +511,8 @@ def decode_hnsw_snapshot_owned(
     var scale_width = 0
     var scale_offset = count_offset
     var scale_length = UInt64(0)
+    var entry_offset = UInt64(0)
+    var entry_length = UInt64(0)
     if version == HNSW_SNAPSHOT_VERSION:
         if reader.read_u64() != UInt64(0):
             raise Error("nonzero HNSW snapshot reserved extension bytes")
@@ -512,7 +524,9 @@ def decode_hnsw_snapshot_owned(
                 raise Error("nonzero HNSW snapshot reserved extension bytes")
         scale_offset = reader.read_u64()
         scale_length = reader.read_u64()
-        if reader.read_u64() != UInt64(0) or reader.read_u64() != UInt64(0):
+        entry_offset = reader.read_u64()
+        entry_length = reader.read_u64()
+        if version < HNSW_SNAPSHOT_V3_VERSION and (entry_offset != 0 or entry_length != 0):
             raise Error("nonzero HNSW snapshot reserved extension bytes")
         if vector_width != _snapshot_vector_width(config.scalar_kind):
             raise Error("HNSW snapshot scalar width mismatch")
@@ -546,6 +560,8 @@ def decode_hnsw_snapshot_owned(
         directed_edges_u64,
         UInt64(config.m0),
     )
+    if version == HNSW_SNAPSHOT_V3_VERSION and entry_offset == 0:
+        raise Error("HNSW v3 snapshot is missing entry section")
     _validate_section_layout(
         UInt64(encoded_size),
         slot_count_u64,
@@ -564,6 +580,8 @@ def decode_hnsw_snapshot_owned(
         scale_offset,
         scale_length,
         scale_width,
+        entry_offset,
+        entry_length,
     )
 
     var nodes = _DecodedNodes(slots)
@@ -662,6 +680,8 @@ def decode_hnsw_snapshot_owned(
                     vector_codes.append(bitcast[DType.int8](reader.read_u8()))
         if config.scalar_kind != ScalarKind.i8():
             index.metric.validate_prepared_vector(prepared)
+            if version < HNSW_SNAPSHOT_V3_VERSION:
+                index.metric.validate_legacy_cosine_prepared(prepared)
             for value in prepared:
                 vector_scalars.append(value)
 
@@ -690,6 +710,8 @@ def decode_hnsw_snapshot_owned(
                 scale = vector_scales[slot_index]
             prepared.append(scale)
             index.metric.validate_prepared_vector(prepared)
+            if version < HNSW_SNAPSHOT_V3_VERSION:
+                index.metric.validate_legacy_cosine_prepared(prepared)
 
     _read_zero_padding(
         reader, Int(count_offset - (scale_offset + scale_length))
@@ -702,9 +724,13 @@ def decode_hnsw_snapshot_owned(
         for level in range(nodes.levels[slot_index] + 1):
             var count_u32 = reader.read_u32()
             var capacity = config.m if level > 0 else config.m0
-            if UInt64(count_u32) > UInt64(capacity):
+            if version < HNSW_SNAPSHOT_V3_VERSION and UInt64(count_u32) > UInt64(capacity):
                 raise Error("HNSW snapshot neighbor count exceeds capacity")
             var count = Int(count_u32)
+            if count >= slots:
+                raise Error("HNSW snapshot neighbor count exceeds graph slots")
+            if count > capacity:
+                allocated_neighbor_cells = _checked_add_u64(allocated_neighbor_cells, UInt64(count - capacity))
             if count > directed_edges - total_edges_from_counts:
                 raise Error("HNSW snapshot neighbor counts exceed edge section")
             node_sum += count
@@ -741,6 +767,10 @@ def decode_hnsw_snapshot_owned(
                 edge_index += 1
     if edge_index != directed_edges:
         raise Error("HNSW snapshot edge section length is inconsistent")
+    var entry_bytes = List[UInt8]()
+    if version == HNSW_SNAPSHOT_V3_VERSION:
+        _read_zero_padding(reader, Int(entry_offset - (edge_offset + edge_length)))
+        entry_bytes = reader.read_bytes(Int(entry_length))
     _ = reader.read_u32()
     if reader.remaining() != 0:
         raise Error("HNSW snapshot has trailing bytes")
@@ -792,23 +822,10 @@ def decode_hnsw_snapshot_owned(
             _ = index.graph.mark_replaced(nodes.ids[slot_index])
             inactive_count += 1
 
-    var materialized_edge_index = 0
-    var materialized_level_index = 0
-    for slot_index in range(slots):
-        for level in range(nodes.levels[slot_index] + 1):
-            var count = level_edge_counts[materialized_level_index]
-            materialized_level_index += 1
-            var base = index.graph.neighbor_bases[slot_index]
-            if level > 0:
-                base += index.graph.m0 + (level - 1) * index.graph.m
-            for local_index in range(count):
-                index.graph.neighbor_slots[base + local_index] = edge_slots[
-                    materialized_edge_index
-                ]
-                materialized_edge_index += 1
-            index.graph.neighbor_counts[
-                index.graph.neighbor_count_bases[slot_index] + level
-            ] = UInt32(count)
+    _validate_decode_allocation(UInt64(encoded_size), slot_count_u64,
+        UInt64(config.dimension), UInt64(level_count), directed_edges_u64,
+        allocated_neighbor_cells)
+    index.graph.replace_all_links(level_edge_counts, edge_slots)
 
     if slots > 0:
         index.entry_slot = Optional(UInt32(entry_slot_u64))
@@ -818,7 +835,13 @@ def decode_hnsw_snapshot_owned(
     index.build_stats.maximum_level = entry_level
     index.build_stats.directed_edges = directed_edges
     index.build_stats.serialized_bytes = encoded_size
+    if version == HNSW_SNAPSHOT_V3_VERSION:
+        index.entries = decode_entries(entry_bytes^, index.graph)
+    else:
+        index.entries = entries_from_legacy(index.graph, index.entry_slot)
     index.validate_structure()
+    if version < HNSW_SNAPSHOT_V3_VERSION:
+        validate_bidirectional_links(index.graph)
     return index^
 
 
@@ -953,7 +976,7 @@ def _open_hnsw_snapshot_view_from_mapping(
         raise Error("HNSW snapshot is truncated")
     if version == HNSW_SNAPSHOT_VERSION:
         _require_v1_config(config)
-    elif config.scalar_kind == ScalarKind.f32():
+    elif version == HNSW_SNAPSHOT_V2_VERSION and config.scalar_kind == ScalarKind.f32():
         raise Error("HNSW snapshot v2 requires a compact scalar kind")
     if _mapped_u16(mapping, 6) != UInt16(0):
         raise Error("unsupported HNSW snapshot flags")
@@ -996,6 +1019,8 @@ def _open_hnsw_snapshot_view_from_mapping(
     var scale_width = 0
     var scale_offset = count_offset
     var scale_length = UInt64(0)
+    var entry_offset = UInt64(0)
+    var entry_length = UInt64(0)
     if version == HNSW_SNAPSHOT_VERSION:
         if _mapped_u64(mapping, 152) != UInt64(0):
             raise Error("nonzero HNSW snapshot reserved extension bytes")
@@ -1007,9 +1032,9 @@ def _open_hnsw_snapshot_view_from_mapping(
                 raise Error("nonzero HNSW snapshot reserved extension bytes")
         scale_offset = _mapped_u64(mapping, 160)
         scale_length = _mapped_u64(mapping, 168)
-        if _mapped_u64(mapping, 176) != UInt64(0) or _mapped_u64(
-            mapping, 184
-        ) != UInt64(0):
+        entry_offset = _mapped_u64(mapping, 176)
+        entry_length = _mapped_u64(mapping, 184)
+        if version < HNSW_SNAPSHOT_V3_VERSION and (entry_offset != 0 or entry_length != 0):
             raise Error("nonzero HNSW snapshot reserved extension bytes")
         if vector_width != _snapshot_vector_width(config.scalar_kind):
             raise Error("HNSW snapshot scalar width mismatch")
@@ -1038,6 +1063,8 @@ def _open_hnsw_snapshot_view_from_mapping(
         directed_edges_u64,
         UInt64(config.m0),
     )
+    if version == HNSW_SNAPSHOT_V3_VERSION and entry_offset == 0:
+        raise Error("HNSW v3 snapshot is missing entry section")
     _validate_section_layout(
         UInt64(encoded_size),
         slot_count_u64,
@@ -1056,6 +1083,8 @@ def _open_hnsw_snapshot_view_from_mapping(
         scale_offset,
         scale_length,
         scale_width,
+        entry_offset,
+        entry_length,
     )
     _validate_mapped_zero_padding(
         mapping, node_offset + node_length, vector_offset
@@ -1095,9 +1124,15 @@ def _open_hnsw_snapshot_view_from_mapping(
         scale_width,
         Int(count_offset),
         Int(edge_offset),
+        version < HNSW_SNAPSHOT_V3_VERSION,
     )
     stats.layout_ns = perf_counter_ns() - started
     started = perf_counter_ns()
+    if version == HNSW_SNAPSHOT_V3_VERSION:
+        view.validate_entry_padding(Int(edge_offset + edge_length), Int(entry_offset))
+        view.load_entries(Int(entry_offset), Int(entry_length))
+    else:
+        view.entries = entries_from_legacy(view, optional_entry)
     view.validate_structure_with_stats(stats.validation)
     stats.validation_ns = perf_counter_ns() - started
     return view^
@@ -1146,7 +1181,8 @@ def hnsw_snapshot_identity_matches(
     if len(bytes) < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         return False
     return (
-        _read_u64_at(bytes, 16) == config.fingerprint()
+        _read_u16_at(bytes, 4) == HNSW_SNAPSHOT_V3_VERSION
+        and _read_u64_at(bytes, 16) == config.fingerprint()
         and _read_u64_at(bytes, 24) == sequence
         and _read_u32_at(bytes, 32) == UInt32(config.dimension)
         and bytes[36] == config.ann_metric.tag()
@@ -1168,7 +1204,8 @@ def _mapped_hnsw_snapshot_identity_matches(
     if mapping.byte_length() < HNSW_SNAPSHOT_HEADER_BYTES + _CHECKSUM_BYTES:
         return False
     return (
-        _mapped_u64(mapping, 16) == config.fingerprint()
+        _mapped_u16(mapping, 4) == HNSW_SNAPSHOT_V3_VERSION
+        and _mapped_u64(mapping, 16) == config.fingerprint()
         and _mapped_u64(mapping, 24) == sequence
         and _mapped_u32(mapping, 32) == UInt32(config.dimension)
         and mapping.byte_at(36) == config.ann_metric.tag()
@@ -1205,15 +1242,9 @@ def _require_snapshot_config(config: CollectionConfig) raises:
 
 
 def _snapshot_version(scalar: ScalarKind) raises -> UInt16:
-    if scalar == ScalarKind.f32():
-        return HNSW_SNAPSHOT_VERSION
-    if (
-        scalar == ScalarKind.bf16()
-        or scalar == ScalarKind.f16()
-        or scalar == ScalarKind.i8()
-    ):
-        return HNSW_SNAPSHOT_V2_VERSION
-    raise Error("unsupported HNSW snapshot scalar kind")
+    if not scalar.is_valid():
+        raise Error("unsupported HNSW snapshot scalar kind")
+    return HNSW_SNAPSHOT_V3_VERSION
 
 
 def _snapshot_header_bytes(version: UInt16) raises -> Int:
@@ -1221,6 +1252,8 @@ def _snapshot_header_bytes(version: UInt16) raises -> Int:
         return HNSW_SNAPSHOT_HEADER_BYTES
     if version == HNSW_SNAPSHOT_V2_VERSION:
         return HNSW_SNAPSHOT_V2_HEADER_BYTES
+    if version == HNSW_SNAPSHOT_V3_VERSION:
+        return HNSW_SNAPSHOT_V3_HEADER_BYTES
     raise Error("unsupported HNSW snapshot version")
 
 
@@ -1428,6 +1461,8 @@ def _validate_section_layout(
     scale_offset: UInt64 = UInt64(0),
     scale_length: UInt64 = UInt64(0),
     scale_width: Int = 0,
+    entry_offset: UInt64 = UInt64(0),
+    entry_length: UInt64 = UInt64(0),
 ) raises:
     var expected_node_length = _checked_mul_u64(
         slot_count, UInt64(HNSW_SNAPSHOT_NODE_BYTES)
@@ -1459,6 +1494,12 @@ def _validate_section_layout(
     ):
         raise Error("HNSW snapshot section layout is invalid")
     var body_end = _checked_add_u64(edge_offset, edge_length)
+    if entry_offset != 0:
+        if entry_offset != _align8(body_end) or entry_length < 16 or entry_length > _checked_add_u64(UInt64(16), _checked_mul_u64(slot_count, UInt64(8))):
+            raise Error("HNSW entry section layout is invalid")
+        body_end = _checked_add_u64(entry_offset, entry_length)
+    elif entry_length != 0:
+        raise Error("HNSW entry section layout is invalid")
     if _checked_add_u64(body_end, UInt64(_CHECKSUM_BYTES)) != file_length:
         raise Error("HNSW snapshot section range exceeds file")
 

@@ -190,7 +190,7 @@ def test_real_buffers_parent_and_independent_child_offsets(tmp_path):
     ("vectors", np.arange(4, dtype=np.float32).reshape(2, 2)),
     ("vectors", np.arange(3, dtype=np.float32)),
     ("sparse_offsets", np.array([0, 2, 99], dtype=np.int32)),
-    ("sparse_offsets", np.array([0, 2, 2], dtype=np.int32)),
+    ("sparse_offsets", np.array([0, 2, 1], dtype=np.int32)),
     ("sparse_terms", np.array([7, 9], dtype=np.int64)),
     ("sparse_weights", np.array([2.0, 0.5, np.nan], dtype=np.float32)),
 ])
@@ -210,7 +210,7 @@ def test_native_borrow_rejects_bad_layout_and_values_before_any_write(tmp_path, 
     ("id", pa.array([10, None], type=pa.int64())),
     ("vector", pa.array([[1.0, None], [0.0, 1.0]], type=pa.list_(pa.float32(), 2))),
     ("sparse_term_ids", pa.array([[7, None], [7]], type=pa.list_(pa.int64()))),
-    ("sparse_weights", pa.array([[2.0, 0.0], [1.0]], type=pa.list_(pa.float32()))),
+    ("sparse_weights", pa.array([[2.0, float("inf")], [1.0]], type=pa.list_(pa.float32()))),
     ("sparse_term_ids", pa.array([[9, 7], [7]], type=pa.list_(pa.int64()))),
 ])
 def test_arrow_nulls_and_invalid_sparse_values_preserve_preflight_error(tmp_path, column, array):
@@ -326,3 +326,27 @@ def test_direct_result_empty_and_validation_match_search(tmp_path):
     collection.close()
     with pytest.raises(akashadb.CollectionClosedError):
         arrow.search_record_batch(collection, request)
+
+
+@pytest.mark.parametrize("terms,weights", [
+    ([[], [], []], [[], [], []]),
+    ([[], [7], []], [[], [0.0], []]),
+    ([[9], [], [2]], [[1.0], [], [3.0]]),
+])
+def test_arrow_sparse_empty_and_zero_are_present_atomic_values(tmp_path, terms, weights):
+    collection = akashadb.Collection(tmp_path / "sparse-present", 2)
+    batch = pa.record_batch([
+        pa.array([1, 2, 3], type=pa.int64()),
+        pa.array([[1.0, 0.0]] * 3, type=pa.list_(pa.float32(), 2)),
+        pa.array(terms, type=pa.list_(pa.int64())),
+        pa.array(weights, type=pa.list_(pa.float32())),
+    ], names=["id", "vector", "sparse_term_ids", "sparse_weights"])
+    assert upsert_record_batch(collection, batch) == 3
+    for index in range(3):
+        expected = [akashadb.SparseElement(term, weight) for term, weight in zip(terms[index], weights[index])]
+        assert collection.get_point(index + 1).sparse == expected
+    collection.flush()
+    collection.close()
+    reopened = akashadb.Collection(tmp_path / "sparse-present", 2)
+    assert reopened.get_point(2).sparse == [akashadb.SparseElement(term, weight) for term, weight in zip(terms[1], weights[1])]
+    reopened.close()

@@ -78,7 +78,7 @@ def test_diversity_rejects_redundant_collinear_neighbor() raises:
     stats.directed_edges = 17
 
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 2, False, stats
+        graph, metric, candidates, _none(), 2, stats
     )
 
     var expected: List[UInt32] = [nearest, different_direction]
@@ -100,14 +100,14 @@ def test_capacity_zero_and_one_do_no_pair_distance_work() raises:
     ]
     var zero_stats = HnswBuildStats()
     var zero = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 0, False, zero_stats
+        graph, metric, candidates, _none(), 0, zero_stats
     )
     assert_equal(len(zero), 0)
     assert_equal(zero_stats.distance_evaluations, 0)
 
     var one_stats = HnswBuildStats()
     var one = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 1, False, one_stats
+        graph, metric, candidates, _none(), 1, one_stats
     )
     var expected: List[UInt32] = [nearer]
     _assert_slots(one, expected)
@@ -117,10 +117,9 @@ def test_capacity_zero_and_one_do_no_pair_distance_work() raises:
     # caller value is clamped to the validated unique candidate count.
     var large_stats = HnswBuildStats()
     var large = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), Int.MAX, True, large_stats
+        graph, metric, candidates, _none(), Int.MAX, large_stats
     )
-    var both: List[UInt32] = [nearer, farther]
-    _assert_slots(large, both)
+    _assert_slots(large, expected)
     assert_equal(large_stats.distance_evaluations, 1)
 
 
@@ -140,7 +139,7 @@ def test_duplicates_and_excluded_self_are_skipped_without_distance_work() raises
     var stats = HnswBuildStats()
 
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _some(self_slot), 4, False, stats
+        graph, metric, candidates, _some(self_slot), 4, stats
     )
 
     var expected: List[UInt32] = [first, second]
@@ -161,7 +160,7 @@ def test_equality_boundary_is_accepted() raises:
     var stats = HnswBuildStats()
 
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 2, False, stats
+        graph, metric, candidates, _none(), 2, stats
     )
 
     var expected: List[UInt32] = [first, equal_boundary]
@@ -169,7 +168,7 @@ def test_equality_boundary_is_accepted() raises:
     assert_equal(stats.distance_evaluations, 1)
 
 
-def test_keep_pruned_fills_capacity_in_rejected_nearest_order() raises:
+def test_rejected_neighbors_are_not_refilled_to_capacity() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 4, 8)
     var nearest = _append(graph, metric, 10, 1.0, 0.0)
@@ -185,10 +184,10 @@ def test_keep_pruned_fills_capacity_in_rejected_nearest_order() raises:
     var stats = HnswBuildStats()
 
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 3, True, stats
+        graph, metric, candidates, _none(), 3, stats
     )
 
-    var expected: List[UInt32] = [nearest, diverse, first_rejected]
+    var expected: List[UInt32] = [nearest, diverse]
     _assert_slots(selected, expected)
     # B-A, C-A, D-A. D is rejected on its first pair.
     assert_equal(stats.distance_evaluations, 3)
@@ -215,10 +214,10 @@ def test_input_permutations_have_identical_deterministic_output() raises:
     var first_stats = HnswBuildStats()
     var second_stats = HnswBuildStats()
     var first = select_neighbors_heuristic(
-        graph, metric, forward, _none(), 3, False, first_stats
+        graph, metric, forward, _none(), 3, first_stats
     )
     var second = select_neighbors_heuristic(
-        graph, metric, reverse, _none(), 3, False, second_stats
+        graph, metric, reverse, _none(), 3, second_stats
     )
 
     var expected: List[UInt32] = [b, c, a]
@@ -246,10 +245,10 @@ def test_duplicate_slot_keeps_smallest_cached_distance_independent_of_order() ra
     var first_stats = HnswBuildStats()
     var second_stats = HnswBuildStats()
     var first_selected = select_neighbors_heuristic(
-        graph, metric, first, _none(), 2, False, first_stats
+        graph, metric, first, _none(), 2, first_stats
     )
     var second_selected = select_neighbors_heuristic(
-        graph, metric, second, _none(), 2, False, second_stats
+        graph, metric, second, _none(), 2, second_stats
     )
 
     var expected: List[UInt32] = [duplicate, other]
@@ -276,7 +275,7 @@ def test_large_reverse_candidate_stream_matches_total_order_oracle() raises:
 
     var stats = HnswBuildStats()
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), count, False, stats
+        graph, metric, candidates, _none(), count, stats
     )
 
     assert_equal(len(selected), count)
@@ -308,7 +307,7 @@ def test_inactive_candidate_is_rejected_before_stats_mutate() raises:
     stats.distance_evaluations = 7
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, candidates, _none(), 1, False, stats
+            graph, metric, candidates, _none(), 1, stats
         )
     assert_equal(stats.distance_evaluations, 7)
 
@@ -323,13 +322,13 @@ def test_invalid_candidate_fields_and_excluded_slot_preserve_stats() raises:
     var invalid_slot: List[HnswHeapItem] = [HnswHeapItem(UInt32(99), 10, 1.0)]
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_slot, _none(), 1, False, stats
+            graph, metric, invalid_slot, _none(), 1, stats
         )
 
     var invalid_id: List[HnswHeapItem] = [HnswHeapItem(slot, 99, 1.0)]
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_id, _none(), 1, False, stats
+            graph, metric, invalid_id, _none(), 1, stats
         )
 
     var invalid_nan: List[HnswHeapItem] = [
@@ -337,7 +336,7 @@ def test_invalid_candidate_fields_and_excluded_slot_preserve_stats() raises:
     ]
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_nan, _none(), 1, False, stats
+            graph, metric, invalid_nan, _none(), 1, stats
         )
 
     var invalid_inf: List[HnswHeapItem] = [
@@ -345,22 +344,22 @@ def test_invalid_candidate_fields_and_excluded_slot_preserve_stats() raises:
     ]
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_inf, _none(), 1, False, stats
+            graph, metric, invalid_inf, _none(), 1, stats
         )
 
     var invalid_negative: List[HnswHeapItem] = [HnswHeapItem(slot, 10, -1.0)]
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_negative, _none(), 1, False, stats
+            graph, metric, invalid_negative, _none(), 1, stats
         )
 
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_id, _some(UInt32(99)), 1, False, stats
+            graph, metric, invalid_id, _some(UInt32(99)), 1, stats
         )
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, invalid_id, _none(), -1, False, stats
+            graph, metric, invalid_id, _none(), -1, stats
         )
     assert_equal(stats.distance_evaluations, 11)
 
@@ -381,7 +380,6 @@ def test_invalid_dispatcher_backend_and_dimension_preserve_stats() raises:
             candidates,
             _none(),
             1,
-            False,
             stats,
         )
     var unsupported = MetricDispatcher(
@@ -389,7 +387,7 @@ def test_invalid_dispatcher_backend_and_dimension_preserve_stats() raises:
     )
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, unsupported, candidates, _none(), 1, False, stats
+            graph, unsupported, candidates, _none(), 1, stats
         )
     assert_equal(stats.distance_evaluations, 13)
 
@@ -401,7 +399,7 @@ def test_dot_allows_negative_canonical_candidate_distance() raises:
     var candidates: List[HnswHeapItem] = [HnswHeapItem(slot, 10, -2.0)]
     var stats = HnswBuildStats()
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 1, False, stats
+        graph, metric, candidates, _none(), 1, stats
     )
     var expected: List[UInt32] = [slot]
     _assert_slots(selected, expected)
@@ -421,7 +419,7 @@ def test_prepared_cosine_uses_same_canonical_heuristic() raises:
     ]
     var stats = HnswBuildStats()
     var selected = select_neighbors_heuristic(
-        graph, metric, candidates, _none(), 2, False, stats
+        graph, metric, candidates, _none(), 2, stats
     )
     var expected: List[UInt32] = [same_direction, orthogonal]
     _assert_slots(selected, expected)
@@ -439,7 +437,7 @@ def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two() ra
     ]
     var boundary_stats = HnswBuildStats()
     var selected = select_neighbors_heuristic(
-        graph, metric, boundaries, _none(), 2, False, boundary_stats
+        graph, metric, boundaries, _none(), 2, boundary_stats
     )
     var expected: List[UInt32] = [same, opposite]
     _assert_slots(selected, expected)
@@ -450,7 +448,7 @@ def test_cosine_cached_distance_accepts_closed_bounds_and_rejects_above_two() ra
     invalid_stats.distance_evaluations = 19
     with assert_raises():
         _ = select_neighbors_heuristic(
-            graph, metric, above_two, _none(), 1, False, invalid_stats
+            graph, metric, above_two, _none(), 1, invalid_stats
         )
     assert_equal(invalid_stats.distance_evaluations, 19)
 

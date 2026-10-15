@@ -84,13 +84,9 @@ def execute_scalar_exact_reported(
     if len(query) != memtable.dimension:
         raise Error("query dimension does not match snapshot")
     var metric_name = batch_metric_name(metric)
-    var query_norm = Float32(0.0)
     for value in query:
         if not isfinite(value):
             raise Error("query vector must contain only finite values")
-        query_norm += value * value
-    if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
-        raise Error("cosine similarity requires non-zero vectors")
     var entries = memtable.entry_view()
     var topk = BoundedTopK(k, smaller_is_better=metric == BATCH_L2_METRIC)
     for entry_index in range(len(entries)):
@@ -159,13 +155,9 @@ def execute_exact_ordinal_batch(
     for query_index in range(len(queries)):
         if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
-        var query_norm: Float32 = 0.0
         for value in queries[query_index]:
             if not isfinite(value):
                 raise Error("query vector must contain only finite values")
-            query_norm += value * value
-        if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
-            raise Error("cosine similarity requires non-zero vectors")
     if len(queries) == 0:
         return List[List[SearchResult]]()
 
@@ -173,12 +165,6 @@ def execute_exact_ordinal_batch(
     for ordinal in ordinals:
         if not memtable.is_live_at(ordinal):
             raise Error("batch candidate slot is not live")
-        if metric == BATCH_COSINE_METRIC:
-            var candidate_norm: Float32 = 0.0
-            for value in entries[ordinal].values():
-                candidate_norm += value * value
-            if candidate_norm == 0.0:
-                raise Error("cosine similarity requires non-zero vectors")
 
     var result_count = min(k, len(ordinals))
     var output = List[List[SearchResult]](capacity=len(queries))
@@ -257,25 +243,12 @@ def execute_exact_candidate_batch(
     for query_index in range(len(queries)):
         if len(queries[query_index]) != memtable.dimension:
             raise Error("query dimension does not match snapshot")
-        var query_norm: Float32 = 0.0
         for value in queries[query_index]:
             if not isfinite(value):
                 raise Error("query vector must contain only finite values")
-            query_norm += value * value
-        if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
-            raise Error("cosine similarity requires non-zero vectors")
         for ordinal in candidates[query_index]:
             if not memtable.is_live_at(ordinal):
                 raise Error("batch candidate slot is not live")
-        if metric == BATCH_COSINE_METRIC:
-            for entry_index in range(len(candidates[query_index])):
-                var candidate_norm: Float32 = 0.0
-                for value in entries[
-                    candidates[query_index][entry_index]
-                ].values():
-                    candidate_norm += value * value
-                if candidate_norm == 0.0:
-                    raise Error("cosine similarity requires non-zero vectors")
     if len(queries) == 0:
         return List[List[SearchResult]]()
 

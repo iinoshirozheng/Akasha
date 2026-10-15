@@ -60,7 +60,8 @@ def is_point_checkpoint(path: String, manifest: Manifest) raises -> Bool:
         prefix = file.read_bytes(8)
     if len(prefix) < 8:
         raise Error("truncated checkpoint segment header")
-    return (Int(prefix[4]) | (Int(prefix[5]) << 8)) == 4
+    var version = Int(prefix[4]) | (Int(prefix[5]) << 8)
+    return version == 4 or version == 5
 
 
 def load_point_checkpoint(

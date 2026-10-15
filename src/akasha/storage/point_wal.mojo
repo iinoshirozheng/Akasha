@@ -31,10 +31,15 @@ comptime MAX_POINT_BATCH_BYTES = 256 * 1024 * 1024
 comptime _MAGIC = UInt32(0x4C574B41)
 
 
-@fieldwise_init
 struct PointWalBatch(Movable):
     var first_sequence: UInt64
     var mutations: List[PointMutation]
+    var format_version: Int
+
+    def __init__(out self, first_sequence: UInt64, var mutations: List[PointMutation], format_version: Int = 5):
+        self.first_sequence = first_sequence
+        self.mutations = mutations^
+        self.format_version = format_version
 
     def last_sequence(self) raises -> UInt64:
         if (
@@ -88,7 +93,7 @@ struct RecoveredWalEnvelope(Movable):
 
 
 struct FieldWalReader(Movable):
-    """Bounded mixed v1-v4 envelope preflight; never publishes or repairs.
+    """Bounded mixed v1-v5 envelope preflight; never publishes or repairs.
 
     Legacy records must end at/before catalog cutover. New batches must start
     after it. The caller completes legacy dense/sparse replay before applying
@@ -133,7 +138,7 @@ struct FieldWalReader(Movable):
         )
         var dimension = self._catalog[].field_at(0).dimension
         var size: Int
-        if version == 4:
+        if version == 4 or version == 5:
             size = point_batch_size(self._input.bytes())
         else:
             size = _envelope_size(self._input.bytes(), dimension)
@@ -143,7 +148,7 @@ struct FieldWalReader(Movable):
             return Optional[RecoveredWalEnvelope]()
         self._input.ensure_available(size, self.valid_length)
         var envelope: RecoveredWalEnvelope
-        if version == 4:
+        if version == 4 or version == 5:
             var batch = _decode_point_batch(
                 self._input.bytes()[:size],
                 self._catalog[],
@@ -151,7 +156,7 @@ struct FieldWalReader(Movable):
                 self._previous_sequence,
             )
             self._previous_sequence = batch.last_sequence()
-            envelope = RecoveredWalEnvelope(4, _RecoveredData(batch^))
+            envelope = RecoveredWalEnvelope(version, _RecoveredData(batch^))
         else:
             var records = _decode_envelope(
                 self._input.bytes()[:size], dimension, self._previous_sequence
@@ -246,7 +251,7 @@ def encode_point_batch(
         bodies.append(body^)
     var writer = BinaryWriter()
     writer.write_u32(_MAGIC)
-    writer.write_u16(4)
+    writer.write_u16(5)
     writer.write_u8(4)
     writer.write_u8(0)
     writer.write_u32(UInt32(total))
@@ -309,7 +314,8 @@ def _decode_point_batch(
         raise Error("field-aware WAL checksum mismatch")
     var reader = BorrowedBinaryReader(bytes[: len(bytes) - 4])
     _ = reader.read_u32()
-    if reader.read_u16() != 4 or reader.read_u8() != 4 or reader.read_u8() != 0:
+    var version = Int(reader.read_u16())
+    if (version != 4 and version != 5) or reader.read_u8() != 4 or reader.read_u8() != 0:
         raise Error("invalid field-aware WAL version, operation or flags")
     _ = reader.read_u32()
     var first = reader.read_u64()
@@ -360,13 +366,15 @@ def _decode_point_batch(
                 raise Error("unsupported point mutation field flags")
             var size = Int(body.read_u32())
             if action == 1:
+                var value = decode_vector_value(
+                    body.read_span(size), catalog.field_at(ordinal)
+                )
+                if version == 4 and value.kind() == 1:
+                    for element in value.sparse_values():
+                        if element.weight == 0:
+                            raise Error("v4 sparse weights must be non-zero")
                 fields.append(
-                    FieldUpdate.set(
-                        field_id,
-                        decode_vector_value(
-                            body.read_span(size), catalog.field_at(ordinal)
-                        ),
-                    )
+                    FieldUpdate.set(field_id, value^)
                 )
             elif action == 2 and size == 0:
                 fields.append(FieldUpdate.remove(field_id))
@@ -379,4 +387,4 @@ def _decode_point_batch(
         mutations.append(mutation^)
     if reader.remaining() != 0:
         raise Error("unexpected field-aware WAL trailing bytes")
-    return PointWalBatch(first, mutations^)
+    return PointWalBatch(first, mutations^, version)

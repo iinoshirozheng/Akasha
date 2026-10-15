@@ -69,7 +69,7 @@ def _checked_kernel[
         offset += 1
     comptime if metric == 2:
         if lhs_norm == 0 or rhs_norm == 0:
-            raise Error("cosine similarity requires non-zero vectors")
+            return 0.0
         return score / sqrt(lhs_norm * rhs_norm)
     else:
         return score
@@ -109,7 +109,7 @@ def _prepare_query_kernel[
         comptime if cosine:
             result += value * value
         offset += 1
-    # Keep zero-norm rejection in scoring, after candidate validation.
+    # A zero norm is valid and produces zero cosine similarity.
     return result
 
 
@@ -170,7 +170,7 @@ def _checked_pair_kernel[metric: Int, width: Int](
     if len(first) != len(query):
         raise Error("vector dimensions must match")
     if len(second) != len(query):
-        # Preserve the earlier candidate's finite/zero-norm error precedence.
+        # Preserve the earlier candidate's finite-value error precedence.
         _ = _prepared_score[metric](query, first, query_norm)
         raise Error("vector dimensions must match")
     var total0 = SIMD[DType.float32, width](0)
@@ -225,15 +225,11 @@ def _checked_pair_kernel[metric: Int, width: Int](
                 squared_norm1 += right1 * right1
         offset += 1
     comptime if metric == 2:
-        if query_norm == 0 or squared_norm0 == 0:
-            raise Error("cosine similarity requires non-zero vectors")
-        score0 = score0 / sqrt(query_norm * squared_norm0)
+        score0 = 0.0 if query_norm == 0 or squared_norm0 == 0 else score0 / sqrt(query_norm * squared_norm0)
     if not valid1.reduce_and() or not tail_valid1:
         raise Error("vectors must contain only finite values")
     comptime if metric == 2:
-        if query_norm == 0 or squared_norm1 == 0:
-            raise Error("cosine similarity requires non-zero vectors")
-        score1 = score1 / sqrt(query_norm * squared_norm1)
+        score1 = 0.0 if query_norm == 0 or squared_norm1 == 0 else score1 / sqrt(query_norm * squared_norm1)
     return SIMD[DType.float32, 2](score0, score1)
 
 
@@ -364,8 +360,10 @@ def prevalidated_simd_l2_squared_distance(
 def prevalidated_simd_cosine_similarity(
     lhs: List[Float32], rhs: List[Float32]
 ) -> Float32:
-    """Score a validated pair whose vectors both have non-zero norms."""
+    """Score a validated pair, including zero-norm vectors."""
     var product = _simd_dot_product_unchecked(lhs, rhs)
     var lhs_norm_squared = _simd_dot_product_unchecked(lhs, lhs)
     var rhs_norm_squared = _simd_dot_product_unchecked(rhs, rhs)
+    if lhs_norm_squared == 0 or rhs_norm_squared == 0:
+        return 0.0
     return product / sqrt(lhs_norm_squared * rhs_norm_squared)

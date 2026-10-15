@@ -146,19 +146,18 @@ def test_background_compaction_respects_snapshot_generation_pins() raises:
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
     collection.flush()
+    var old_base = path + "/" + load_manifest(path, 1).segments[0].name
     var snapshot = collection.snapshot()
     for id in range(2, 6):
         collection.upsert(id, [Float32(id)])
         collection.flush()
     _ = collection.wait_for_maintenance()
 
-    assert_true(path_exists(path + "/segment-base-1.bin"))
-    assert_true(path_exists(path + "/sparse-base-1.bin"))
+    assert_true(path_exists(old_base))
     assert_true(Bool(snapshot.get(1)))
     snapshot.close()
     _ = collection.maintenance()
-    assert_false(path_exists(path + "/segment-base-1.bin"))
-    assert_false(path_exists(path + "/sparse-base-1.bin"))
+    assert_false(path_exists(old_base))
     collection.close()
 
 
@@ -169,6 +168,7 @@ def test_background_publication_drops_cached_root_before_retiring_files() raises
     for id in range(1, 5):
         collection.upsert(id, [Float32(id)])
         collection.flush()
+    var old_base = path + "/" + load_manifest(path, 1).segments[0].name
     var snapshot: ReadSnapshot
     # Hold the existing writer lock through threshold scheduling and capture
     # so the worker deterministically sees a cached root for its input layout.
@@ -179,12 +179,12 @@ def test_background_publication_drops_cached_root_before_retiring_files() raises
     _ = collection.wait_for_maintenance()
     assert_false(Bool(collection._read_generations[].root))
     assert_equal(collection._pins[].active_count(), 1)
-    assert_true(path_exists(path + "/segment-base-1.bin"))
+    assert_true(path_exists(old_base))
     assert_equal(len(snapshot.documents()), 5)
     snapshot.close()
     assert_equal(collection._pins[].active_count(), 0)
     _ = collection.maintenance()
-    assert_false(path_exists(path + "/segment-base-1.bin"))
+    assert_false(path_exists(old_base))
     collection.close()
 
 

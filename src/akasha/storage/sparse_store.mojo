@@ -1,7 +1,7 @@
 from akasha.index.sparse import (
     SparseElement,
     SparseRecord,
-    validate_sparse,
+    validate_legacy_sparse,
 )
 from akasha.storage.checksum import BinaryReader, BinaryWriter, crc32_range
 from akasha.storage.filesystem import (
@@ -101,7 +101,7 @@ def latest_sparse_records(
             if len(records[index].elements) != 0:
                 raise Error("sparse delete cannot contain elements")
         else:
-            validate_sparse(records[index].elements)
+            validate_legacy_sparse(records[index].elements)
         var found = -1
         for latest_index in range(len(latest)):
             if latest[latest_index].id == records[index].id:
@@ -157,7 +157,7 @@ def encode_sparse_segment(
             if len(records[index].elements) != 0:
                 raise Error("sparse delete cannot contain elements")
         else:
-            validate_sparse(records[index].elements)
+            validate_legacy_sparse(records[index].elements)
         ordered.append(records[index].clone())
     for index in range(1, len(ordered)):
         var cursor = index
@@ -289,7 +289,7 @@ def encode_sparse_snapshot(
         raise Error("non-empty sparse snapshot requires a sequence")
     var ordered = List[SparseRecord](capacity=len(records))
     for index in range(len(records)):
-        validate_sparse(records[index].elements)
+        validate_legacy_sparse(records[index].elements)
         ordered.append(records[index].clone())
     for index in range(1, len(ordered)):
         var cursor = index
@@ -358,7 +358,7 @@ def encode_sparse_wal_record(record: SparseWalRecord) raises -> List[UInt8]:
         if len(record.elements) != 0:
             raise Error("sparse WAL delete cannot contain elements")
     else:
-        validate_sparse(record.elements)
+        validate_legacy_sparse(record.elements)
     var size = _WAL_FIXED_SIZE + len(record.elements) * 12
     var writer = BinaryWriter()
     _write_magic(writer, _WAL_MAGIC_2)
@@ -479,7 +479,7 @@ def _read_elements(mut reader: BinaryReader) raises -> List[SparseElement]:
             SparseElement(Int(reader.read_i64()), reader.read_f32())
         )
     if count > 0:
-        validate_sparse(elements)
+        validate_legacy_sparse(elements)
     return elements^
 
 

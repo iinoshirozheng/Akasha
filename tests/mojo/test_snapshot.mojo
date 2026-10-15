@@ -9,6 +9,7 @@ from akasha import (
     SparseElement,
     MetricKind,
 )
+from akasha.storage.manifest import load_manifest
 from akasha.storage.filesystem import (
     ensure_directory,
     path_exists,
@@ -73,11 +74,12 @@ def _old_group_expression() raises -> FilterExpression:
 def _compact_with_temporary_snapshot(
     mut collection: PersistentCollection, path: String
 ) raises:
+    var old_base = path + "/" + load_manifest(path, 1).segments[0].name
     var snapshot = collection.snapshot()
     collection.upsert(2, [2.0])
     collection.flush()
     collection.compact()
-    assert_true(path_exists(path + "/segment-base-1.bin"))
+    assert_true(path_exists(old_base))
     # Keep the owner live through the file assertion: Mojo destroys it after
     # its last use, which now reclaims the old file immediately.
     assert_true(Bool(snapshot.get(1)))
@@ -189,20 +191,19 @@ def test_snapshot_pin_defers_compaction_reclamation_until_close() raises:
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
     collection.flush()
+    var old_base = path + "/" + load_manifest(path, 1).segments[0].name
     var snapshot = collection.snapshot()
 
     collection.upsert(2, [2.0])
     collection.flush()
     collection.compact()
 
-    assert_true(path_exists(path + "/segment-base-1.bin"))
-    assert_true(path_exists(path + "/sparse-base-1.bin"))
+    assert_true(path_exists(old_base))
     assert_true(Bool(snapshot.get(1)))
 
     snapshot.close()
     _ = collection.maintenance()
-    assert_false(path_exists(path + "/segment-base-1.bin"))
-    assert_false(path_exists(path + "/sparse-base-1.bin"))
+    assert_false(path_exists(old_base))
     snapshot.close()
     with assert_raises():
         _ = snapshot.get(1)
@@ -215,11 +216,11 @@ def test_snapshot_raii_releases_generation_pin() raises:
     var collection = PersistentCollection.open(path, 1)
     collection.upsert(1, [1.0])
     collection.flush()
+    var old_base = path + "/" + load_manifest(path, 1).segments[0].name
 
     _compact_with_temporary_snapshot(collection, path)
 
-    assert_false(path_exists(path + "/segment-base-1.bin"))
-    assert_false(path_exists(path + "/sparse-base-1.bin"))
+    assert_false(path_exists(old_base))
     collection.close()
 
 
@@ -397,8 +398,8 @@ def test_shared_roots_isolate_replace_sparse_delete_and_reinsert() raises:
     )
     assert_equal(replaced.get(-1).value().vector[0], Float32(9.0))
     assert_equal(
-        replaced.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
-        Float32(2.0),
+        len(replaced.search_sparse_dot([SparseElement(7, 1.0)], 1)),
+        0,
     )
     assert_equal(
         sparse_updated.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,

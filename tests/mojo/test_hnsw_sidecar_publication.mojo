@@ -96,6 +96,7 @@ def test_failed_manifest_publish_never_overwrites_any_job_output() raises:
     var before = load_manifest(path, 1)
     var prior_bytes = read_file_bytes(path + "/manifest.bin")
     var old_name = before.hnsw_name.value().copy()
+    var old_bytes = read_file_bytes(path + "/" + old_name)
     var first_output = "hnsw-32-" + String(before.generation + 1) + "-0.bin"
     collection.rebuild_hnsw()
     ensure_directory(path + "/manifest.bin.tmp")
@@ -106,11 +107,21 @@ def test_failed_manifest_publish_never_overwrites_any_job_output() raises:
     var orphan_bytes = read_file_bytes(path + "/" + first_output)
     var fault = path + "/manifest.bin.tmp"
     assert_equal(external_call["rmdir", c_int](fault.as_c_string_slice()), 0)
-    collection.flush()
-    var after = load_manifest(path, 1)
-    assert_true(after.hnsw_name.value() != first_output)
+    # Publication I/O leaves the point authority poisoned until recovery.
+    # A retry on the same handle cannot overwrite an uncommitted job output.
+    with assert_raises():
+        collection.flush()
     assert_equal(read_file_bytes(path + "/" + first_output), orphan_bytes)
     collection.close()
+    var recovered = PersistentCollection.open(path, 1)
+    assert_false(path_exists(path + "/" + first_output))
+    assert_equal(read_file_bytes(path + "/" + old_name), old_bytes)
+    recovered.rebuild_hnsw()
+    recovered.flush()
+    var after = load_manifest(path, 1)
+    assert_true(Bool(after.hnsw_name))
+    assert_equal(recovered.get(31).value().vector[0], Float32(32))
+    recovered.close()
 
 
 def test_reopen_removes_job_outputs_and_preserves_unknown_names() raises:

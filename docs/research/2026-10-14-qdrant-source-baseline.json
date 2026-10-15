@@ -1,0 +1,29 @@
+{
+  "status": "PASSED",
+  "cases": 96,
+  "revision": "21db2f3ff95d50de3a2b88a741312c056fd1762d",
+  "upstream_sha256": "9276d05d66a3d5d22da48816fe463fef337821080f177d13ca5dae8160f367be",
+  "extracted_methods": [
+    "search_on_level",
+    "search_entry",
+    "search_entry_on_level"
+  ],
+  "methods_sha256": "3f34b70bf60b92c91c8b5e5a6270c9ed8aed8ce30b8af7eb9f3e701e73efe4d1",
+  "source_sha256": {
+    "benchmarks/qdrant_search_reference.py": "243950fba58ae6dd0645b0ba57deaf790045e3ec2aea32a4dbe0f505455f26ae",
+    "benchmarks/mojo/qdrant_search_reference.mojo": "3ba7c11dc67a2e6b18998f7edd539ab713b23a105915725dbf2740192bbecffc",
+    "benchmarks/mojo/qdrant_search_differential.mojo": "eadf3a557308840bb729afadf0626e8d1678f920a07311de9e1f4e79bd0098ac",
+    "benchmarks/mojo/test_qdrant_search_reference.mojo": "2e483af3209bde19c15d3b40149b38b2176cd20df6bdb981fccaa4cdfe6f2ffd"
+  },
+  "python_version": "3.11.0 | packaged by conda-forge | (main, Jan 14 2023, 12:26:40) [Clang 14.0.6 ]",
+  "rust_version": "rustc 1.92.0 (ded5c06cf 2025-12-08) (Homebrew)",
+  "mojo_version": "Mojo 1.0.0 (ed45d567)",
+  "scope": "Search control flow on distinct-score fixtures; no Edge binary, graph build, timing, or production acceptance claim",
+  "boundary_tests": {
+    "command": "pixi run mojo run -I src benchmarks/mojo/test_qdrant_search_reference.mojo",
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "production_modified": false
+}

@@ -1,3 +1,7 @@
+from akasha.query.control import QueryControl
+from akasha.index.hnsw_admission import HnswResultAdmission
+from akasha.index.hnsw_entries import HnswEntryPoints
+from akasha.index.hnsw_search import search_entry, search_level
 from akasha.compute.dispatch import (
     DISTANCE_DOT_F32,
     DISTANCE_COSINE_F32,
@@ -22,30 +26,6 @@ from akasha.index.hnsw_storage import HnswGraphAccess, HnswStorage
 from std.collections import Dict
 from std.math import isfinite
 from std.memory import ArcPointer
-
-
-struct HnswGreedyResult(Copyable, Movable):
-    """The local minimum reached by one upper-layer greedy descent."""
-
-    var slot: UInt32
-    var distance: Float32
-
-    def __init__(out self, slot: UInt32, distance: Float32):
-        self.slot = slot
-        self.distance = distance
-
-
-trait HnswResultAdmission:
-    """Internal result-admission contract shared by graph search paths."""
-
-    def is_allow_all(self) -> Bool:
-        ...
-
-    def validate(self, slot_count: Int) raises:
-        ...
-
-    def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
-        ...
 
 
 struct _HnswIdOrdinalState:
@@ -290,7 +270,6 @@ def _select_neighbors_heuristic[
     candidates: List[HnswHeapItem],
     excluded_slot: Optional[UInt32],
     capacity: Int,
-    keep_pruned_connections: Bool,
     require_current_candidates: Bool,
     mut stats: HnswBuildStats,
 ) raises -> List[UInt32]:
@@ -302,7 +281,7 @@ def _select_neighbors_heuristic[
     optional query/self slot are then removed. Public construction calls set
     ``require_current_candidates`` so historical candidates cannot silently
     become new links. Internal pruning may clear it to retain structurally
-    valid historical adjacency as navigation bridges.
+    valid historical adjacency without making historical slots searchable.
 
     A candidate is diverse when no already-selected neighbor is strictly
     closer to it than the query is. Equality is deliberately accepted. Pair
@@ -397,7 +376,6 @@ def _select_neighbors_heuristic[
     if capacity == 0 or len(ordered) == 0:
         return selected^
 
-    var pruned = List[UInt32](capacity=len(ordered))
     var evaluation_count = 0
     for candidate_index in range(len(ordered)):
         if len(selected) >= capacity:
@@ -452,14 +430,6 @@ def _select_neighbors_heuristic[
                 break
         if diverse:
             selected.append(candidate.slot)
-        elif keep_pruned_connections:
-            pruned.append(candidate.slot)
-
-    if keep_pruned_connections:
-        for index in range(len(pruned)):
-            if len(selected) >= capacity:
-                break
-            selected.append(pruned[index])
 
     stats.distance_evaluations += evaluation_count
     return selected^
@@ -473,7 +443,6 @@ def select_neighbors_heuristic[
     candidates: List[HnswHeapItem],
     excluded_slot: Optional[UInt32],
     capacity: Int,
-    keep_pruned_connections: Bool,
     mut stats: HnswBuildStats,
 ) raises -> List[UInt32]:
     """Select current construction candidates using the HNSW heuristic."""
@@ -483,7 +452,6 @@ def select_neighbors_heuristic[
         candidates,
         excluded_slot,
         capacity,
-        keep_pruned_connections,
         True,
         stats,
     )
@@ -530,8 +498,8 @@ def _adjacency_with_candidate[
         candidates.append(HnswHeapItem(value, graph.id_at(value), distance))
         stats.distance_evaluations += 1
     var no_exclusion = Optional[UInt32]()
-    # Existing adjacency may intentionally retain inactive historical nodes as
-    # navigation bridges. The public construction selector remains strict;
+    # Existing adjacency may retain inactive historical slots in durable state.
+    # The public construction selector remains strict;
     # this internal pruning path alone accepts those structurally valid slots.
     return _select_neighbors_heuristic[backend_tag](
         graph,
@@ -539,50 +507,9 @@ def _adjacency_with_candidate[
         candidates,
         no_exclusion,
         capacity,
-        True,
         False,
         stats,
     )
-
-
-def _copy_adjacency(
-    graph: HnswStorage, center: UInt32, level: Int
-) raises -> List[UInt32]:
-    var count = graph.neighbor_count(center, level)
-    var values = List[UInt32](capacity=count)
-    for index in range(count):
-        values.append(graph.neighbor_at(center, level, index))
-    return values^
-
-
-def _removed_neighbors(
-    graph: HnswStorage,
-    center: UInt32,
-    level: Int,
-    retained: List[UInt32],
-) raises -> List[UInt32]:
-    """Snapshot removed edges before packed adjacency is overwritten."""
-    var removed = List[UInt32]()
-    var count = graph.neighbor_count(center, level)
-    for index in range(count):
-        var neighbor = graph.neighbor_at(center, level, index)
-        if not _slot_in_list(retained, neighbor):
-            removed.append(neighbor)
-    return removed^
-
-
-def _validate_link_level(graph: HnswStorage, slot: UInt32, level: Int) raises:
-    if level < 0 or level > graph.level(slot):
-        raise Error("HNSW node does not own touched graph level")
-    var count = graph.neighbor_count(slot, level)
-    if count > graph.level_capacity(slot, level):
-        raise Error("HNSW touched adjacency exceeds level capacity")
-    for edge_index in range(count):
-        var neighbor = graph.neighbor_at(slot, level, edge_index)
-        if graph.level(neighbor) < level:
-            raise Error("HNSW edge target does not own graph level")
-        if not graph.contains_neighbor(neighbor, level, slot):
-            raise Error("HNSW graph contains an asymmetric edge")
 
 
 def _audit_bidirectional_links_with_stats[
@@ -676,7 +603,7 @@ def validate_bidirectional_links[
     validate_bidirectional_links_with_stats(graph, stats)
 
 
-def connect_bidirectional[
+def connect_with_heuristic[
     backend_tag: Int = -1
 ](
     mut graph: HnswStorage,
@@ -686,24 +613,23 @@ def connect_bidirectional[
     selected_neighbors: List[UInt32],
     mut stats: HnswBuildStats,
 ) raises:
-    """Connect selected slots while preserving bounded symmetric adjacency.
+    """Publish selected outgoing links and prune each backlink independently.
 
-    Every overflowing endpoint is re-selected around its own vector. Removed
-    edges are snapshotted before replacing the packed list, then removed from
-    their reverse endpoints without recursive pruning. Caller errors are fully
-    validated before mutation. Any later failure quarantines the graph so a
-    collection can route around the partially updated derived index.
+    Port of Qdrant GraphLayersBuilder::link_with_heuristic and the semantics
+    of LinksContainer::connect_with_heuristic_simple, commit 21db2f3ff95d.
+    Apache-2.0; see benchmarks/licenses/qdrant-APACHE-2.0.txt. A rejected or
+    evicted backlink must not erase the separately selected opposite edge.
     """
     if not graph.is_valid():
         raise Error("cannot mutate an invalid HNSW graph")
     dispatcher.require_supported_backend()
-    if dispatcher.dimension() != graph.dimension:
-        raise Error("metric dispatcher dimension does not match HNSW graph")
-    _ = graph.level_capacity(endpoint, level)
+    if not dispatcher.matches_storage_identity(
+        graph.metric_kind, graph.scalar_kind, graph.dimension
+    ):
+        raise Error("metric dispatcher identity does not match HNSW graph")
+    var capacity = graph.level_capacity(endpoint, level)
     if not graph.is_current(endpoint):
         raise Error("HNSW link endpoint must be current")
-
-    # Validate and deduplicate the complete proposal set before any mutation.
     var proposals = List[UInt32](capacity=len(selected_neighbors))
     var seen = Dict[Int, Bool]()
     for neighbor in selected_neighbors:
@@ -714,376 +640,30 @@ def connect_bidirectional[
             raise Error("HNSW edge target does not own graph level")
         if not graph.is_current(neighbor):
             raise Error("HNSW link neighbor must be current")
-        var key = Int(neighbor)
-        if key not in seen:
-            seen[key] = True
+        if Int(neighbor) not in seen:
+            seen[Int(neighbor)] = True
             proposals.append(neighbor)
+    if len(proposals) > capacity:
+        raise Error("HNSW selected links exceed level capacity")
 
     var local_stats = HnswBuildStats()
     var directed_edge_delta = 0
     try:
+        var before = graph.neighbor_count(endpoint, level)
+        graph.set_neighbors(endpoint, level, proposals)
+        directed_edge_delta += len(proposals) - before
         for neighbor in proposals:
-            var endpoint_original = _copy_adjacency(graph, endpoint, level)
-            var neighbor_original = _copy_adjacency(graph, neighbor, level)
-            var endpoint_final = _adjacency_with_candidate[backend_tag](
-                graph,
-                dispatcher,
-                endpoint,
-                neighbor,
-                level,
-                local_stats,
+            before = graph.neighbor_count(neighbor, level)
+            var links = _adjacency_with_candidate[backend_tag](
+                graph, dispatcher, neighbor, endpoint, level, local_stats
             )
-            var neighbor_final = _adjacency_with_candidate[backend_tag](
-                graph,
-                dispatcher,
-                neighbor,
-                endpoint,
-                level,
-                local_stats,
-            )
-
-            # An edge is visible only if both endpoint-centered selections keep
-            # it. This prevents either pruning decision from creating a one-way
-            # adjacency.
-            var keep_edge = _slot_in_list(endpoint_final, neighbor)
-            keep_edge = keep_edge and _slot_in_list(neighbor_final, endpoint)
-            if not keep_edge:
-                # A proposal rejected by either endpoint never happened. Keep
-                # both prior bounded lists instead of losing unrelated edges
-                # selected out only while the rejected edge was considered.
-                endpoint_final = endpoint_original^
-                neighbor_final = neighbor_original^
-
-            var removed_from_endpoint = _removed_neighbors(
-                graph, endpoint, level, endpoint_final
-            )
-            var removed_from_neighbor = _removed_neighbors(
-                graph, neighbor, level, neighbor_final
-            )
-
-            var endpoint_before = graph.neighbor_count(endpoint, level)
-            graph.set_neighbors(endpoint, level, endpoint_final^)
-            directed_edge_delta += (
-                graph.neighbor_count(endpoint, level) - endpoint_before
-            )
-            var neighbor_before = graph.neighbor_count(neighbor, level)
-            graph.set_neighbors(neighbor, level, neighbor_final^)
-            directed_edge_delta += (
-                graph.neighbor_count(neighbor, level) - neighbor_before
-            )
-
-            for removed in removed_from_endpoint:
-                if graph.remove_neighbor(removed, level, endpoint):
-                    directed_edge_delta -= 1
-            for removed in removed_from_neighbor:
-                if graph.remove_neighbor(removed, level, neighbor):
-                    directed_edge_delta -= 1
-
-            _validate_link_level(graph, endpoint, level)
-            _validate_link_level(graph, neighbor, level)
-            for removed in removed_from_endpoint:
-                _validate_link_level(graph, removed, level)
-            for removed in removed_from_neighbor:
-                _validate_link_level(graph, removed, level)
+            graph.set_neighbors(neighbor, level, links)
+            directed_edge_delta += len(links) - before
     except error:
-        # All public validation finished before entering this transaction.
-        # Any remaining failure means internal graph state or link processing
-        # is unsafe, even when it happened before the first packed write.
         graph.mark_invalid()
         raise Error(String(error))
-
     stats.distance_evaluations += local_stats.distance_evaluations
     stats.directed_edges += directed_edge_delta
-
-
-def _validate_search_boundary[
-    GraphType: HnswGraphAccess
-](
-    graph: GraphType,
-    dispatcher: MetricDispatcher,
-    query: List[Float32],
-    entry: UInt32,
-    level: Int,
-) raises:
-    """Validate all caller-owned state before scratch or stats are mutated."""
-    graph.validate_search_ready()
-    dispatcher.require_supported_backend()
-    if graph.slot_count() <= 0:
-        raise Error("cannot search an empty HNSW graph")
-    if (
-        graph.graph_dimension() <= 0
-        or graph.graph_m() <= 0
-        or graph.graph_m0() <= 0
-    ):
-        raise Error("HNSW graph configuration is invalid")
-    if dispatcher.dimension() != graph.graph_dimension():
-        raise Error("metric dispatcher dimension does not match HNSW graph")
-    # This validates finite values and the prepared-cosine unit-norm contract
-    # without performing (or falsely counting) a graph distance evaluation.
-    dispatcher._validate_prepared_values(query)
-    if UInt64(entry) >= UInt64(graph.slot_count()):
-        raise Error("HNSW entry slot out of bounds")
-    if level < 0 or level > graph.level(entry):
-        raise Error("HNSW entry does not own requested level")
-    # Mutable storage permits low-level construction primitives. Validate the
-    # entry adjacency up front, but do not run the O(nodes + edges) structural
-    # audit on every query: construction/load boundaries own that audit.
-    var edges = graph.neighbor_range(entry, level)
-    for edge_index in range(edges[1]):
-        var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
-        if graph.level(neighbor) < level:
-            raise Error("HNSW edge targets a node below its graph level")
-
-
-def greedy_descent[
-    GraphType: HnswGraphAccess, backend_tag: Int = -1
-](
-    graph: GraphType,
-    dispatcher: MetricDispatcher,
-    query: List[Float32],
-    entry: UInt32,
-    level: Int,
-    mut stats: HnswSearchStats,
-) raises -> HnswGreedyResult:
-    """Greedily descend one upper layer to a deterministic local minimum.
-
-    Inactive historical nodes remain valid navigation points. Each distinct
-    slot encountered during this phase is scored once and cached, even when
-    graph adjacency exposes it from more than one visited node. Therefore
-    ``upper_visited`` and ``distance_evaluations`` each increase once per
-    distinct scored slot, including the entry; counters are additive across
-    repeated upper-layer calls on the same stats object.
-    """
-    _validate_search_boundary(graph, dispatcher, query, entry, level)
-
-    var current_slot = entry
-    var current_distance: Float32
-    comptime if backend_tag < 0:
-        current_distance = graph.distance_to_slot(dispatcher, query, entry)
-    else:
-        current_distance = graph._distance_to_slot_backend[backend_tag](
-            dispatcher, query, entry
-        )
-    # Upper layers are sparse. Cache only the slots actually encountered,
-    # avoiding an O(total_slots) allocation before a logarithmic descent.
-    var distances = Dict[Int, Float32]()
-    distances[Int(entry)] = current_distance
-    stats.upper_visited += 1
-    stats.distance_evaluations += 1
-
-    while True:
-        var current_item = HnswHeapItem(
-            current_slot, graph.id_at(current_slot), current_distance
-        )
-        var best_item = current_item.copy()
-        var edges = graph.neighbor_range(current_slot, level)
-        for edge_index in range(edges[1]):
-            var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
-            if graph.level(neighbor) < level:
-                raise Error("HNSW edge targets a node below its graph level")
-            var neighbor_index = Int(neighbor)
-            var neighbor_distance: Float32
-            if neighbor_index not in distances:
-                comptime if backend_tag < 0:
-                    neighbor_distance = graph.distance_to_slot(
-                        dispatcher, query, neighbor
-                    )
-                else:
-                    neighbor_distance = graph._distance_to_slot_backend[
-                        backend_tag
-                    ](dispatcher, query, neighbor)
-                distances[neighbor_index] = neighbor_distance
-                stats.upper_visited += 1
-                stats.distance_evaluations += 1
-            else:
-                neighbor_distance = distances[neighbor_index]
-            var neighbor_item = HnswHeapItem(
-                neighbor,
-                graph.id_at(neighbor),
-                neighbor_distance,
-            )
-            if _search_item_better(neighbor_item, best_item):
-                best_item = neighbor_item.copy()
-
-        if not _search_item_better(best_item, current_item):
-            break
-        current_slot = best_item.slot
-        current_distance = best_item.distance
-
-    return HnswGreedyResult(current_slot, current_distance)
-
-
-def _consider_result_admission[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission
-](
-    graph: GraphType,
-    admission: AdmissionType,
-    item: HnswHeapItem,
-    ef: Int,
-    mut results: ResultMaxHeap,
-    mut stats: HnswSearchStats,
-) raises:
-    if not graph.is_current(item.slot):
-        stats.inactive_rejections += 1
-        return
-    if not admission._allows_item(item.slot, item.id):
-        stats.filtered_rejections += 1
-        return
-    results.offer(item, ef)
-
-
-def search_layer[
-    GraphType: HnswGraphAccess,
-    AdmissionType: HnswResultAdmission,
-    backend_tag: Int = -1,
-](
-    graph: GraphType,
-    dispatcher: MetricDispatcher,
-    query: List[Float32],
-    entry: UInt32,
-    level: Int,
-    k: Int,
-    ef: Int,
-    admission: AdmissionType,
-    mut scratch: HnswSearchScratch,
-    mut stats: HnswSearchStats,
-) raises -> List[HnswHeapItem]:
-    """Search one HNSW layer and return up to ``k`` items best-first.
-
-    Every first-seen slot is scored exactly once. Current/filter eligibility
-    controls only result admission: rejected and inactive slots can still
-    traverse the graph. Inactive slots never occupy the retained traversal
-    radius; current slots do, independently of metadata eligibility.
-    Frontier growth follows the standard retained-radius rule and terminates
-    only when its best unexplored distance is strictly
-    greater than the worst retained distance. Equal-distance items remain
-    traversable regardless of their deterministic result-order ID/slot ties.
-    ``base_visited`` and ``distance_evaluations``
-    increase once per first-seen scored slot, including the entry. A first-seen
-    non-current slot increments only ``inactive_rejections``; a current but
-    disallowed slot increments only ``filtered_rejections``. The final top-k
-    return length replaces ``retained_candidates``; all other counters are
-    additive so callers can aggregate upper and base phases in one object.
-    """
-    if k <= 0:
-        raise Error("HNSW search k must be positive")
-    if ef <= 0:
-        raise Error("HNSW search ef must be positive")
-    if ef < k:
-        raise Error("HNSW search ef must be at least k")
-    _validate_search_boundary(graph, dispatcher, query, entry, level)
-    admission.validate(graph.slot_count())
-
-    var is_filtered = not admission.is_allow_all()
-    scratch.begin(graph.slot_count(), ef, prepare_filtered=is_filtered)
-    _ = scratch.visit(entry)
-    var entry_distance: Float32
-    comptime if backend_tag < 0:
-        entry_distance = graph.distance_to_slot(dispatcher, query, entry)
-    else:
-        entry_distance = graph._distance_to_slot_backend[backend_tag](
-            dispatcher, query, entry
-        )
-    var entry_item = HnswHeapItem(entry, graph.id_at(entry), entry_distance)
-    stats.base_visited += 1
-    stats.distance_evaluations += 1
-    scratch.candidates.push(entry_item)
-    if is_filtered:
-        # Metadata eligibility does not narrow the traversal radius, but
-        # inactive slots cannot consume its live-candidate budget.
-        if graph.is_current(entry):
-            scratch.results.offer(entry_item, ef)
-        _consider_result_admission(
-            graph, admission, entry_item, ef, scratch.filtered_results, stats
-        )
-    else:
-        _consider_result_admission(
-            graph, admission, entry_item, ef, scratch.results, stats
-        )
-
-    while not scratch.candidates.is_empty():
-        var candidate = scratch.candidates.pop()
-        if (
-            len(scratch.results) >= ef
-            and candidate.distance > scratch.results.peek_worst().distance
-        ):
-            break
-
-        var edges = graph.neighbor_range(candidate.slot, level)
-        var group_limit = 1
-        comptime if backend_tag >= 0 and backend_tag <= 2:
-            if level == 0:
-                group_limit = 4
-        var edge_index = 0
-        while edge_index < edges[1]:
-            var slots = SIMD[DType.uint32, 4](0)
-            var count = 0
-            while edge_index < edges[1] and count < group_limit:
-                var neighbor = graph.neighbor_at_offset(edges[0] + edge_index)
-                edge_index += 1
-                if graph.level(neighbor) < level:
-                    raise Error("HNSW edge targets a node below its graph level")
-                if scratch.visit(neighbor):
-                    slots[count] = neighbor
-                    count += 1
-
-            var distances = SIMD[DType.float32, 4](0)
-            comptime if backend_tag >= 0 and backend_tag <= 2:
-                if count == 4:
-                    distances = graph._distance_to_four_f32[backend_tag](
-                        dispatcher, query, slots
-                    )
-                else:
-                    for lane in range(count):
-                        distances[lane] = graph._distance_to_slot_backend[backend_tag](
-                            dispatcher, query, slots[lane]
-                        )
-            else:
-                for lane in range(count):
-                    comptime if backend_tag < 0:
-                        distances[lane] = graph.distance_to_slot(dispatcher, query, slots[lane])
-                    else:
-                        distances[lane] = graph._distance_to_slot_backend[backend_tag](
-                            dispatcher, query, slots[lane]
-                        )
-            for lane in range(count):
-                var neighbor = slots[lane]
-                var distance = distances[lane]
-                var item = HnswHeapItem(neighbor, graph.id_at(neighbor), distance)
-                stats.base_visited += 1
-                stats.distance_evaluations += 1
-
-                if is_filtered:
-                    if graph.is_current(neighbor):
-                        scratch.results.offer(item, ef)
-                    _consider_result_admission(
-                        graph,
-                        admission,
-                        item,
-                        ef,
-                        scratch.filtered_results,
-                        stats,
-                    )
-                else:
-                    _consider_result_admission(
-                        graph, admission, item, ef, scratch.results, stats
-                    )
-
-                if (
-                    len(scratch.results) < ef
-                    or item.distance <= scratch.results.peek_worst().distance
-                ):
-                    scratch.candidates.push(item)
-
-    var best: List[HnswHeapItem]
-    if is_filtered:
-        best = scratch.filtered_results.take_sorted_best()
-    else:
-        best = scratch.results.take_sorted_best()
-    while len(best) > k:
-        _ = best.pop()
-    stats.retained_candidates = len(best)
-    return best^
 
 
 def _next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
@@ -1109,13 +689,15 @@ def search_allowed_with_widening_core[
     eligible_count: Int,
     return_search_breadth: Bool,
     exact_fallback: Bool,
-    entry_slot: Optional[UInt32],
-    entry_level: Int,
+    entries: HnswEntryPoints,
     storage_name: String,
     allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
+    control: Optional[QueryControl] = None,
 ) raises -> HnswWideningOutcome:
     """Validate one raw query, prepare it once, then run the shared core."""
+    if control:
+        control.value().checkpoint(0)
     graph.validate_search_ready()
     dispatcher.require_supported_backend()
     if dispatcher.dimension() != graph.graph_dimension():
@@ -1140,11 +722,11 @@ def search_allowed_with_widening_core[
         eligible_count,
         return_search_breadth,
         exact_fallback,
-        entry_slot,
-        entry_level,
+        entries,
         storage_name,
         allowed,
         scratch,
+        control=control,
     )
     outcome.query_preparations = 1
     return outcome^
@@ -1164,11 +746,11 @@ def search_prepared_allowed_with_widening_core[
     eligible_count: Int,
     return_search_breadth: Bool,
     exact_fallback: Bool,
-    entry_slot: Optional[UInt32],
-    entry_level: Int,
+    entries: HnswEntryPoints,
     storage_name: String,
     allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
+    control: Optional[QueryControl] = None,
 ) raises -> HnswWideningOutcome:
     """Consume one prepared query and reuse it through every widening round.
 
@@ -1177,6 +759,8 @@ def search_prepared_allowed_with_widening_core[
     defer exact fallback until all graph sources have been merged. Those
     callers may share this same prepared query across multiple graph sources.
     """
+    if control:
+        control.value().checkpoint(0)
     graph.validate_search_ready()
     dispatcher.require_supported_backend()
     if dispatcher.dimension() != graph.graph_dimension():
@@ -1198,83 +782,60 @@ def search_prepared_allowed_with_widening_core[
     stats.scalar_name = dispatcher.scalar_name()
     stats.storage_name = storage_name
 
-    var target_count = k
-    if target_count > eligible_count:
-        target_count = eligible_count
-    if target_count > graph.slot_count():
-        target_count = graph.slot_count()
-    var effective_ceiling = max_ef
-    if effective_ceiling > graph.slot_count():
-        effective_ceiling = graph.slot_count()
-    if target_count == 0 or not Bool(entry_slot):
+    var target_count = min(k, min(eligible_count, graph.slot_count()))
+    var effective_ceiling = min(max_ef, graph.slot_count())
+    if target_count == 0:
         stats.requested_ef = 0
         stats.effective_ef = 0
         return HnswWideningOutcome(List[SearchResult](), stats^, 0, 0)
-
-    var current_ef = initial_ef
-    if current_ef < target_count:
-        current_ef = target_count
-    if current_ef > effective_ceiling:
-        current_ef = effective_ceiling
+    var current_ef = min(max(initial_ef, target_count), effective_ceiling)
     if current_ef < target_count:
         raise Error("HNSW result demand exceeds traversable graph slots")
-
-    var current = entry_slot.value()
+    var selected_entry = entries.get_entry(graph, allowed)
+    var results = List[SearchResult]()
     var upper_descents = 0
-    for level in range(entry_level, 0, -1):
-        current = greedy_descent[backend_tag=backend_tag](
-            graph, dispatcher, prepared, current, level, stats
-        ).slot
-        upper_descents += 1
-    var upper_stats = stats^
     var widening_rounds = 0
-    var results: List[SearchResult]
-    while True:
-        stats = HnswSearchStats()
-        stats.requested_ef = current_ef
-        stats.effective_ef = current_ef
-        stats.upper_visited = upper_stats.upper_visited
-        stats.distance_evaluations = upper_stats.distance_evaluations
-        stats.backend_name = upper_stats.backend_name.copy()
-        stats.metric_name = upper_stats.metric_name.copy()
-        stats.scalar_name = upper_stats.scalar_name.copy()
-        stats.storage_name = upper_stats.storage_name.copy()
-        var result_limit = target_count
-        if return_search_breadth:
-            result_limit = current_ef
-        var candidates = search_layer[backend_tag=backend_tag](
-            graph,
-            dispatcher,
-            prepared,
-            current,
-            0,
-            result_limit,
-            current_ef,
-            allowed,
-            scratch,
-            stats,
+    if selected_entry:
+        var current = selected_entry.value()
+        upper_descents = current.level
+        var entry = search_entry[backend_tag=backend_tag](
+            graph, dispatcher, prepared, current.slot, upper_descents, 0, allowed, stats,
+            control=control,
         )
-        results = List[SearchResult](capacity=len(candidates))
-        for candidate in candidates:
-            results.append(
-                SearchResult(
-                    candidate.id,
-                    dispatcher.public_score(candidate.distance),
-                )
+        var upper_stats = stats^
+        while True:
+            stats = HnswSearchStats()
+            stats.requested_ef = current_ef
+            stats.effective_ef = current_ef
+            stats.upper_visited = upper_stats.upper_visited
+            stats.distance_evaluations = upper_stats.distance_evaluations
+            stats.backend_name = upper_stats.backend_name.copy()
+            stats.metric_name = upper_stats.metric_name.copy()
+            stats.scalar_name = upper_stats.scalar_name.copy()
+            stats.storage_name = upper_stats.storage_name.copy()
+            var limit = current_ef if return_search_breadth else target_count
+            var candidates = search_level[backend_tag=backend_tag](
+                graph, dispatcher, prepared, entry, 0, current_ef, allowed, scratch, stats,
+                control=control,
             )
-        if len(results) >= target_count or current_ef >= effective_ceiling:
-            break
-        var widened = _next_widened_ef(current_ef, effective_ceiling)
-        if widened == current_ef:
-            break
-        current_ef = widened
-        widening_rounds += 1
-
+            results = List[SearchResult](capacity=min(limit, len(candidates)))
+            for ordinal in range(min(limit, len(candidates))):
+                var candidate = candidates[ordinal]
+                results.append(SearchResult(candidate.id, dispatcher.public_score(candidate.distance)))
+            stats.retained_candidates = len(results)
+            if len(results) >= target_count or current_ef >= effective_ceiling:
+                break
+            current_ef = _next_widened_ef(current_ef, effective_ceiling)
+            widening_rounds += 1
+    else:
+        stats.effective_ef = 0
     stats.widening_rounds = widening_rounds
     if len(results) < target_count and exact_fallback:
         var retained = ResultMaxHeap()
         retained.reserve(target_count)
         for slot_index in range(graph.slot_count()):
+            if control:
+                control.value().checkpoint(slot_index)
             var slot = UInt32(slot_index)
             var id = graph.id_at(slot)
             if not graph.is_current(slot) or not allowed._allows_item(slot, id):

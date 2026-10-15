@@ -31,14 +31,13 @@ from benchmarks.qdrant_workload import (
 ROOT = Path(__file__).resolve().parents[1]
 QDRANT_VERSION = "0.8.0"
 QDRANT_COMMIT = "21db2f3ff95d50de3a2b88a741312c056fd1762d"
-PLANNER_POLICY = "dimension-ef-v1"
+PLANNER_POLICY = "cardinality-v2"
 
 
 def execution_kind(engine: str, mode: str, stats: dict, recall: float, spec: dict) -> str:
     """Distinguish deliberate exact plans from a failed ANN execution.
 
-    The old baseline accepted only selective exact fallback. New policy reports
-    opt into cost-based exact plans explicitly, and those must match the oracle.
+    Cardinality plans must be explicitly identified and match the exact oracle.
     Unknown/unavailable/exhausted graph fallbacks remain invalid comparisons.
     """
     if engine != "akasha":
@@ -46,8 +45,10 @@ def execution_kind(engine: str, mode: str, stats: dict, recall: float, spec: dic
     reason = stats.get("fallback_reason", "")
     if not reason:
         return "ann"
-    planned = reason in ("selectivity", "filtered_match_count", "small_collection") and mode == "selective"
-    planned |= reason == "scan_cost" and spec.get("akasha_planner_policy") == PLANNER_POLICY
+    planned = (
+        spec.get("akasha_planner_policy") == PLANNER_POLICY
+        and (reason == "small_collection" or (reason == "selectivity" and mode == "selective"))
+    )
     if planned and recall == 1.0 and stats.get("storage_name") == "exact":
         return "planned_exact"
     return "invalid_fallback"

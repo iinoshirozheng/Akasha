@@ -293,17 +293,18 @@ def test_prepared_hot_path_is_finite_at_exact_and_multiple_simd_widths() raises:
         )
 
 
-def test_cosine_rejects_zero_norm_at_every_checked_boundary() raises:
-    var dispatcher = MetricDispatcher(MetricKind.cosine(), ScalarKind.f32(), 2)
+def test_cosine_zero_norm_has_zero_similarity_at_every_checked_boundary() raises:
     var zero: List[Float32] = [0.0, 0.0]
     var unit: List[Float32] = [1.0, 0.0]
-
-    with assert_raises():
+    for scalar in [ScalarKind.f32(), ScalarKind.f16(), ScalarKind.bf16(), ScalarKind.i8()]:
+        var dispatcher = MetricDispatcher(MetricKind.cosine(), scalar, 2)
         dispatcher.validate_query(zero)
-    with assert_raises():
-        _ = dispatcher.prepare_graph_vector(zero)
-    with assert_raises():
-        _ = dispatcher.canonical(zero, unit)
+        var prepared_zero = dispatcher.prepare_graph_vector(zero)
+        var prepared_unit = dispatcher.prepare_query(unit)
+        assert_equal(dispatcher.canonical(zero, unit), Float32(1))
+        assert_equal(dispatcher.canonical_prepared(prepared_zero, prepared_unit), Float32(1))
+        assert_equal(dispatcher.canonical_prepared(prepared_zero, prepared_zero), Float32(1))
+        assert_equal(dispatcher.public_score(1), Float32(0))
 
 
 def test_compact_scalar_backends_prepare_and_accumulate_in_f32() raises:
@@ -328,15 +329,14 @@ def test_compact_scalar_backends_prepare_and_accumulate_in_f32() raises:
     i8.require_supported_backend()
 
 
-def test_i8_prepared_contract_rejects_invalid_scale_and_zero_cosine_code() raises:
+def test_i8_prepared_contract_rejects_invalid_scale_and_accepts_zero_cosine_code() raises:
     var dot = MetricDispatcher(MetricKind.dot(), ScalarKind.i8(), 2)
     var cosine = MetricDispatcher(MetricKind.cosine(), ScalarKind.i8(), 2)
     with assert_raises():
         dot.validate_prepared_vector([1.0, 0.0, 0.0])
     with assert_raises():
         cosine.validate_prepared_vector([127.0, 0.0, 0.5])
-    with assert_raises():
-        cosine.validate_prepared_vector([0.0, 0.0, Float32(1.0 / 127.0)])
+    cosine.validate_prepared_vector([0.0, 0.0, Float32(1.0 / 127.0)])
 
 
 def test_i8_dispatcher_enforces_accumulator_dimension_at_public_boundary() raises:

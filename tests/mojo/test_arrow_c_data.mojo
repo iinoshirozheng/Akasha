@@ -25,8 +25,10 @@ def test_arrow_descriptors_validate_vectors_offsets_and_nulls() raises:
         _ = ArrowArrayDescriptor(2, 3, 0, 4)
     with assert_raises():
         validate_fixed_size_vectors(ArrowArrayDescriptor(2, 0, 1, 2), values, 3)
+    validate_sparse_offsets([0, 2, 2], 2, 2)
+    validate_sparse_offsets([0, 0, 0], 0, 0)
     with assert_raises():
-        validate_sparse_offsets([0, 2, 2], 2, 2)
+        validate_sparse_offsets([0, 2, 1], 2, 2)
 
 
 def test_arrow_consumer_release_callback_is_exactly_once() raises:

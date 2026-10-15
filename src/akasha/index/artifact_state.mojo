@@ -77,8 +77,9 @@ struct ArtifactState[T: Deinitable & Movable](Movable):
 struct PqArtifacts(Movable):
     """Training-parameter states for one immutable root's dense field.
 
-    Initialization is deterministic, with no seed parameter. Metrics, k and
-    rerank do not affect training. The registry lock only protects lookup;
+    Initialization is deterministic, with no seed parameter. Raw Dot/L2 and
+    normalized cosine use separate registries; k and rerank do not affect
+    training. The registry lock only protects lookup;
     different configurations can build under their own artifact locks.
     """
 

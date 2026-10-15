@@ -1,10 +1,10 @@
+from akasha.index.hnsw_entries import HnswEntry
+from akasha.index.hnsw_search import search
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     HnswSearchAdmission,
     HnswSearchStats,
-    greedy_descent,
-    search_layer,
 )
 from akasha.index.hnsw_heap import HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
@@ -86,34 +86,39 @@ def _assert_all_true_equivalence[tag: Int](entry_inactive: Bool, replaced: Bool)
     var query = _query(0.0)
     var scratch = HnswSearchScratch()
     var plain_stats = HnswSearchStats()
-    var plain_result = search_layer[backend_tag=tag](
-        graph, metric, query, UInt32(0), 0, 1, 1, plain, scratch, plain_stats
+    var primary: List[HnswEntry] = [HnswEntry(UInt32(0), 0)]
+    var extra: List[HnswEntry] = [HnswEntry(UInt32(3), 0)]
+    var plain_result = search[backend_tag=tag](
+        graph, metric, query, primary, extra, 1, 1, plain, scratch, plain_stats
     )
     assert_equal(len(plain_result), 1)
-    _assert_item(plain_result, 0, 3, 10, 0.25)
+    var expected_slot = 3 if entry_inactive else 0
+    var expected_id = 10 if entry_inactive else 40
+    var expected_distance = Float32(0.25 if entry_inactive else 9.0)
+    _assert_item(plain_result, 0, expected_slot, expected_id, expected_distance)
     var full_stats = HnswSearchStats()
-    var full_result = search_layer[backend_tag=tag](
-        graph, metric, query, UInt32(0), 0, 1, 1, full, scratch, full_stats
+    var full_result = search[backend_tag=tag](
+        graph, metric, query, primary, extra, 1, 1, full, scratch, full_stats
     )
     assert_equal(len(full_result), 1)
-    _assert_item(full_result, 0, 3, 10, 0.25)
+    _assert_item(full_result, 0, expected_slot, expected_id, expected_distance)
     assert_equal(full_stats.base_visited, plain_stats.base_visited)
     assert_equal(full_stats.distance_evaluations, plain_stats.distance_evaluations)
     assert_equal(full_stats.inactive_rejections, plain_stats.inactive_rejections)
     assert_equal(full_stats.filtered_rejections, 0)
 
 
-def test_deleted_entry_and_bridge_do_not_consume_filtered_radius() raises:
+def test_deleted_entry_selects_live_extra_for_both_admission_modes() raises:
     _assert_all_true_equivalence[-1](True, False)
     _assert_all_true_equivalence[1](True, False)
 
 
-def test_deleted_middle_does_not_consume_filtered_radius() raises:
+def test_deleted_middle_is_not_a_bridge_for_either_admission_mode() raises:
     _assert_all_true_equivalence[-1](False, False)
     _assert_all_true_equivalence[1](False, False)
 
 
-def test_replaced_middle_does_not_consume_filtered_radius() raises:
+def test_replaced_middle_is_not_a_bridge_for_either_admission_mode() raises:
     _assert_all_true_equivalence[-1](False, True)
     _assert_all_true_equivalence[1](False, True)
 

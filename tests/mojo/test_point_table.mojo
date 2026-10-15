@@ -17,6 +17,7 @@ from akasha.storage.point_segment import (
 from akasha.storage.point_table import PointTable
 from akasha.storage.point_wal import (
     FieldWalReader,
+    encode_point_batch,
     PointWalBatch,
     decode_point_batch,
 )
@@ -266,3 +267,70 @@ def test_delta_capture_includes_sparse_only_changes_and_tombstones_in_id_order()
         Float32(1),
     )
     assert_equal(len(table.points_after(table.last_sequence())), 0)
+
+
+def test_v4_merge_replays_before_v5_whole_point_replacement() raises:
+    var catalog = _catalog()
+    var old = read_file_bytes("tests/fixtures/field-envelopes/merge-upsert-v4.bin")
+    var path = _path("migration.wal")
+    write_file_sync(path, old)
+    var reader = FieldWalReader(path, catalog.copy())
+    var envelope = reader.read_next()
+    assert_equal(envelope.value().point_batch().format_version, 4)
+    var table = PointTable(catalog.copy(), 7)
+    table.replay(envelope.value().point_batch())
+    var before = table.get(1)
+    assert_equal(before.value().field_count(), 2)
+    assert_equal(before.value().payload()[0].value.as_string(), "before")
+    assert_equal(before.value().field_at(1).value().dense_values[DType.float32]()[0], Float32(8))
+    var mutations: List[PointMutation] = [
+        PointMutation(1, 1, [FieldUpdate.set(2, VectorValue.dense[DType.float32]([6,7]))])
+    ]
+    _ = table.append_batch(path, mutations)
+    assert_equal(table.get(1).value().field_count(), 1)
+    assert_equal(table.get(1).value().ordinal_for(0), -1)
+    assert_equal(table.get(1).value().document_sequence, UInt64(0))
+    assert_equal(len(table.get(1).value().payload()), 0)
+    assert_equal(before.value().field_count(), 2)
+    var reopened = PointTable(catalog.copy(), 7)
+    var mixed = FieldWalReader(path, catalog.copy())
+    var legacy = mixed.read_next()
+    reopened.replay(legacy.value().point_batch())
+    assert_equal(reopened.get(1).value().field_count(), 2)
+    var current = mixed.read_next()
+    assert_equal(current.value().format_version, 5)
+    reopened.replay(current.value().point_batch())
+    assert_equal(reopened.get(1).value().field_count(), 1)
+    assert_equal(len(reopened.get(1).value().payload()), 0)
+    assert_false(Bool(mixed.read_next()))
+    var snapshot = encode_point_segment(1, 0, 10, reopened.live_points(), catalog[])
+    var segment = decode_point_segment(snapshot, catalog[])
+    assert_equal(segment.points[0].field_count(), 1)
+    assert_equal(len(segment.points[0].payload()), 0)
+
+
+def test_v5_rejects_corruption_and_torn_batches_never_replay() raises:
+    var catalog = _catalog()
+    var mutations: List[PointMutation] = [_create(1), PointMutation(1, 1, [])]
+    var bytes = encode_point_batch(8, mutations, catalog[])
+    assert_equal(bytes[4], UInt8(5))
+    var path = _path("v5-cuts.wal")
+    for cut in range(len(bytes)):
+        with assert_raises():
+            _ = decode_point_batch(Span(bytes)[:cut], catalog[])
+        with open(path, "w") as file:
+            file.write_all(Span(bytes)[:cut])
+        var reader = FieldWalReader(path, catalog.copy())
+        assert_false(Bool(reader.read_next()))
+        assert_equal(reader.valid_length, 0)
+    for offset in range(len(bytes)):
+        var corrupt = bytes.copy()
+        corrupt[offset] ^= 1
+        with assert_raises():
+            _ = decode_point_batch(corrupt, catalog[])
+    var table = PointTable(catalog.copy(), 7)
+    var complete = decode_point_batch(bytes, catalog[])
+    table.replay(complete)
+    assert_equal(table.live_count(), 1)
+    assert_equal(table.get(1).value().field_count(), 0)
+    assert_equal(len(table.get(1).value().payload()), 0)

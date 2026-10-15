@@ -1,3 +1,4 @@
+from legacy_fixture_helpers import copy_legacy_fixture
 from akasha import PersistentCollection, BatchMutation, CollectionConfig
 from akasha.document.point_state import FieldUpdate, PointMutation
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
@@ -71,9 +72,9 @@ def test_public_collection_combined_write_snapshot_checkpoint_and_reopen() raise
     )
     assert_equal(collection.search_field("image", query, 1)[0].id, 2)
     collection.upsert(1, [3, 0])
-    assert_equal(collection.get_point(1).value().field_count(), 3)
+    assert_equal(collection.get_point(1).value().field_count(), 1)
     assert_equal(
-        collection.search_sparse_dot([SparseElement(7, 1)], 1)[0].id, 1
+        len(collection.search_sparse_dot([SparseElement(7, 1)], 1)), 0
     )
     collection.upsert_sparse(1, [SparseElement(9, 5)])
     assert_equal(collection.get(1).value().sequence, UInt64(3))
@@ -88,7 +89,7 @@ def test_public_collection_combined_write_snapshot_checkpoint_and_reopen() raise
     assert_equal(snapshot.get(1).value().vector[0], Float32(1))
     assert_equal(snapshot.search_field("image", query, 1)[0].id, 2)
     var reopened = PersistentCollection.open(path, 2)
-    assert_equal(reopened.get_point(1).value().field_count(), 2)
+    assert_equal(reopened.get_point(1).value().field_count(), 1)
     assert_equal(reopened.search_field("image", query, 1)[0].id, 2)
     assert_equal(reopened.last_sequence(), UInt64(5))
     reopened.close()
@@ -97,11 +98,7 @@ def test_public_collection_combined_write_snapshot_checkpoint_and_reopen() raise
 
 def test_public_migration_and_invalid_late_field_leave_wal_unchanged() raises:
     var path = _path("migration")
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(1, [1, 2])
-    legacy.upsert_sparse(1, [SparseElement(1, 1)])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("named-public_migration_and_invalid_late_field_leave_wal_unchanged", path)
     var collection = PersistentCollection.open_with_fields(path, _fields())
     assert_equal(collection.get(1).value().sequence, UInt64(1))
     assert_equal(collection.get_point(1).value().sequence, UInt64(2))

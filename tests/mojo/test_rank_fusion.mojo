@@ -49,7 +49,7 @@ def test_rrf_empty_one_sided_disjoint_and_signed_ids() raises:
     var one_sided = reciprocal_rank_fusion(empty, dense, 10, 1)
     assert_equal(len(one_sided), 2)
     assert_equal(one_sided[0].id, -8)
-    assert_equal(one_sided[0].score, 0.5)
+    assert_equal(one_sided[0].score, 1.0)
     var sparse: List[SearchResult] = [
         SearchResult(-9, -1.0),
         SearchResult(8, 0.0),
@@ -75,10 +75,10 @@ def test_rrf_rehash_overlap_and_repeated_ids_match_ordered_sum() raises:
             var expected = Float32(0.0)
             for index in range(len(dense)):
                 if dense[index].id == hit.id:
-                    expected += Float32(1.0 / Float64(constant + index + 1))
+                    expected += Float32(1) / (Float32(constant) + Float32(index))
             for index in range(len(sparse)):
                 if sparse[index].id == hit.id:
-                    expected += Float32(1.0 / Float64(constant + index + 1))
+                    expected += Float32(1) / (Float32(constant) + Float32(index))
             assert_equal(hit.score, expected)
             if hit_index > 0:
                 var previous = fused[hit_index - 1]
@@ -90,3 +90,18 @@ def test_rrf_rehash_overlap_and_repeated_ids_match_ordered_sum() raises:
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+
+
+def test_qdrant_default_is_two_with_zero_based_ranks() raises:
+    var ranking: List[SearchResult] = [SearchResult(1, 1), SearchResult(2, 0)]
+    var result = reciprocal_rank_fusion(ranking, [], 2)
+    assert_equal(result[0].score, Float32(0.5))
+    assert_equal(result[1].score, Float32(1) / Float32(3))
+
+
+def test_large_constant_preserves_qdrant_f32_operation_order() raises:
+    var ranking: List[SearchResult] = [SearchResult(1, 1), SearchResult(2, 0)]
+    var result = reciprocal_rank_fusion(ranking, [], 2, 16_777_216)
+    # Qdrant position_score: F32((position + 1) + k - 1), not integer k+rank.
+    assert_equal(result[0].score, Float32(1) / Float32(16_777_215))
+    assert_equal(result[1].score, Float32(1) / Float32(16_777_216))

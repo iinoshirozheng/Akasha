@@ -47,7 +47,7 @@ def l2_squared_distance(
 
 
 def cosine_similarity(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:
-    """Return cosine similarity, rejecting zero-norm vectors."""
+    """Return cosine similarity, with zero similarity for zero-norm vectors."""
     _validate_pair(lhs, rhs)
 
     var product: Float32 = 0.0
@@ -59,6 +59,6 @@ def cosine_similarity(lhs: List[Float32], rhs: List[Float32]) raises -> Float32:
         rhs_norm_squared += rhs[i] * rhs[i]
 
     if lhs_norm_squared == 0.0 or rhs_norm_squared == 0.0:
-        raise Error("cosine similarity requires non-zero vectors")
+        return 0.0
 
     return product / sqrt(lhs_norm_squared * rhs_norm_squared)

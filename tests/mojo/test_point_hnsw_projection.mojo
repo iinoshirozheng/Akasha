@@ -1,6 +1,10 @@
 from akasha.common.config import CollectionConfig
 from akasha.document.point_state import PointField, PointState
 from akasha.document.vector_value import VectorValue
+from akasha.index.segmented_hnsw import SegmentedHnsw
+from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
+from akasha.index.bitmap import Bitmap
+from std.collections import Dict
 from akasha.index.hnsw_rebuild import HnswRebuild, build_hnsw
 from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.read_generation import ReadGenerationCache
@@ -58,3 +62,32 @@ def test_rebuild_journal_ignores_named_updates_and_deletes_removed_default() rai
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+
+
+def test_exhausted_default_graph_skips_named_only_authority() raises:
+    var table = MemTable(2)
+    table.put(_entry(1, 1, 1))
+    table.put(_entry(2, 2, 2))
+    table.put(_entry(3, 3, 0))
+    var base = build_hnsw(table, CollectionConfig.defaults(2))
+    for ordinal in range(base.point_count()):
+        for level in range(base.graph.level(UInt32(ordinal)) + 1):
+            base.graph.set_neighbors(UInt32(ordinal), level, [])
+    var graph = SegmentedHnsw.from_owned(base^)
+    var ordinals = Dict[Int, Int]()
+    for ordinal in range(table.slot_count()):
+        ordinals[table.id_at(ordinal)] = ordinal
+    var lookup = HnswIdOrdinalLookup(ordinals^, table.slot_count())
+    var unfiltered = graph.search([1, 0], 2, 2, table, lookup)
+    assert_equal(len(unfiltered), 2)
+    assert_equal(unfiltered[0].id, 1)
+    assert_equal(unfiltered[1].id, 2)
+    assert_equal(graph.last_search_stats().fallback_reason, "segmented_ann_exhausted")
+    var bitmap = Bitmap(table.slot_count())
+    bitmap.set(0)
+    bitmap.set(1)
+    var allowed = HnswEligibility(bitmap^, lookup)
+    var filtered = graph.search_allowed([1, 0], 2, 2, 8, allowed, table, lookup)
+    assert_equal(len(filtered), 2)
+    assert_equal(filtered[0].id, 1)
+    assert_equal(filtered[1].id, 2)

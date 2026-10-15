@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import struct
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -485,8 +486,8 @@ class DistributedCluster:
         return merged
 
     def _search_hybrid(self, request: SearchRequest, epoch: int) -> list[SearchResult]:
-        if request.vector is None or not request.sparse:
-            raise ValueError("distributed hybrid search requires dense and sparse queries")
+        if request.vector is None:
+            raise ValueError("distributed hybrid search requires a dense query")
         dense_request = SearchRequest(
             request.metric,
             request.fetch_k,
@@ -510,14 +511,15 @@ class DistributedCluster:
         if self.metadata.epoch != epoch:
             raise ProtocolError("cluster metadata epoch changed during hybrid query")
         scores: dict[int, float] = {}
-        for rank, result in enumerate(dense, start=1):
-            scores[result.id] = scores.get(result.id, 0.0) + 1.0 / (
-                request.rank_constant + rank
-            )
-        for rank, result in enumerate(sparse, start=1):
-            scores[result.id] = scores.get(result.id, 0.0) + 1.0 / (
-                request.rank_constant + rank
-            )
+        # Match the native/Qdrant Float32 contribution and running sum.
+        def f32(value: float) -> float:
+            return struct.unpack("f", struct.pack("f", value))[0]
+
+        for ranking in (dense, sparse):
+            for rank, result in enumerate(ranking):
+                denominator = f32(f32(f32(rank + 1) + f32(request.rank_constant)) - 1.0)
+                contribution = f32(1.0 / denominator)
+                scores[result.id] = f32(scores.get(result.id, 0.0) + contribution)
         ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
         return [SearchResult(point_id, score) for point_id, score in ordered[: request.k]]
 

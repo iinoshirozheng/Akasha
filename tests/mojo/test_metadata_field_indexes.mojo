@@ -82,18 +82,21 @@ def test_sorted_block_evaluates_all_integer_ranges() raises:
 
     assert_equal(equal.count(), 1)
     assert_true(equal.contains(2))
-    assert_equal(not_equal.count(), 2)
+    assert_equal(not_equal.count(), 3)
     assert_true(not_equal.contains(0))
     assert_true(not_equal.contains(1))
+    assert_true(not_equal.contains(4))
     assert_equal(less.count(), 1)
     assert_true(less.contains(1))
-    assert_equal(less_equal.count(), 2)
+    assert_equal(less_equal.count(), 3)
+    assert_true(less_equal.contains(4))
     assert_equal(greater.count(), 1)
     assert_true(greater.contains(0))
-    assert_equal(greater_equal.count(), 2)
+    assert_equal(greater_equal.count(), 3)
+    assert_true(greater_equal.contains(4))
 
 
-def test_sorted_block_keeps_float_type_separate_and_supports_remove() raises:
+def test_sorted_block_numeric_ranges_include_both_types_and_support_remove() raises:
     var index = SortedBlockIndex(4)
     index.add("score", PayloadValue.floating(1.5), 0)
     index.add("score", PayloadValue.floating(2.5), 1)
@@ -106,9 +109,11 @@ def test_sorted_block_keeps_float_type_separate_and_supports_remove() raises:
     var integers = index.evaluate(
         FilterCondition.greater_or_equal("score", PayloadValue.integer(1))
     )
-    assert_equal(floats.count(), 1)
+    assert_equal(floats.count(), 2)
     assert_true(floats.contains(1))
-    assert_equal(integers.count(), 1)
+    assert_true(floats.contains(2))
+    assert_equal(integers.count(), 2)
+    assert_true(integers.contains(1))
     assert_true(integers.contains(2))
 
 

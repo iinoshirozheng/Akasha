@@ -1,8 +1,8 @@
-"""Immutable per-field postings with native F32 weights and F64 accumulation.
+"""Immutable per-field postings with native F32 weights and F32 accumulation.
 
 Unlike the mutable legacy SparseIndex, this root-owned index needs no duplicate
-owned records or delete bookkeeping. Rows include present empty vectors, whose
-zero scores must compete with negative matches in native field search.
+owned records or delete bookkeeping. Rows retain present empty vectors for identity; only nonzero scores are
+eligible for search results, matching Qdrant sparse search.
 """
 
 from akasha.index.field_artifacts import FieldRow
@@ -36,8 +36,8 @@ struct FieldSparseIndex(Movable):
 
     def scores(
         self, query: List[SparseElement], control: Optional[QueryControl]
-    ) raises -> Dict[Int, Float64]:
-        var result = Dict[Int, Float64]()
+    ) raises -> Dict[Int, Float32]:
+        var result = Dict[Int, Float32]()
         var visited = 0
         # Query terms are schema-validated and ascending, preserving each row's
         # exact scalar oracle order independently of dictionary iteration order.
@@ -48,10 +48,10 @@ struct FieldSparseIndex(Movable):
                 if control:
                     control.value().checkpoint(visited)
                 visited += 1
-                var contribution = Float64(term.weight) * Float64(
+                var contribution = Float32(term.weight) * Float32(
                     posting.weight
                 )
                 result[posting.row] = (
-                    result.get(posting.row, Float64(0)) + contribution
+                    result.get(posting.row, Float32(0)) + contribution
                 )
         return result^

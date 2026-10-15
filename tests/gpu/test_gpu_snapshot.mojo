@@ -101,5 +101,28 @@ def test_real_device_launch_failure_falls_back_to_cpu() raises:
     collection.close()
 
 
+def test_real_gpu_cosine_zero_vectors_match_cpu_in_both_launch_shapes() raises:
+    var path = String("/tmp/akasha-gpu-zero-cosine")
+    _reset(path)
+    var collection = PersistentCollection.open(path, 3)
+    collection.upsert(1, [0.0, 0.0, 0.0])
+    collection.upsert(2, [1.0, 0.0, 0.0])
+    collection.upsert(3, [-1.0, 0.0, 0.0])
+    var snapshot = collection.snapshot()
+    var queries: List[List[Float32]] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+    var expected = snapshot.search_cosine_batch(queries, 3, num_workers=1)
+    for block_size in [31, 128]:
+        var actual = snapshot.search_device_cosine_batch[use_accelerator=True](
+            queries, 3, GpuExecutionOptions(enabled=True, min_work_items=1, block_size=block_size)
+        )
+        assert_true(actual.used_gpu)
+        for query in range(2):
+            for hit in range(3):
+                assert_equal(actual.results[query][hit].id, expected[query][hit].id)
+                assert_equal(actual.results[query][hit].score, expected[query][hit].score)
+    snapshot.close()
+    collection.close()
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -108,6 +108,11 @@ struct MetadataIndex:
             candidates = self._numbers.evaluate(condition)
         else:
             raise Error("unknown metadata index value kind")
+        if condition.operator_kind() == FilterCondition.NOT_EQUAL:
+            if condition.value.is_string():
+                candidates = candidates.union_with(self._numbers.present(condition.name))
+            elif condition.value.is_integer():
+                candidates = candidates.union_with(self._keywords.present(condition.name))
         return self._live.intersection(candidates)
 
     def contains_id(self, candidates: Bitmap, id: Int) raises -> Bool:

@@ -162,8 +162,8 @@ def test_collection_close_interleaves_with_queries_and_writers() raises:
 def test_worker_errors_release_operation_owners() raises:
     var collection = _collection("/tmp/akasha-50-worker-error", 32)
     var snapshot = collection.snapshot()
-    with assert_raises(contains="non-zero"):
-        _ = snapshot.search_cosine_parallel([0.0, 0.0], 1, num_workers=4)
+    with assert_raises(contains="dimension"):
+        _ = snapshot.search_cosine_parallel([0.0], 1, num_workers=4)
     with assert_raises(contains="worker count"):
         _ = snapshot.search_dot_where_parallel(
             [1.0, 0.0], 1, _keep(), num_workers=-1

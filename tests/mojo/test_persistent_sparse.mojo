@@ -128,15 +128,18 @@ def test_later_checkpoint_appends_sparse_delta_and_preserves_base() raises:
     collection.upsert(1, [1.0])
     collection.upsert_sparse(1, [SparseElement(1, 1.0)])
     collection.flush()
-    assert_equal(path_exists(path + "/sparse-base-2.bin"), True)
+    var first = load_manifest(path, 1)
+    var base_path = path + "/" + first.segments[0].name
+    assert_true(path_exists(base_path))
     collection.upsert_sparse(1, [SparseElement(2, 1.0)])
     collection.flush()
-    assert_equal(path_exists(path + "/sparse-base-2.bin"), True)
-    assert_equal(path_exists(path + "/sparse-delta-3.bin"), True)
+    assert_true(path_exists(base_path))
     var manifest = load_manifest(path, 1)
     assert_equal(len(manifest.segments), 2)
-    assert_equal(manifest.segments[0].sparse_name, "sparse-base-2.bin")
-    assert_equal(manifest.segments[1].sparse_name, "sparse-delta-3.bin")
+    assert_equal(manifest.segments[0].name, first.segments[0].name)
+    assert_equal(manifest.segments[0].sparse_name, "")
+    assert_equal(manifest.segments[1].sparse_name, "")
+    assert_true(path_exists(path + "/" + manifest.segments[1].name))
     collection.close()
 
     var reopened = PersistentCollection.open(path, 1)
@@ -155,14 +158,14 @@ def test_full_compaction_rewrites_sparse_state_and_reclaims_inputs() raises:
     collection.upsert_sparse(1, [SparseElement(2, 2.0)])
     collection.flush()
 
+    var old = load_manifest(path, 1)
     collection.compact()
-
-    assert_equal(path_exists(path + "/sparse-base-2.bin"), False)
-    assert_equal(path_exists(path + "/sparse-delta-3.bin"), False)
+    assert_equal(path_exists(path + "/" + old.segments[0].name), False)
+    assert_equal(path_exists(path + "/" + old.segments[1].name), False)
     var manifest = load_manifest(path, 1)
     assert_equal(len(manifest.segments), 1)
-    assert_true(manifest.segments[0].sparse_name.startswith("sparse-compact-"))
-    assert_true(path_exists(path + "/" + manifest.segments[0].sparse_name))
+    assert_equal(manifest.segments[0].sparse_name, "")
+    assert_true(path_exists(path + "/" + manifest.segments[0].name))
     collection.close()
     var reopened = PersistentCollection.open(path, 1)
     var results = reopened.search_sparse_dot([SparseElement(2, 1.0)], 1)
@@ -210,7 +213,7 @@ def test_sparse_existence_errors_preserve_validation_order_and_wal() raises:
     collection.upsert_sparse(-7, [SparseElement(9, 1.0)])
     collection.delete(-13)
     var sequence = collection.last_sequence()
-    var before = read_file_bytes(path + "/sparse.wal")
+    var before = read_file_bytes(path + "/wal.bin")
     for id in [-13, -99, Int.MIN]:
         var message = String()
         try:
@@ -225,7 +228,7 @@ def test_sparse_existence_errors_preserve_validation_order_and_wal() raises:
             message = String(error)
         assert_equal(message, "sparse vectors require an existing live point")
         assert_equal(collection.last_sequence(), sequence)
-    var after = read_file_bytes(path + "/sparse.wal")
+    var after = read_file_bytes(path + "/wal.bin")
     assert_equal(len(after), len(before))
     for i in range(len(before)):
         assert_equal(after[i], before[i])
@@ -247,14 +250,16 @@ def test_sparse_failed_append_preserves_large_document_and_sequence() raises:
     collection.upsert_document(-7, [1.0, 2.0], fields^)
     collection.upsert_sparse(-7, [SparseElement(9, 1.0)])
     var sequence = collection.last_sequence()
-    var before = read_file_bytes(path + "/sparse.wal")
+    var before = read_file_bytes(path + "/wal.bin")
     # The file API creates missing parent directories. An existing regular
     # file cannot become a parent, so this fails without touching the real WAL.
-    var original = collection._sparse_wal_path.copy()
-    collection._sparse_wal_path = path + "/sparse.wal/child"
+    collection._point_store._path = path + "/wal.bin"
     with assert_raises():
         collection.upsert_sparse(-7, [SparseElement(10, 2.0)])
-    collection._sparse_wal_path = original^
+    with assert_raises(contains="requires reopen"):
+        _ = collection.last_sequence()
+    collection.close()
+    collection = PersistentCollection.open(path, 2)
     assert_equal(collection.last_sequence(), sequence)
     assert_equal(
         collection.search_sparse_dot([SparseElement(9, 1.0)], 1)[0].score,
@@ -263,7 +268,7 @@ def test_sparse_failed_append_preserves_large_document_and_sequence() raises:
     assert_equal(
         len(collection.search_sparse_dot([SparseElement(10, 1.0)], 1)), 0
     )
-    var after = read_file_bytes(path + "/sparse.wal")
+    var after = read_file_bytes(path + "/wal.bin")
     assert_equal(len(after), len(before))
     for i in range(len(before)):
         assert_equal(after[i], before[i])

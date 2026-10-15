@@ -141,8 +141,7 @@ def test_empty_point_catalog_and_empty_export_round_trip(tmp_path):
     assert target.last_sequence == 0
     target.close()
     legacy = db.Collection(tmp_path / "legacy", 2)
-    with pytest.raises(ValueError, match="field-aware"):
-        db.import_ndjson(legacy, path)
+    assert db.import_ndjson(legacy, path) == 0
     assert legacy.last_sequence == 0
     legacy.close()
 
@@ -265,7 +264,7 @@ def test_cli_rejects_existing_incompatible_catalog_without_migrating(tmp_path):
     result = subprocess.run([sys.executable, "-m", "akashadb.admin", "import",
                              str(target_path), "2", str(path)], capture_output=True, text=True)
     assert result.returncode != 0
-    assert "field-aware" in result.stderr
+    assert "schema does not match" in result.stderr
     assert {p.name: p.read_bytes() for p in target_path.iterdir() if p.is_file() and not p.name.endswith(".cache")} == before
     target = db.Collection(target_path, 2)
     assert target.get(10).vector == [2, 3]

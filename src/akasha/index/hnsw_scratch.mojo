@@ -14,7 +14,6 @@ struct HnswSearchScratch(Movable):
     var epoch: UInt32
     var candidates: CandidateMinHeap
     var results: ResultMaxHeap
-    var filtered_results: ResultMaxHeap
     var _prepared_slot_count: Int
 
     def __init__(out self):
@@ -22,15 +21,12 @@ struct HnswSearchScratch(Movable):
         self.epoch = UInt32(0)
         self.candidates = CandidateMinHeap()
         self.results = ResultMaxHeap()
-        self.filtered_results = ResultMaxHeap()
         self._prepared_slot_count = 0
 
     def begin(
         mut self,
         slot_count: Int,
         ef: Int,
-        *,
-        prepare_filtered: Bool = False,
     ) raises:
         """Prepare scratch for one query without clearing visited storage."""
         if slot_count < 0:
@@ -48,15 +44,8 @@ struct HnswSearchScratch(Movable):
 
         self.candidates.clear()
         self.results.clear()
-        self.filtered_results.clear()
         self.candidates.reserve(ef)
         self.results.reserve(ef)
-        if prepare_filtered:
-            self.filtered_results.reserve(ef)
-
-    def filtered_result_reserved_capacity(self) -> Int:
-        """Actual filtered-result heap allocation retained across rounds."""
-        return self.filtered_results.capacity()
 
     def result_reserved_capacity(self) -> Int:
         """Actual traversal-radius heap allocation retained across queries."""

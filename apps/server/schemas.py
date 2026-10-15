@@ -96,7 +96,7 @@ class SearchRequestBody(BaseModel):
     sparse: list[SparseElementRequest] = Field(default_factory=list)
     ef_search: int = Field(default=64, gt=0)
     fetch_k: int = Field(default=50, gt=0)
-    rank_constant: int = Field(default=60, gt=0)
+    rank_constant: int = Field(default=2, gt=0)
     filter: dict[str, Any] | None = None
 
 

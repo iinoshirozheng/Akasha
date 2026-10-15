@@ -204,16 +204,14 @@ def test_foreground_and_worker_on_the_same_inputs_publish_once() raises:
     assert_equal(len(published.segments), 1)
     # The loser discarded its files and overwrote nothing.
     var outputs = _job_outputs(path)
-    assert_equal(len(outputs), 2)
+    assert_equal(len(outputs), 1)
     assert_true(
         (published.segments[0].name == output.segment_name) == foreground_won
     )
     # Both jobs released their pins, so the obsolete inputs are reclaimed.
     for index in range(len(captured.segments)):
         assert_false(path_exists(path + "/" + captured.segments[index].name))
-        assert_false(
-            path_exists(path + "/" + captured.segments[index].sparse_name)
-        )
+        assert_equal(captured.segments[index].sparse_name, "")
     _assert_slow_records(collection, [])
     collection.close()
 
@@ -358,11 +356,11 @@ def test_exhausted_worker_budget_is_counted_not_a_failure() raises:
     assert_equal(counts.conflicts, COMPACTION_ATTEMPTS)
     assert_equal(counts.exhausted, 1)
     assert_equal(collection._pins[].active_count(), 0)
-    # Reclaim the retired winner files; only the latest published pair remains.
+    # Reclaim the retired winner files; only the latest point segment remains.
     collection.flush()
     var published = load_manifest(path, _DIMENSION)
     var outputs = _job_outputs(path)
-    assert_equal(len(outputs), 2)
+    assert_equal(len(outputs), 1)
     for name in outputs:
         assert_true(
             name == published.segments[0].name

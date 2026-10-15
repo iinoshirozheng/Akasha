@@ -495,11 +495,7 @@ class ClusterMetadata:
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, destination)
-        directory_fd = os.open(destination.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        sync_directory(destination.parent)
 
     @classmethod
     def load(cls, path: str | Path) -> "ClusterMetadata":
@@ -591,6 +587,14 @@ class ReplicatedEntry:
         return entry
 
 
+def sync_directory(path: Path) -> None:
+    directory_fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 class ReplicaJournal:
     """Append+fsync replicated prepare/commit records with torn-tail repair."""
 
@@ -600,6 +604,7 @@ class ReplicaJournal:
         self.prepared: dict[int, ReplicatedEntry] = {}
         self.committed: set[int] = set()
         self.snapshot_index = 0
+        self._write_failed = False
         self._load()
 
     def _load(self) -> None:
@@ -641,20 +646,32 @@ class ReplicaJournal:
                 self.snapshot_index = max(self.snapshot_index, index)
             else:
                 raise ProtocolError("unknown replica journal record")
-        if repair_torn_tail:
-            with self.path.open("r+b") as file:
+        # Reopening also resolves an uncertain previous fsync. Validate every
+        # complete record before modifying or acknowledging this journal.
+        with self.path.open("r+b") as file:
+            if repair_torn_tail:
                 file.truncate(complete_size)
-                file.flush()
-                os.fsync(file.fileno())
+            file.flush()
+            os.fsync(file.fileno())
+        sync_directory(self.path.parent)
 
     def _append(self, payload: dict[str, Any]) -> None:
+        self._ensure_writable()
         data = canonical_bytes(checked_envelope(payload)) + b"\n"
+        self._write_failed = True
         with self.path.open("ab") as output:
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
+        sync_directory(self.path.parent)
+        self._write_failed = False
+
+    def _ensure_writable(self) -> None:
+        if self._write_failed:
+            raise ProtocolError("replica journal requires recovery after failed append")
 
     def prepare(self, entry: ReplicatedEntry) -> None:
+        self._ensure_writable()
         entry.validate()
         existing = self.prepared.get(entry.index)
         if existing is not None:
@@ -665,6 +682,7 @@ class ReplicaJournal:
         self.prepared[entry.index] = entry
 
     def commit(self, index: int) -> ReplicatedEntry:
+        self._ensure_writable()
         if index not in self.prepared:
             raise ProtocolError("cannot commit an unprepared entry")
         if index not in self.committed:
@@ -673,6 +691,7 @@ class ReplicaJournal:
         return self.prepared[index]
 
     def install_snapshot(self, index: int) -> None:
+        self._ensure_writable()
         if index < self.snapshot_index:
             raise ProtocolError("snapshot index regression")
         self._append({"kind": "snapshot", "index": index})

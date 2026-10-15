@@ -171,10 +171,9 @@ def test_named_sparse_filter_and_catalog_identity(tmp_path: Path):
 
 
 def test_legacy_migration_and_separate_index_config(tmp_path: Path):
-    collection = Collection(tmp_path, 2)
-    collection.upsert(1, [1, 2])
-    collection.flush()
-    collection.close()
+    import shutil
+    fixture = Path(__file__).parents[1] / "fixtures/default-legacy/named-public_migration_and_invalid_late_field_leave_wal_unchanged"
+    shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
     fields = {"half": VectorField(3, dtype="f16", hnsw=CollectionConfig(dimension=3))}
     upgraded = Collection(tmp_path, 2, vectors=fields)
     assert upgraded.get_point(1).vector == [1, 2]
@@ -290,8 +289,8 @@ def test_named_field_fusion_matches_rank_oracle_and_arrow(tmp_path, approximate)
         scores = {}
         for query in queries:
             ranking = collection.search_field(query.name, query.vector, 6, mode=query.mode, filter=filter)
-            for rank, hit in enumerate(ranking, 1):
-                scores[hit.id] = scores.get(hit.id, 0) + 1 / (60 + rank)
+            for rank, hit in enumerate(ranking):
+                scores[hit.id] = float(np.float32(np.float32(scores.get(hit.id, 0)) + np.float32(1) / np.float32(2 + rank)))
         expected = sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:4]
         actual = collection.search_fields(queries, 4, fetch_k=6, filter=filter)
         assert [(hit.id, hit.score) for hit in actual] == expected
@@ -314,4 +313,32 @@ def test_named_field_fusion_rejects_invalid_budgets(tmp_path, options):
         collection.search_fields([FieldQuery("dense", [1])], 2, **options)
     with pytest.raises(ValidationError):
         collection.search_fields([], 2)
+    collection.close()
+
+
+@pytest.mark.parametrize("checkpoint", [False, True])
+def test_upsert_replaces_all_omitted_values_across_owned_read_and_reopen(tmp_path, checkpoint):
+    fields = {"a": VectorField(2), "b": VectorField(2)}
+    collection = Collection(tmp_path, 2, vectors=fields)
+    collection.apply_point_batch([PointMutation.upsert(
+        1, vector=[1, 2], sparse=[SparseElement(1, 3)],
+        vectors={"a": [4, 5], "b": [6, 7]}, fields=[PayloadField("tag", "string", "old")])])
+    before = collection.get_point(1)
+    collection.apply_point_batch([PointMutation.upsert(1, vectors={"a": [8, 9]})])
+    point = collection.get_point(1)
+    assert point.vector is None and point.sparse is None
+    assert point.vectors == {"a": [8, 9]} and point.fields == []
+    assert point.document_sequence == 0
+    assert before.vectors == {"a": [4, 5], "b": [6, 7]}
+    assert before.fields == [PayloadField("tag", "string", "old")]
+    if checkpoint:
+        collection.flush()
+    collection.close()
+    collection = Collection(tmp_path, 2)
+    assert collection.get_point(1) == point
+    assert collection.search_field("b", [1, 1], 2) == []
+    collection.apply_point_batch([PointMutation.update(1, fields=[PayloadField("tag", "string", "new")])])
+    assert collection.get_point(1).vectors == {"a": [8, 9]}
+    collection.apply_point_batch([PointMutation.upsert(1)])
+    assert collection.get_point(1).vectors == {} and collection.get_point(1).fields == []
     collection.close()

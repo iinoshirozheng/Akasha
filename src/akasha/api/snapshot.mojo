@@ -225,7 +225,7 @@ struct ReadSnapshot(Movable):
         k: Int,
         *,
         fetch_k: Int = 100,
-        rank_constant: Int = 60,
+        rank_constant: Int = 2,
         var expression: Optional[FilterExpression] = None,
         control: Optional[QueryControl] = None,
         rerank: Optional[FieldQuery] = None,
@@ -241,7 +241,7 @@ struct ReadSnapshot(Movable):
         k: Int,
         *,
         fetch_k: Int = 100,
-        rank_constant: Int = 60,
+        rank_constant: Int = 2,
         var expression: Optional[FilterExpression] = None,
         control: Optional[QueryControl] = None,
         rerank: Optional[FieldQuery] = None,
@@ -817,7 +817,7 @@ struct ReadSnapshot(Movable):
         sparse_query: List[SparseElement],
         k: Int,
         fetch_k: Int,
-        rank_constant: Int = 60,
+        rank_constant: Int = 2,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -837,7 +837,7 @@ struct ReadSnapshot(Movable):
         sparse_query: List[SparseElement],
         k: Int,
         fetch_k: Int,
-        rank_constant: Int = 60,
+        rank_constant: Int = 2,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -857,7 +857,7 @@ struct ReadSnapshot(Movable):
         sparse_query: List[SparseElement],
         k: Int,
         fetch_k: Int,
-        rank_constant: Int = 60,
+        rank_constant: Int = 2,
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
@@ -970,7 +970,7 @@ struct ReadSnapshot(Movable):
             raise Error("SQ8 rerank candidate count must be zero or at least k")
         if not view.has_dense():
             return List[SearchResult]()
-        var sq8 = self._sq8_artifact(view)
+        var sq8 = self._sq8_artifact(view, cosine=metric == _COSINE_METRIC)
         var candidate_count = k if rerank_k == 0 else rerank_k
         candidate_count = min(candidate_count, sq8[].point_count())
         var candidates: List[SearchResult]
@@ -986,18 +986,20 @@ struct ReadSnapshot(Movable):
         return self._exact_rerank(view, query, k, metric, candidates)
 
     def _sq8_artifact(
-        self, view: ReadGeneration
+        self, view: ReadGeneration, *, cosine: Bool = False
     ) raises -> ArcPointer[Sq8Index]:
         """Return the root's ready SQ8 artifact, building it once under its lock.
 
         The root fixes layout, field, config and coverage, so the artifact can
-        never go stale; every handle and metric on the root shares it. The lock
+        never go stale; every handle shares the raw or cosine-preprocessed
+        artifact. Dot/L2 share raw codes; cosine needs normalized training. The lock
         is held from the ready check through publication, so concurrent first
         queries wait for one build instead of each building. A failed build
         publishes nothing, records the failure and raises; the next query may
         try again, and a ready artifact is never replaced.
         """
-        ref state = view.sq8[]
+        var owner = view.sq8_cosine.copy() if cosine else view.sq8.copy()
+        ref state = owner[]
         with BlockingScopedLock(state.lock):
             if state.ready:
                 return state.ready.value().copy()
@@ -1007,7 +1009,7 @@ struct ReadSnapshot(Movable):
                 var ids = List[Int](capacity=len(ordinals))
                 var vectors = List[List[Float32]](capacity=len(ordinals))
                 self._gather(view, ordinals, ids, vectors)
-                var built = ArcPointer(Sq8Index.build(ids, vectors))
+                var built = ArcPointer(Sq8Index.build(ids, vectors, cosine=cosine))
                 state.publish(built.copy())
                 return built^
             except error:
@@ -1035,7 +1037,8 @@ struct ReadSnapshot(Movable):
         if not view.has_dense():
             return List[SearchResult]()
         var pq = self._pq_artifact(
-            view, subquantizers, centroids, iterations, control
+            view, subquantizers, centroids, iterations, control,
+            cosine=metric == _COSINE_METRIC,
         )
         var candidate_count = k if rerank_k == 0 else rerank_k
         candidate_count = min(candidate_count, pq[].point_count())
@@ -1061,6 +1064,8 @@ struct ReadSnapshot(Movable):
         centroids: Int,
         iterations: Int,
         control: Optional[QueryControl],
+        *,
+        cosine: Bool = False,
     ) raises -> ArcPointer[PqIndex]:
         # Reject malformed keys before retaining an artifact state.
         if subquantizers <= 0 or self._dimension % subquantizers != 0:
@@ -1069,7 +1074,8 @@ struct ReadSnapshot(Movable):
             raise Error("PQ centroid count exceeds supported training rows")
         if iterations <= 0:
             raise Error("PQ training iterations must be positive")
-        var owner = view.pq[].get(subquantizers, centroids, iterations)
+        var registry = view.pq_cosine.copy() if cosine else view.pq.copy()
+        var owner = registry[].get(subquantizers, centroids, iterations)
         ref state = owner[]
         with BlockingScopedLock(state.lock):
             if control:
@@ -1092,6 +1098,7 @@ struct ReadSnapshot(Movable):
                         centroids,
                         iterations=iterations,
                         control=control,
+                        cosine=cosine,
                     )
                 )
                 if control:

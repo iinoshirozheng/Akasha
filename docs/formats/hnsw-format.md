@@ -1,5 +1,9 @@
 # HNSW sidecar formats
 
+Current writer: **version 3**. Versions 1 and 2 are frozen read-only formats.
+Collection recovery rebuilds pre-v3 derived graphs from authoritative records
+before publishing v3; direct format readers retain strict legacy validation.
+
 ## Version 1 (frozen F32)
 
 Status: frozen. Multi-byte integers and `Float32` bit patterns are little
@@ -8,7 +12,7 @@ v3 uses `hnsw-<checkpoint-sequence>.bin`; v4/v5 use
 `hnsw-<checkpoint-sequence>-<creation-generation>-<claim>.bin`.
 For manifest v5, the filename sequence identifies the immutable graph base and
 may precede the manifest's authoritative checkpoint. Recovery applies the
-current default-dense projection above that base sequence; graph bytes remain v1/v2.
+current default-dense projection above that base sequence; graph bytes use the version in their own header.
 
 The sidecar is an immutable derived index. Dense segments, the WAL, collection
 identity, and manifest remain authoritative. Version 1 stores the packed HNSW
@@ -318,7 +322,7 @@ guess widths from section lengths.
 | I8 squared L2 | Configuration error | Configuration error |
 | Unknown scalar or future version | Reject | Reject |
 
-The writer selects v1 only for F32 and v2 only for compact graph scalars,
+The frozen pre-v3 writer selected v1 for F32 and v2 for compact graph scalars,
 including empty graphs. Owned and mapped readers require the header tag to
 match the expected collection configuration. The checked-in v1 fixtures
 `tests/fixtures/hnsw-v1-empty.bin` and
@@ -350,7 +354,7 @@ a storage error. Newer WAL mutations replay incrementally into the owned graph.
 ## Rebuildable overlay cache
 
 `hnsw-overlay.cache` uses the existing AKIC v1 envelope with kind **3**. Its
-payload is an unmodified HNSW snapshot v1/v2 containing only the mutable delta,
+payload is an HNSW snapshot (new writers use v3) containing only the mutable delta,
 including replaced/deleted traversal slots. The inner snapshot sequence is the
 retained base sequence; its configuration fingerprint is the collection identity.
 The outer latest sequence binds the current authority version. For kind 3, the
@@ -372,3 +376,66 @@ Within one open collection, a successful publication records its latest sequence
 base sequence and base CRC. Repeated flush or compaction with that same key reuses
 the artifact instead of serializing/fsyncing it again. Failed publication does not
 record a key, so another flush of the same authority state can retry.
+
+## Version 3 (directed payload-aware graph and entry pools)
+
+Version 3 uses the v2 192-byte header and scalar/scale layout for **all** supported
+HNSW scalars, including F32 (tag 0, scalar width 4, scale width 0). Version is 3.
+The collection fingerprint and authoritative segment/WAL formats do not change.
+The node/edge/count encodings remain unchanged, with these new rules:
+
+- Cosine vectors may have zero norm, following Qdrant preprocessing and scoring:
+  a zero vector stays zero and its similarity to every vector is zero. Nonzero
+  floating-point prepared vectors must still be unit-normalized within the
+  existing tolerance. I8 cosine retains the fixed `1/127` scale but permits
+  all-zero codes. The nonzero requirements above remain in force for v1/v2
+  readers; those published formats are not reinterpreted.
+- Backlinks are independently selected by the diversity heuristic. A valid edge
+  need not have a reverse edge. Every target must still exist, own the level,
+  differ from its source, and be unique within the source row.
+- Payload block graphs contribute supplementary adjacency. A row may exceed
+  `m0`/`m`; its degree must be less than the total slot count. The sum of degrees
+  must equal the recorded edge count. Owned storage reserves `max(degree, m0)`
+  or `max(degree, m)` cells for the row, with the exact allocation checked against
+  decoder limits before materialization. Search filters neighbors before applying
+  the regular `m0`/`m` scoring batch bound.
+- Historical slots remain encoded for lifecycle/identity recovery, but current
+  search does not score or traverse deleted/replaced slots.
+- Header bytes 176–183 hold the entry-section offset (u64); bytes 184–191 hold
+  its length (u64), replacing v2's reserved extension. The section begins at the
+  smallest eight-byte-aligned offset after edges. Padding is zero. The CRC
+  immediately follows the entry section and covers the entire preceding file.
+
+The entry section contains four u32 values followed by `(u32 slot, u32 level)` records:
+
+| Relative offset | Value |
+| ---: | --- |
+| 0 | Primary count |
+| 4 | Extra count |
+| 8 | Positive extra capacity |
+| 12 | Reserved, zero |
+| 16 | Primary records, in selection order; then extra records, in retained heap order |
+
+Its exact length is `16 + 8 * (primary_count + extra_count)`. Counts cannot
+exceed slot count, extras cannot exceed capacity, every slot is in bounds, and
+slots are unique across both lists. A nonempty graph requires at least one
+primary. Each entry level must not exceed its point's graph level. Payload
+entries retain level zero even when the main graph point has upper layers.
+Entries may be historical; runtime selection checks current source
+and filter eligibility. Selection uses the first eligible primary, otherwise
+the highest-level eligible extra, with Akasha's deterministic ID tie ordering.
+The header entry slot/level remains the legacy highest-slot identity for format
+inspection; the entry section is the query entry authority.
+
+All new snapshots, including overlays, use v3. Direct v1/v2 readers still reject
+asymmetric or over-capacity adjacency and reconstruct an entry pool at load time.
+They never reinterpret a v1/v2 file as v3. Collection recovery treats those
+versions and the older `hnsw.cache` as derived misses and rebuilds from committed
+authority. It no longer publishes or loads `hnsw.cache`; the low-level legacy
+codec remains for frozen fixtures. No authoritative data migration is needed.
+
+Checks: `test_hnsw_store_v3.mojo`, `test_hnsw_payload.mojo`,
+`test_hnsw_payload_lifecycle.mojo`, `test_hnsw_store_v1_compat.mojo`, and
+`test_hnsw_store_v2_compat.mojo`. The frozen v2 BF16/F16/I8 fixtures were produced
+with the unmodified writer at `f6a938a`, Mojo 1.0.0, sequence 77; their identity
+and data construction are specified in `test_hnsw_store_v2_compat.mojo`.

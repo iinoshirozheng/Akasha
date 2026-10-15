@@ -439,8 +439,8 @@ def test_sparse_only_update_shares_dense_and_owned_get_is_independent() raises:
     assert_true(old_entry.sparse_address() != new_entry.sparse_address())
     assert_equal(_copied_dense_bytes(sparse, collection), 0)
     assert_equal(
-        dense.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,
-        Float32(1.0),
+        len(dense.search_sparse_dot([SparseElement(7, 1.0)], 1)),
+        0,
     )
     assert_equal(
         sparse.search_sparse_dot([SparseElement(7, 1.0)], 1)[0].score,

@@ -11,6 +11,9 @@ from akasha.index.field_artifacts import FieldRow
 from akasha.index.field_dense import dense_f32_projection
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_payload import attach_payload_graphs
+from akasha.index.metadata import MetadataIndex
+from akasha.document.record import clone_fields
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.hnsw_stats import HnswSearchStats, copy_search_stats
 from akasha.query.field_search import (
@@ -20,6 +23,7 @@ from akasha.query.field_search import (
     search_generation_field_reported,
 )
 from akasha.query.control import QueryControl
+from akasha.query.planner import QueryPlanner
 from akasha.query.filter_ast import FilterExpression
 from akasha.storage.read_generation import ReadGeneration
 from std.collections import Dict
@@ -31,10 +35,12 @@ def _build_field_graph(
     view: ReadGeneration,
     field: VectorFieldSpec,
     control: Optional[QueryControl],
+    var rows: List[FieldRow],
 ) raises -> FieldHnswIndex:
-    var rows = gather_field_rows(view, field.id, control)
     var index = HnswIndex(field.hnsw.value())
     var lookup = Dict[Int, Int]()
+    var metadata = MetadataIndex()
+    metadata.begin_bulk()
     for row in range(len(rows)):
         if control:
             control.value().checkpoint(row)
@@ -50,6 +56,9 @@ def _build_field_graph(
             var converted = dense_f32_projection(value)
             index.add(location.id, converted)
         lookup[location.id] = row
+        metadata.upsert(location.id, clone_fields(entry.fields()))
+    metadata.finish_bulk()
+    attach_payload_graphs(index, metadata, control)
     index.validate_structure()
     var domain = HnswIdOrdinalLookup(lookup^, len(rows))
     return FieldHnswIndex(index^, rows^, domain^)
@@ -59,6 +68,7 @@ def _field_graph(
     view: ReadGeneration,
     field: VectorFieldSpec,
     control: Optional[QueryControl],
+    var rows: List[FieldRow],
 ) raises -> ArcPointer[FieldHnswIndex]:
     var state = view.field_hnsw[].get(field.id)
     with BlockingScopedLock(state[].lock):
@@ -70,7 +80,7 @@ def _field_graph(
             state[].begin()
             if control:
                 control.value().checkpoint(0)
-            var built = ArcPointer(_build_field_graph(view, field, control))
+            var built = ArcPointer(_build_field_graph(view, field, control, rows^))
             if control:
                 control.value().checkpoint(0)
             state[].publish(built.copy())
@@ -109,30 +119,61 @@ def search_generation_field_approx(
     if control:
         control.value().checkpoint(0)
         control.value().validate_candidate_count(view.visible_count)
-    var graph_query = dense_f32_projection(query)
-    var graph = _field_graph(view, field, control)
-    var matched = len(graph[].rows)
-    var allowed = Optional[HnswEligibility]()
+    # Determine field presence and filter cardinality before constructing an
+    # expensive derived graph. Reuse the captured root's rows once available.
+    var cached = Optional[ArcPointer[FieldHnswIndex]]()
+    var state = view.field_hnsw[].get(field.id)
+    with BlockingScopedLock(state[].lock):
+        if state[].ready:
+            cached = Optional(state[].ready.value().copy())
+    var rows = List[FieldRow]()
+    var total: Int
+    if cached:
+        total = len(cached.value()[].rows)
+    else:
+        rows = gather_field_rows(view, field.id, control)
+        total = len(rows)
+    var matched = total
+    var eligible = List[Int]()
     if expression:
-        var bitmap = Bitmap(len(graph[].rows))
         for layer in range(view.layer_count()):
             ref table = view.run(layer).memtable
             for ordinal in view.filtered_ordinals(layer, expression.value()):
+                if control:
+                    control.value().checkpoint(len(eligible))
                 ref entry = table.entry_ref_at(ordinal)
-                if entry.field_ordinal(field.id) < 0:
-                    continue
-                var row = graph[].lookup.ordinal_for(entry.id)
-                if row < 0:
-                    raise Error(
-                        "field graph coverage differs from its read root"
-                    )
-                bitmap.set(row)
-        allowed = Optional(HnswEligibility(bitmap^, graph[].lookup))
-        matched = allowed.value().eligible_count()
+                if entry.field_ordinal(field.id) >= 0:
+                    eligible.append(entry.id)
+        matched = len(eligible)
     if matched == 0:
         var empty_stats = field_exact_stats(field)
         empty_stats.requested_ef = ef
         return FieldSearchExecution([], empty_stats^, "field_empty")
+    var plan = QueryPlanner.plan_dense(
+        total, matched, k, ef, config.max_ef_search,
+        Bool(expression), True, True,
+    )
+    if not plan.use_hnsw:
+        var exact = search_generation_field_reported(
+            view, field, query, k, expression, control
+        )
+        exact.reason = "field_" + plan.reason
+        exact.stats.fallback_reason = exact.reason.copy()
+        exact.stats.requested_ef = ef
+        return exact^
+    if not cached:
+        cached = Optional(_field_graph(view, field, control, rows^))
+    var graph = cached.take()
+    var graph_query = dense_f32_projection(query)
+    var allowed = Optional[HnswEligibility]()
+    if expression:
+        var bitmap = Bitmap(total)
+        for id in eligible:
+            var row = graph[].lookup.ordinal_for(id)
+            if row < 0:
+                raise Error("field graph coverage differs from its read root")
+            bitmap.set(row)
+        allowed = Optional(HnswEligibility(bitmap^, graph[].lookup))
     var candidates: List[SearchResult]
     var stats: HnswSearchStats
     with BlockingScopedLock(graph[].query_lock):
@@ -145,10 +186,11 @@ def search_generation_field_approx(
                 max(ef, budget),
                 config.max_ef_search,
                 allowed.value(),
+                control=control,
             )
         else:
             candidates = graph[].index.search(
-                graph_query, min(budget, matched), ef_search=max(ef, budget)
+                graph_query, min(budget, matched), ef_search=max(ef, budget), control=control
             )
         stats = copy_search_stats(graph[].index.last_search_stats)
     if control:

@@ -2,6 +2,7 @@ from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_entries import entries_from_legacy
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from std.collections import Dict
 from std.testing import assert_equal, assert_raises, TestSuite
@@ -37,6 +38,7 @@ def _chain_index() raises -> HnswIndex:
     index.graph.set_neighbors(UInt32(3), 0, n3^)
     index.build_stats.slot_count = 4
     index.build_stats.maximum_level = 1
+    index.entries = entries_from_legacy(index.graph, index.entry_slot)
     return index^
 
 
@@ -58,7 +60,7 @@ def _assert_unique_ids(results: List[SearchResult]) raises:
         seen[result.id] = True
 
 
-def test_filtered_search_widens_by_doubling_and_reruns_with_scratch() raises:
+def test_eligible_entry_fills_connected_results_without_widening() raises:
     var index = _chain_index()
     var allowed = _allow_tail_two()
     var query = _vector(0.0)
@@ -69,18 +71,20 @@ def test_filtered_search_widens_by_doubling_and_reruns_with_scratch() raises:
     assert_equal(results[0].id, 12)
     assert_equal(results[1].id, 13)
     _assert_unique_ids(results)
-    assert_equal(index.scratch.epoch, starting_epoch + UInt32(2))
-    assert_equal(index.last_search_stats.requested_ef, 4)
-    assert_equal(index.last_search_stats.effective_ef, 4)
-    assert_equal(index.last_search_stats.widening_rounds, 1)
+    assert_equal(index.scratch.epoch, starting_epoch + UInt32(1))
+    assert_equal(index.last_search_stats.requested_ef, 2)
+    assert_equal(index.last_search_stats.effective_ef, 2)
+    assert_equal(index.last_search_stats.widening_rounds, 0)
     assert_equal(index.last_search_stats.fallback_reason, "")
-    assert_equal(index.scratch.filtered_result_reserved_capacity() >= 4, True)
+    assert_equal(index.scratch.result_reserved_capacity() >= 2, True)
     assert_equal(index.last_search_query_preparations(), 1)
-    assert_equal(index.last_search_upper_descents(), 1)
+    assert_equal(index.last_search_upper_descents(), 0)
 
 
 def test_filtered_search_exact_fallback_preserves_final_ann_stats() raises:
     var index = _chain_index()
+    # The allowed component ends at id 12; id 13 needs exact completion.
+    index.graph.set_neighbors(UInt32(2), 0, [UInt32(1)])
     var allowed = _allow_tail_two()
     var query = _vector(0.0)
     var results = index.search_allowed_with_widening(query, 2, 2, 2, 2, allowed)
@@ -92,8 +96,8 @@ def test_filtered_search_exact_fallback_preserves_final_ann_stats() raises:
     assert_equal(index.last_search_stats.requested_ef, 2)
     assert_equal(index.last_search_stats.effective_ef, 2)
     assert_equal(index.last_search_stats.widening_rounds, 0)
-    assert_equal(index.last_search_stats.base_visited, 3)
-    assert_equal(index.last_search_stats.distance_evaluations, 4)
+    assert_equal(index.last_search_stats.base_visited, 1)
+    assert_equal(index.last_search_stats.distance_evaluations, 1)
     assert_equal(index.last_search_stats.retained_candidates, 1)
     assert_equal(
         index.last_search_stats.fallback_reason,
@@ -169,7 +173,7 @@ def test_tiny_graph_caps_huge_requested_ef_at_traversable_slots() raises:
     assert_equal(len(results), 2)
     assert_equal(index.last_search_stats.requested_ef, 4)
     assert_equal(index.last_search_stats.effective_ef, 4)
-    assert_equal(index.scratch.filtered_result_reserved_capacity() <= 4, True)
+    assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
 
 
 def test_empty_eligibility_with_huge_max_ef_skips_graph_allocation() raises:
@@ -188,7 +192,7 @@ def test_empty_eligibility_with_huge_max_ef_skips_graph_allocation() raises:
 
     assert_equal(len(results), 0)
     assert_equal(index.scratch.epoch, starting_epoch)
-    assert_equal(index.scratch.filtered_result_reserved_capacity(), 0)
+    assert_equal(index.scratch.result_reserved_capacity(), 0)
     assert_equal(index.last_search_stats.requested_ef, 0)
     assert_equal(index.last_search_stats.effective_ef, 0)
     assert_equal(index.last_search_stats.fallback_reason, "")

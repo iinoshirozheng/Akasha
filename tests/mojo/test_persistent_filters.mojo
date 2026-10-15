@@ -132,7 +132,7 @@ def test_empty_conditions_match_unfiltered_search_and_no_match_is_empty() raises
     assert_equal(len(none), 0)
 
 
-def test_cosine_filter_rejects_zero_norm_vector_before_scoring() raises:
+def test_cosine_filter_and_zero_norm_vector_scores() raises:
     var path = String("/tmp/akasha-phase4-filter-prefilter")
     _reset(path)
     var collection = PersistentCollection.open(path, 2)
@@ -142,8 +142,10 @@ def test_cosine_filter_rejects_zero_norm_vector_before_scoring() raises:
     collection.upsert_document(2, [1.0, 0.0], accepted^)
     var query: List[Float32] = [1.0, 0.0]
 
-    with assert_raises():
-        _ = collection.search_cosine(query, 1)
+    var all_points = collection.search_cosine(query, 2)
+    assert_equal(all_points[0].id, 2)
+    assert_equal(all_points[1].id, 1)
+    assert_equal(all_points[1].score, Float32(0))
 
     var conditions = List[FilterCondition]()
     conditions.append(

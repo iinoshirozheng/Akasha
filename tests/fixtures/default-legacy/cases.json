@@ -1,0 +1,77 @@
+[
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-wal_only_legacy_migration_preserves_wal_and_recovers_records",
+    "function": "test_wal_only_legacy_migration_preserves_wal_and_recovers_records"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-snapshot_legacy_migration_preserves_all_authoritative_bytes",
+    "function": "test_snapshot_legacy_migration_preserves_all_authoritative_bytes"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-wrong_dimension_does_not_poison_wal_only_legacy_identity",
+    "function": "test_wrong_dimension_does_not_poison_wal_only_legacy_identity"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-wrong_dimension_does_not_poison_snapshot_legacy_identity",
+    "function": "test_wrong_dimension_does_not_poison_snapshot_legacy_identity"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-corrupt_legacy_segment_fails_before_config_publication",
+    "function": "test_corrupt_legacy_segment_fails_before_config_publication"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-corrupt_legacy_sparse_snapshot_fails_before_config_publication",
+    "function": "test_corrupt_legacy_sparse_snapshot_fails_before_config_publication"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-corrupt_legacy_sparse_wal_fails_before_config_publication",
+    "function": "test_corrupt_legacy_sparse_wal_fails_before_config_publication"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-corrupt_legacy_dense_delta_blocks_identity_publication",
+    "function": "test_corrupt_legacy_dense_delta_blocks_identity_publication"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-late_sparse_delta_failure_does_not_repair_dense_wal",
+    "function": "test_late_sparse_delta_failure_does_not_repair_dense_wal"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-late_legacy_preflight_failure_preserves_every_source",
+    "function": "test_late_legacy_preflight_failure_preserves_every_source"
+  },
+  {
+    "test": "test_collection_config_migration.mojo",
+    "fixture": "config-non_default_config_is_rejected_for_legacy_data_without_mutation",
+    "function": "test_non_default_config_is_rejected_for_legacy_data_without_mutation"
+  },
+  {
+    "test": "test_point_store.mojo",
+    "fixture": "store-legacy_upgrade_first_checkpoint_replaces_legacy_segments_and_keeps_versions",
+    "function": "test_legacy_upgrade_first_checkpoint_replaces_legacy_segments_and_keeps_versions"
+  },
+  {
+    "test": "test_named_collection.mojo",
+    "fixture": "named-public_migration_and_invalid_late_field_leave_wal_unchanged",
+    "function": "test_public_migration_and_invalid_late_field_leave_wal_unchanged"
+  },
+  {
+    "test": "test_legacy_recovery.mojo",
+    "fixture": "recovery-preflight_replays_checkpoint_and_both_wals_without_repair_or_publication",
+    "function": "test_preflight_replays_checkpoint_and_both_wals_without_repair_or_publication"
+  },
+  {
+    "test": "test_legacy_recovery.mojo",
+    "fixture": "recovery-late_corrupt_sparse_source_leaves_dense_tail_and_identity_untouched",
+    "function": "test_late_corrupt_sparse_source_leaves_dense_tail_and_identity_untouched"
+  }
+]

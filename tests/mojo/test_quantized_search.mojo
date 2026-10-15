@@ -44,14 +44,14 @@ def _seed(mut collection: PersistentCollection) raises:
         collection.upsert(id, _vector(id))
 
 
-def _oracle() raises -> Sq8Index:
+def _oracle(*, cosine: Bool = False) raises -> Sq8Index:
     """The query-time build #54 removed: one SQ8 index over the seeded rows."""
     var ids = List[Int](capacity=64)
     var vectors = List[List[Float32]](capacity=64)
     for id in range(1, 65):
         ids.append(id)
         vectors.append(_vector(id))
-    return Sq8Index.build(ids, vectors)
+    return Sq8Index.build(ids, vectors, cosine=cosine)
 
 
 def _same(expected: List[SearchResult], actual: List[SearchResult]) raises:
@@ -119,7 +119,7 @@ def test_sq8_artifact_is_built_once_per_root_and_matches_query_time_oracle() rai
         _same(oracle.search_dot(query, 5), snapshot.search_sq8_dot(query, 5))
         _same(oracle.search_l2(query, 7), snapshot.search_sq8_l2(query, 7))
         _same(
-            oracle.search_cosine(query, 5),
+            _oracle(cosine=True).search_cosine(query, 5),
             snapshot.search_sq8_cosine(query, 5),
         )
         _same(
@@ -137,6 +137,9 @@ def test_sq8_artifact_is_built_once_per_root_and_matches_query_time_oracle() rai
     assert_equal(root[].sq8[].status, ARTIFACT_READY)
     assert_equal(root[].sq8[].build_count, 1)
     assert_equal(root[].sq8[].ready.value()[].point_count(), 64)
+    assert_equal(root[].sq8_cosine[].status, ARTIFACT_READY)
+    assert_equal(root[].sq8_cosine[].build_count, 1)
+    assert_false(root[].sq8 is root[].sq8_cosine)
 
     # A second handle of the same root shares the artifact without a build.
     var sibling = collection.snapshot()
@@ -170,7 +173,9 @@ def test_sq8_artifact_is_fresh_per_root_after_update_and_layout_change() raises:
     assert_true(updated.last_sequence() > old.last_sequence())
     assert_false(updated_root[].sq8 is old_root[].sq8)
     assert_equal(updated_root[].sq8[].status, ARTIFACT_ABSENT)
-    assert_equal(updated.search_sq8_dot(query, 3)[0].id, 7)
+    # The new global codebook rounds this small query to zero. Exact rerank
+    # over all candidates still resolves the updated point from this root.
+    assert_equal(updated.search_sq8_dot(query, 3, rerank_k=64)[0].id, 7)
     assert_equal(updated_root[].sq8[].build_count, 1)
     # The old root keeps serving its own ready artifact.
     _same(before, old.search_sq8_dot(query, 3))
@@ -253,13 +258,14 @@ def test_sq8_artifact_survives_sibling_handle_and_collection_close() raises:
     var expected = first.search_sq8_cosine(query, 5)
     var root = second._acquire()
     assert_true(first._acquire()[].sq8 is root[].sq8)
-    assert_equal(root[].sq8[].build_count, 1)
+    assert_equal(root[].sq8_cosine[].build_count, 1)
+    assert_equal(root[].sq8[].build_count, 0)
     first.close()
     collection.close()
     _same(expected, second.search_sq8_cosine(query, 5))
     _same(expected, second.search_sq8_cosine(query, 5))
-    assert_equal(root[].sq8[].status, ARTIFACT_READY)
-    assert_equal(root[].sq8[].build_count, 1)
+    assert_equal(root[].sq8_cosine[].status, ARTIFACT_READY)
+    assert_equal(root[].sq8_cosine[].build_count, 1)
     with assert_raises(contains="snapshot is closed"):
         _ = first.search_sq8_cosine(query, 5)
     _ = root^

@@ -1,3 +1,4 @@
+from legacy_fixture_helpers import copy_legacy_fixture
 from akasha import CollectionConfig, PersistentCollection, SparseElement
 from akasha.document.point_state import FieldUpdate, PointMutation
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
@@ -118,11 +119,7 @@ def test_base_delta_checkpoint_and_compaction_reopen_complete_point_states() rai
 
 def test_legacy_upgrade_first_checkpoint_replaces_legacy_segments_and_keeps_versions() raises:
     var path = _path("upgrade")
-    var legacy = PersistentCollection.open(path, 2)
-    legacy.upsert(1, [1, 2])
-    legacy.upsert_sparse(1, [SparseElement(2, 3)])
-    legacy.flush()
-    legacy.close()
+    copy_legacy_fixture("store-legacy_upgrade_first_checkpoint_replaces_legacy_segments_and_keeps_versions", path)
     var old_manifest = load_manifest(path, 2)
     var old_base = path + "/" + old_manifest.segments[0].name
     var store = PointStore.open(path, _fields())

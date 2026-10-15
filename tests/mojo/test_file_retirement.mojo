@@ -44,12 +44,10 @@ def test_last_snapshot_release_reclaims_after_collection_close() raises:
     )
     collection.close()
     assert_true(path_exists(path + "/" + before.segments[0].name))
-    assert_true(path_exists(path + "/" + before.segments[0].sparse_name))
     assert_true(path_exists(path + "/" + before.hnsw_name.value()))
     assert_equal(snapshot.get(1).value().vector[0], Float32(1))
     snapshot.close()
     assert_false(path_exists(path + "/" + before.segments[0].name))
-    assert_false(path_exists(path + "/" + before.segments[0].sparse_name))
     assert_false(path_exists(path + "/" + before.hnsw_name.value()))
     var reopened = PersistentCollection.open(path, 1)
     assert_equal(reopened.get(2).value().vector[0], Float32(2))
@@ -203,7 +201,6 @@ def test_captured_compaction_retains_writer_ownership_until_discard() raises:
     with assert_raises(contains="closed"):
         _ = collection._finish_compaction(inputs.value(), output)
     assert_false(path_exists(path + "/" + output.segment_name))
-    assert_false(path_exists(path + "/" + output.sparse_name))
     var reopened = PersistentCollection.open(path, 1)
     assert_equal(reopened.get(2).value().vector[0], Float32(2))
     reopened.close()
@@ -289,7 +286,6 @@ def test_file_lease_survives_an_independent_reader_process() raises:
         writer.close()
         for name in [
             captured.segments[0].name,
-            captured.segments[0].sparse_name,
             captured.hnsw_name.value(),
         ]:
             assert_true(path_exists(path + "/" + name))
@@ -301,7 +297,6 @@ def test_file_lease_survives_an_independent_reader_process() raises:
             )
         for name in [
             captured.segments[0].name,
-            captured.segments[0].sparse_name,
             captured.hnsw_name.value(),
         ]:
             assert_false(path_exists(path + "/" + name))

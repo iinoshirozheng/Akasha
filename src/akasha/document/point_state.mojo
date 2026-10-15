@@ -62,10 +62,10 @@ struct FieldUpdate(Copyable, Movable):
 
 
 struct PointMutation(Movable):
-    """A field patch; kinds are merge/create=1, delete=2, patch-existing=3.
+    """Point operations: replace/create=1, delete=2, patch-existing=3.
 
-    An absent payload preserves the current payload. A present empty payload
-    clears it. Field updates are unique and sorted by catalog ID on the wire.
+    Upsert replaces all vectors and payload. Only patch-existing preserves
+    omitted values. Field updates are unique and sorted by catalog ID on wire.
     """
 
     var id: Int
@@ -271,6 +271,7 @@ def apply_point_mutation(
     mutation: PointMutation,
     sequence: UInt64,
     catalog: FieldCatalog,
+    mutation_format: Int = 5,
 ) raises -> PointState:
     """Prepare a complete replacement without changing any previous owner.
 
@@ -279,6 +280,8 @@ def apply_point_mutation(
     publish. New-format mutations strictly follow the legacy cutover.
     """
     mutation.validate(catalog)
+    if mutation_format != 4 and mutation_format != 5:
+        raise Error("unsupported point mutation format")
     if sequence == 0 or sequence <= catalog.legacy_cutover_sequence:
         raise Error("point mutation does not follow legacy cutover")
     if previous:
@@ -294,9 +297,11 @@ def apply_point_mutation(
         return PointState.deleted(mutation.id, sequence)
 
     var fields = List[PointField]()
-    var old_count = previous.value().field_count() if live else 0
+    # Frozen v4 WAL records retain their original merge/create semantics.
+    var replace_point = mutation.kind == 1 and mutation_format == 5
+    var old_count = previous.value().field_count() if live and not replace_point else 0
     var old = 0
-    var document_changed = mutation.replaces_payload()
+    var document_changed = mutation.replaces_payload() or replace_point
     for index in range(len(mutation._fields)):
         ref update = mutation._fields[index]
         while old < old_count and previous.value()._fields[old].id < update.id:
@@ -315,7 +320,7 @@ def apply_point_mutation(
     var payload: Optional[ArcPointer[List[DocumentField]]]
     if mutation._payload:
         payload = mutation._payload.copy()
-    elif live:
+    elif live and not replace_point:
         payload = previous.value()._payload.copy()
     else:
         payload = Optional(ArcPointer(List[DocumentField]()))

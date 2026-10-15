@@ -92,13 +92,9 @@ struct MetricDispatcher(Copyable, Movable):
 
     def validate_query(self, values: List[Float32]) raises:
         self._validate_values(values)
-        if self._metric == MetricKind.cosine():
-            self._require_nonzero_norm(values)
 
     def validate_vector(self, values: List[Float32]) raises:
         self._validate_values(values)
-        if self._metric == MetricKind.cosine():
-            self._require_nonzero_norm(values)
 
     def validate_prepared_vector(self, values: List[Float32]) raises:
         """Validate durable values for the dispatcher's prepared hot path."""
@@ -226,9 +222,14 @@ struct MetricDispatcher(Copyable, Movable):
                         "dot and l2 components exceed safe f32 accumulation"
                     )
 
-    def _require_nonzero_norm(self, values: List[Float32]) raises:
-        if _stable_norm(values) == 0.0:
-            raise Error("cosine distance requires a non-zero vector")
+    def validate_legacy_cosine_prepared(self, values: List[Float32]) raises:
+        """Keep the closed v1/v2 sidecar's nonzero cosine invariant."""
+        if self._metric != MetricKind.cosine():
+            return
+        for component in range(self._dimension):
+            if values[component] != 0:
+                return
+        raise Error("legacy HNSW cosine vector must be non-zero")
 
     def _validate_prepared_values(self, values: List[Float32]) raises:
         if self._scalar == ScalarKind.i8():
@@ -258,8 +259,6 @@ struct MetricDispatcher(Copyable, Movable):
             if self._metric == MetricKind.cosine():
                 if scale != Float32(1.0 / 127.0):
                     raise Error("prepared I8 cosine scale must be fixed")
-                if not has_nonzero_code:
-                    raise Error("prepared I8 cosine vector must be non-zero")
             elif scale == 0.0 and has_nonzero_code:
                 raise Error("a zero I8 scale requires an all-zero code vector")
             else:
@@ -272,6 +271,8 @@ struct MetricDispatcher(Copyable, Movable):
             return
 
         var norm = _stable_norm(values)
+        if norm == 0:
+            return
         var error = norm - 1.0
         if error < 0.0:
             error = -error
@@ -306,7 +307,7 @@ struct MetricDispatcher(Copyable, Movable):
         else:
             var norm = _stable_norm(values)
             for i in range(self._dimension):
-                var component = Float32(Float64(values[i]) / norm)
+                var component = Float32(0) if norm == 0 else Float32(Float64(values[i]) / norm)
                 if not isfinite(component):
                     raise Error("prepared cosine vector must be finite")
                 prepared.append(component)
@@ -340,7 +341,7 @@ struct MetricDispatcher(Copyable, Movable):
             if magnitude > maximum_magnitude:
                 maximum_magnitude = magnitude
                 maximum_index = index
-        if self._metric == MetricKind.cosine() and not has_nonzero_code:
+        if self._metric == MetricKind.cosine() and not has_nonzero_code and maximum_magnitude > 0:
             codes[maximum_index] = (
                 -1.0 if prepared[maximum_index] < 0.0 else 1.0
             )
@@ -371,6 +372,8 @@ def _stable_cosine_similarity(
         lhs_squared_norm += left * left
         rhs_squared_norm += right * right
 
+    if lhs_squared_norm == 0 or rhs_squared_norm == 0:
+        return 0.0
     var similarity = product / sqrt(lhs_squared_norm)
     return similarity / sqrt(rhs_squared_norm)
 

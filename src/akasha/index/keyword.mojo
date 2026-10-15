@@ -46,7 +46,7 @@ struct _KeywordEntry(Comparable, Copyable, Movable):
 
 
 struct KeywordIndex:
-    """Sparse sorted postings for strict String and Bool predicates."""
+    """Sparse postings for typed equality and present-value MatchExcept."""
 
     var _size: Int
     var _entries: List[_KeywordEntry]
@@ -117,6 +117,9 @@ struct KeywordIndex:
             self._entries, condition.name, condition.value.kind(), start
         )
         if condition.operator_kind() == FilterCondition.NOT_EQUAL:
+            if condition.value.is_string():
+                start = _keyword_family_start(self._entries, condition.name, UInt8(0))
+                end = _keyword_family_end(self._entries, condition.name, UInt8.MAX, start)
             for index in range(start, end):
                 if not _same_value(self._entries[index], condition.value):
                     result.set(self._entries[index].ordinal)
@@ -130,6 +133,16 @@ struct KeywordIndex:
         )
         for index in range(lower, upper):
             result.set(self._entries[index].ordinal)
+        return result^
+
+    def present(self, name: String) raises -> Bitmap:
+        if self._bulk_loading:
+            raise Error("keyword bulk load must finish before queries")
+        var result = Bitmap(self._size)
+        var start = _keyword_family_start(self._entries, name, UInt8(0))
+        var end = _keyword_family_end(self._entries, name, UInt8.MAX, start)
+        for position in range(start, end):
+            result.set(self._entries[position].ordinal)
         return result^
 
     def _validate_value(self, value: PayloadValue) raises:

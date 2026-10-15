@@ -161,7 +161,7 @@ def test_filtered_approximate_search_falls_back_for_selective_match() raises:
     assert_equal(len(result), 2)
     assert_equal(result[0].id, 2)
     assert_equal(result[1].id, 1)
-    assert_equal(collection.last_dense_plan_reason(), "filtered_match_count")
+    assert_equal(collection.last_dense_plan_reason(), "selectivity")
 
 
 def test_highly_selective_filter_records_selectivity_exact_plan() raises:
@@ -222,6 +222,13 @@ def test_hnsw_filter_candidate_shortfall_falls_back_to_exact_bitmap() raises:
         var fields = List[DocumentField]()
         fields.append(DocumentField("keep", PayloadValue.boolean(id <= 40)))
         collection.upsert_document(id, [Float32(id)], fields^)
+    collection.rebuild_hnsw()
+    # Force a valid but disconnected immutable graph. Mutable-only queries
+    # intentionally scan, so they cannot exercise graph-shortfall completion.
+    for ordinal in range(collection._hnsw._owned_base.graph.slot_count()):
+        var slot = UInt32(ordinal)
+        for level in range(collection._hnsw._owned_base.graph.level(slot) + 1):
+            collection._hnsw._owned_base.graph.set_neighbors(slot, level, [])
     var expression = FilterExpression.condition(
         FilterCondition.equal("keep", PayloadValue.boolean(True))
     )
@@ -426,7 +433,7 @@ def test_true_v1_manifest_rebuilds_from_authoritative_segment() raises:
     reopened.close()
 
 
-def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v4() raises:
+def test_compact_checkpoint_publishes_v3_sidecar_through_manifest_v4() raises:
     var path = String("/tmp/akasha-task22-non-f32-checkpoint")
     _reset(path)
     var config = CollectionConfig.defaults(1)
@@ -438,7 +445,7 @@ def test_compact_checkpoint_publishes_v2_sidecar_through_manifest_v4() raises:
     assert_true(Bool(manifest.hnsw_name))
     assert_equal(manifest.format_version, 4)
     var sidecar = read_file_bytes(path + "/" + manifest.hnsw_name.value())
-    assert_equal(sidecar[4], UInt8(2))
+    assert_equal(sidecar[4], UInt8(3))
     assert_equal(sidecar[5], UInt8(0))
 
 
@@ -492,7 +499,7 @@ def test_invalid_prepared_graph_quarantines_ann_and_flushes_v2() raises:
     for id in range(1, 81):
         collection.upsert(id, [Float32(id), 1.0])
     collection.rebuild_hnsw()
-    collection._hnsw._owned_base.graph.vector_scalars[0] = 0.0
+    collection._hnsw._owned_base.graph.vector_scalars[0] = 2.0
     collection._hnsw._owned_base.graph.vector_scalars[1] = 0.0
 
     collection.flush()

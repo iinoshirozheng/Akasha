@@ -2,6 +2,7 @@ from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import SearchResult
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_entries import entries_from_legacy
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from std.collections import Dict
 from std.testing import assert_equal, assert_raises, TestSuite
@@ -28,6 +29,7 @@ def _index(ids: List[Int], values: List[Float32]) raises -> HnswIndex:
             index.entry_level = 0
     index.build_stats.slot_count = len(ids)
     index.build_stats.maximum_level = 0 if len(ids) > 0 else -1
+    index.entries = entries_from_legacy(index.graph, index.entry_slot)
     return index^
 
 
@@ -97,7 +99,8 @@ def test_empty_full_and_sparse_metadata_bitmaps() raises:
     var empty_allowed = HnswEligibility(empty^, lookup)
     var empty_results = index.search_allowed(query, 3, 3, empty_allowed)
     assert_equal(len(empty_results), 0)
-    assert_equal(index.last_search_stats.filtered_rejections, 3)
+    assert_equal(index.last_search_stats.filtered_rejections, 0)
+    assert_equal(index.last_search_stats.distance_evaluations, 0)
 
     var full = Bitmap.full(3)
     var full_allowed = HnswEligibility(full^, lookup)
@@ -117,7 +120,7 @@ def test_empty_full_and_sparse_metadata_bitmaps() raises:
     assert_equal(index.last_search_stats.filtered_rejections, 2)
 
 
-def test_disallowed_bridge_remains_traversable_to_allowed_result() raises:
+def test_eligible_entry_bypasses_disallowed_bridge_without_scoring_it() raises:
     var ids: List[Int] = [30, 20, 10]
     var values: List[Float32] = [3.0, 2.0, 0.0]
     var index = _index(ids, values)
@@ -139,8 +142,9 @@ def test_disallowed_bridge_remains_traversable_to_allowed_result() raises:
 
     assert_equal(len(results), 1)
     assert_equal(results[0].id, 10)
-    assert_equal(index.last_search_stats.base_visited, 3)
-    assert_equal(index.last_search_stats.filtered_rejections, 2)
+    assert_equal(index.last_search_stats.base_visited, 1)
+    assert_equal(index.last_search_stats.distance_evaluations, 1)
+    assert_equal(index.last_search_stats.filtered_rejections, 1)
 
 
 def test_allowed_ids_fewer_than_k_returns_only_allowed_ids() raises:
@@ -275,7 +279,7 @@ def test_search_allowed_tiny_graph_caps_large_ef_before_heap_reserve() raises:
     assert_equal(len(results), 4)
     assert_equal(index.last_search_effective_ef(), 4)
     assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
-    assert_equal(index.scratch.filtered_result_reserved_capacity() <= 4, True)
+    assert_equal(index.scratch.result_reserved_capacity() <= 4, True)
 
 
 def test_eligibility_distinguishes_missing_ids_from_zero_ordinals() raises:

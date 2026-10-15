@@ -21,7 +21,7 @@ from akasha.index.field_sparse import FieldSparseIndex
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import Sq8Index
-from akasha.index.sparse import SparseElement, SparseIndex
+from akasha.index.sparse import SparseElement, SparseIndex, sparse_score_is_eligible
 from akasha.query.evaluator import matches_all, matches_expression
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
@@ -156,10 +156,12 @@ struct ReadGeneration(Movable):
     # Device table and cache derived from this root; shared by every handle
     # and operation that owns the root, released with it.
     var device: ArcPointer[GpuSnapshotState]
-    # SQ8 artifact derived from this root; shared by every handle and
+    # Raw and cosine-normalized SQ8 artifacts derived from this root; shared by
     # operation that owns the root, built once and released with it.
     var sq8: ArcPointer[ArtifactState[Sq8Index]]
+    var sq8_cosine: ArcPointer[ArtifactState[Sq8Index]]
     var pq: ArcPointer[PqArtifacts]
+    var pq_cosine: ArcPointer[PqArtifacts]
     var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
     var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
     var field_ivf: ArcPointer[FieldIvfArtifacts]
@@ -187,7 +189,9 @@ struct ReadGeneration(Movable):
         self.dense_count = dense_count
         self.device = ArcPointer(GpuSnapshotState(generation, sequence))
         self.sq8 = ArcPointer(ArtifactState[Sq8Index]())
+        self.sq8_cosine = ArcPointer(ArtifactState[Sq8Index]())
         self.pq = ArcPointer(PqArtifacts())
+        self.pq_cosine = ArcPointer(PqArtifacts())
         self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
         self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
         self.field_ivf = ArcPointer(FieldIvfArtifacts())
@@ -312,7 +316,7 @@ struct ReadGeneration(Movable):
             if not entry.has_sparse():
                 continue
             var score = _sparse_dot(query, entry.sparse())
-            if score:
+            if score and sparse_score_is_eligible(score.value()):
                 hits.append(SparseHit(ordinal, entry.id, score.value()))
         return hits^
 

@@ -92,11 +92,9 @@ struct _Model(Copyable, Movable):
             self.sparse.append(List[SparseElement]())
 
     def upsert(mut self, id: Int, value: Float32, color: Int):
-        """A dense write replaces vector and payload; sparse survives only
-        on a live point."""
+        """Public upsert replaces the whole point, including sparse absence."""
         var slot = id + SPAN
-        if not self.live[slot]:
-            self.sparse[slot] = List[SparseElement]()
+        self.sparse[slot] = List[SparseElement]()
         self.live[slot] = True
         self.vector[slot] = value
         self.color[slot] = color
@@ -134,7 +132,7 @@ struct _Model(Copyable, Movable):
                             score = Optional(score.value() + contribution)
                         else:
                             score = Optional(contribution)
-            if score:
+            if score and score.value() != 0:
                 scored.append(SearchResult(slot - SPAN, score.value()))
         return _ranked(scored^, k)
 
@@ -216,7 +214,7 @@ def _check(snapshot: ReadSnapshot, model: _Model) raises:
     _same(
         snapshot.search_hybrid_dot(dense, query, 10, 40),
         reciprocal_rank_fusion(
-            model.dense_top(1.0, 40, 0), model.sparse_top(query, 40, 0), 10, 60
+            model.dense_top(1.0, 40, 0), model.sparse_top(query, 40, 0), 10, 2
         ),
     )
     _same(
@@ -282,7 +280,8 @@ def test_field_owners_are_replaced_independently() raises:
     assert_true(third[1] != second[1])
     assert_equal(third[2], second[2])
 
-    # A full document replacement keeps the sparse owner.
+    # The legacy MemTable replay primitive retains companion sparse state.
+    # Public whole-point replacement is tested through PersistentCollection.
     table.apply_document_upsert(-3, 5, [7.0], _color_fields(1))
     cache.record(table, [-3], 5)
     var full = cache.acquire(config, 0, 5, table, pins)
@@ -360,7 +359,7 @@ def test_layered_fields_match_owned_oracle_across_roots_and_reopen() raises:
             var kind = _modulo(id + round, 4)
             var previous = writes
             if kind == 1 and model.live[slot]:
-                # Payload and dense replacement; the sparse owner survives.
+                # Whole-point replacement also removes the omitted sparse field.
                 var value = Float32(_modulo(id * 3 + round, 13)) * 0.25
                 var color = _modulo(id + round + 1, 3)
                 collection.upsert_document(id, [value], _color_fields(color))
@@ -420,7 +419,7 @@ def test_failed_sparse_write_does_not_publish_a_root() raises:
     with assert_raises():
         collection.upsert_sparse(-2, [SparseElement(3, 1.0)])
     with assert_raises():
-        collection.upsert_sparse(-1, List[SparseElement]())
+        collection.upsert_sparse(-1, [SparseElement(-1, 1.0)])
     with assert_raises():
         collection.upsert_sparse(
             -1, [SparseElement(4, 1.0), SparseElement(3, 1.0)]

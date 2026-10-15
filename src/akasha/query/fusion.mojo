@@ -2,6 +2,14 @@ from akasha.compute.topk import BoundedTopK
 from akasha.index.flat import SearchResult
 
 
+def rrf_position_score(position: Int, rank_constant: Int) -> Float32:
+    """Qdrant reciprocal_rank_fusion.rs position_score with unit weight.
+
+    Preserve its F32 operation order, including rounding at large constants.
+    """
+    return Float32(1) / (Float32(position + 1) + Float32(rank_constant) - Float32(1))
+
+
 struct _FusionScore(TrivialRegisterPassable, Writable):
     var id: Int
     var score: Float32
@@ -15,7 +23,7 @@ def reciprocal_rank_fusion(
     dense: List[SearchResult],
     sparse: List[SearchResult],
     k: Int,
-    rank_constant: Int = 60,
+    rank_constant: Int = 2,
 ) raises -> List[SearchResult]:
     """Fuse two best-first rankings with deterministic RRF scores."""
     if k <= 0:
@@ -48,7 +56,7 @@ def _accumulate(
     rank_constant: Int,
 ):
     for index in range(len(ranking)):
-        var contribution = Float32(1.0 / Float64(rank_constant + index + 1))
+        var contribution = rrf_position_score(index, rank_constant)
         var found = score_slots.get(ranking[index].id, -1)
         if found < 0:
             score_slots[ranking[index].id] = len(scores)

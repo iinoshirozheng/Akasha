@@ -103,5 +103,5 @@ def validate_sparse_offsets(
     if offsets[0] < 0 or offsets[len(offsets) - 1] > term_count:
         raise Error("Arrow sparse offsets exceed child buffers")
     for index in range(len(offsets) - 1):
-        if offsets[index + 1] <= offsets[index]:
-            raise Error("Arrow sparse rows must be non-empty and ordered")
+        if offsets[index + 1] < offsets[index]:
+            raise Error("Arrow sparse rows must be ordered")

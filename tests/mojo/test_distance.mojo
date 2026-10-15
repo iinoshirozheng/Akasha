@@ -4,7 +4,7 @@ from akasha.compute.distance import (
     l2_squared_distance,
 )
 from std.math import inf, nan
-from std.testing import assert_almost_equal, assert_raises, TestSuite
+from std.testing import assert_equal, assert_almost_equal, assert_raises, TestSuite
 
 
 def test_dot_product_returns_raw_score() raises:
@@ -44,12 +44,13 @@ def test_distance_rejects_empty_vectors() raises:
         _ = l2_squared_distance(lhs, rhs)
 
 
-def test_cosine_rejects_zero_norm_vectors() raises:
+def test_cosine_zero_norm_vectors_have_zero_similarity() raises:
     var lhs: List[Float32] = [0.0, 0.0]
     var rhs: List[Float32] = [1.0, 0.0]
 
-    with assert_raises():
-        _ = cosine_similarity(lhs, rhs)
+    assert_equal(cosine_similarity(lhs, rhs), Float32(0))
+    assert_equal(cosine_similarity(rhs, lhs), Float32(0))
+    assert_equal(cosine_similarity(lhs, lhs), Float32(0))
 
 
 def test_dot_product_rejects_nan() raises:

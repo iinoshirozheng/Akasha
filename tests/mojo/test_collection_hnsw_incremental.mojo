@@ -384,7 +384,7 @@ def test_exact_and_ann_rerank_share_authoritative_f32_scores() raises:
     var exact = collection.search_cosine(query, 80)
     var approximate = collection.search_cosine_approx(query, 80, 80)
 
-    assert_equal(collection.last_dense_plan_reason(), "segmented_ann_exhausted")
+    assert_equal(collection.last_dense_plan_reason(), "ann")
     assert_equal(len(approximate), len(exact))
     for index in range(len(exact)):
         assert_equal(approximate[index].id, exact[index].id)
@@ -457,14 +457,15 @@ def test_unfiltered_global_completion_reports_segmented_exhaustion() raises:
     var collection = PersistentCollection.open(path, 1)
     for id in range(80):
         collection.upsert(id, [Float32(id)])
+    collection.rebuild_hnsw()
     var exact = collection.search_l2([79.0], 3)
 
     # A disconnected graph remains structurally valid but cannot reach the
     # full ANN target from its entry point, forcing segmented exact completion.
-    for slot_index in range(collection._hnsw._delta.graph.slot_count()):
+    for slot_index in range(collection._hnsw._owned_base.graph.slot_count()):
         var slot = UInt32(slot_index)
-        for level in range(collection._hnsw._delta.graph.level(slot) + 1):
-            collection._hnsw._delta.graph.set_neighbors(
+        for level in range(collection._hnsw._owned_base.graph.level(slot) + 1):
+            collection._hnsw._owned_base.graph.set_neighbors(
                 slot, level, List[UInt32]()
             )
 

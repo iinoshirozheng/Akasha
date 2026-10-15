@@ -1,9 +1,7 @@
 # Field-aware point records
 
-Status: reader-first implementation. This defines complete point records and
-typed field bodies for the new segment/WAL work. Existing collection writers
-still use their published legacy formats. This document alone does not enable
-runtime migration, atomic durable writes or named-vector search.
+Status: active point authority. Public writes use WAL v5 and Segment v5; readers
+retain the historical WAL/Segment v4 rules at their versioned envelope boundary.
 
 All integers and scalar bit patterns are little-endian. Field IDs, kinds,
 dimensions and authority dtypes come from the immutable
@@ -81,8 +79,10 @@ has no implicit quantization scale. Old low-level readers retain their existing
 contracts; these restrictions apply to new records and public accepted writes.
 
 Sparse terms are nonnegative signed-i64 values in strictly increasing order,
-with finite, nonzero weights. Count zero is a present empty field. This does
-not change the existing `upsert_sparse` API's rejection of empty input.
+with finite weights, including zero, in WAL/Segment v5. Count zero is a present
+empty field; `upsert_sparse` accepts it. WAL/Segment v4 still reject zero weights,
+while allowing count zero. Older separate sparse WAL v1 and Segment v1/v2 retain
+both their nonempty and nonzero requirements.
 
 Multivectors have fixed positive dimension per field and variable row count
 per point, including zero. A point's rows are contiguous; ragged offsets for
@@ -96,9 +96,10 @@ Jaccard share this authority representation but use distinct catalog metrics.
 
 ## Mutation state transition
 
-The point model supports merge/create, delete-point and patch-existing.
-Merge/create preserves unmentioned fields/payload of a live point. For a missing
-or deleted point it starts with no vector fields and an empty payload.
+The point model supports replace/create (upsert), delete-point and patch-existing.
+Upsert starts with no vector fields and an empty payload even for a live point.
+Omitted values are preserved only by patch-existing. Frozen WAL v4 upserts replay
+with their original merge/create semantics; new WAL v5 uses replacement semantics.
 Patch-existing requires a live point. Delete-point always creates a tombstone,
 including for an unknown ID; it must not contain field or payload changes.
 

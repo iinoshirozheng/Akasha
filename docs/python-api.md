@@ -71,6 +71,13 @@ results = collection.search_batch(
 each dictionary uses the same bounded condition/all/any/negate shape as
 `SearchRequest.filter`. Result lists remain aligned to input vectors.
 
+A condition's `type` describes its query literal. Integer and string `eq` match
+only that stored type; `ne` also includes other present scalar types, following
+Qdrant MatchExcept. Numeric ranges and floating-literal comparisons include both
+integer and float values after Float64 conversion, so integers above 2^53 may
+round in range comparisons. Boolean conditions match only booleans. Missing
+fields fail field conditions; an outer `negate` includes those missing fields.
+
 `upsert_columns` validates column-shaped Python data and copies it through
 Python values. It is not a zero-copy Arrow C Data interface.
 
@@ -173,8 +180,10 @@ fields clear the corresponding values on overwritten IDs. Legacy unversioned
 document imports remain supported. Physical backups also preserve the catalog.
 
 Pass `vectors={name: VectorField(...)}` when creating or migrating a collection.
-`vectors={}` opts into the point format with only the reserved default dense and
-sparse fields. Reopening without `vectors` loads its persisted catalog; an
+Every new collection uses the point format; omitting `vectors` creates only the
+reserved default dense and sparse fields, just like `vectors={}`. Existing legacy
+collections migrate on their first open. Reopening without `vectors` loads its
+persisted catalog; an
 explicit different catalog is rejected. The catalog is immutable after cutover.
 
 ```python
@@ -193,10 +202,10 @@ point = db.get_point(1)
 db.close()
 ```
 
-`upsert` merges or creates; `update` requires an existing live point; `delete`
-removes the whole point. Omitted vectors and `fields=None` preserve existing
-values, a vector value of `None` removes that field, and `fields=[]` clears the
-payload. Empty sparse vectors and zero-row multivectors remain present. A batch
+`upsert` replaces or creates the entire point: omitted vectors are removed and
+`fields=None` becomes an empty payload. `update` requires an existing live point
+and preserves omitted vectors and payload. `delete` removes the whole point. A
+vector value of `None` removes that field, and `fields=[]` clears the payload. Empty sparse vectors and zero-row multivectors remain present. Cosine accepts zero vectors and queries; either zero operand produces similarity 0. A batch
 validates every mutation before writing one WAL envelope; no accepted prefix is
 visible on a validation error. NumPy inputs are copied into independently owned
 native buffers. Integer inputs must be integral and in range; numeric authority
@@ -205,8 +214,15 @@ must be finite after conversion. Reads return owned lists/bytes.
 `Point.sequence` covers every point mutation. `Point.document_sequence` tracks
 the default dense/payload projection and is zero if the default vector is absent.
 Named-only points participate in named search and point scans, but not default
-dense queries. Named search defaults to native exact kernels with Float64
-accumulation/results. Dense fields configured with `VectorField(hnsw=...)` also
+dense queries. Named search defaults to native exact kernels with Float64 results.
+Dense and multivector accumulation uses Float64, except F16 cosine. F16 cosine
+normalizes native half inputs in Float32, rounds normalized components to half,
+then accumulates their dot product in Float32, following Qdrant's half metric.
+Zero and near-unit squared lengths use Qdrant's preprocessing thresholds.
+Raw stored vectors are retained; the comparison to Qdrant uses these canonical
+half inputs, since Qdrant otherwise normalizes the original Float32 ingestion
+values before storing half values. MaxSim sums the row scores in Float64.
+Sparse accumulation uses Float32. Dense fields configured with `VectorField(hnsw=...)` also
 accept `mode="approx"`, `ef_search`, and `rerank_k`. Each field uses its own
 dimension, metric and graph encoding; candidates are reranked from native
 authoritative values into Float64 scores. `rerank_k=0` uses `max(k, ef_search)`;
@@ -218,6 +234,15 @@ Graphs are built lazily outside the writer lock and shared by queries/snapshots
 of the same immutable root. Updates and reopen acquire a new root and build new
 named-field graphs on first use; named graphs currently have no durable sidecar.
 The persisted default HNSW graph has its separate retained-base recovery path.
+
+Approximate dense dispatch uses the available vector population and filtered
+cardinality, rather than `k`, `ef_search`, or an empirical scan-cost estimate.
+Collections with fewer than 64 available vectors use exact search; a filter
+matching fewer than `max(1, available_vectors // 8)` vectors also uses exact
+search. The same threshold controls supplementary payload graph construction.
+These are Akasha tuning values, not Qdrant's default byte-budget setting. An
+exact cardinality at the threshold takes the graph path deterministically.
+
 `last_search_stats()` reports the field path, graph encoding, traversal and native
 rerank counts, including any exact fallback after exhausted filtered search.
 Named search accepts `timeout_ns` and `cancellation`, and enforces
@@ -227,15 +252,15 @@ checks before/after its bounded traversal. Python cancellation is sampled at ent
 to the synchronous call, as in `search_controlled`.
 
 Named sparse fields use independent root-owned inverted postings. Dot products
-multiply and accumulate in Float64 in ascending query-term order. Present empty
-vectors and rows with no shared term score zero and can outrank negative matches;
-missing fields do not participate. This preserves named exact-search semantics;
-the older default sparse API retains its documented nonempty/matching-term rules.
+multiply and accumulate in Float32 in ascending query-term order, matching
+Qdrant. Only nonzero scores participate: empty vectors, no shared terms and
+exactly cancelling contributions produce no hit. Negative scores remain valid.
+An empty named sparse query returns no results.
 
 Dense fields also support `mode="ivf", ivf=IvfOptions(nlist=32, nprobe=4,
 iterations=8)`. Import `IvfOptions` from `akashadb`; these are the defaults when
 IVF mode omits options. IVF uses deterministic L2 coarse partitions, then scores
-selected rows with the field's native dtype and dot/L2/cosine metric in Float64.
+selected rows with the field's native score contract above, returning Float64.
 `nlist` is 1–256, `nprobe` is 1–`nlist`, and training iterations must be positive;
 all three require integers. Effective lists are limited to present field rows,
 and probes are clamped to that count. Probing every list equals exact search.
@@ -253,10 +278,10 @@ rows and native rerank counts. Arrow search and `FieldQuery(..., mode="ivf",
 ivf=...)` accept the same options.
 
 `search_fields([FieldQuery(name, vector, mode="exact", ...), ...], k,
-fetch_k=100, rank_constant=60, filter=...)` fuses rankings from one captured read
+fetch_k=100, rank_constant=2, filter=...)` fuses rankings from one captured read
 root. Each branch retrieves at most `fetch_k` results using that field's metric
 and selected exact/approximate/IVF mode. RRF adds `1 / (rank_constant + rank)` for each
-branch, with ranks starting at one, accumulates in Float64, and breaks ties by
+branch, with ranks starting at zero and contributions/sums in Float32, and breaks ties by
 ascending point ID. Duplicate field names are allowed for different queries.
 Filters apply to every branch before its Top-K. The aggregate candidate limit
 counts the captured visible point count once per branch. `search_fields_record_batch`
@@ -284,9 +309,9 @@ remain aggregate across stages. `search_fields_record_batch` accepts the same
 
 `akashadb.arrow.upsert_point_record_batch` accepts `id`, optional `vector` and
 `sparse`, `vectors.<name>`, and `payload.<name>` columns, returning a
-`BatchWriteResult`. Omitted columns preserve fields and null vector values remove
-them. Payload columns replace the payload; omitting all payload columns preserves
-it. The complete Arrow batch commits atomically. Producer buffers must remain
+`BatchWriteResult`. Each row replaces the whole point: omitted columns and null
+vector values remove fields. Payload columns replace the payload; omitting all
+payload columns clears it. The complete Arrow batch commits atomically. Producer buffers must remain
 unchanged during the synchronous call and may be released after it returns.
 
 `scan_record_batches(..., vectors=("image", "tokens"))` projects named fields as
@@ -300,3 +325,16 @@ and binary buffers retain the captured generation through Arrow C Data ownership
 gathered buffers have independent ownership, and slices survive scanner/collection
 close. `search_field_record_batch` accepts the same search options and emits owned
 Int64 IDs and Float64 scores.
+
+### Qdrant behavior migration
+
+All upserts replace whole points (including omitted fields and payload),
+sparse searches exclude zero scores, and RRF defaults to constant 2 with
+zero-based ranks and Float32 accumulation. Use `PointMutation.update` for partial
+changes. Older WAL v4 is replayed with its historical merge semantics; new writes
+use WAL v5. Complete point checkpoints use Segment v5, which permits zero sparse
+weights; existing Segment v4 remains readable with its original validation.
+`upsert_sparse` accepts empty vectors and zero weights and updates only that field.
+Default collection opens also perform the catalog migration, so supply any named
+fields on that first open. See the
+[field envelope contract](formats/field-envelopes-format.md) for upgrade behavior.

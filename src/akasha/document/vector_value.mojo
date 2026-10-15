@@ -146,8 +146,7 @@ struct VectorValue(Movable):
     def sparse(var values: List[SparseElement]) raises -> VectorValue:
         if len(values) > Int(UInt32.MAX):
             raise Error("sparse vector count exceeds format limit")
-        if len(values) != 0:
-            validate_sparse(values)
+        validate_sparse(values)
         return VectorValue(_VectorStorage(_SparseValue(values^)))
 
     @staticmethod

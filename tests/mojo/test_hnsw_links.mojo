@@ -1,8 +1,7 @@
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
-    connect_bidirectional,
-    greedy_descent,
+    connect_with_heuristic,
     HnswValidationStats,
     validate_bidirectional_links,
     validate_bidirectional_links_with_stats,
@@ -44,11 +43,11 @@ def _connect(
     var selected: List[UInt32],
     mut stats: HnswBuildStats,
 ) raises:
-    connect_bidirectional(graph, metric, endpoint, level, selected^, stats)
+    connect_with_heuristic(graph, metric, endpoint, level, selected^, stats)
 
 
-def _assert_symmetric_and_bounded(graph: HnswStorage) raises:
-    validate_bidirectional_links(graph)
+def _assert_valid_and_bounded(graph: HnswStorage) raises:
+    graph.validate_structure()
     for index in range(graph.slot_count()):
         var slot = UInt32(index)
         for level in range(graph.level(slot) + 1):
@@ -58,7 +57,6 @@ def _assert_symmetric_and_bounded(graph: HnswStorage) raises:
                 var neighbor = graph.neighbor_at(slot, level, edge_index)
                 assert_true(neighbor != slot)
                 assert_true(graph.level(neighbor) >= level)
-                assert_true(graph.contains_neighbor(neighbor, level, slot))
                 for earlier in range(edge_index):
                     assert_true(
                         graph.neighbor_at(slot, level, earlier) != neighbor
@@ -81,10 +79,10 @@ def test_repeated_proposals_are_stored_once_and_bidirectionally() raises:
     assert_true(graph.contains_neighbor(source, 0, second))
     assert_equal(graph.neighbor_count(first, 0), 1)
     assert_equal(graph.neighbor_count(second, 0), 1)
-    _assert_symmetric_and_bounded(graph)
+    _assert_valid_and_bounded(graph)
 
 
-def test_full_reverse_adjacency_prunes_both_halves_of_evicted_edge() raises:
+def test_full_backlink_prunes_only_its_own_adjacency() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 2, 2)
     var center = _append(graph, metric, 10, 0.0, 0.0)
@@ -99,13 +97,13 @@ def test_full_reverse_adjacency_prunes_both_halves_of_evicted_edge() raises:
     var proposal: List[UInt32] = [center]
     _connect(graph, metric, newcomer, 0, proposal^, stats)
 
-    assert_equal(graph.neighbor_count(center, 0), 2)
+    assert_equal(graph.neighbor_count(center, 0), 1)
     assert_true(graph.contains_neighbor(center, 0, newcomer))
-    assert_true(graph.contains_neighbor(center, 0, nearest))
+    assert_false(graph.contains_neighbor(center, 0, nearest))
     assert_false(graph.contains_neighbor(center, 0, evicted))
-    assert_false(graph.contains_neighbor(evicted, 0, center))
+    assert_true(graph.contains_neighbor(evicted, 0, center))
     assert_true(graph.contains_neighbor(newcomer, 0, center))
-    _assert_symmetric_and_bounded(graph)
+    _assert_valid_and_bounded(graph)
 
 
 def test_overflow_pruning_preserves_selected_inactive_traversal_bridge() raises:
@@ -129,8 +127,8 @@ def test_overflow_pruning_preserves_selected_inactive_traversal_bridge() raises:
     assert_true(graph.contains_neighbor(bridge, 0, center))
     assert_true(graph.contains_neighbor(center, 0, newcomer))
     assert_false(graph.contains_neighbor(center, 0, evicted))
-    assert_false(graph.contains_neighbor(evicted, 0, center))
-    _assert_symmetric_and_bounded(graph)
+    assert_true(graph.contains_neighbor(evicted, 0, center))
+    _assert_valid_and_bounded(graph)
 
 
 def test_upper_levels_use_m_and_require_both_endpoints_to_own_level() raises:
@@ -148,17 +146,17 @@ def test_upper_levels_use_m_and_require_both_endpoints_to_own_level() raises:
 
     assert_equal(graph.neighbor_count(source, 1), 1)
     assert_true(graph.contains_neighbor(source, 1, second))
-    assert_false(graph.contains_neighbor(first, 1, source))
+    assert_true(graph.contains_neighbor(first, 1, source))
     assert_true(graph.contains_neighbor(second, 1, source))
 
     var invalid: List[UInt32] = [low]
     with assert_raises():
         _connect(graph, metric, source, 1, invalid^, stats)
     assert_true(graph.is_valid())
-    _assert_symmetric_and_bounded(graph)
+    _assert_valid_and_bounded(graph)
 
 
-def test_rejected_reciprocal_proposal_preserves_existing_adjacencies() raises:
+def test_outgoing_selection_and_backlinks_are_independent() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 2, 2)
     var source = _append(graph, metric, 10, 0.0, 0.0)
@@ -176,12 +174,12 @@ def test_rejected_reciprocal_proposal_preserves_existing_adjacencies() raises:
     var proposal: List[UInt32] = [target]
     _connect(graph, metric, source, 0, proposal^, stats)
 
-    assert_false(graph.contains_neighbor(source, 0, target))
-    assert_true(graph.contains_neighbor(source, 0, source_x))
-    assert_true(graph.contains_neighbor(source, 0, source_y))
+    assert_true(graph.contains_neighbor(source, 0, target))
+    assert_false(graph.contains_neighbor(source, 0, source_x))
+    assert_false(graph.contains_neighbor(source, 0, source_y))
     assert_true(graph.contains_neighbor(target, 0, target_x))
     assert_true(graph.contains_neighbor(target, 0, target_y))
-    _assert_symmetric_and_bounded(graph)
+    _assert_valid_and_bounded(graph)
 
 
 def test_validation_detects_asymmetry() raises:
@@ -254,41 +252,31 @@ def test_prewrite_internal_failure_marks_invalid_and_preserves_stats() raises:
     var stats = HnswBuildStats()
     stats.distance_evaluations = 17
     stats.directed_edges = 23
-    var proposal: List[UInt32] = [newcomer]
+    var proposal: List[UInt32] = [source]
 
     with assert_raises():
-        _connect(graph, metric, source, 0, proposal^, stats)
+        _connect(graph, metric, newcomer, 0, proposal^, stats)
 
     assert_false(graph.is_valid())
     assert_equal(stats.distance_evaluations, 17)
     assert_equal(stats.directed_edges, 23)
 
 
-def test_failed_touched_level_validation_marks_graph_invalid() raises:
+def test_replacing_outgoing_links_does_not_require_reciprocal_old_links() raises:
     var metric = MetricDispatcher(MetricKind.l2(), ScalarKind.f32(), 2)
     var graph = HnswStorage(2, 2, 3)
     var source = _append(graph, metric, 10, 0.0, 0.0)
-    var asymmetric = _append(graph, metric, 20, 1.0, 0.0)
+    var old = _append(graph, metric, 20, 1.0, 0.0)
     var newcomer = _append(graph, metric, 30, 0.0, 1.0)
-    var one_way: List[UInt32] = [asymmetric]
-    graph.set_neighbors(source, 0, one_way^)
-    var proposal: List[UInt32] = [newcomer]
+    graph.set_neighbors(source, 0, [old])
     var stats = HnswBuildStats()
-    stats.distance_evaluations = 29
-    stats.directed_edges = 31
-
-    with assert_raises():
-        _connect(graph, metric, source, 0, proposal^, stats)
-
-    assert_false(graph.is_valid())
-    assert_equal(stats.distance_evaluations, 29)
-    assert_equal(stats.directed_edges, 31)
-    var raw_query = _vector(0.0, 0.0)
-    var query = metric.prepare_query(raw_query^)
-    var search_stats = HnswSearchStats()
-    with assert_raises():
-        _ = greedy_descent(graph, metric, query, source, 0, search_stats)
-    assert_equal(search_stats.distance_evaluations, 0)
+    stats.directed_edges = 1
+    _connect(graph, metric, source, 0, [newcomer], stats)
+    assert_true(graph.is_valid())
+    assert_equal(stats.directed_edges, 2)
+    assert_true(graph.contains_neighbor(source, 0, newcomer))
+    assert_false(graph.contains_neighbor(source, 0, old))
+    graph.validate_structure()
 
 
 def main() raises:

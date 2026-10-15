@@ -78,7 +78,7 @@ def test_crash_before_backup_manifest_leaves_no_backup_and_retry_completes() rai
     _ = bytes.pop()
     write_file_sync(target + "/" + torn + ".tmp", bytes)
     remove_file_if_exists(target + "/" + torn)
-    remove_file_if_exists(target + "/" + report.sparse_names[1])
+    assert_equal(len(report.sparse_names), 0)
     _assert_not_a_backup(target, restored)
 
     # The retry overwrites the leftovers and verifies every file again.

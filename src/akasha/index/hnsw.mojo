@@ -1,3 +1,4 @@
+from akasha.query.control import QueryControl
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.compute.dispatch import (
@@ -23,16 +24,16 @@ from akasha.index.hnsw_core import (
     HnswEligibility,
     HnswResultAdmission,
     HnswSearchAdmission,
-    connect_bidirectional,
-    greedy_descent,
+    connect_with_heuristic,
     _next_widened_ef,
-    search_layer,
     search_allowed_with_widening_core,
     search_prepared_allowed_with_widening_core,
     select_neighbors_heuristic,
     validate_bidirectional_links,
 )
 from akasha.index.hnsw_level import sample_level
+from akasha.index.hnsw_entries import HnswEntry, HnswEntryPoints, entries_from_legacy
+from akasha.index.hnsw_search import search_entry, search_level
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswBuildStats, HnswSearchStats
 from akasha.index.hnsw_storage import HnswStorage
@@ -120,6 +121,7 @@ struct HnswIndex:
     var graph: HnswStorage
     var scratch: HnswSearchScratch
     var _construction_scratch: HnswSearchScratch
+    var entries: HnswEntryPoints
     var entry_slot: Optional[UInt32]
     var entry_level: Int
     var valid: Bool
@@ -154,6 +156,7 @@ struct HnswIndex:
         )
         self.scratch = HnswSearchScratch()
         self._construction_scratch = HnswSearchScratch()
+        self.entries = HnswEntryPoints()
         self.entry_slot = Optional[UInt32]()
         self.entry_level = -1
         self.valid = True
@@ -188,6 +191,7 @@ struct HnswIndex:
         )
         self.scratch = HnswSearchScratch()
         self._construction_scratch = HnswSearchScratch()
+        self.entries = HnswEntryPoints()
         self.entry_slot = Optional[UInt32]()
         self.entry_level = -1
         self.valid = True
@@ -215,6 +219,7 @@ struct HnswIndex:
         self.graph = HnswStorage(dimension, m, m)
         self.scratch = HnswSearchScratch()
         self._construction_scratch = HnswSearchScratch()
+        self.entries = HnswEntryPoints()
         self.entry_slot = Optional[UInt32]()
         self.entry_level = -1
         self.valid = True
@@ -251,6 +256,14 @@ struct HnswIndex:
             self.build_stats.inactive_slots * 100
             >= slots * self._identity_config.rebuild_inactive_percent
         )
+
+    def _current_entry(self) raises -> Optional[HnswEntry]:
+        var all_points = HnswSearchAdmission()
+        return self.entries.get_entry(self.graph, all_points)
+
+    def _current_entry_level(self) raises -> Int:
+        var entry = self._current_entry()
+        return entry.value().level if entry else -1
 
     def entry_point_level(self) -> Int:
         return self.entry_level
@@ -355,7 +368,8 @@ struct HnswIndex:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
             raise Error("HNSW index is marked invalid")
-        validate_bidirectional_links(self.graph)
+        self.graph.validate_structure()
+        self.entries.validate(self.graph)
         var count = self.graph.slot_count()
         if count == 0:
             if Bool(self.entry_slot) or self.entry_level != -1:
@@ -532,55 +546,38 @@ struct HnswIndex:
     ) raises:
         """Link a prepared staging slot, then publish its current-ID map."""
 
-        if not Bool(self.entry_slot) or not has_other_live:
+        var construction_admission = HnswSearchAdmission()
+        var construction_entry = self.entries.get_entry(self.graph, construction_admission)
+        if not construction_entry or not has_other_live:
             var first = self.graph._append_unpublished(id, prepared, new_level)
             self.graph._publish_current(id, first)
+            self.entries.new_point(self.graph, first, construction_admission)
             self.entry_slot = Optional(first)
             self.entry_level = new_level
             self.build_stats.slot_count = self.graph.slot_count()
-            self.build_stats.maximum_level = new_level
+            self.build_stats.maximum_level = self.entry_level
             return
 
         var new_slot = self.graph._append_unpublished(id, prepared, new_level)
         var local_build = _copy_build_stats(self.build_stats)
         var construction_stats = HnswSearchStats()
         try:
-            var current = self.entry_slot.value()
-            var upper_level = self.entry_level
-            while upper_level > new_level:
-                var descended = greedy_descent[backend_tag=backend_tag](
-                    self.graph,
-                    self.metric,
-                    prepared,
-                    current,
-                    upper_level,
-                    construction_stats,
-                )
-                current = descended.slot
-                upper_level -= 1
-
-            # The new slot is unreachable until its first reciprocal link is
-            # published, so construction searches still observe old nodes.
-            var shared_level = new_level
-            if shared_level > self.entry_level:
-                shared_level = self.entry_level
             var admission = HnswSearchAdmission()
+            var current = search_entry[backend_tag=backend_tag](
+                self.graph, self.metric, prepared, construction_entry.value().slot,
+                construction_entry.value().level,
+                min(new_level, construction_entry.value().level), admission, construction_stats,
+            )
+            var shared_level = min(new_level, construction_entry.value().level)
             while shared_level >= 0:
-                var candidates = search_layer[backend_tag=backend_tag](
-                    self.graph,
-                    self.metric,
-                    prepared,
-                    current,
-                    shared_level,
-                    self._identity_config.ef_construction,
-                    self._identity_config.ef_construction,
-                    admission,
-                    self._construction_scratch,
-                    construction_stats,
+                var candidates = search_level[backend_tag=backend_tag](
+                    self.graph, self.metric, prepared, current, shared_level,
+                    self._identity_config.ef_construction, admission,
+                    self._construction_scratch, construction_stats,
                 )
                 var next_entry = current
                 if len(candidates) > 0:
-                    next_entry = candidates[0].slot
+                    next_entry = candidates[0]
                 var excluded = Optional(new_slot)
                 var selected = select_neighbors_heuristic[backend_tag](
                     self.graph,
@@ -588,10 +585,9 @@ struct HnswIndex:
                     candidates,
                     excluded,
                     self.graph.level_capacity(new_slot, shared_level),
-                    True,
                     local_build,
                 )
-                connect_bidirectional[backend_tag](
+                connect_with_heuristic[backend_tag](
                     self.graph,
                     self.metric,
                     new_slot,
@@ -611,6 +607,7 @@ struct HnswIndex:
         )
         local_build.slot_count = self.graph.slot_count()
         self.graph._publish_current(id, new_slot)
+        self.entries.new_point(self.graph, new_slot, construction_admission)
         if replacing_entry or new_level > self.entry_level:
             self.entry_slot = Optional(new_slot)
             self.entry_level = new_level
@@ -623,12 +620,13 @@ struct HnswIndex:
         k: Int,
         *,
         ef_search: Int = -1,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         var requested = ef_search
         if requested < 0:
             requested = self._identity_config.default_ef_search
         var allowed = HnswSearchAdmission()
-        return self._search_bound(query, k, requested, allowed)
+        return self._search_bound(query, k, requested, allowed, control=control)
 
     def search_allowed(
         mut self,
@@ -636,8 +634,9 @@ struct HnswIndex:
         k: Int,
         ef_search: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
-        return self._search_bound(query, k, ef_search, allowed)
+        return self._search_bound(query, k, ef_search, allowed, control=control)
 
     @staticmethod
     def next_widened_ef(current_ef: Int, max_ef: Int) raises -> Int:
@@ -651,10 +650,12 @@ struct HnswIndex:
         initial_ef: Int,
         max_ef: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Widen from the eligibility bitmap's authoritative cardinality."""
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed, False, True
+            query, k, initial_ef, max_ef, allowed, False, True,
+            control=control,
         )
 
     def search_allowed_with_widening(
@@ -665,6 +666,7 @@ struct HnswIndex:
         max_ef: Int,
         matched_count: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Compatibility boundary for callers still carrying match counts."""
         allowed.validate(self.graph.slot_count())
@@ -673,7 +675,8 @@ struct HnswIndex:
                 "HNSW matched count does not match eligibility cardinality"
             )
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed, False, True
+            query, k, initial_ef, max_ef, allowed, False, True,
+            control=control,
         )
 
     def search_allowed_candidates_with_widening(
@@ -683,10 +686,12 @@ struct HnswIndex:
         initial_ef: Int,
         max_ef: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Return the final search breadth without source-local fallback."""
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed, True, False
+            query, k, initial_ef, max_ef, allowed, True, False,
+            control=control,
         )
 
     def _search_allowed_with_actual_widening(
@@ -698,6 +703,7 @@ struct HnswIndex:
         allowed: HnswEligibility,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Use the shared owned-or-mapped widening core."""
         return self._search_admitted_with_actual_widening(
@@ -709,6 +715,7 @@ struct HnswIndex:
             allowed,
             return_search_breadth,
             exact_fallback,
+            control=control,
         )
 
     def _search_admitted_candidates_with_widening[
@@ -721,6 +728,7 @@ struct HnswIndex:
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         return self._search_admitted_with_actual_widening(
             query,
@@ -731,6 +739,7 @@ struct HnswIndex:
             admission,
             True,
             False,
+            control=control,
         )
 
     def _search_admitted_prepared_candidates_with_widening[
@@ -743,6 +752,7 @@ struct HnswIndex:
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         record_distance_dispatch(
             self._distance_dispatch_counters,
@@ -752,46 +762,46 @@ struct HnswIndex:
         if tag == DISTANCE_DOT_F32:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_DOT_F32
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_L2_F32:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_L2_F32
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_COSINE_F32:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_COSINE_F32
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_BF16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_DOT_BF16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_L2_BF16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_L2_BF16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_COSINE_BF16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_COSINE_BF16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_F16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_DOT_F16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_L2_F16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_L2_F16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_COSINE_F16:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_COSINE_F16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_I8:
             return self._search_admitted_prepared_backend[
                 backend_tag=DISTANCE_DOT_I8
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         return self._search_admitted_prepared_backend[
             backend_tag=DISTANCE_COSINE_I8
-        ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+        ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
 
     def _search_admitted_prepared_backend[
         AdmissionType: HnswResultAdmission, backend_tag: Int
@@ -803,6 +813,7 @@ struct HnswIndex:
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
@@ -821,11 +832,11 @@ struct HnswIndex:
             admitted_count,
             True,
             False,
-            self.entry_slot,
-            self.entry_level,
+            self.entries,
             String("packed-", self._identity_config.scalar_name()),
             admission,
             self.scratch,
+            control=control,
         )
         self._last_search_query_preparations = outcome.query_preparations
         self._last_search_upper_descents = outcome.upper_descents
@@ -844,6 +855,7 @@ struct HnswIndex:
         allowed: AdmissionType,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         record_distance_dispatch(
             self._distance_dispatch_counters,
@@ -860,6 +872,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_F32:
             return self._search_admitted_backend[backend_tag=DISTANCE_L2_F32](
@@ -871,6 +884,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F32:
             return self._search_admitted_backend[
@@ -884,6 +898,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_BF16:
             return self._search_admitted_backend[backend_tag=DISTANCE_DOT_BF16](
@@ -895,6 +910,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_BF16:
             return self._search_admitted_backend[backend_tag=DISTANCE_L2_BF16](
@@ -906,6 +922,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_BF16:
             return self._search_admitted_backend[
@@ -919,6 +936,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_F16:
             return self._search_admitted_backend[backend_tag=DISTANCE_DOT_F16](
@@ -930,6 +948,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_F16:
             return self._search_admitted_backend[backend_tag=DISTANCE_L2_F16](
@@ -941,6 +960,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F16:
             return self._search_admitted_backend[
@@ -954,6 +974,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_I8:
             return self._search_admitted_backend[backend_tag=DISTANCE_DOT_I8](
@@ -965,6 +986,7 @@ struct HnswIndex:
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         return self._search_admitted_backend[backend_tag=DISTANCE_COSINE_I8](
             query,
@@ -975,6 +997,7 @@ struct HnswIndex:
             allowed,
             return_search_breadth,
             exact_fallback,
+            control=control,
         )
 
     def _search_admitted_backend[
@@ -989,6 +1012,7 @@ struct HnswIndex:
         allowed: AdmissionType,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
@@ -1007,11 +1031,11 @@ struct HnswIndex:
             eligible_count,
             return_search_breadth,
             exact_fallback,
-            self.entry_slot,
-            self.entry_level,
+            self.entries,
             String("packed-", self._identity_config.scalar_name()),
             allowed,
             self.scratch,
+            control=control,
         )
         self._last_search_query_preparations = outcome.query_preparations
         self._last_search_upper_descents = outcome.upper_descents
@@ -1019,25 +1043,28 @@ struct HnswIndex:
         return outcome.take_results()
 
     def search_dot(
-        mut self, query: List[Float32], k: Int, ef_search: Int
+        mut self, query: List[Float32], k: Int, ef_search: Int,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._require_metric("dot")
         var allowed = HnswSearchAdmission()
-        return self._search_bound(query, k, ef_search, allowed)
+        return self._search_bound(query, k, ef_search, allowed, control=control)
 
     def search_l2(
-        mut self, query: List[Float32], k: Int, ef_search: Int
+        mut self, query: List[Float32], k: Int, ef_search: Int,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._require_metric("l2")
         var allowed = HnswSearchAdmission()
-        return self._search_bound(query, k, ef_search, allowed)
+        return self._search_bound(query, k, ef_search, allowed, control=control)
 
     def search_cosine(
-        mut self, query: List[Float32], k: Int, ef_search: Int
+        mut self, query: List[Float32], k: Int, ef_search: Int,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._require_metric("cosine")
         var allowed = HnswSearchAdmission()
-        return self._search_bound(query, k, ef_search, allowed)
+        return self._search_bound(query, k, ef_search, allowed, control=control)
 
     def _require_metric(self, requested: String) raises:
         var bound = self.metric.metric_name()
@@ -1065,45 +1092,6 @@ struct HnswIndex:
         )
         return stats^
 
-    def _search_base_prepared[
-        AdmissionType: HnswResultAdmission, backend_tag: Int = -1
-    ](
-        mut self,
-        prepared: List[Float32],
-        current: UInt32,
-        target_count: Int,
-        requested_ef: Int,
-        effective_ef: Int,
-        allowed: AdmissionType,
-        upper_stats: HnswSearchStats,
-    ) raises -> List[SearchResult]:
-        """Run one base round while preserving a single upper-phase prefix."""
-        var stats = _copy_search_stats(upper_stats)
-        stats.requested_ef = requested_ef
-        stats.effective_ef = effective_ef
-        var candidates = search_layer[backend_tag=backend_tag](
-            self.graph,
-            self.metric,
-            prepared,
-            current,
-            0,
-            target_count,
-            effective_ef,
-            allowed,
-            self.scratch,
-            stats,
-        )
-        var results = List[SearchResult](capacity=len(candidates))
-        for candidate in candidates:
-            results.append(
-                SearchResult(
-                    candidate.id,
-                    self.metric.public_score(candidate.distance),
-                )
-            )
-        self.last_search_stats = stats^
-        return results^
-
     def _search_bound[
         AdmissionType: HnswResultAdmission
     ](
@@ -1112,6 +1100,7 @@ struct HnswIndex:
         k: Int,
         ef_search: Int,
         allowed: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         record_distance_dispatch(
             self._distance_dispatch_counters,
@@ -1120,46 +1109,57 @@ struct HnswIndex:
         var tag = self.distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_bound_backend[backend_tag=DISTANCE_DOT_F32](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_L2_F32:
             return self._search_bound_backend[backend_tag=DISTANCE_L2_F32](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F32:
             return self._search_bound_backend[backend_tag=DISTANCE_COSINE_F32](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_DOT_BF16:
             return self._search_bound_backend[backend_tag=DISTANCE_DOT_BF16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_L2_BF16:
             return self._search_bound_backend[backend_tag=DISTANCE_L2_BF16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_COSINE_BF16:
             return self._search_bound_backend[backend_tag=DISTANCE_COSINE_BF16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_DOT_F16:
             return self._search_bound_backend[backend_tag=DISTANCE_DOT_F16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_L2_F16:
             return self._search_bound_backend[backend_tag=DISTANCE_L2_F16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F16:
             return self._search_bound_backend[backend_tag=DISTANCE_COSINE_F16](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         if tag == DISTANCE_DOT_I8:
             return self._search_bound_backend[backend_tag=DISTANCE_DOT_I8](
-                query, k, ef_search, allowed
+                query, k, ef_search, allowed,
+                control=control,
             )
         return self._search_bound_backend[backend_tag=DISTANCE_COSINE_I8](
-            query, k, ef_search, allowed
+            query, k, ef_search, allowed,
+            control=control,
         )
 
     def _search_bound_backend[
@@ -1170,6 +1170,7 @@ struct HnswIndex:
         k: Int,
         ef_search: Int,
         allowed: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         if not self.valid or not self.graph.is_valid():
@@ -1203,41 +1204,35 @@ struct HnswIndex:
             self._last_search_query_preparations = 1
             self._last_search_upper_descents = 0
             return List[SearchResult]()
-        if not Bool(self.entry_slot):
+        var selected_entry = self.entries.get_entry(self.graph, allowed)
+        if not selected_entry:
             stats.effective_ef = 0
             self.last_search_stats = stats^
             self._last_search_query_preparations = 1
             self._last_search_upper_descents = 0
             return List[SearchResult]()
 
-        var current = self.entry_slot.value()
-        var level = self.entry_level
-        var upper_descents = 0
-        while level > 0:
-            var descended = greedy_descent[backend_tag=backend_tag](
-                self.graph,
-                self.metric,
-                prepared,
-                current,
-                level,
-                stats,
-            )
-            upper_descents += 1
-            current = descended.slot
-            level -= 1
-
-        var results = self._search_base_prepared[backend_tag=backend_tag](
-            prepared,
-            current,
-            target_count,
-            ef_search,
-            effective_ef,
-            allowed,
-            stats,
+        var chosen = selected_entry.value()
+        var entry_item = search_entry[backend_tag=backend_tag](
+            self.graph, self.metric, prepared, chosen.slot, chosen.level,
+            0, allowed, stats,
+            control=control,
         )
+        var candidates = search_level[backend_tag=backend_tag](
+            self.graph, self.metric, prepared, entry_item, 0,
+            effective_ef, allowed, self.scratch, stats,
+            control=control,
+        )
+        var result = List[SearchResult](capacity=min(target_count, len(candidates)))
+        for ordinal in range(min(target_count, len(candidates))):
+            var candidate = candidates[ordinal]
+            result.append(SearchResult(candidate.id, self.metric.public_score(candidate.distance)))
+        stats.retained_candidates = len(result)
+        self.last_search_stats = stats^
         self._last_search_query_preparations = 1
-        self._last_search_upper_descents = upper_descents
-        return results^
+        self._last_search_upper_descents = chosen.level
+        return result^
+
 
     def encode_cache_payload(self) raises -> List[UInt8]:
         """Encode the prototype payload layout against packed storage."""
@@ -1255,6 +1250,7 @@ struct HnswIndex:
                 "legacy HNSW cache cannot losslessly encode this identity"
             )
         self.validate_structure()
+        validate_bidirectional_links(self.graph)
         var legacy_bound = self.graph.m
         if self.graph.m0 > legacy_bound:
             legacy_bound = self.graph.m0
@@ -1570,5 +1566,7 @@ def _materialize_cache(
     index.build_stats.maximum_level = parsed.maximum_observed_level
     index.build_stats.directed_edges = parsed.directed_edges
     index.build_stats.serialized_bytes = parsed.serialized_bytes
+    index.entries = entries_from_legacy(index.graph, index.entry_slot)
     index.validate_structure()
+    validate_bidirectional_links(index.graph)
     return index^

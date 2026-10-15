@@ -164,11 +164,11 @@ struct PointTable(Movable):
         var last = batch.last_sequence()
         if last <= self._checkpoint_sequence:
             return
-        var states = self._prepare(batch.first_sequence, batch.mutations)
+        var states = self._prepare(batch.first_sequence, batch.mutations, batch.format_version)
         self._publish(states^, last)
 
     def _prepare(
-        self, first: UInt64, mutations: List[PointMutation]
+        self, first: UInt64, mutations: List[PointMutation], mutation_format: Int = 5
     ) raises -> List[PointState]:
         if (
             len(mutations) == 0
@@ -190,7 +190,7 @@ struct PointTable(Movable):
                 if ordinal >= 0:
                     previous = Optional(self._points[ordinal].copy())
             var next = apply_point_mutation(
-                previous, mutation, first + UInt64(index), self._catalog[]
+                previous, mutation, first + UInt64(index), self._catalog[], mutation_format
             )
             if staged_ordinal >= 0:
                 states[staged_ordinal] = next^

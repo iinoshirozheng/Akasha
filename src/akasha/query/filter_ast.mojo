@@ -3,7 +3,7 @@ from akasha.document.value import PayloadValue
 
 
 struct FilterCondition(Movable):
-    """One validated strict typed field comparison."""
+    """One validated field comparison with a typed query literal."""
 
     comptime EQUAL = UInt8(1)
     comptime NOT_EQUAL = UInt8(2)

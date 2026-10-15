@@ -44,10 +44,13 @@ def _should_scan_delta(
 ) -> Bool:
     """Bound scan work by physical history, vector components and graph breadth.
 
-    See the 2026-10-02 delta scan diagnostic. This deliberately leaves a
-    delta-only collection on HNSW and excludes measured low-ef regressions.
+    Retain the measured base-plus-delta work limits from the 2026-10-02
+    diagnostic. Mutable-only segments use Qdrant-style
+    exact scan until a complete immutable graph is published.
     Division avoids overflow even for invalid or extreme inputs.
     """
+    if base_live == 0 and physical_slots > 0 and dimension > 0 and m0 > 0 and ef > 0:
+        return True
     if base_live <= 0 or physical_slots <= 0 or physical_slots > 1024:
         return False
     if dimension <= 0 or dimension > 1572864 // physical_slots:
@@ -1049,7 +1052,7 @@ struct SegmentedHnsw(Movable):
         )
         var scored = 0
         for ordinal in range(memtable.slot_count()):
-            if not memtable.is_live_at(ordinal):
+            if not memtable.is_live_at(ordinal) or not memtable.entry_ref_at(ordinal).has_dense():
                 continue
             var id = memtable.id_at(ordinal)
             if not self._sources.contains(id):
@@ -1109,7 +1112,7 @@ struct SegmentedHnsw(Movable):
         )
         var scored = 0
         for ordinal in range(memtable.slot_count()):
-            if not memtable.is_live_at(ordinal):
+            if not memtable.is_live_at(ordinal) or not memtable.entry_ref_at(ordinal).has_dense():
                 continue
             var id = memtable.id_at(ordinal)
             if not self._sources.contains(id):

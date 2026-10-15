@@ -32,10 +32,10 @@ def test_uniform_mapping_is_strictly_inside_open_interval() raises:
     assert_true(from_maximum < 1.0)
 
 
-def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
-    # For M=16, level >= 1 iff 2*top53+1 <= 2^54/16.
-    var last_level_one_bucket = (UInt64(1) << UInt64(49)) - UInt64(1)
-    var first_level_zero_bucket = UInt64(1) << UInt64(49)
+def test_rounded_classifier_matches_centered_bucket_boundaries() raises:
+    # For M=16, level >= 1 iff 2*top53+1 <= 2^54/sqrt(16).
+    var last_level_one_bucket = (UInt64(1) << UInt64(51)) - UInt64(1)
+    var first_level_zero_bucket = UInt64(1) << UInt64(51)
     assert_equal(
         _sample_level_from_hash(last_level_one_bucket << UInt64(11), 16, 8),
         1,
@@ -45,9 +45,9 @@ def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
         0,
     )
 
-    # The next exact threshold is 2^54/(16^2).
-    var last_level_two_bucket = (UInt64(1) << UInt64(45)) - UInt64(1)
-    var first_level_one_bucket = UInt64(1) << UInt64(45)
+    # The next exact threshold is 2^54/(16*sqrt(16)).
+    var last_level_two_bucket = (UInt64(1) << UInt64(47)) - UInt64(1)
+    var first_level_one_bucket = UInt64(1) << UInt64(47)
     assert_equal(
         _sample_level_from_hash(last_level_two_bucket << UInt64(11), 16, 8),
         2,
@@ -58,18 +58,18 @@ def test_integer_classifier_matches_exact_centered_bucket_boundaries() raises:
     )
     assert_equal(_sample_level_from_hash(UInt64(0), 16, 8), 8)
     assert_equal(_sample_level_from_hash(UInt64(0), 65_535, 63), 3)
-    assert_equal(_sample_level_from_hash(UInt64(0), Int.MAX, Int.MAX), 0)
+    assert_equal(_sample_level_from_hash(UInt64(0), Int.MAX, Int.MAX), 1)
 
 
 def test_sample_level_matches_full_pipeline_golden_vectors() raises:
     var seed = UInt64(0x123456789ABCDEF0)
-    assert_equal(sample_level(0, seed, 2, 63), 3)
+    assert_equal(sample_level(0, seed, 2, 63), 4)
     assert_equal(sample_level(0, seed, 3, 63), 2)
-    assert_equal(sample_level(0, seed, 16, 63), 0)
+    assert_equal(sample_level(0, seed, 16, 63), 1)
     assert_equal(sample_level(29, seed, 2, 63), 5)
     assert_equal(sample_level(29, seed, 3, 63), 3)
     assert_equal(sample_level(29, seed, 16, 63), 1)
-    assert_equal(sample_level(165, seed, 2, 63), 14)
+    assert_equal(sample_level(165, seed, 2, 63), 15)
     assert_equal(sample_level(165, seed, 2, 3), 3)
 
 
@@ -149,14 +149,12 @@ def test_default_distribution_is_geometric_and_bounded() raises:
         else:
             level_three_or_higher += 1
 
-    # Broad deterministic bands around N*(15/16), N*(15/16^2), and
-    # N*(15/16^3). They reject a materially different geometric base while
-    # avoiding brittle exact-bucket assertions.
-    assert_true(level_zero >= 92_750 and level_zero <= 94_750)
-    assert_true(level_one >= 5_200 and level_one <= 6_500)
-    assert_true(level_two >= 200 and level_two <= 550)
+    # Rounded Qdrant distribution: P(level >= 1)=1/4, >=2=1/64, >=3=1/1024.
+    assert_true(level_zero >= 74_000 and level_zero <= 76_000)
+    assert_true(level_one >= 22_000 and level_one <= 25_000)
+    assert_true(level_two >= 1_200 and level_two <= 1_800)
     assert_true(level_three_or_higher > 0)
-    assert_true(level_three_or_higher < 100)
+    assert_true(level_three_or_higher < 150)
 
 
 def main() raises:

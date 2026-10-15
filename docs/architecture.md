@@ -21,12 +21,12 @@ storage + compute + document + common
 ```text
 validate/stage complete point changes
    -> assign a contiguous accepted sequence range
-   -> append one combined point WAL v4 envelope + fsync
+   -> append one combined point WAL v5 envelope + fsync
    -> publish immutable native vector/payload owners and current point descriptors
    -> exact native scoring or per-field derived retrieval + authoritative rerank
 
 flush
-   -> changed point records into temporary v4 base/delta files + fsync
+   -> changed point records into temporary v5 base/delta files + fsync
    -> retain a valid default HNSW base or prepare a replacement sidecar
    -> atomic data-file renames + directory fsync
    -> atomic manifest generation publish + directory fsync
@@ -35,11 +35,19 @@ flush
    -> worker pins inputs, builds outside writer, conditionally publishes a base
 ```
 
-Collections opened without a field catalog retain their documented dense/sparse
-WAL v2/v3 and paired Segment v3 paths. Opting into named fields (or an empty named
-catalog) preflights all legacy sources, publishes catalog v2, and switches future
-writes to combined point WAL/Segment v4. Old sources remain readable across the
-cutover; migration never reinterprets legacy F32 bytes as another scalar type.
+Every public open preflights legacy authority and, when needed, atomically
+publishes catalog v2 before accepting new writes. Default-only and named-field
+collections share combined point WAL v5 and Segment v5. Old sources remain
+readable across the cutover; historical merge upserts are replayed before new
+replacement writes. Migration never reinterprets legacy F32 bytes as another
+scalar type. Sparse updates use the same atomic WAL; no new separate sparse WAL
+is written. Catalogs are immutable after cutover, so named fields must be supplied
+at creation or on the first migration open.
+
+Point checkpoints append complete changed-point records. Compaction admission
+belongs to the collection: the worker builds outside the writer lock and publishes
+conditionally, while the level-zero limit applies backpressure. Checkpointing
+does not independently trigger a full-table rewrite under the writer lock.
 
 ## Read path
 
@@ -52,19 +60,28 @@ query -> immutable read root -> field presence + typed filter -> scoring -> Top-
 ```
 
 Approximate dense queries use a derived, metric-bound HNSW graph. Seeded
-geometric levels are independent of point IDs; construction performs greedy
+rounded exponential levels derive deterministically from point IDs and the seed; construction performs greedy
 upper descent, bounded `ef_construction` layer search, diversity selection, and
-symmetric degree repair with separate M0/M capacities. Query uses two heaps and
+independent outgoing/backlink pruning with separate M0/M capacities. Query uses two heaps and
 generation-stamped visited scratch. The planner keeps small, selective,
-metric-mismatched, or unavailable queries on exact scan. A filter restricts
-result admission, not graph traversal; bounded widening may gather more eligible
-candidates before exact filtered fallback. Every public result is reranked
+metric-mismatched, or unavailable queries on exact scan. A filter and the current-source map reject nodes before scoring or traversal.
+Payload equality/range block graphs add links only at level zero. Later indexed
+fields skip redundant blocks when their sampled connectivity meets the main
+graph baseline, following Qdrant's edge-drop and retry-budget algorithm with
+Akasha's seeded random stream. The persisted entry pool stores each entry's
+slot and search level separately; payload entries remain at zero even if the
+point has upper layers in the main graph. Queries choose the first eligible
+primary or the highest eligible extra entry. Akasha
+retains its explicit bounded-widening/exact-completion API for candidate
+shortfalls. Every public result is reranked
 against authoritative F32 vectors for default dense queries. Native named fields
-rerank their own F32/F16/BF16/I8/U8 buffers with Float64 accumulation and scores.
+rerank their own F32/F16/BF16/I8/U8 buffers into Float64 scores. Accumulation is
+Float64 except F16 cosine: native half values are normalized in F32, rounded
+back to half, then dotted in F32 following Qdrant's half metric. Stored raw
+values remain unchanged; MaxSim sums the resulting row scores in Float64.
 
 The mutable graph uses append-only packed slots. Replacement and deletion mark
-old slots non-current, so they remain safe traversal bridges but cannot be
-returned. Manifest v4 commits a job-unique, versioned CRC32 HNSW sidecar;
+old slots non-current; they are neither scored nor traversed. Manifest v4 commits a job-unique, versioned CRC32 HNSW sidecar;
 legacy v3 descriptors retain their `hnsw-<sequence>.bin` naming contract. Manifest
 v5 can retain a base captured at an earlier sequence, with later complete point
 states recovered into its bounded overlay. Advancing a v3 checkpoint copies its
@@ -77,12 +94,13 @@ candidates through the current ID-to-source mapping. `flush()` rebuilds when
 inactive slots or delta mutations cross their configured limits, while
 `rebuild_hnsw()` provides explicit maintenance. Default dense queries never rebuild.
 Missing/stale derived state rebuilds from authoritative records; corruption of a
-matching committed sidecar fails recovery. Legacy `hnsw.cache` is read only for
-pre-v3 manifests and is never preferred over a manifest-referenced sidecar.
+matching committed sidecar fails recovery. Pre-v3 graph sidecars and legacy `hnsw.cache` are rebuilt from authority; new
+snapshots use graph format v3. Mutable-only segments scan exactly until a base
+is published. First payload-bearing flush builds its supplementary links.
 
 In the legacy collection format, sparse vectors are a companion durable state
 keyed by the same point IDs. A
-checksummed sparse WAL shares the collection sequence space. Every v2/v3/v4
+checksummed sparse WAL shares the collection sequence space. Every v2/v3/v4/v5
 manifest descriptor pairs its dense base/delta with a sparse base/delta.
 Both are fsynced before manifest publication. Open replays paired descriptors
 in sequence order, then merges newer dense and sparse WAL mutations by sequence.
@@ -97,15 +115,23 @@ and visibility boundary. A point may lack the default dense field and still exis
 in named search/scans. Point sequence covers every mutation; document sequence
 covers only the default dense/payload projection. Present empty sparse vectors,
 empty multivectors, absent fields, and zero-valued vectors remain distinct.
+Cosine accepts zero-valued vectors and queries and returns zero similarity when
+either operand has zero norm. Exact, compact HNSW, mapped and GPU scoring share
+this behavior; a zero vector is still a present vector.
 
 Each named HNSW or sparse index is an immutable-root artifact keyed by field ID.
 The first request builds outside the collection writer lock; a complete artifact
 is shared by sibling snapshots, and failed/cancelled builds publish nothing.
-HNSW protects mutable query scratch with its own lock. Named graph artifacts have
+HNSW protects mutable query scratch with its own lock. Controlled named queries
+check cancellation and deadlines inside upper descent and base-layer traversal,
+as well as around build and rerank work. Interrupted scratch remains reusable. Named graph artifacts have
 no persistent sidecars yet and rebuild on a new root's first approximate request.
 Native binary Hamming/Jaccard and ragged MaxSim use exact kernels; sparse postings
-use F64 sums and include present zero-score rows. Multi-field RRF executes all
-branches against one captured root and combines Float64 rank contributions.
+use F32 sums and exclude zero-score rows. Multi-field RRF executes all
+branches against one captured root and combines Float32 rank contributions with
+zero-based ranks and default constant 2. Upsert replaces the whole point; update
+preserves omitted values. WAL v4 retains merge semantics during replay, while
+new WAL v5 encodes the replacement contract.
 
 ## Implemented storage boundary
 
@@ -170,12 +196,22 @@ async API is used.
 
 Phase 12 single-query parallel scan splits stable snapshot ordinals into fixed
 contiguous ranges, scores one bounded local heap per range, then merges ranges
-in ordinal order. SQ8 stores one affine byte per dimension. Product
-quantization stores one centroid byte per configured subvector. Both preserve
-the scalar/SIMD implementation as the correctness oracle and optionally exact
-rerank an expanded candidate set against authoritative Float32 vectors. SQ8 and
-PQ builds are cached per immutable root/configuration and shared across snapshots;
-queries do not retrain an already-ready artifact.
+in ordinal order. SQ8 uses Qdrant's global affine scale/offset and 0..127 codes,
+quantizes queries as well as stored vectors, and applies its query/vector score
+offsets with explicit F32 rounding. Padding to a multiple of 16 is accounted for
+arithmetically instead of occupying stored code bytes. Raw Dot/L2 share one
+artifact; cosine normalizes before quantization and has a separate root-owned
+artifact. Product quantization stores one centroid byte per configured subvector;
+training uses first sampled rows, F64 means, empty-cluster reseeding and per-chunk
+convergence, with a deterministic source-ordered sample capped at 10,000 rows.
+PQ likewise trains raw and normalized cosine artifacts separately; a query
+builds its centroid-score lookup table once, and each candidate sums code lookups.
+Cosine uses the normalized query's dot with the trained centroid, without
+renormalizing the centroid after averaging.
+Both optionally exact-rerank an expanded candidate set against authoritative
+Float32 vectors. Derived codebooks are version 2 and are rebuilt in memory, not
+serialized durable state. Builds are cached per immutable root/configuration and
+shared across snapshots; queries do not retrain an already-ready artifact.
 
 Phase 13 device batch execution flattens owned snapshot vectors and queries,
 then launches one Mojo GPU scoring thread per query/candidate pair. A second
@@ -235,23 +271,27 @@ Current durable contracts are
 [`segments`](../formats/segment-format.md), and
 [`WAL`](../formats/wal-format.md). Readers preserve documented older versions.
 Legacy writers retain collection config v1, Segment v3, single WAL v2 and atomic
-batch WAL v3. Point-mode writers publish catalog v2 and WAL/Segment v4. HNSW
+batch WAL v3. All collection writers publish catalog v2 and WAL v5 / Segment v5. HNSW
 checkpoints use manifest v4 for a complete current base, or v5 for a retained
 earlier base with recoverable overlay; a checkpoint without a sidecar remains
-valid manifest v2. Readers retain the documented older formats. HNSW sidecar v2
-layout and v1 compatibility are locked by checked-in fixtures. See also the
+valid manifest v2. Readers retain the documented older formats. HNSW sidecar v3 stores directed supplementary edges and entry pools; v1/v2
+read compatibility is locked by checked-in fixtures. See also the
 [field catalog](formats/field-catalog-format.md),
 [point records](formats/point-record-format.md), and
 [field envelopes](formats/field-envelopes-format.md).
 
-Phase 4.2 evaluates strict typed conditions before SIMD scoring. Phase 4.3
+Phase 4.2 evaluates scalar conditions before SIMD scoring. Phase 4.3
 composes them as bounded All/Any/Negate expressions stored in a flat node arena
 to keep Mojo ownership explicit. Phase 9 evaluates those same expressions with
 a derived `MetadataIndex`: stable MemTable slots are ordinals in dense 64-bit
 candidate bitmaps, String/Bool values use sparse sorted postings, and
-Int64/Float64 values use type-specific sorted blocks for equality and ranges.
+Int64/Float64 values use separate sorted blocks. Integer equality compares exact
+Int64 values; numeric ranges and floating-literal equality compare both blocks
+as Float64, matching Qdrant's range conversion (including rounding above 2^53).
 This keeps high-cardinality metadata memory linear in indexed field entries.
-Missing fields and type mismatches do not match, including inequality.
+String and integer inequality use Qdrant MatchExcept semantics: other present
+scalar types also match. Boolean predicates remain strictly boolean. Missing
+fields never satisfy a field condition, but an outer Negate includes them.
 
 Document writes incrementally remove old postings and add new postings after
 the authoritative WAL and MemTable mutation succeeds. Deletes clear the live
@@ -267,7 +307,10 @@ lightweight IDs and scores, and `get` resolves the latest owned payload.
 Phase 16 adds an authenticated multi-process reference cluster. Each replica
 process owns independent Mojo WAL/segment/manifest state plus a checksummed
 replicated journal. Versioned cluster metadata selects shard leaders and
-placements. The coordinator performs quorum prepare/commit, failover, catch-up,
+placements. Replica application writes dense, payload and sparse values in one point WAL batch.
+Journal append and state publication synchronize files and their parent directory;
+an uncertain journal append blocks further acknowledgements until reopen validates
+and synchronizes the complete prefix. The coordinator performs quorum prepare/commit, failover, catch-up,
 snapshot-plus-tail rebalancing, fan-out, and deterministic global Top-K/RRF.
 
 ## Implemented adapter boundary

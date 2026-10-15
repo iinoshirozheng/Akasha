@@ -1,4 +1,4 @@
-"""Field-specific retrieval and deterministic F64 RRF on one captured root."""
+"""Field-specific retrieval and deterministic F32 RRF on one captured root."""
 
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.field_metrics import (
@@ -7,6 +7,7 @@ from akasha.compute.field_metrics import (
 )
 from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats
+from akasha.index.sparse import sparse_score_is_eligible
 from akasha.query.control import QueryControl
 from akasha.query.field_ann import search_generation_field_approx
 from akasha.query.field_ivf import search_generation_field_ivf
@@ -17,6 +18,7 @@ from akasha.query.field_search import (
     search_generation_field_reported,
 )
 from akasha.query.filter_ast import FilterExpression
+from akasha.query.fusion import rrf_position_score
 from akasha.storage.read_generation import ReadGeneration
 
 
@@ -87,11 +89,11 @@ def search_generation_fields(
         if rerank_ordinal < 0:
             raise Error("unknown named rerank field")
         validate_field_query(final.query, catalog.field_at(rerank_ordinal))
-    var scores = Dict[Int, Float64]()
+    var scores = Dict[Int, Float32]()
     var stats = HnswSearchStats()
-    stats.backend_name = "native-f64"
+    stats.backend_name = "native-f32"
     stats.storage_name = "field-fusion"
-    stats.scalar_name = "f64"
+    stats.scalar_name = "f32"
     stats.metric_name = "rrf"
     for branch in range(len(queries)):
         if control:
@@ -143,10 +145,8 @@ def search_generation_fields(
         ref ranked = execution.results
         for rank in range(len(ranked)):
             var id = ranked[rank].id
-            var contribution = Float64(1) / (
-                Float64(rank_constant) + Float64(rank) + 1
-            )
-            scores[id] = scores.get(id, Float64(0)) + contribution
+            var contribution = rrf_position_score(rank, rank_constant)
+            scores[id] = scores.get(id, Float32(0)) + contribution
         stats.requested_ef = max(
             stats.requested_ef, execution.stats.requested_ef
         )
@@ -173,7 +173,7 @@ def search_generation_fields(
         smaller_is_better=False,
     )
     for id in scores:
-        topk.offer(id, scores[id])
+        topk.offer(id, Float64(scores[id]))
     var results = topk.sorted_entries()
     if rerank:
         ref field = catalog.field_at(rerank_ordinal)
@@ -203,10 +203,9 @@ def search_generation_fields(
             ref value = entry.vector_at(field_ordinal).value()
             if field.kind == 2 and value.row_count() == 0:
                 continue
-            ranked.offer(
-                entry.id,
-                _score_validated_field(rerank.value().query, value, field),
-            )
+            var score = _score_validated_field(rerank.value().query, value, field)
+            if field.kind != 1 or sparse_score_is_eligible(Float32(score)):
+                ranked.offer(entry.id, score)
             stats.reranked_candidates += 1
             stats.distance_evaluations += 1
         if control:

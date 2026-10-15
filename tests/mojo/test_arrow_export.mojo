@@ -8,6 +8,7 @@ from akasha.storage.memtable import MemTableEntry
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable
 from akasha.storage.read_generation import ReadGenerationCache
+from akasha.storage.manifest import load_manifest
 from akasha.storage.filesystem import path_exists
 from bindings.arrow_export import (
     ArrowColumn,
@@ -166,7 +167,7 @@ def test_last_arrow_release_reclaims_compacted_files_after_collection_close() ra
     var collection = PersistentCollection.open(path, 2)
     collection.upsert(1, [1.0, 2.0])
     collection.flush()
-    var old_base = path + "/segment-base-1.bin"
+    var old_base = path + "/" + load_manifest(path, 2).segments[0].name
     assert_true(path_exists(old_base))
     var snapshot = collection.snapshot()
     var scanner = snapshot.scanner(1)

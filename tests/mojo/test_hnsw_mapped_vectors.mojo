@@ -133,7 +133,7 @@ def test_f32_mapped_validation_rejects_invalid_values_in_chunks_and_tails() rais
                     _reject(corrupt, config)
 
 
-def test_f32_mapped_validation_rejects_zero_and_nonunit_cosine_rows() raises:
+def test_f32_mapped_validation_accepts_zero_and_rejects_nonunit_cosine_rows() raises:
     var config = _config(33, MetricKind.cosine())
     var bytes = encode_hnsw_snapshot(_graph(config), UInt64(93))
     var vector_offset = Int(_u64_at(bytes, 104))
@@ -141,7 +141,7 @@ def test_f32_mapped_validation_rejects_zero_and_nonunit_cosine_rows() raises:
     for component in range(33):
         _put_u32(zero, vector_offset + component * 4, 0)
     _seal(zero)
-    _reject(zero, config)
+    _ = decode_hnsw_snapshot_owned(zero.copy(), config, UInt64(93))
     _put_u32(zero, vector_offset + 32 * 4, bitcast[DType.uint32](Float32(2.0)))
     _seal(zero)
     _reject(zero, config)

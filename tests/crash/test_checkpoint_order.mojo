@@ -121,7 +121,7 @@ def _prepare_compaction(
     var inputs = List[List[UInt8]]()
     for index in range(len(committed.segments)):
         input_names.append(committed.segments[index].name.copy())
-        input_names.append(committed.segments[index].sparse_name.copy())
+        assert_equal(committed.segments[index].sparse_name, "")
     for name in input_names:
         inputs.append(read_file_bytes(path + "/" + name))
 
@@ -142,7 +142,8 @@ def _prepare_compaction(
     assert_true(collection._finish_compaction(job.value(), output))
     var new_manifest = read_file_bytes(path + "/manifest.bin")
     collection.close()
-    var output_names: List[String] = [output.segment_name, output.sparse_name]
+    assert_equal(output.sparse_name, "")
+    var output_names: List[String] = [output.segment_name]
     return _CompactionFixture(
         old_manifest^,
         new_manifest^,

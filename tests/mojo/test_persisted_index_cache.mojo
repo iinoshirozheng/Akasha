@@ -118,7 +118,7 @@ def _downgrade_manifest_without_hnsw(path: String, dimension: Int) raises:
     publish_manifest(path, legacy)
 
 
-def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
+def test_reopen_hits_hnsw_sidecar_and_metadata_cache() raises:
     var path = String("/tmp/akasha-phase12-persisted-cache")
     _reset(path)
     var config = _cache_config(2)
@@ -133,7 +133,7 @@ def test_reopen_hits_persisted_hnsw_and_metadata_caches() raises:
     # collection fallback remains a Task 17 integration concern.
     var expected = collection.search_l2_approx([1.0, 2.0], 3, 80)
     collection.flush()
-    assert_true(path_exists(path + "/hnsw.cache"))
+    assert_false(path_exists(path + "/hnsw.cache"))
     assert_true(path_exists(path + "/metadata.cache"))
     collection.close()
 
@@ -175,7 +175,7 @@ def test_corrupt_or_stale_caches_rebuild_without_losing_queries() raises:
     stale.close()
 
 
-def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
+def test_reopen_rebuilds_prototype_hnsw_cache_from_authority() raises:
     var path = String("/tmp/akasha-phase13-legacy-hnsw-cache")
     _reset(path)
     var config = _cache_config(1)
@@ -186,7 +186,7 @@ def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
     collection.flush()
     collection.close()
 
-    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
+    var current = decode_cache_bytes(read_file_bytes(path + "/metadata.cache"))
     var legacy = _legacy_two_point_hnsw_payload()
     var artifact = CacheArtifact(
         CACHE_HNSW_KIND,
@@ -200,7 +200,7 @@ def test_reopen_accepts_prototype_hnsw_payload_bytes() raises:
     _downgrade_manifest_without_hnsw(path, 1)
 
     var reopened = PersistentCollection.open_with_config(path, config.copy())
-    assert_true(reopened.hnsw_cache_hit())
+    assert_false(reopened.hnsw_cache_hit())
     assert_equal(reopened.search_l2_approx([1.1], 1, 8)[0].id, 10)
     reopened.close()
 
@@ -247,7 +247,7 @@ def test_crc_valid_hostile_legacy_cache_is_a_safe_miss() raises:
     _ = collection.search_l2_approx([1.1], 1, 8)
     collection.flush()
     collection.close()
-    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
+    var current = decode_cache_bytes(read_file_bytes(path + "/metadata.cache"))
 
     var writer = BinaryWriter()
     writer.write_u16(UInt16.MAX)
@@ -289,7 +289,7 @@ def test_same_count_wrong_id_hnsw_cache_is_a_safe_miss() raises:
     collection.upsert(20, [2.0])
     collection.flush()
     collection.close()
-    var current = decode_cache_bytes(read_file_bytes(path + "/hnsw.cache"))
+    var current = decode_cache_bytes(read_file_bytes(path + "/metadata.cache"))
 
     var wrong = HnswIndex(config.copy())
     wrong.add(30, [1.0])

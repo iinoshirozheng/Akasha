@@ -186,7 +186,7 @@ def distance_partial_topk[
                     else:
                         score += lhs * rhs
                 comptime if metric == 2:
-                    score /= sqrt(
+                    var norm_product = (
                         rebind[Float32](
                             queries[Int(query_count) * Int(dimension) + query]
                         )
@@ -196,6 +196,7 @@ def distance_partial_topk[
                             ]
                         )
                     )
+                    score = 0.0 if norm_product == 0 else score / sqrt(norm_product)
                 scores[point] = score
                 keys[point] = rebind[Int64](ids[position])
     else:
@@ -223,7 +224,7 @@ def distance_partial_topk[
                     Int(dimension),
                 )
             comptime if metric == 2:
-                score /= sqrt(
+                var norm_product = (
                     rebind[Float32](
                         queries[Int(query_count) * Int(dimension) + query]
                     )
@@ -231,6 +232,7 @@ def distance_partial_topk[
                         vectors[Int(point_count) * Int(dimension) + position]
                     )
                 )
+                score = 0.0 if norm_product == 0 else score / sqrt(norm_product)
             scores[point] = score
             keys[point] = rebind[Int64](ids[position])
     for point in range(tid, count, block_dim.x):

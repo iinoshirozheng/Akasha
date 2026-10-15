@@ -80,6 +80,8 @@ def _mixed() raises -> List[UInt8]:
     var bytes = _legacy()
     var next = _fixture()
     bytes.extend(Span(next))
+    var current = encode_point_batch(12, [PointMutation.delete(1)], _catalog()[])
+    bytes.extend(Span(current))
     return bytes^
 
 
@@ -117,6 +119,9 @@ def test_mixed_reader_keeps_legacy_and_field_batches_owned_and_distinct() raises
     var fourth = _next(reader)
     assert_false(fourth.is_legacy())
     assert_equal(fourth.point_batch().first_sequence, UInt64(8))
+    var fifth = _next(reader)
+    assert_equal(fifth.format_version, 5)
+    assert_equal(fifth.point_batch().format_version, 5)
     assert_equal(reader.valid_length, len(bytes))
     assert_false(Bool(reader.read_next()))
     assert_false(Bool(reader.read_next()))
@@ -191,7 +196,7 @@ def test_late_corruption_poisoning_preserves_accepted_prefix() raises:
     var catalog = _catalog()
     write_file_sync(path, bytes)
     var reader = FieldWalReader(path, catalog.copy())
-    for _ in range(3):
+    for _ in range(4):
         _ = reader.read_next()
     var prefix = reader.valid_length
     with assert_raises():
@@ -199,7 +204,7 @@ def test_late_corruption_poisoning_preserves_accepted_prefix() raises:
     with assert_raises():
         _ = reader.read_next()
     assert_equal(reader.valid_length, prefix)
-    assert_equal(prefix, len(_legacy()))
+    assert_equal(prefix, len(_legacy()) + len(_fixture()))
     assert_equal(read_file_bytes(path), bytes)
     remove_file_if_exists(path)
 

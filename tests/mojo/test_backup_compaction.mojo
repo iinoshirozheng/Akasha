@@ -39,7 +39,7 @@ def test_backup_pins_pre_compaction_files_without_a_worker() raises:
     for index in range(len(captured.manifest.segments)):
         ref segment = captured.manifest.segments[index]
         assert_true(path_exists(path + "/" + segment.name))
-        assert_true(path_exists(path + "/" + segment.sparse_name))
+        assert_equal(segment.sparse_name, "")
     copy_checkpoint(path, target, captured)
     collection._end_backup(captured)
     assert_equal(collection._pins[].active_count(), 0)

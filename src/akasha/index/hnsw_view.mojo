@@ -1,3 +1,4 @@
+from akasha.query.control import QueryControl
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.compute.dispatch import (
@@ -32,11 +33,11 @@ from akasha.index.hnsw_core import (
     HnswEligibility,
     HnswResultAdmission,
     HnswSearchAdmission,
-    greedy_descent,
-    search_layer,
     search_allowed_with_widening_core,
     search_prepared_allowed_with_widening_core,
 )
+from akasha.index.hnsw_entries import HnswEntry, HnswEntryPoints, decode_entries
+from akasha.index.hnsw_search import search_entry, search_level
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.hnsw_storage import HnswGraphAccess, _decode_packed_float
@@ -82,6 +83,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     the mapping owner.
     """
 
+    var entries: HnswEntryPoints
     var _mapping: MappedFile
     var _config: CollectionConfig
     var _metric: MetricDispatcher
@@ -104,10 +106,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
     var _scale_width: Int
     var _count_offset: Int
     var _edge_offset: Int
+    var _legacy_symmetric: Bool
 
     def __init__(out self) raises:
         """Create a harmless closed view; only the store adopts a mapping."""
         var config = CollectionConfig.defaults(1)
+        self.entries = HnswEntryPoints()
         self._mapping = MappedFile()
         self._config = config.copy()
         self._metric = MetricDispatcher(
@@ -133,11 +137,13 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._scale_width = 0
         self._count_offset = 0
         self._edge_offset = 0
+        self._legacy_symmetric = False
 
     def __init__(out self, config: CollectionConfig) raises:
         config.validate()
         var counters = DistanceDispatchCounters()
         var backend = select_distance_backend(config, counters)
+        self.entries = HnswEntryPoints()
         self._mapping = MappedFile()
         self._config = config.copy()
         self._metric = backend.dispatcher()
@@ -160,6 +166,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._scale_width = 0
         self._count_offset = 0
         self._edge_offset = 0
+        self._legacy_symmetric = False
 
     def __init__(
         out self, config: CollectionConfig, backend: DistanceBackend
@@ -167,6 +174,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         """Create a closed view using an aggregate owner's selected backend."""
         config.validate()
         backend.validate_identity(config)
+        self.entries = HnswEntryPoints()
         self._mapping = MappedFile()
         self._config = config.copy()
         self._metric = backend.dispatcher()
@@ -189,6 +197,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         self._scale_width = 0
         self._count_offset = 0
         self._edge_offset = 0
+        self._legacy_symmetric = False
 
     @staticmethod
     def _from_validated_mapping(
@@ -207,6 +216,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         scale_width: Int,
         count_offset: Int,
         edge_offset: Int,
+        legacy_symmetric: Bool,
     ) raises -> HnswGraphView:
         config.validate()
         var result = HnswGraphView(config)
@@ -225,7 +235,20 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         result._scale_width = scale_width
         result._count_offset = count_offset
         result._edge_offset = edge_offset
+        result._legacy_symmetric = legacy_symmetric
         return result^
+
+    def validate_entry_padding(self, start: Int, end: Int) raises:
+        for offset in range(start, end):
+            if self._mapping.byte_at(offset) != UInt8(0):
+                raise Error("nonzero HNSW entry section padding")
+
+    def load_entries(mut self, offset: Int, length: Int) raises:
+        var bytes = List[UInt8](capacity=length)
+        # Section arithmetic and bounded length have already been validated.
+        for ordinal in range(length):
+            bytes.append(self._mapping.byte_at(offset + ordinal))
+        self.entries = decode_entries(bytes^, self)
 
     def close(mut self):
         self._mapping.close()
@@ -249,6 +272,14 @@ struct HnswGraphView(HnswGraphAccess, Movable):
 
     def graph_m0(self) -> Int:
         return self._config.m0
+
+    def _current_entry(self) raises -> Optional[HnswEntry]:
+        var all_points = HnswSearchAdmission()
+        return self.entries.get_entry(self, all_points)
+
+    def _current_entry_level(self) raises -> Int:
+        var entry = self._current_entry()
+        return entry.value().level if entry else -1
 
     def entry_slot(self) raises -> UInt32:
         self.validate_search_ready()
@@ -656,7 +687,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         """Locate one level once; individual reads retain mapping validation."""
         var count = self.neighbor_count(slot, level)
         var capacity = self._config.m0 if level == 0 else self._config.m
-        if count > capacity:
+        if count >= self._slots or (self._legacy_symmetric and count > capacity):
             raise Error("HNSW neighbor count exceeds level capacity")
         var edge_ordinal = self._read_u64(self._node_record(slot) + 24)
         for prior_level in range(level):
@@ -731,7 +762,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 var capacity = self._config.m
                 if graph_level == 0:
                     capacity = self._config.m0
-                if count < 0 or count > capacity:
+                if count < 0 or count >= self._slots or (self._legacy_symmetric and count > capacity):
                     raise Error("HNSW snapshot neighbor count exceeds capacity")
                 node_edges += UInt64(count)
             if self._read_u64(node + 32) != node_edges:
@@ -790,6 +821,8 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 for component in range(self._config.dimension):
                     prepared.append(self.vector_value(slot, component))
             self._metric.validate_prepared_vector(prepared)
+            if self._legacy_symmetric:
+                self._metric.validate_legacy_cosine_prepared(prepared)
 
             if flag == _CURRENT_FLAG:
                 var id = self.id_at(slot)
@@ -843,7 +876,13 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 or self._entry_level < maximum_live_level
             ):
                 raise Error("HNSW snapshot entry point is invalid")
-        _audit_bidirectional_links_with_stats(self, stats)
+        self.entries.validate(self)
+        if self._legacy_symmetric:
+            _audit_bidirectional_links_with_stats(self, stats)
+        else:
+            stats.owned_level_cells = self._level_cells
+            stats.directed_edges = self._directed_edges
+            stats.auxiliary_reserved_bytes = 0
 
     def search(
         mut self,
@@ -851,6 +890,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         k: Int,
         *,
         ef_search: Int = -1,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         record_distance_dispatch(
@@ -859,38 +899,43 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         )
         var tag = self._distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
-            return self._search_backend[DISTANCE_DOT_F32](query, k, ef_search)
+            return self._search_backend[DISTANCE_DOT_F32](query, k, ef_search, control=control)
         if tag == DISTANCE_L2_F32:
-            return self._search_backend[DISTANCE_L2_F32](query, k, ef_search)
+            return self._search_backend[DISTANCE_L2_F32](query, k, ef_search, control=control)
         if tag == DISTANCE_COSINE_F32:
             return self._search_backend[DISTANCE_COSINE_F32](
-                query, k, ef_search
+                query, k, ef_search,
+                control=control,
             )
         if tag == DISTANCE_DOT_BF16:
-            return self._search_backend[DISTANCE_DOT_BF16](query, k, ef_search)
+            return self._search_backend[DISTANCE_DOT_BF16](query, k, ef_search, control=control)
         if tag == DISTANCE_L2_BF16:
-            return self._search_backend[DISTANCE_L2_BF16](query, k, ef_search)
+            return self._search_backend[DISTANCE_L2_BF16](query, k, ef_search, control=control)
         if tag == DISTANCE_COSINE_BF16:
             return self._search_backend[DISTANCE_COSINE_BF16](
-                query, k, ef_search
+                query, k, ef_search,
+                control=control,
             )
         if tag == DISTANCE_DOT_F16:
-            return self._search_backend[DISTANCE_DOT_F16](query, k, ef_search)
+            return self._search_backend[DISTANCE_DOT_F16](query, k, ef_search, control=control)
         if tag == DISTANCE_L2_F16:
-            return self._search_backend[DISTANCE_L2_F16](query, k, ef_search)
+            return self._search_backend[DISTANCE_L2_F16](query, k, ef_search, control=control)
         if tag == DISTANCE_COSINE_F16:
             return self._search_backend[DISTANCE_COSINE_F16](
-                query, k, ef_search
+                query, k, ef_search,
+                control=control,
             )
         if tag == DISTANCE_DOT_I8:
-            return self._search_backend[DISTANCE_DOT_I8](query, k, ef_search)
+            return self._search_backend[DISTANCE_DOT_I8](query, k, ef_search, control=control)
         if tag == DISTANCE_COSINE_I8:
-            return self._search_backend[DISTANCE_COSINE_I8](query, k, ef_search)
+            return self._search_backend[DISTANCE_COSINE_I8](query, k, ef_search, control=control)
         raise Error("distance backend tag is invalid")
 
     def _search_backend[
         backend_tag: Int
-    ](mut self, query: List[Float32], k: Int, ef_search: Int) raises -> List[
+    ](mut self, query: List[Float32], k: Int, ef_search: Int,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[
         SearchResult
     ]:
         self.validate_search_ready()
@@ -923,34 +968,31 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         stats.metric_name = self._metric.metric_name()
         stats.scalar_name = self._metric.scalar_name()
         stats.storage_name = String("mapped-", self._config.scalar_name())
-        if target_count == 0 or not Bool(self._entry_slot):
+        var selected_entry = self._current_entry()
+        if target_count == 0 or not selected_entry:
             stats.effective_ef = 0
             self._last_stats = stats^
             self._last_search_query_preparations = 1
             return List[SearchResult]()
 
-        var current = self._entry_slot.value()
-        for level in range(self._entry_level, 0, -1):
-            current = greedy_descent[backend_tag=backend_tag](
-                self, self._metric, prepared, current, level, stats
-            ).slot
+        var current = selected_entry.value()
         var admission = HnswSearchAdmission()
-        # Move reusable scratch out so the graph's immutable `self` borrow and
-        # scratch's mutable borrow have distinct origins under Mojo 1.0.
+        var entry = search_entry[backend_tag=backend_tag](
+            self, self._metric, prepared, current.slot, current.level,
+            0, admission, stats,
+            control=control,
+        )
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var candidates = search_layer[backend_tag=backend_tag](
-            self,
-            self._metric,
-            prepared,
-            current,
-            0,
-            target_count,
-            effective_ef,
-            admission,
-            scratch,
-            stats,
+        var candidates = search_level[backend_tag=backend_tag](
+            self, self._metric, prepared, entry, 0, effective_ef,
+            admission, scratch, stats,
+            control=control,
         )
+        while len(candidates) > target_count:
+            _ = candidates.pop()
+        stats.retained_candidates = len(candidates)
+        self._last_search_upper_descents = current.level
         self._scratch = scratch^
         var results = List[SearchResult](capacity=len(candidates))
         for candidate in candidates:
@@ -971,10 +1013,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         initial_ef: Int,
         max_ef: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Run the same prepare-once widening core as an owned graph."""
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed, False, True
+            query, k, initial_ef, max_ef, allowed, False, True,
+            control=control,
         )
 
     def search_allowed_candidates_with_widening(
@@ -984,10 +1028,12 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         initial_ef: Int,
         max_ef: Int,
         allowed: HnswEligibility,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         """Return the final search breadth without source-local fallback."""
         return self._search_allowed_with_actual_widening(
-            query, k, initial_ef, max_ef, allowed, True, False
+            query, k, initial_ef, max_ef, allowed, True, False,
+            control=control,
         )
 
     def _search_allowed_with_actual_widening(
@@ -999,6 +1045,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         allowed: HnswEligibility,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         return self._search_admitted_with_actual_widening(
             query,
@@ -1009,6 +1056,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             allowed,
             return_search_breadth,
             exact_fallback,
+            control=control,
         )
 
     def _search_admitted_candidates_with_widening[
@@ -1021,6 +1069,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         return self._search_admitted_with_actual_widening(
             query,
@@ -1031,6 +1080,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             admission,
             True,
             False,
+            control=control,
         )
 
     def _search_admitted_prepared_candidates_with_widening[
@@ -1043,6 +1093,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         record_distance_dispatch(
@@ -1052,46 +1103,54 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         var tag = self._distance_backend.tag()
         if tag == DISTANCE_DOT_F32:
             return self._search_prepared_backend[backend_tag=DISTANCE_DOT_F32](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_L2_F32:
             return self._search_prepared_backend[backend_tag=DISTANCE_L2_F32](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F32:
             return self._search_prepared_backend[
                 backend_tag=DISTANCE_COSINE_F32
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_BF16:
             return self._search_prepared_backend[backend_tag=DISTANCE_DOT_BF16](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_L2_BF16:
             return self._search_prepared_backend[backend_tag=DISTANCE_L2_BF16](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_COSINE_BF16:
             return self._search_prepared_backend[
                 backend_tag=DISTANCE_COSINE_BF16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_F16:
             return self._search_prepared_backend[backend_tag=DISTANCE_DOT_F16](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_L2_F16:
             return self._search_prepared_backend[backend_tag=DISTANCE_L2_F16](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F16:
             return self._search_prepared_backend[
                 backend_tag=DISTANCE_COSINE_F16
-            ](prepared, k, initial_ef, max_ef, admitted_count, admission)
+            ](prepared, k, initial_ef, max_ef, admitted_count, admission, control=control)
         if tag == DISTANCE_DOT_I8:
             return self._search_prepared_backend[backend_tag=DISTANCE_DOT_I8](
-                prepared, k, initial_ef, max_ef, admitted_count, admission
+                prepared, k, initial_ef, max_ef, admitted_count, admission,
+                control=control,
             )
         return self._search_prepared_backend[backend_tag=DISTANCE_COSINE_I8](
-            prepared, k, initial_ef, max_ef, admitted_count, admission
+            prepared, k, initial_ef, max_ef, admitted_count, admission,
+            control=control,
         )
 
     def _search_prepared_backend[
@@ -1104,6 +1163,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         max_ef: Int,
         admitted_count: Int,
         admission: AdmissionType,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
@@ -1122,11 +1182,11 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             admitted_count,
             True,
             False,
-            self._entry_slot,
-            self._entry_level,
+            self.entries,
             String("mapped-", self._config.scalar_name()),
             admission,
             scratch,
+            control=control,
         )
         self._scratch = scratch^
         self._last_search_query_preparations = outcome.query_preparations
@@ -1146,6 +1206,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         allowed: AdmissionType,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self._validate_bound_identity()
         record_distance_dispatch(
@@ -1163,6 +1224,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_F32:
             return self._search_widening_backend[backend_tag=DISTANCE_L2_F32](
@@ -1174,6 +1236,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F32:
             return self._search_widening_backend[
@@ -1187,6 +1250,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_BF16:
             return self._search_widening_backend[backend_tag=DISTANCE_DOT_BF16](
@@ -1198,6 +1262,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_BF16:
             return self._search_widening_backend[backend_tag=DISTANCE_L2_BF16](
@@ -1209,6 +1274,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_BF16:
             return self._search_widening_backend[
@@ -1222,6 +1288,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_F16:
             return self._search_widening_backend[backend_tag=DISTANCE_DOT_F16](
@@ -1233,6 +1300,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_L2_F16:
             return self._search_widening_backend[backend_tag=DISTANCE_L2_F16](
@@ -1244,6 +1312,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_COSINE_F16:
             return self._search_widening_backend[
@@ -1257,6 +1326,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         if tag == DISTANCE_DOT_I8:
             return self._search_widening_backend[backend_tag=DISTANCE_DOT_I8](
@@ -1268,6 +1338,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
                 allowed,
                 return_search_breadth,
                 exact_fallback,
+                control=control,
             )
         return self._search_widening_backend[backend_tag=DISTANCE_COSINE_I8](
             query,
@@ -1278,6 +1349,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             allowed,
             return_search_breadth,
             exact_fallback,
+            control=control,
         )
 
     def _search_widening_backend[
@@ -1292,6 +1364,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
         allowed: AdmissionType,
         return_search_breadth: Bool,
         exact_fallback: Bool,
+        control: Optional[QueryControl] = None,
     ) raises -> List[SearchResult]:
         self.validate_search_ready()
         if max_ef > self._config.max_ef_search:
@@ -1310,11 +1383,11 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             eligible_count,
             return_search_breadth,
             exact_fallback,
-            self._entry_slot,
-            self._entry_level,
+            self.entries,
             String("mapped-", self._config.scalar_name()),
             allowed,
             scratch,
+            control=control,
         )
         self._scratch = scratch^
         self._last_search_query_preparations = outcome.query_preparations

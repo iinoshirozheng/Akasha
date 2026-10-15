@@ -58,22 +58,25 @@ def test_cosine_pair_preserves_bits_and_each_candidate_check() raises:
     exercise[2]()
 
 
-def test_cosine_preserves_first_candidate_error_precedence() raises:
+def test_cosine_zero_candidates_still_validate_other_candidate() raises:
     for size in [3, 16, 17, 64, 65, 127]:
         var query = List[Float32](length=size, fill=1)
         var zeros = List[Float32](length=size, fill=0)
         var invalid = query.copy()
         invalid[size - 1] = nan[DType.float32]()
         var prepared = _prepare_f32_query(2, query)
-        with assert_raises(contains="non-zero"):
+        with assert_raises(contains="finite"):
             _ = paired_score[2](query, zeros, invalid, prepared)
-        with assert_raises(contains="non-zero"):
+        with assert_raises():
             _ = paired_score[2](query, zeros, List[Float32](), prepared)
         with assert_raises(contains="finite"):
             _ = paired_score[2](query, invalid, zeros, prepared)
-        with assert_raises(contains="non-zero"):
-            _ = paired_score[2](query, query, zeros, prepared)
-        with assert_raises(contains="non-zero"):
+        var result = paired_score[2](query, query, zeros, prepared)
+        assert_equal(result[0], Float32(1))
+        assert_equal(result[1], Float32(0))
+        var both = paired_score[2](zeros, query, zeros, 0)
+        assert_equal(both, SIMD[DType.float32, 2](0, 0))
+        with assert_raises(contains="finite"):
             _ = paired_score[2](zeros, query, invalid, 0)
         with assert_raises(contains="finite"):
             _ = paired_score[2](zeros, invalid, query, 0)

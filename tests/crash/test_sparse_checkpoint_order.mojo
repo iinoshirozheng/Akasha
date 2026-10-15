@@ -15,6 +15,7 @@ def test_sparse_manifest_commit_before_wal_rotation_recovers_once() raises:
         "/wal.bin",
         "/sparse.wal",
         "/manifest.bin",
+        "/collection.bin",
         "/segment-2.bin",
         "/sparse-2.bin",
     ]:
@@ -22,10 +23,10 @@ def test_sparse_manifest_commit_before_wal_rotation_recovers_once() raises:
     var collection = PersistentCollection.open(directory, 1)
     collection.upsert(42, [1.0])
     collection.upsert_sparse(42, [SparseElement(7, 3.0)])
-    var old_sparse_wal = read_file_bytes(directory + "/sparse.wal")
+    var old_point_wal = read_file_bytes(directory + "/wal.bin")
     collection.flush()
 
-    write_file_sync(directory + "/sparse.wal", old_sparse_wal)
+    write_file_sync(directory + "/wal.bin", old_point_wal)
     collection.close()
     var recovered = PersistentCollection.open(directory, 1)
     var results = recovered.search_sparse_dot([SparseElement(7, 1.0)], 2)

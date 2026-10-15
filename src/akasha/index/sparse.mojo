@@ -1,6 +1,15 @@
 from akasha.compute.topk import BoundedTopK
 from akasha.index.flat import SearchResult
 from std.math import isfinite
+from std.memory import bitcast
+
+
+def sparse_score_is_eligible(score: Float32) -> Bool:
+    """Qdrant sparse admission above TopK's initial f32::MIN threshold.
+
+    Reject zero, NaN and negative overflow; positive overflow remains eligible.
+    """
+    return score != 0 and score > bitcast[DType.float32](UInt32(0xFF7FFFFF))
 
 
 struct SparseElement(TrivialRegisterPassable, Writable):
@@ -44,17 +53,25 @@ struct _PostingList(Movable):
 
 
 def validate_sparse(elements: List[SparseElement]) raises:
-    if len(elements) == 0:
-        raise Error("sparse vectors cannot be empty")
     var previous = -1
     for element in elements:
         if element.term_id < 0:
             raise Error("sparse term IDs must be non-negative")
         if element.term_id <= previous:
             raise Error("sparse term IDs must be unique and ascending")
-        if not isfinite(element.weight) or element.weight == 0.0:
-            raise Error("sparse weights must be finite and non-zero")
+        if not isfinite(element.weight):
+            raise Error("sparse weights must be finite")
         previous = element.term_id
+
+
+def validate_legacy_sparse(elements: List[SparseElement]) raises:
+    """Validate the frozen sparse WAL v1 and segment v1/v2 contract."""
+    validate_sparse(elements)
+    if len(elements) == 0:
+        raise Error("legacy sparse vectors cannot be empty")
+    for element in elements:
+        if element.weight == 0.0:
+            raise Error("legacy sparse weights must be non-zero")
 
 
 struct SparseIndex:
@@ -163,7 +180,11 @@ struct SparseIndex:
                     scores.append(SearchResult(posting.id, contribution))
                 else:
                     scores[score_index].score += contribution
-        return scores^
+        var nonzero = List[SearchResult]()
+        for score in scores:
+            if sparse_score_is_eligible(score.score):
+                nonzero.append(score)
+        return nonzero^
 
     def search_dot(
         self, query: List[SparseElement], k: Int

@@ -1,11 +1,10 @@
+from akasha.index.hnsw_search import search_entry, search_level
 """Isolated immutable mapped-base prefetch experiment, no production changes."""
 
 from akasha import PersistentCollection
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     HnswSearchAdmission,
-    greedy_descent,
-    search_layer,
 )
 from akasha.index.hnsw_heap import HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
@@ -104,22 +103,13 @@ def run[
     var metric = graph._metric.copy()
     var view = Prefetched[origin_of(graph), lines](Pointer(to=graph))
     var stats = HnswSearchStats()
-    var current = graph._entry_slot.value()
-    for level in range(graph._entry_level, 0, -1):
-        current = greedy_descent[backend_tag=tag](
-            view, metric, query, current, level, stats
-        ).slot
-    return search_layer[backend_tag=tag](
-        view,
-        metric,
-        query,
-        current,
-        0,
-        ef,
-        ef,
-        HnswSearchAdmission(),
-        scratch,
-        stats,
+    var admission = HnswSearchAdmission()
+    var current = search_entry[backend_tag=tag](
+        view, metric, query, graph._entry_slot.value(), graph._entry_level, 0,
+        admission, stats
+    )
+    return search_level[backend_tag=tag](
+        view, metric, query, current, 0, ef, admission, scratch, stats
     )
 
 

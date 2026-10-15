@@ -58,7 +58,7 @@ def encode_point_segment(
     _validate_interval(kind, min_sequence, last_sequence, catalog)
     var writer = BinaryWriter()
     writer.write_u32(_MAGIC)
-    writer.write_u16(4)
+    writer.write_u16(5)
     writer.write_u16(UInt16(kind))
     writer.write_u64(catalog.schema_revision)
     writer.write_u32(catalog_crc)
@@ -98,7 +98,9 @@ def decode_point_segment(
     if ~crc32_update(CRC32_INITIAL, bytes[4 : len(bytes) - 4]) != checksum:
         raise Error("point segment checksum mismatch")
     var reader = BorrowedBinaryReader(bytes[: len(bytes) - 4])
-    if reader.read_u32() != _MAGIC or reader.read_u16() != 4:
+    var magic = reader.read_u32()
+    var version = reader.read_u16()
+    if magic != _MAGIC or (version != 4 and version != 5):
         raise Error("invalid point segment magic or version")
     var kind = Int(reader.read_u16())
     if (
@@ -122,6 +124,13 @@ def decode_point_segment(
             raise Error("invalid point segment record length")
         _ = reader.read_span(size - 4)
         var point = decode_point_record(bytes[start : start + size], catalog)
+        if version == 4:
+            for field_index in range(point.field_count()):
+                ref value = point.field_at(field_index).value()
+                if value.kind() == 1:
+                    for element in value.sparse_values():
+                        if element.weight == 0:
+                            raise Error("v4 sparse weights must be non-zero")
         if index > 0 and point.id <= previous_id:
             raise Error("point segment IDs must strictly increase")
         previous_id = point.id

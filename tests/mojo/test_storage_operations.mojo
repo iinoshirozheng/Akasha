@@ -1,3 +1,4 @@
+from akasha.storage.field_catalog import load_field_catalog
 from akasha import (
     CollectionConfig,
     DocumentField,
@@ -274,7 +275,8 @@ def test_backup_rejects_corrupt_torn_or_mislabeled_source_files() raises:
     collection.flush()
 
     var report = inspect_storage(source, 1)
-    var names: List[String] = [report.segment_names[0], report.sparse_names[0]]
+    var names = report.segment_names.copy()
+    names.extend(report.sparse_names.copy())
     names.append(load_manifest(source, 1).hnsw_name.value().copy())
     for name in names:
         var path = source + "/" + name
@@ -383,10 +385,10 @@ def test_backup_and_restore_preserve_non_default_collection_identity() raises:
     assert_true(path_exists(backup + "/collection.bin"))
     var manifest = load_manifest(backup, 2)
     var sidecar = read_file_bytes(backup + "/" + manifest.hnsw_name.value())
-    assert_equal(sidecar[4], UInt8(2))
-    assert_equal(load_collection_config(backup), config)
+    assert_equal(sidecar[4], UInt8(3))
+    assert_equal(load_field_catalog(backup).field_at(0).hnsw.value(), config)
     _ = restore_storage(backup, restored, 2)
-    assert_equal(load_collection_config(restored), config)
+    assert_equal(load_field_catalog(restored).field_at(0).hnsw.value(), config)
 
     var reopened = PersistentCollection.open_with_config(restored, config)
     assert_true(reopened._hnsw_checkpoint_was_hit)
@@ -439,7 +441,7 @@ def test_restore_rejects_wal_state_and_active_empty_target() raises:
     # The state check and manifest publication must share the writer lock.
     var active = PersistentCollection.open(active_target, 2)
     assert_false(path_exists(active_target + "/manifest.bin"))
-    assert_false(path_exists(active_target + "/wal.bin"))
+    assert_equal(len(read_file_bytes(active_target + "/wal.bin")), 0)
     with assert_raises():
         _ = restore_storage(backup, active_target, 2)
     assert_false(path_exists(active_target + "/manifest.bin"))

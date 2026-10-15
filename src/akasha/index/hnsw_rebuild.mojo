@@ -1,5 +1,8 @@
 from akasha.common.config import CollectionConfig, ScalarKind
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_payload import attach_payload_graphs
+from akasha.index.metadata import MetadataIndex
+from akasha.document.record import clone_fields
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.storage.memtable import MemTable
 from akasha.storage.read_generation import ReadGeneration
@@ -33,7 +36,7 @@ struct _RebuildOrdinal(Comparable, Copyable, Movable):
         return self.ordinal < other.ordinal
 
 
-def build_hnsw(
+def _build_hnsw_graph(
     memtable: MemTable, config: CollectionConfig
 ) raises -> HnswIndex:
     """Stage a deterministic graph while borrowing authoritative vectors."""
@@ -60,6 +63,20 @@ def build_hnsw(
             raise Error("HNSW rebuild source changed during staging")
         index.add(entry.id, entry.values())
     index.validate_structure()
+    return index^
+
+
+
+def build_hnsw(memtable: MemTable, config: CollectionConfig) raises -> HnswIndex:
+    var index = _build_hnsw_graph(memtable, config)
+    var metadata = MetadataIndex()
+    metadata.begin_bulk()
+    for ordinal in range(memtable.slot_count()):
+        ref entry = memtable.entry_ref_at(ordinal)
+        if memtable.is_live_at(ordinal) and entry.has_dense():
+            metadata.upsert(entry.id, clone_fields(entry.fields()))
+    metadata.finish_bulk()
+    attach_payload_graphs(index, metadata)
     return index^
 
 
@@ -234,9 +251,17 @@ struct HnswRebuild(Movable):
         if self.delay_for_test > 0:
             sleep(self.delay_for_test)
         var source = self.root[].dense_run()
-        return SegmentedHnsw.from_owned(
-            build_hnsw(source[].memtable, self.root[].config)
-        )
+        var index = _build_hnsw_graph(source[].memtable, self.root[].config)
+        var metadata = MetadataIndex()
+        metadata.begin_bulk()
+        for layer in range(self.root[].layer_count()):
+            for ordinal in self.root[].visible_ordinals(layer):
+                ref entry = self.root[].run(layer).memtable.entry_ref_at(ordinal)
+                if entry.has_dense():
+                    metadata.upsert(entry.id, clone_fields(entry.fields()))
+        metadata.finish_bulk()
+        attach_payload_graphs(index, metadata)
+        return SegmentedHnsw.from_owned(index^)
 
     def take_tail(mut self) raises -> MemTable:
         """Rotate the writer journal by ownership transfer, without row work."""

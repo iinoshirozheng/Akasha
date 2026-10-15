@@ -163,7 +163,7 @@ def _first_multi_edge_offset(bytes: List[UInt8]) raises -> Int:
     var count_section = Int(_u64_at(bytes, 120))
     var edge_section = Int(_u64_at(bytes, 136))
     for slot_index in range(slots):
-        var node = 160 + slot_index * 40
+        var node = Int(_u64_at(bytes, 88)) + slot_index * 40
         var level_count = Int(_u16_at(bytes, node + 8)) + 1
         var count_base = Int(_u64_at(bytes, node + 16))
         var edge_base = Int(_u64_at(bytes, node + 24))
@@ -183,7 +183,7 @@ def _first_asymmetry_candidate(bytes: List[UInt8]) raises -> Tuple[Int, UInt32]:
     var count_section = Int(_u64_at(bytes, 120))
     var edge_section = Int(_u64_at(bytes, 136))
     for source in range(slots):
-        var node = 160 + source * 40
+        var node = Int(_u64_at(bytes, 88)) + source * 40
         var level_count = Int(_u16_at(bytes, node + 8)) + 1
         var count_base = Int(_u64_at(bytes, node + 16))
         var edge_base = Int(_u64_at(bytes, node + 24))
@@ -197,7 +197,7 @@ def _first_asymmetry_candidate(bytes: List[UInt8]) raises -> Tuple[Int, UInt32]:
                     if candidate == source:
                         continue
                     var candidate_level = Int(
-                        _u16_at(bytes, 160 + candidate * 40 + 8)
+                        _u16_at(bytes, Int(_u64_at(bytes, 88)) + candidate * 40 + 8)
                     )
                     if candidate_level < level:
                         continue
@@ -320,8 +320,7 @@ def test_rejects_crc_valid_unprepared_durable_vectors() raises:
     _put_u32(zero_cosine, cosine_vectors, UInt32(0))
     _put_u32(zero_cosine, cosine_vectors + 4, UInt32(0))
     _seal(zero_cosine)
-    with assert_raises():
-        _ = decode_hnsw_snapshot_owned(zero_cosine^, cosine_config, UInt64(35))
+    _ = decode_hnsw_snapshot_owned(zero_cosine^, cosine_config, UInt64(35))
 
     var nonunit_cosine = cosine_bytes.copy()
     _put_u32(
@@ -355,7 +354,7 @@ def test_rejects_crc_valid_unprepared_durable_vectors() raises:
 def test_encoder_rejects_mutated_unprepared_graph_vector() raises:
     var config = _config(MetricKind.cosine())
     var index = _graph(config, 4)
-    index.graph.vector_scalars[0] = Float32(0.0)
+    index.graph.vector_scalars[0] = Float32(2.0)
     index.graph.vector_scalars[1] = Float32(0.0)
     with assert_raises():
         _ = encode_hnsw_snapshot(index, UInt64(37))
@@ -367,7 +366,7 @@ def test_encoder_rejects_mutated_unprepared_graph_vector() raises:
         _ = encode_hnsw_snapshot(dot, UInt64(37))
 
 
-def test_compact_writers_use_v2_while_v1_rejects_non_f32_tags() raises:
+def test_writers_use_v3_and_reject_inconsistent_scalar_widths() raises:
     assert_true(is_64bit())
     var f32_config = _config(MetricKind.dot())
     var f32_empty = HnswIndex(f32_config)
@@ -385,12 +384,12 @@ def test_compact_writers_use_v2_while_v1_rejects_non_f32_tags() raises:
 
         var empty = HnswIndex(config)
         var compact_empty = encode_hnsw_snapshot(empty, UInt64(38))
-        assert_equal(_u16_at(compact_empty, 4), UInt16(2))
+        assert_equal(_u16_at(compact_empty, 4), UInt16(3))
 
         var nonempty = HnswIndex(config)
         nonempty.add(7, _vector(1.0, 2.0))
         var compact_nonempty = encode_hnsw_snapshot(nonempty, UInt64(38))
-        assert_equal(_u16_at(compact_nonempty, 4), UInt16(2))
+        assert_equal(_u16_at(compact_nonempty, 4), UInt16(3))
 
         var bytes = encoded_empty.copy()
         _put_u64(bytes, 16, config.fingerprint())
@@ -584,13 +583,13 @@ def test_rejects_duplicate_current_public_ids() raises:
     var config = _config()
     var bytes = encode_hnsw_snapshot(_graph(config), UInt64(86))
     var duplicate = bytes.copy()
-    _put_u64(duplicate, 160 + 40, _u64_at(duplicate, 160))
+    _put_u64(duplicate, Int(_u64_at(bytes, 88)) + 40, _u64_at(bytes, Int(_u64_at(bytes, 88))))
     _seal(duplicate)
     with assert_raises():
         _ = decode_hnsw_snapshot_owned(duplicate^, config, UInt64(86))
 
 
-def test_rejects_out_of_range_self_duplicate_and_asymmetric_links() raises:
+def test_rejects_out_of_range_self_duplicate_but_accepts_directed_links() raises:
     var config = _config()
     var bytes = encode_hnsw_snapshot(_graph(config, 18), UInt64(91))
     var edge_offset = Int(_u64_at(bytes, 136))
@@ -614,8 +613,8 @@ def test_rejects_out_of_range_self_duplicate_and_asymmetric_links() raises:
     var mutation = _first_asymmetry_candidate(asymmetric)
     _put_u32(asymmetric, mutation[0], mutation[1])
     _seal(asymmetric)
-    with assert_raises():
-        _ = decode_hnsw_snapshot_owned(asymmetric^, config, UInt64(91))
+    var directed = decode_hnsw_snapshot_owned(asymmetric^, config, UInt64(91))
+    directed.validate_structure()
 
 
 def test_legacy_cache_fixture_remains_readable_and_sidecar_is_independent() raises:

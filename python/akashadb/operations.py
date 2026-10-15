@@ -12,7 +12,8 @@ import tempfile
 from typing import Any
 
 from .database import Collection, _kernel_module
-from .models import BatchMutation, PayloadField, SparseElement
+from .models import PayloadField, SparseElement
+from .vectors import PointMutation
 from .logical_points import decode_header, decode_line, decode_points, encode_export, is_point_header
 
 
@@ -118,8 +119,7 @@ def import_ndjson(collection: Collection, source: str | Path) -> int:
     if len(rows) > collection.limits.max_batch_rows:
         raise ValueError("logical import resource limit exceeded")
 
-    mutations: list[BatchMutation] = []
-    sparse_rows: list[tuple[int, list[SparseElement]]] = []
+    mutations: list[PointMutation] = []
     for row in rows:
         point_id = int(row["id"])
         vector = [float(value) for value in row["vector"]]
@@ -132,13 +132,12 @@ def import_ndjson(collection: Collection, source: str | Path) -> int:
             for item in row.get("sparse", [])
         ]
         _validate_sparse(elements)
-        mutations.append(BatchMutation.upsert(point_id, vector, fields))
-        sparse_rows.append((point_id, elements))
+        mutations.append(PointMutation.upsert(
+            point_id, vector=vector, sparse=elements if "sparse" in row else None,
+            fields=fields,
+        ))
 
-    collection.apply_batch(mutations)
-    for point_id, elements in sparse_rows:
-        if elements:
-            collection.upsert_sparse(point_id, elements)
+    collection.apply_point_batch(mutations)
     return len(rows)
 
 
@@ -173,8 +172,8 @@ def _validate_sparse(elements: list[SparseElement]) -> None:
     for element in elements:
         if element.term_id < 0 or element.term_id <= previous:
             raise ValueError("sparse term IDs must be non-negative and ascending")
-        if not math.isfinite(element.weight) or element.weight == 0.0:
-            raise ValueError("sparse weights must be finite and non-zero")
+        if not math.isfinite(element.weight):
+            raise ValueError("sparse weights must be finite")
         previous = element.term_id
 
 

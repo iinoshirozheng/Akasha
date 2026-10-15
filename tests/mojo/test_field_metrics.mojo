@@ -23,6 +23,9 @@ def _dense_cases[dtype: DType]() raises:
         [Scalar[dtype](3), Scalar[dtype](-2), Scalar[dtype](4)]
     )
     var expected: List[Float64] = [-13, 69, -0.6451791670811046]
+    comptime if dtype == DType.float16:
+        # Native Qdrant 0.8.0 normalized-half dot result.
+        expected[2] = -0.6450490951538086
     for metric in range(3):
         var field = VectorFieldSpec(
             2, "v", 0, query.scalar(), UInt8(metric), 0, 3
@@ -119,10 +122,9 @@ def test_sparse_dot_and_query_schema_validation() raises:
         validate_field_query(wrong, field)
     var cosine = VectorFieldSpec(2, "cos", 0, 0, 2, 0, 2)
     var zero = VectorValue.dense[DType.float32]([0, 0])
-    with assert_raises():
-        validate_field_query(zero, cosine)
-    with assert_raises():
-        _ = score_vector_field(wrong, zero, cosine)
+    validate_field_query(zero, cosine)
+    assert_equal(score_vector_field(wrong, zero, cosine), Float64(0))
+    assert_equal(score_vector_field(zero, wrong, cosine), Float64(0))
 
 
 def main() raises:

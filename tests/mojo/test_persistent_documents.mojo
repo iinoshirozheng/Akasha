@@ -23,6 +23,7 @@ from std.testing import (
 
 def _reset(directory: String) raises:
     ensure_directory(directory)
+    remove_file_if_exists(directory + "/collection.bin")
     remove_file_if_exists(directory + "/wal.bin")
     remove_file_if_exists(directory + "/manifest.bin")
     remove_file_if_exists(directory + "/manifest.bin.tmp")
@@ -213,7 +214,7 @@ def test_invalid_document_does_not_consume_sequence() raises:
     assert_equal(collection.last_sequence(), UInt64(1))
 
 
-def test_v1_database_opens_and_flushes_as_v3_base_segment() raises:
+def test_v1_database_opens_and_flushes_as_v5_point_base() raises:
     var path = String("/tmp/akasha-phase4-document-upgrade")
     _reset(path)
     var v1_wal = _encode_v1_wal()
@@ -229,8 +230,8 @@ def test_v1_database_opens_and_flushes_as_v3_base_segment() raises:
     var manifest = load_manifest(path, 1)
     assert_equal(manifest.format_version, 4)
     assert_equal(manifest.segments[0].level, 1)
-    var segment = read_file_bytes(path + "/segment-base-1.bin")
-    assert_equal(segment[4], UInt8(3))
+    var segment = read_file_bytes(path + "/" + manifest.segments[0].name)
+    assert_equal(segment[4], UInt8(5))
     var reopened = PersistentCollection.open(path, 1)
     assert_true(Bool(reopened.get(99)))
 

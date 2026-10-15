@@ -66,18 +66,31 @@ def _seal(mut bytes: List[UInt8]):
     _put_u32(bytes, checksum_offset, crc32_range(bytes, 0, checksum_offset))
 
 
-def test_frozen_v1_empty_and_history_fixtures_are_byte_exact() raises:
+def test_frozen_v1_fixtures_migrate_to_v3_without_changing_graph_data() raises:
     var config = _config()
-    var empty = HnswIndex(config)
-    assert_equal(
-        encode_hnsw_snapshot(empty, UInt64(76)),
-        read_file_bytes(_EMPTY_FIXTURE),
-    )
-    var graph = _graph(config)
-    assert_equal(
-        encode_hnsw_snapshot(graph, UInt64(77)),
-        read_file_bytes(_GRAPH_FIXTURE),
-    )
+    var paths: List[String] = [String(_EMPTY_FIXTURE), String(_GRAPH_FIXTURE)]
+    for ordinal in range(len(paths)):
+        var sequence = UInt64(76 + ordinal)
+        var legacy = read_file_bytes(paths[ordinal])
+        assert_equal(legacy[4], UInt8(1))
+        var old = decode_hnsw_snapshot_owned(legacy.copy(), config, sequence)
+        var encoded = encode_hnsw_snapshot(old, sequence)
+        assert_equal(encoded[4], UInt8(3))
+        var migrated = decode_hnsw_snapshot_owned(encoded^, config, sequence)
+        assert_equal(migrated.point_count(), old.point_count())
+        assert_equal(migrated.inactive_count(), old.inactive_count())
+        assert_equal(migrated.entry_level, old.entry_level)
+        for index in range(old.point_count()):
+            var slot = UInt32(index)
+            assert_equal(migrated.graph.id_at(slot), old.graph.id_at(slot))
+            assert_equal(migrated.graph.is_current(slot), old.graph.is_current(slot))
+            for component in range(config.dimension):
+                assert_equal(migrated.graph.vector_value(slot, component), old.graph.vector_value(slot, component))
+            for level in range(old.graph.level(slot) + 1):
+                assert_equal(migrated.graph.neighbor_count(slot, level), old.graph.neighbor_count(slot, level))
+                for edge in range(old.graph.neighbor_count(slot, level)):
+                    assert_equal(migrated.graph.neighbor_at(slot, level, edge), old.graph.neighbor_at(slot, level, edge))
+        assert_equal(read_file_bytes(paths[ordinal]), legacy)
 
 
 def test_frozen_v1_fixtures_support_owned_and_mapped_queries() raises:
@@ -138,6 +151,28 @@ def test_crc_valid_v1_non_f32_tags_are_rejected_owned_and_mapped() raises:
         write_file_sync(path, bytes)
         with assert_raises():
             _ = open_hnsw_snapshot_view(path, config, UInt64(76))
+
+
+def test_v1_cosine_zero_rows_remain_invalid_after_v3_expansion() raises:
+    var config = _config()
+    config.ann_metric = MetricKind.cosine()
+    var bytes = read_file_bytes(_GRAPH_FIXTURE)
+    bytes[36] = config.ann_metric.tag()
+    _put_u64(bytes, 16, config.fingerprint())
+    var vector_offset = UInt64(0)
+    for index in range(8):
+        vector_offset |= UInt64(bytes[104 + index]) << UInt64(index * 8)
+    _put_u32(bytes, Int(vector_offset), 0)
+    _put_u32(bytes, Int(vector_offset) + 4, 0)
+    _seal(bytes)
+    with assert_raises(contains="legacy HNSW cosine vector must be non-zero"):
+        _ = decode_hnsw_snapshot_owned(bytes.copy(), config, UInt64(77))
+    var directory = String("/tmp/akasha-hnsw-v1-zero")
+    ensure_directory(directory)
+    var path = directory + "/graph.bin"
+    write_file_sync(path, bytes)
+    with assert_raises(contains="legacy HNSW cosine vector must be non-zero"):
+        _ = open_hnsw_snapshot_view(path, config, UInt64(77))
 
 
 def main() raises:

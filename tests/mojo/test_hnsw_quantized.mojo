@@ -298,7 +298,7 @@ def _measure_production_quality_cell(
     )
 
 
-def test_compact_scalars_write_v2_with_exact_vector_widths() raises:
+def test_compact_scalars_write_v3_with_exact_vector_widths() raises:
     var kinds: List[ScalarKind] = [
         ScalarKind.bf16(),
         ScalarKind.f16(),
@@ -310,7 +310,7 @@ def test_compact_scalars_write_v2_with_exact_vector_widths() raises:
         var first = encode_hnsw_snapshot(graph, UInt64(7))
         var second = encode_hnsw_snapshot(graph, UInt64(7))
         assert_equal(first, second)
-        assert_equal(_u16_at(first, 4), UInt16(2))
+        assert_equal(_u16_at(first, 4), UInt16(3))
         assert_equal(_u16_at(first, 8), UInt16(192))
         var width = 1 if scalar == ScalarKind.i8() else 2
         assert_equal(_u64_at(first, 112), UInt64(12 * 16 * width))
@@ -553,15 +553,24 @@ def test_i8_cosine_uses_fixed_scale_without_owned_or_durable_scale_tape() raises
     for component in range(config.dimension):
         zero_code_vector[first_vector + component] = UInt8(0)
     _seal(zero_code_vector)
-    _assert_owned_and_mapped_reject(
-        directory + "/zero-code-vector.bin",
-        zero_code_vector^,
-        config,
-        UInt64(41),
+    var zero_owned = decode_hnsw_snapshot_owned(
+        zero_code_vector.copy(), config, UInt64(41)
     )
+    var zero_path = directory + "/zero-code-vector.bin"
+    remove_file_if_exists(zero_path)
+    write_file_sync(zero_path, zero_code_vector^)
+    var zero_mapped = open_hnsw_snapshot_view(zero_path, config, UInt64(41))
+    var zero_query = List[Float32](length=config.dimension, fill=0.0)
+    var zero_results = zero_owned.search(zero_query.copy(), 10, ef_search=64)
+    _assert_same_results(
+        zero_results, zero_mapped.search(zero_query^, 10, ef_search=64), 0.0
+    )
+    for result in zero_results:
+        assert_equal(result.score, Float32(0.0))
+    zero_mapped.close()
 
 
-def test_v2_i8_dot_rejects_scale_that_decodes_past_safe_component_limit() raises:
+def test_v3_i8_dot_rejects_scale_that_decodes_past_safe_component_limit() raises:
     var directory = String("/tmp/akasha-hnsw-v2-i8-dot-unsafe-scale")
     ensure_directory(directory)
     var config = _config(MetricKind.dot(), ScalarKind.i8())
@@ -626,7 +635,7 @@ def test_i8_dot_subnormal_vectors_round_trip_with_finite_search_scores() raises:
     mapped.close()
 
 
-def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
+def test_v3_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
     var directory = String("/tmp/akasha-hnsw-v2-corrupt")
     ensure_directory(directory)
     var config = _config(MetricKind.dot(), ScalarKind.bf16())
@@ -639,7 +648,7 @@ def test_v2_rejects_bad_versions_tags_widths_ranges_and_i8_codes() raises:
     )
 
     var bad_version = valid.copy()
-    _put_u16(bad_version, 4, UInt16(3))
+    _put_u16(bad_version, 4, UInt16(4))
     _seal(bad_version)
     _assert_owned_and_mapped_reject(
         directory + "/bad-version.bin", bad_version^, config, UInt64(18)

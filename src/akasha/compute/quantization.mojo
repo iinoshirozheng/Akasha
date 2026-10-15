@@ -31,17 +31,6 @@ def validate_i8_decoded_component_bound(
         raise Error("I8 decoded component exceeds safe F32 accumulation")
 
 
-def round_clamp_u8(value: Float32) raises -> UInt8:
-    """Round a finite non-negative quantizer coordinate into one byte."""
-    if not isfinite(value):
-        raise Error("quantizer coordinates must be finite")
-    if value <= 0.0:
-        return UInt8(0)
-    if value >= 254.5:
-        return UInt8(255)
-    return UInt8(Int(value + 0.5))
-
-
 def encode_bf16(value: Float32) raises -> UInt16:
     """Encode one finite Float32 with Mojo's native BF16 conversion."""
     if not isfinite(value):
@@ -169,7 +158,7 @@ def i8_dot_f32(
 def normalize_for_cosine_i8(values: List[Float32]) raises -> List[Float32]:
     """Normalize with a stable Float64 norm before fixed-scale I8 encoding."""
     if len(values) == 0:
-        raise Error("cosine distance requires a non-zero vector")
+        raise Error("cosine distance requires a non-empty vector")
     var maximum = Float64(0.0)
     for value in values:
         if not isfinite(value):
@@ -178,7 +167,7 @@ def normalize_for_cosine_i8(values: List[Float32]) raises -> List[Float32]:
         if magnitude > maximum:
             maximum = magnitude
     if maximum == 0.0:
-        raise Error("cosine distance requires a non-zero vector")
+        return values.copy()
     var scaled_sum = Float64(0.0)
     for value in values:
         var scaled = Float64(value) / maximum

@@ -123,7 +123,7 @@ def test_delete_is_idempotent_and_delete_reinsert_revives_id() raises:
     index.validate_structure()
 
 
-def test_inactive_old_slot_is_traversal_bridge_but_never_result() raises:
+def test_inactive_slot_is_not_scored_or_used_as_a_traversal_bridge() raises:
     var index = HnswIndex(_config())
     index.upsert(50, _vector(3.0, 0.0))
     index.upsert(20, _vector(2.0, 0.0))
@@ -140,9 +140,9 @@ def test_inactive_old_slot_is_traversal_bridge_but_never_result() raises:
     index.entry_level = 0
 
     var results = index.search(_vector(0.0, 0.0), 3, ef_search=8)
-    assert_equal(len(results), 2)
-    assert_equal(results[0].id, 11)
-    assert_equal(results[1].id, 50)
+    assert_equal(len(results), 1)
+    assert_equal(results[0].id, 50)
+    assert_equal(index.last_search_stats.distance_evaluations, 1)
     assert_true(index.last_search_stats.inactive_rejections > 0)
     index.validate_structure()
 
@@ -211,7 +211,7 @@ def test_empty_live_graph_returns_empty_with_inactive_entry() raises:
         "filtered_ann_exhausted",
     )
     assert_true(index.scratch.result_reserved_capacity() <= 4)
-    assert_true(index.scratch.filtered_result_reserved_capacity() <= 4)
+    assert_true(index.scratch.result_reserved_capacity() <= 4)
     var first_base_visited = index.last_search_stats.base_visited
     var first_distances = index.last_search_stats.distance_evaluations
     var first_effective_ef = index.last_search_stats.effective_ef

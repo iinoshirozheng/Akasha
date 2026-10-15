@@ -128,7 +128,7 @@ def test_native_arrow_ingress_sliced_buffers_atomic_and_owned(tmp_path):
     collection.close()
 
 
-def test_point_arrow_null_removes_omission_preserves_and_late_error_is_atomic(tmp_path):
+def test_point_arrow_upsert_removes_omitted_fields_and_late_error_is_atomic(tmp_path):
     from akashadb import ValidationError
     from akashadb.arrow import upsert_point_record_batch
     collection = Collection(tmp_path, 1, vectors={"a": VectorField(1, dtype="f16"), "b": VectorField(1)})
@@ -136,8 +136,8 @@ def test_point_arrow_null_removes_omission_preserves_and_late_error_is_atomic(tm
     upsert_point_record_batch(collection, pa.record_batch([
         pa.array([1], type=pa.int64()), pa.array([None], type=pa.list_(pa.float16(), 1)),
     ], names=["id", "vectors.a"]))
-    assert collection.get_point(1).vectors == {"b": [2]}
-    assert collection.get_point(1).vector == [4]
+    assert collection.get_point(1).vectors == {}
+    assert collection.get_point(1).vector is None
     before = (tmp_path / "wal.bin").read_bytes()
     with pytest.raises((ValidationError, ValueError)):
         upsert_point_record_batch(collection, pa.record_batch([
@@ -145,7 +145,7 @@ def test_point_arrow_null_removes_omission_preserves_and_late_error_is_atomic(tm
         ], names=["id", "vectors.a"]))
     assert collection.last_sequence == 2
     assert (tmp_path / "wal.bin").read_bytes() == before
-    assert collection.get_point(1).vectors == {"b": [2]}
+    assert collection.get_point(1).vectors == {}
     assert collection.get_point(2) is None
     collection.close()
 

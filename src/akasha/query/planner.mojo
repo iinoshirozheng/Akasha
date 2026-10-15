@@ -1,3 +1,13 @@
+def hnsw_full_scan_threshold(available_vectors: Int) -> Int:
+    """Shared dispatch/payload threshold in vectors, using Akasha's N/8 policy.
+
+    Qdrant accepts a configured byte budget and converts it to vector count.
+    Akasha retains its collection-relative policy without changing catalog
+    identity. Exact indexed cardinalities make random sampling unnecessary.
+    """
+    return max(1, available_vectors // 8)
+
+
 struct HnswPlan(Movable, Writable):
     """One deterministic exact-versus-HNSW dense-query decision."""
 
@@ -23,7 +33,6 @@ struct QueryPlanner:
     """Deterministic exact-versus-HNSW policy for one collection."""
 
     comptime EXACT_COLLECTION_THRESHOLD = 64
-    comptime SELECTIVITY_DENOMINATOR = 8
 
     @staticmethod
     def plan_dense(
@@ -35,10 +44,6 @@ struct QueryPlanner:
         has_filter: Bool,
         metric_compatible: Bool,
         graph_ready: Bool,
-        *,
-        dimension: Int = 0,
-        m0: Int = 0,
-        metric: Int = 0,
     ) -> HnswPlan:
         var normalized_max = max_ef
         if normalized_max < 0:
@@ -91,50 +96,14 @@ struct QueryPlanner:
                 normalized_max,
                 String("graph_unavailable"),
             )
-        if has_filter:
-            # Express matched_count <= 2*k without overflowing k*2.
-            if matched_count <= k or matched_count - k <= k:
-                return HnswPlan(
-                    False,
-                    initial_ef,
-                    normalized_max,
-                    String("filtered_match_count"),
-                )
-            # HNSW is worthwhile only when at least one eighth of the live
-            # collection is eligible. Compute ceil(total/8) without addition
-            # or multiplication overflow.
-            var ann_match_floor = (
-                total_count // QueryPlanner.SELECTIVITY_DENOMINATOR
+        # Qdrant hnsw/read_view/dispatch.rs compares eligible cardinality
+        # with full_scan_threshold. k, ef, metric and vector width do not
+        # change this decision. Our exact bitmap resolves the equality case
+        # deterministically, without Qdrant's estimated-cardinality sampling.
+        if has_filter and matched_count < hnsw_full_scan_threshold(total_count):
+            return HnswPlan(
+                False, initial_ef, normalized_max, String("selectivity")
             )
-            if total_count % QueryPlanner.SELECTIVITY_DENOMINATOR != 0:
-                ann_match_floor += 1
-            if matched_count < ann_match_floor:
-                return HnswPlan(
-                    False,
-                    initial_ef,
-                    normalized_max,
-                    String("selectivity"),
-                )
-        # Paired 128D/1536D uniform and real-embedding measurements show that
-        # scanning can cost less than high-ef traversal plus native reranking.
-        # Estimate work, never sample timing in a query or inspect its answer.
-        # Unknown dimensions/degrees and short vectors retain the existing
-        # policy. Float64 products avoid overflow for large valid counts.
-        if dimension >= 128 and m0 > 0:
-            var scan_work = Float64(matched_count) * Float64(dimension)
-            if metric == 2:
-                # Native cosine also reads both norms; graph rows are already
-                # normalized. Keep low-ef real-embedding ANN advantageous.
-                scan_work *= 2
-            var graph_work = (
-                Float64(initial_ef)
-                * (Float64(m0) / 3)
-                * (Float64(dimension) + 384)
-            )
-            if scan_work <= graph_work:
-                return HnswPlan(
-                    False, initial_ef, normalized_max, String("scan_cost")
-                )
         return HnswPlan(True, initial_ef, normalized_max, String("ann"))
 
     @staticmethod

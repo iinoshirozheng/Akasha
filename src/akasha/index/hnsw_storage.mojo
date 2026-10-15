@@ -199,6 +199,7 @@ struct HnswStorage(HnswGraphAccess):
     var neighbor_bases: List[Int]
     var neighbor_count_bases: List[Int]
     var neighbor_counts: List[UInt32]
+    var neighbor_capacities: List[Int]
     var neighbor_slots: List[UInt32]
     var _current_slots: Dict[Int, UInt32]
     var _valid: Bool
@@ -243,6 +244,7 @@ struct HnswStorage(HnswGraphAccess):
         self.neighbor_bases = List[Int]()
         self.neighbor_count_bases = List[Int]()
         self.neighbor_counts = List[UInt32]()
+        self.neighbor_capacities = List[Int]()
         self.neighbor_slots = List[UInt32]()
         self._current_slots = Dict[Int, UInt32]()
         self._valid = True
@@ -345,8 +347,6 @@ struct HnswStorage(HnswGraphAccess):
             if self.metric_kind == MetricKind.cosine():
                 if vector_scale != Float32(1.0 / 127.0):
                     raise Error("HNSW I8 cosine scale must be fixed")
-                if not has_nonzero_code:
-                    raise Error("HNSW I8 cosine vector must be non-zero")
             elif vector_scale == 0.0 and has_nonzero_code:
                 raise Error("a zero HNSW I8 scale requires all-zero codes")
             else:
@@ -377,8 +377,9 @@ struct HnswStorage(HnswGraphAccess):
                 self.vector_scales.append(vector_scale)
         self.neighbor_bases.append(neighbor_base)
         self.neighbor_count_bases.append(count_base)
-        for _ in range(level + 1):
+        for graph_level in range(level + 1):
             self.neighbor_counts.append(UInt32(0))
+            self.neighbor_capacities.append(self.m0 if graph_level == 0 else self.m)
         for _ in range(neighbor_cell_count):
             self.neighbor_slots.append(HNSW_EMPTY_NEIGHBOR)
         return slot
@@ -951,12 +952,14 @@ struct HnswStorage(HnswGraphAccess):
 
     def level_capacity(self, slot: UInt32, level: Int) raises -> Int:
         self._validate_level(slot, level)
-        if level == 0:
-            return self.m0
-        return self.m
+        return self.neighbor_capacities[self._count_index(slot, level)]
 
     def allocated_neighbor_slot_count(self, slot: UInt32) raises -> Int:
-        return self.m0 + self.level(slot) * self.m
+        var count = 0
+        var count_base = self.neighbor_count_bases[self._slot_index(slot)]
+        for level in range(self.level(slot) + 1):
+            count += self.neighbor_capacities[count_base + level]
+        return count
 
     def neighbor_count(self, slot: UInt32, level: Int) raises -> Int:
         var count_index = self._count_index(slot, level)
@@ -975,7 +978,7 @@ struct HnswStorage(HnswGraphAccess):
     ) raises -> Tuple[Int, Int]:
         """Return the first edge ordinal and occupied count for one level."""
         var count = self.neighbor_count(slot, level)
-        var capacity = self.m0 if level == 0 else self.m
+        var capacity = self.level_capacity(slot, level)
         var base = self._level_base(slot, level)
         if count > capacity or base < 0 or base > len(self.neighbor_slots):
             raise Error("HNSW neighbor range is invalid")
@@ -1054,6 +1057,58 @@ struct HnswStorage(HnswGraphAccess):
         self.neighbor_counts[self._count_index(slot, level)] = UInt32(
             len(values)
         )
+
+    def replace_all_links(mut self, counts: List[Int], edges: List[UInt32]) raises:
+        """Pack merged main/payload adjacency in one checked publication.
+
+        The regular m/m0 remain scoring limits; stored rows may exceed them.
+        Validate the complete proposal before replacing any tape.
+        """
+        if len(counts) != len(self.neighbor_counts):
+            raise Error("HNSW merged level count is invalid")
+        var capacities = List[Int](capacity=len(counts))
+        var offsets = List[Int](capacity=self.slot_count())
+        var total_cells = 0
+        var row = 0
+        var edge = 0
+        for ordinal in range(self.slot_count()):
+            offsets.append(total_cells)
+            var slot = UInt32(ordinal)
+            for level in range(self.level(slot) + 1):
+                var count = counts[row]
+                if count < 0 or count > len(edges) - edge or count >= self.slot_count():
+                    raise Error("HNSW merged neighbor count is invalid")
+                var seen = Dict[UInt32, Bool]()
+                for local in range(count):
+                    var neighbor = edges[edge + local]
+                    self._validate_neighbor(slot, neighbor)
+                    if self.level(neighbor) < level or neighbor in seen:
+                        raise Error("HNSW merged edge level or uniqueness is invalid")
+                    seen[neighbor] = True
+                var capacity = max(self.m0 if level == 0 else self.m, count)
+                if capacity > Int.MAX - total_cells:
+                    raise Error("HNSW merged neighbor allocation overflows")
+                total_cells += capacity
+                capacities.append(capacity)
+                edge += count
+                row += 1
+        if edge != len(edges):
+            raise Error("HNSW merged edge tape has trailing values")
+        var tape = List[UInt32](length=total_cells, fill=HNSW_EMPTY_NEIGHBOR)
+        var new_counts = List[UInt32](capacity=len(counts))
+        var base = 0
+        edge = 0
+        for ordinal in range(len(counts)):
+            var count = counts[ordinal]
+            for local in range(count):
+                tape[base + local] = edges[edge + local]
+            base += capacities[ordinal]
+            edge += count
+            new_counts.append(UInt32(count))
+        self.neighbor_bases = offsets^
+        self.neighbor_counts = new_counts^
+        self.neighbor_capacities = capacities^
+        self.neighbor_slots = tape^
 
     def validate_structure(self) raises:
         """Validate all flat-tape bounds before reading either tape.
@@ -1140,10 +1195,6 @@ struct HnswStorage(HnswGraphAccess):
                     if self.metric_kind == MetricKind.cosine():
                         if scale != Float32(1.0 / 127.0):
                             raise Error("HNSW I8 cosine scale must be fixed")
-                        if not has_nonzero_code:
-                            raise Error(
-                                "HNSW I8 cosine vector must be non-zero"
-                            )
                     elif scale == 0.0 and has_nonzero_code:
                         raise Error(
                             "a zero HNSW I8 scale requires all-zero codes"
@@ -1178,17 +1229,25 @@ struct HnswStorage(HnswGraphAccess):
                 raise Error("HNSW stored level does not fit UInt16")
             if node_level > (Int.MAX - self.m0) // self.m:
                 raise Error("HNSW node neighbor allocation overflows Int")
-            var node_neighbor_cells = self.m0 + node_level * self.m
-            if node_neighbor_cells > Int.MAX - expected_neighbor_base:
-                raise Error("HNSW neighbor tape length overflows Int")
-            expected_neighbor_base += node_neighbor_cells
             var node_count_cells = node_level + 1
+            if expected_count_base > len(self.neighbor_capacities) or node_count_cells > len(self.neighbor_capacities) - expected_count_base:
+                raise Error("HNSW neighbor capacities have an invalid length")
+            for level in range(node_count_cells):
+                var capacity = self.neighbor_capacities[expected_count_base + level]
+                var minimum = self.m0 if level == 0 else self.m
+                if capacity < minimum or UInt64(capacity) > UInt64(UInt32.MAX):
+                    raise Error("HNSW stored neighbor capacity is invalid")
+                if capacity > Int.MAX - expected_neighbor_base:
+                    raise Error("HNSW neighbor tape length overflows Int")
+                expected_neighbor_base += capacity
             if node_count_cells > Int.MAX - expected_count_base:
                 raise Error("HNSW neighbor count tape length overflows Int")
             expected_count_base += node_count_cells
 
         if expected_neighbor_base != len(self.neighbor_slots):
             raise Error("HNSW flat neighbor tape has an invalid length")
+        if expected_count_base != len(self.neighbor_capacities):
+            raise Error("HNSW neighbor capacities have an invalid length")
         if expected_count_base != len(self.neighbor_counts):
             raise Error("HNSW flat neighbor count tape has an invalid length")
 
@@ -1220,6 +1279,8 @@ struct HnswStorage(HnswGraphAccess):
                     var neighbor = self.neighbor_slots[base + edge_index]
                     if edge_index < count:
                         self._validate_neighbor(slot, neighbor)
+                        if self.level(neighbor) < graph_level:
+                            raise Error("HNSW edge target does not own graph level")
                         var key = Int(neighbor)
                         if key in seen_neighbors:
                             raise Error("HNSW neighbor tape has a duplicate")
@@ -1250,9 +1311,10 @@ struct HnswStorage(HnswGraphAccess):
     def _level_base(self, slot: UInt32, level: Int) raises -> Int:
         self._validate_level(slot, level)
         var base = self.neighbor_bases[Int(slot)]
-        if level == 0:
-            return base
-        return base + self.m0 + (level - 1) * self.m
+        var count_base = self.neighbor_count_bases[Int(slot)]
+        for prior in range(level):
+            base += self.neighbor_capacities[count_base + prior]
+        return base
 
     def _validate_neighbor(self, slot: UInt32, neighbor: UInt32) raises:
         _ = self._slot_index(slot)

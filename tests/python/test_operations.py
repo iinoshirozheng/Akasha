@@ -1,4 +1,5 @@
 import json
+from dataclasses import asdict
 
 import pytest
 
@@ -40,9 +41,12 @@ def test_backup_restore_inspect_export_import_and_observability(tmp_path) -> Non
     assert imported.get(1).vector == [1.0, 0.0]
     metrics = imported.metrics()
     assert metrics.operations >= 3
-    assert metrics.writes >= 2
+    assert metrics.writes == 1  # Complete import is one atomic point batch.
     assert imported.traces()
-    assert all("vector" not in trace.operation for trace in imported.traces())
+    for trace in imported.traces():
+        assert set(asdict(trace)) == {"operation", "duration_ns", "status", "sequence"}
+        assert trace.operation.isidentifier()
+        assert "operational" not in repr(trace)
     imported.close()
 
 

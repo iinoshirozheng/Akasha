@@ -7,7 +7,6 @@ from akasha.compute.quantization import (
     encode_symmetric_i8,
     i8_dot_f32,
     normalize_for_cosine_i8,
-    round_clamp_u8,
     symmetric_i8_scale,
 )
 from akasha.index.quantization import Sq8Codebook, Sq8Index
@@ -51,12 +50,13 @@ def test_symmetric_i8_uses_per_vector_scale_rounding_and_saturation() raises:
     assert_equal(encode_symmetric_i8(Float32(0.0), Float32(0.0)), Int8(0))
 
 
-def test_shared_unsigned_rounding_matches_sq8_domain() raises:
-    assert_equal(round_clamp_u8(Float32(-1.0)), UInt8(0))
-    assert_equal(round_clamp_u8(Float32(0.49)), UInt8(0))
-    assert_equal(round_clamp_u8(Float32(0.5)), UInt8(1))
-    assert_equal(round_clamp_u8(Float32(254.5)), UInt8(255))
-    assert_equal(round_clamp_u8(Float32(999.0)), UInt8(255))
+def test_sq8_rounds_and_clamps_the_upstream_code_domain() raises:
+    var codebook = Sq8Codebook(1, 0, 1)
+    assert_equal(codebook.encode_value(-1.0), UInt8(0))
+    assert_equal(codebook.encode_value(0.49), UInt8(0))
+    assert_equal(codebook.encode_value(0.5), UInt8(1))
+    assert_equal(codebook.encode_value(126.5), UInt8(127))
+    assert_equal(codebook.encode_value(999.0), UInt8(127))
 
 
 def test_i8_dot_accumulates_in_integer_then_restores_magnitudes() raises:
@@ -88,12 +88,11 @@ def test_i8_dot_scale_preserves_positive_and_negative_subnormals() raises:
     assert_true(isfinite(decode_symmetric_i8(Int8(-1), mixed_scale)))
 
 
-def test_cosine_i8_normalizes_once_and_rejects_zero_norm() raises:
+def test_cosine_i8_normalizes_once_and_preserves_zero_norm() raises:
     var normalized = normalize_for_cosine_i8([3.0, 4.0])
     assert_true(abs(normalized[0] - 0.6) < 1.0e-6)
     assert_true(abs(normalized[1] - 0.8) < 1.0e-6)
-    with assert_raises():
-        _ = normalize_for_cosine_i8([0.0, 0.0])
+    assert_equal(normalize_for_cosine_i8([0.0, 0.0]), [Float32(0), Float32(0)])
 
 
 def test_sq8_codebook_is_deterministic_and_bounds_reconstruction() raises:
@@ -104,15 +103,18 @@ def test_sq8_codebook_is_deterministic_and_bounds_reconstruction() raises:
 
     var lhs = Sq8Codebook.train(vectors)
     var rhs = Sq8Codebook.train(vectors)
-    assert_equal(lhs.version(), UInt32(1))
+    assert_equal(lhs.version(), UInt32(2))
     assert_equal(lhs.dimension(), 3)
     assert_equal(lhs.minimum(0), rhs.minimum(0))
     assert_equal(lhs.scale(2), rhs.scale(2))
 
     var code = lhs.encode([4.0, 5.0, 0.5])
     var decoded = lhs.decode(code)
-    assert_equal(code[1], UInt8(0))
-    assert_equal(decoded[1], Float32(5.0))
+    assert_equal(lhs.minimum(0), Float32(-2))
+    assert_equal(lhs.minimum(1), lhs.minimum(0))
+    assert_equal(lhs.scale(0), Float32(12.0 / 127.0))
+    assert_equal(code[1], UInt8(74))
+    assert_true(abs(decoded[1] - 5.0) <= lhs.scale(1))
     assert_true(abs(decoded[0] - 4.0) <= lhs.scale(0))
     assert_true(abs(decoded[2] - 0.5) <= lhs.scale(2))
 
@@ -128,7 +130,8 @@ def test_sq8_index_searches_all_metrics_with_stable_ties() raises:
 
     var dot = index.search_dot([1.0, 0.0], 3)
     var l2 = index.search_l2([1.8, 0.0], 2)
-    var cosine = index.search_cosine([1.0, 0.0], 3)
+    var cosine_index = Sq8Index.build(ids, vectors, cosine=True)
+    var cosine = cosine_index.search_cosine([1.0, 0.0], 3)
     assert_equal(dot[0].id, 2)
     assert_equal(dot[1].id, 3)
     assert_equal(l2[0].id, 2)
@@ -138,6 +141,28 @@ def test_sq8_index_searches_all_metrics_with_stable_ties() raises:
     assert_equal(cosine[2].id, 3)
     assert_equal(index.encoded_bytes(), 8)
     assert_true(index.estimated_bytes() < len(vectors) * 2 * 4 + 64)
+
+
+def test_sq8_preserves_upstream_float32_offset_rounding() raises:
+    var vectors = List[List[Float32]]()
+    var ids = List[Int]()
+    for row in range(256):
+        var values = List[Float32]()
+        for col in range(3):
+            values.append((Float32((row * 17 + col * 7) % 103) - 51) * 0.125 + Float32(row % 3) * 0.0625)
+        vectors.append(values^)
+        ids.append(row)
+    vectors[0] = [0, 0, 0]
+    var index = Sq8Index.build(ids, vectors)
+    var hits = index.search_dot([0, 0, 0], 256)
+    var found = False
+    for hit in hits:
+        if hit.id == 193:
+            # Native Qdrant 0.8.0, rescore=false. Contracting multiplication
+            # into the shift/additions changes this cancellation-sensitive score.
+            assert_equal(hit.score, Float32(0.19854736328125))
+            found = True
+    assert_true(found)
 
 
 def test_sq8_rejects_invalid_training_and_queries() raises:

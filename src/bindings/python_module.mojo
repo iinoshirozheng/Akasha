@@ -1775,10 +1775,7 @@ def _apply_arrow_buffers(
     if len(ids) != row_count or len(vectors) != row_count * dimension:
         raise Error("Arrow primitive buffer length mismatch")
 
-    var mutations = List[BatchMutation](capacity=row_count)
-    var point_mode = Bool(collection._field_catalog())
-    var points = List[PointMutation](capacity=row_count if point_mode else 0)
-    var sparse_rows = List[List[SparseElement]](capacity=row_count)
+    var points = List[PointMutation](capacity=row_count)
     var has_sparse = Bool(py=descriptor["has_sparse"])
     var sparse_offsets = from_numpy_array[DType.int32](offsets_array)
     var sparse_terms = from_numpy_array[DType.int64](terms_array)
@@ -1804,7 +1801,7 @@ def _apply_arrow_buffers(
         if has_sparse:
             var begin = Int(sparse_offsets[row])
             var end = Int(sparse_offsets[row + 1])
-            if begin < 0 or end <= begin or end > len(sparse_terms):
+            if begin < 0 or end < begin or end > len(sparse_terms):
                 raise Error("Arrow sparse offsets are invalid")
             if len(sparse_terms) != len(sparse_weights):
                 raise Error("Arrow sparse value buffers are misaligned")
@@ -1816,35 +1813,17 @@ def _apply_arrow_buffers(
                     )
                 )
             validate_sparse(sparse)
-        if point_mode:
-            var updates = List[FieldUpdate]()
-            updates.append(
-                FieldUpdate.set(0, VectorValue.dense[DType.float32](vector^))
-            )
-            if has_sparse:
-                updates.append(FieldUpdate.set(1, VectorValue.sparse(sparse^)))
-            points.append(
-                PointMutation(Int(ids[row]), 1, updates^, Optional(fields^))
-            )
-        else:
-            mutations.append(
-                BatchMutation.document_upsert(Int(ids[row]), vector^, fields^)
-            )
-            sparse_rows.append(sparse^)
+        var updates = List[FieldUpdate]()
+        updates.append(
+            FieldUpdate.set(0, VectorValue.dense[DType.float32](vector^))
+        )
+        if has_sparse:
+            updates.append(FieldUpdate.set(1, VectorValue.sparse(sparse^)))
+        points.append(
+            PointMutation(Int(ids[row]), 1, updates^, Optional(fields^))
+        )
 
-    if point_mode:
-        _ = collection.apply_point_batch(points)
-        return PythonObject(row_count)
-
-    # PersistentCollection performs complete batch validation before WAL
-    # sequence allocation. Every sparse row was also validated before any write.
-    # Legacy format retains its separate WAL streams. Field-aware collections
-    # above publish one atomic point batch, including both dense and sparse.
-    _ = collection.apply_batch(mutations)
-    if has_sparse:
-        for row in range(row_count):
-            if len(sparse_rows[row]) != 0:
-                collection.upsert_sparse(Int(ids[row]), sparse_rows[row])
+    _ = collection.apply_point_batch(points)
     return PythonObject(row_count)
 
 

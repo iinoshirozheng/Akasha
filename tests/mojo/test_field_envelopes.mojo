@@ -1,4 +1,8 @@
+from akasha.index.sparse import SparseElement
+from akasha.document.vector_value import VectorValue
 from akasha.document.point_state import (
+    FieldUpdate,
+    PointField,
     PointMutation,
     PointState,
     apply_point_mutation,
@@ -55,10 +59,10 @@ def test_wal_fixture_decodes_atomic_combined_patches_and_repeated_ids() raises:
     assert_equal(batch.first_sequence, UInt64(8))
     assert_equal(batch.last_sequence(), UInt64(11))
     assert_equal(len(batch.mutations), 4)
-    assert_equal(
-        encode_point_batch(batch.first_sequence, batch.mutations, catalog),
-        bytes,
-    )
+    assert_equal(batch.format_version, 4)
+    bytes[4] = 5
+    _crc(bytes)
+    assert_equal(encode_point_batch(batch.first_sequence, batch.mutations, catalog), bytes)
     bytes.clear()
     var initial = apply_point_mutation(
         Optional[PointState](), batch.mutations[0], 8, catalog
@@ -81,7 +85,7 @@ def test_wal_fixture_decodes_atomic_combined_patches_and_repeated_ids() raises:
     assert_equal(len(batch.mutations[3].payload()), 0)
 
 
-def test_segment_golden_bases_deltas_and_typed_records_reencode_exactly() raises:
+def test_segment_v4_golden_records_migrate_without_body_changes() raises:
     var names: List[String] = [
         "base-v4.bin",
         "delta-v4.bin",
@@ -92,6 +96,8 @@ def test_segment_golden_bases_deltas_and_typed_records_reencode_exactly() raises
         var catalog = _catalog(i >= 2)
         var bytes = _fixture(names[i])
         var segment = decode_point_segment(Span(bytes), catalog)
+        bytes[4] = 5
+        _crc(bytes)
         assert_equal(
             encode_point_segment(
                 segment.kind,
@@ -195,6 +201,9 @@ def test_wal_sequence_cutover_overflow_and_count_limits() raises:
     var bytes = _fixture("last-sequence-wal-v4.bin")
     var batch = decode_point_batch(bytes, max_catalog)
     assert_equal(batch.last_sequence(), UInt64.MAX)
+    assert_equal(batch.format_version, 4)
+    bytes[4] = 5
+    _crc(bytes)
     assert_equal(
         encode_point_batch(batch.first_sequence, batch.mutations, max_catalog),
         bytes,
@@ -274,3 +283,26 @@ def test_catalog_binding_and_legacy_reader_rejection() raises:
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+
+
+def test_sparse_zero_weights_require_v5_wal_and_checkpoint() raises:
+    var catalog = _catalog()
+    var mutations: List[PointMutation] = [PointMutation(
+        7, 1, [FieldUpdate.set(1, VectorValue.sparse([SparseElement(9, 0)]))]
+    )]
+    var wal = encode_point_batch(8, mutations, catalog)
+    assert_equal(decode_point_batch(wal, catalog).format_version, 5)
+    wal[4] = 4
+    _crc(wal)
+    with assert_raises(contains="v4 sparse weights"):
+        _ = decode_point_batch(wal, catalog)
+    var points: List[PointState] = [PointState.live(
+        7, 8, 0, [PointField(1, VectorValue.sparse([SparseElement(9, 0)]))], []
+    )]
+    var segment = encode_point_segment(1, 0, 8, points, catalog)
+    assert_equal(segment[4], UInt8(5))
+    assert_equal(decode_point_segment(segment, catalog).points[0].field_count(), 1)
+    segment[4] = 4
+    _crc(segment)
+    with assert_raises(contains="v4 sparse weights"):
+        _ = decode_point_segment(segment, catalog)

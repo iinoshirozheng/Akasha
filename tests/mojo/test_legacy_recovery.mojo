@@ -1,3 +1,4 @@
+from legacy_fixture_helpers import copy_legacy_fixture
 from akasha import PersistentCollection, SparseElement
 from akasha.storage.filesystem import (
     ensure_directory,
@@ -41,23 +42,14 @@ def _unchanged(path: String, before: Dict[String, List[UInt8]]) raises:
 
 def test_preflight_replays_checkpoint_and_both_wals_without_repair_or_publication() raises:
     var path = _path("mixed")
-    var collection = PersistentCollection.open(path, 2)
-    collection.upsert(1, [1, 2])
-    collection.upsert_sparse(1, [SparseElement(8, 3)])
-    collection.flush()
-    collection.upsert(2, [3, 4])
-    collection.upsert_sparse(2, [SparseElement(9, 5)])
-    collection.delete(1)
-    collection.upsert(1, [6, 7])
-    var last = collection.last_sequence()
-    collection.close()
+    copy_legacy_fixture("recovery-preflight_replays_checkpoint_and_both_wals_without_repair_or_publication", path)
     var wal = read_file_bytes(path + "/wal.bin")
     var accepted_length = len(wal)
     wal.append(0xAA)
     write_file_sync(path + "/wal.bin", wal)
     var before = _bytes(path)
     var result = preflight_legacy_authority(path, 2)
-    assert_equal(result.last_sequence, last)
+    assert_equal(result.last_sequence, UInt64(6))
     assert_equal(result.snapshot_sequence, UInt64(2))
     assert_equal(result.wal_valid_length, accepted_length)
     assert_equal(result.wal_source_length, accepted_length + 1)
@@ -79,10 +71,7 @@ def test_preflight_replays_checkpoint_and_both_wals_without_repair_or_publicatio
 
 def test_late_corrupt_sparse_source_leaves_dense_tail_and_identity_untouched() raises:
     var path = _path("corrupt")
-    var collection = PersistentCollection.open(path, 2)
-    collection.upsert(1, [1, 2])
-    collection.upsert_sparse(1, [SparseElement(1, 2)])
-    collection.close()
+    copy_legacy_fixture("recovery-late_corrupt_sparse_source_leaves_dense_tail_and_identity_untouched", path)
     var dense = read_file_bytes(path + "/wal.bin")
     dense.append(0xAB)
     write_file_sync(path + "/wal.bin", dense)

@@ -11,14 +11,14 @@ from benchmarks.qdrant_compare import Akasha, Qdrant, PLANNER_POLICY, execution_
 from benchmarks.qdrant_mixed import matched_mixed_summary
 
 
-def test_cost_plan_comparison_requires_explicit_policy_exact_oracle_and_storage():
-    stats = {"fallback_reason": "scan_cost", "storage_name": "exact"}
+def test_cardinality_plan_requires_explicit_policy_exact_oracle_and_storage():
+    stats = {"fallback_reason": "small_collection", "storage_name": "exact"}
     spec = {"akasha_planner_policy": PLANNER_POLICY}
     assert execution_kind("akasha", "all", stats, 1.0, spec) == "planned_exact"
     assert execution_kind("akasha", "all", stats, 1.0, {}) == "invalid_fallback"
     assert execution_kind("akasha", "all", stats, .99, spec) == "invalid_fallback"
     assert execution_kind("akasha", "all", {**stats, "storage_name": "segmented-f32"}, 1.0, spec) == "invalid_fallback"
-    for reason in ("graph_unavailable", "filtered_exhausted", "unknown"):
+    for reason in ("graph_unavailable", "filtered_exhausted", "scan_cost", "filtered_match_count", "unknown"):
         assert execution_kind("akasha", "selective", {**stats, "fallback_reason": reason}, 1.0, spec) == "invalid_fallback"
     assert execution_kind("akasha", "selective", {**stats, "fallback_reason": "selectivity"}, 1.0, spec) == "planned_exact"
     assert execution_kind("qdrant", "all", {}, 1.0, spec) == "unobservable"

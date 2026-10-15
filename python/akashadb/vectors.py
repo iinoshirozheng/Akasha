@@ -116,7 +116,11 @@ class FieldQuery:
 
 @dataclass(frozen=True, slots=True)
 class PointMutation:
-    """Omitted values stay; None removes a vector, [] preserves empty sparse/matrices."""
+    """Upsert replaces the whole point; update preserves omitted values.
+
+    None removes a vector. Empty sparse/matrices remain present stored values.
+    An omitted payload becomes empty on upsert and is preserved on update.
+    """
 
     operation: Literal["upsert", "update", "delete"]
     id: int

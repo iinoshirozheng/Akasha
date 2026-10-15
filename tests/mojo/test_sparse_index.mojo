@@ -35,14 +35,15 @@ def test_sparse_upsert_replaces_and_delete_removes_record() raises:
 
 def test_sparse_validation_rejects_invalid_terms_and_weights() raises:
     var index = SparseIndex()
-    with assert_raises():
-        index.upsert(1, List[SparseElement]())
+    index.upsert(1, List[SparseElement]())
+    assert_equal(index.contains(1), True)
+    assert_equal(len(index.search_dot(List[SparseElement](), 1)), 0)
     with assert_raises():
         index.upsert(1, [SparseElement(-1, 1.0)])
     with assert_raises():
         index.upsert(1, [SparseElement(2, 1.0), SparseElement(2, 2.0)])
-    with assert_raises():
-        index.upsert(1, [SparseElement(2, 0.0)])
+    index.upsert(1, [SparseElement(2, 0.0)])
+    assert_equal(len(index.search_dot([SparseElement(2, 1.0)], 1)), 0)
     with assert_raises():
         _ = index.search_dot([SparseElement(1, 1.0)], 0)
 
@@ -108,3 +109,16 @@ def test_sparse_accumulation_keeps_query_order_after_slot_moves() raises:
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+
+
+def test_sparse_zero_cancellation_and_overflow_admission() raises:
+    var index = SparseIndex()
+    index.upsert(1, [SparseElement(1, 3e38), SparseElement(2, -3e38)])
+    index.upsert(2, [SparseElement(1, 3e38)])
+    index.upsert(3, [SparseElement(1, -3e38)])
+    var hits = index.search_dot([SparseElement(1, 3e38), SparseElement(2, 3e38)], 10)
+    assert_equal(len(hits), 1)
+    assert_equal(hits[0].id, 2)
+    var cancel = SparseIndex()
+    cancel.upsert(1, [SparseElement(1, 1), SparseElement(2, -1)])
+    assert_equal(len(cancel.search_dot([SparseElement(1, 1), SparseElement(2, 1)], 10)), 0)

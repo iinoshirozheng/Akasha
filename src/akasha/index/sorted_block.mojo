@@ -131,11 +131,27 @@ struct SortedBlockIndex:
         condition.validate()
         if self._bulk_loading:
             raise Error("sorted block bulk load must finish before queries")
-        if condition.value.is_integer():
-            return self._evaluate_int(condition)
-        if condition.value.is_floating():
-            return self._evaluate_float(condition)
-        raise Error("sorted block index requires Int64 or Float64 values")
+        if not (condition.value.is_integer() or condition.value.is_floating()):
+            raise Error("sorted block index requires Int64 or Float64 values")
+        var integers = self._evaluate_int(condition)
+        if condition.value.is_integer() and condition.operator_kind() == FilterCondition.EQUAL:
+            return integers^
+        var floats = self._evaluate_float(condition)
+        return integers.union_with(floats)
+
+    def present(self, name: String) raises -> Bitmap:
+        if self._bulk_loading:
+            raise Error("sorted block bulk load must finish before queries")
+        var result = Bitmap(self._size)
+        var start = _int_field_start(self._integers, name)
+        var end = _int_field_end(self._integers, name, start)
+        for position in range(start, end):
+            result.set(self._integers[position].ordinal)
+        start = _float_field_start(self._floats, name)
+        end = _float_field_end(self._floats, name, start)
+        for position in range(start, end):
+            result.set(self._floats[position].ordinal)
+        return result^
 
     def _add_int(mut self, name: String, value: Int64, ordinal: Int):
         insert_posting(
@@ -159,11 +175,21 @@ struct SortedBlockIndex:
 
     def _evaluate_int(self, condition: FilterCondition) raises -> Bitmap:
         var result = Bitmap(self._size)
-        var value = condition.value.as_int()
         var start = _int_field_start(self._integers, condition.name)
         var end = _int_field_end(self._integers, condition.name, start)
-        var lower = _int_lower_bound(self._integers, value, start, end)
-        var upper = _int_upper_bound(self._integers, value, lower, end)
+        var lower: Int
+        var upper: Int
+        if condition.value.is_integer() and (
+            condition.operator_kind() == FilterCondition.EQUAL
+            or condition.operator_kind() == FilterCondition.NOT_EQUAL
+        ):
+            var value = condition.value.as_int()
+            lower = _int_lower_bound(self._integers, value, start, end)
+            upper = _int_upper_bound(self._integers, value, lower, end)
+        else:
+            var value = Float64(condition.value.as_int()) if condition.value.is_integer() else condition.value.as_float()
+            lower = _int_lower_bound(self._integers, value, start, end)
+            upper = _int_upper_bound(self._integers, value, lower, end)
         var first = start
         var last = end
         var operator_kind = condition.operator_kind()
@@ -188,9 +214,13 @@ struct SortedBlockIndex:
 
     def _evaluate_float(self, condition: FilterCondition) raises -> Bitmap:
         var result = Bitmap(self._size)
-        var value = condition.value.as_float()
+        var value = Float64(condition.value.as_int()) if condition.value.is_integer() else condition.value.as_float()
         var start = _float_field_start(self._floats, condition.name)
         var end = _float_field_end(self._floats, condition.name, start)
+        if condition.value.is_integer() and condition.operator_kind() == FilterCondition.NOT_EQUAL:
+            for position in range(start, end):
+                result.set(self._floats[position].ordinal)
+            return result^
         var lower = _float_lower_bound(self._floats, value, start, end)
         var upper = _float_upper_bound(self._floats, value, lower, end)
         var first = start
@@ -336,6 +366,36 @@ def _float_upper_bound(
     while low < high:
         var middle = (low + high) // 2
         if entries[middle].value <= value:
+            low = middle + 1
+        else:
+            high = middle
+    return low
+
+
+# F64 range bounds deliberately compare rounded integer values, matching
+# Qdrant's JSON-number range checker even above the exact F64 integer range.
+def _int_lower_bound(
+    entries: List[_IntEntry], value: Float64, start: Int, end: Int
+) -> Int:
+    var low = start
+    var high = end
+    while low < high:
+        var middle = low + (high - low) // 2
+        if Float64(entries[middle].value) < value:
+            low = middle + 1
+        else:
+            high = middle
+    return low
+
+
+def _int_upper_bound(
+    entries: List[_IntEntry], value: Float64, start: Int, end: Int
+) -> Int:
+    var low = start
+    var high = end
+    while low < high:
+        var middle = low + (high - low) // 2
+        if Float64(entries[middle].value) <= value:
             low = middle + 1
         else:
             high = middle

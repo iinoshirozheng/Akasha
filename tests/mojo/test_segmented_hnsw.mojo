@@ -1,6 +1,7 @@
 from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_entries import entries_from_legacy
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
@@ -67,6 +68,7 @@ def _chain_base(
     index.graph.set_neighbors(UInt32(3), 0, [UInt32(2)])
     index.build_stats.slot_count = 4
     index.build_stats.maximum_level = 1
+    index.entries = entries_from_legacy(index.graph, index.entry_slot)
     return index^
 
 
@@ -92,6 +94,7 @@ def _long_chain_base(
     index.build_stats.slot_count = 6
     index.build_stats.maximum_level = 0
     index.build_stats.directed_edges = 10
+    index.entries = entries_from_legacy(index.graph, index.entry_slot)
     return index^
 
 
@@ -278,7 +281,7 @@ def test_delta_threshold_latches_without_query_time_rebuild() raises:
     assert_true(index.needs_rebuild())
 
 
-def test_filtered_base_only_widens_from_initial_ef_once_per_source() raises:
+def test_filtered_base_uses_eligible_entry_without_unneeded_widening() raises:
     var config = _config()
     var table = MemTable(1)
     var base = _chain_base(config.copy(), table)
@@ -294,18 +297,19 @@ def test_filtered_base_only_widens_from_initial_ef_once_per_source() raises:
     assert_equal(len(results), 2)
     assert_equal(results[0].id, 12)
     assert_equal(results[1].id, 13)
-    assert_equal(index.last_search_stats().requested_ef, 4)
-    assert_equal(index.last_search_stats().effective_ef, 4)
-    assert_equal(index.last_search_stats().widening_rounds, 1)
+    assert_equal(index.last_search_stats().requested_ef, 2)
+    assert_equal(index.last_search_stats().effective_ef, 2)
+    assert_equal(index.last_search_stats().widening_rounds, 0)
     assert_equal(index.last_search_stats().fallback_reason, "")
     assert_equal(index.last_search_query_preparations(), 1)
-    assert_equal(index.last_search_upper_descents(), 1)
+    assert_equal(index.last_search_upper_descents(), 0)
 
 
 def test_filtered_saturation_uses_source_exact_fallback_and_final_stats() raises:
     var config = _config()
     var table = MemTable(1)
     var base = _chain_base(config.copy(), table)
+    base.graph.set_neighbors(UInt32(2), 0, [UInt32(1)])
     var index = SegmentedHnsw.from_owned(base^)
     var lookup = _lookup(table)
     var allowed_bitmap = Bitmap(table.slot_count())
@@ -326,7 +330,7 @@ def test_filtered_saturation_uses_source_exact_fallback_and_final_stats() raises
         "filtered_ann_exhausted",
     )
     assert_equal(index.last_search_query_preparations(), 1)
-    assert_equal(index.last_search_upper_descents(), 1)
+    assert_equal(index.last_search_upper_descents(), 0)
     assert_equal(index.last_rerank_ordinal_lookups(), 2)
 
 
@@ -447,7 +451,7 @@ def test_filtered_source_exhaustion_does_not_pollute_complete_merge() raises:
     assert_equal(index.last_search_stats().fallback_reason, "")
 
 
-def test_filtered_candidate_pool_expands_with_final_widened_ef() raises:
+def test_filtered_candidate_pool_retains_requested_ef_from_eligible_component() raises:
     var config = _config()
     var table = MemTable(1)
     var base = _long_chain_base(config.copy(), table)
@@ -461,11 +465,11 @@ def test_filtered_candidate_pool_expands_with_final_widened_ef() raises:
     var results = index.search_allowed([0.0], 3, 3, 6, allowed, table, lookup)
 
     assert_equal(len(results), 3)
-    assert_equal(index.last_search_stats().effective_ef, 6)
-    assert_equal(index.last_search_stats().widening_rounds, 1)
-    assert_equal(index.last_search_stats().base_candidates, 4)
-    assert_equal(index.last_search_stats().reranked_candidates, 4)
-    assert_equal(index.last_rerank_ordinal_lookups(), 4)
+    assert_equal(index.last_search_stats().effective_ef, 3)
+    assert_equal(index.last_search_stats().widening_rounds, 0)
+    assert_equal(index.last_search_stats().base_candidates, 3)
+    assert_equal(index.last_search_stats().reranked_candidates, 3)
+    assert_equal(index.last_rerank_ordinal_lookups(), 3)
 
 
 def test_large_memtable_small_k_reranks_only_bounded_candidates() raises:
@@ -492,6 +496,7 @@ def test_large_memtable_small_k_reranks_only_bounded_candidates() raises:
     base.build_stats.slot_count = count
     base.build_stats.maximum_level = 0
     base.build_stats.directed_edges = 2 * (count - 1)
+    base.entries = entries_from_legacy(base.graph, base.entry_slot)
     var index = SegmentedHnsw.from_owned(base^)
     var lookup = _lookup(table)
 

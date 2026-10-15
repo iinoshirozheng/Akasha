@@ -9,6 +9,7 @@ from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.field_artifacts import FieldRow
 from akasha.index.field_sparse import FieldSparseIndex
+from akasha.index.sparse import sparse_score_is_eligible
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
 from akasha.query.filter_ast import FilterExpression
@@ -35,6 +36,8 @@ struct FieldSearchExecution(Movable):
 def field_exact_stats(field: VectorFieldSpec) -> HnswSearchStats:
     var stats = HnswSearchStats()
     stats.backend_name = "native-f64"
+    if field.kind == 1:
+        stats.backend_name = "native-f32"
     stats.storage_name = "field-flat"
     stats.scalar_name = "binary"
     if field.scalar == 0:
@@ -111,7 +114,9 @@ def search_point_field(
         ref value = point.field_at(ordinal).value()
         if field.kind == 2 and value.row_count() == 0:
             continue
-        topk.offer(point.id, _score_validated_field(query, value, field))
+        var score = _score_validated_field(query, value, field)
+        if field.kind != 1 or sparse_score_is_eligible(Float32(score)):
+            topk.offer(point.id, score)
     return topk.sorted_entries()
 
 
@@ -242,9 +247,13 @@ def _search_sparse_field(
     var topk = BoundedTopK[DType.float64](
         min(k, len(index.rows)), smaller_is_better=False
     )
-    for row in range(len(index.rows)):
+    var visited = 0
+    for row in scores:
         if control:
-            control.value().checkpoint(row)
+            control.value().checkpoint(visited)
+        visited += 1
+        if not sparse_score_is_eligible(scores[row]):
+            continue
         ref location = index.rows[row]
         ref entry = view.run(location.layer).memtable.entry_ref_at(
             location.ordinal
@@ -254,7 +263,7 @@ def _search_sparse_field(
         ):
             stats.filtered_rejections += 1
             continue
-        topk.offer(location.id, scores.get(row, Float64(0)))
+        topk.offer(location.id, Float64(scores[row]))
         stats.base_visited += 1
     if control:
         control.value().checkpoint(0)

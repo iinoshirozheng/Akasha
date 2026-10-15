@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -78,9 +79,13 @@ def test_multi_process_replication_queries_and_duplicate_delivery(tmp_path) -> N
         assert hybrid[0].id == 0
         oracle_hybrid = oracle.search(hybrid_request)
         assert [item.id for item in hybrid] == [item.id for item in oracle_hybrid]
-        assert [item.score for item in hybrid] == pytest.approx(
-            [item.score for item in oracle_hybrid]
-        )
+        assert [item.score for item in hybrid] == [item.score for item in oracle_hybrid]
+        empty_sparse = replace(hybrid_request, sparse=[])
+        assert cluster.search(empty_sparse) == oracle.search(empty_sparse)
+        for constant in (1, 60, 16_777_216):
+            request = replace(hybrid_request, rank_constant=constant)
+            # Global branch ranks and F32 rounding must match the native merger.
+            assert cluster.search(request) == oracle.search(request)
 
         first = cluster.upsert(8, [2.0, 0.0], request_id="same-request")
         duplicate = cluster.upsert(8, [2.0, 0.0], request_id="same-request")

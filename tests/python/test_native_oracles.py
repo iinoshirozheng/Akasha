@@ -1,4 +1,4 @@
-"""Independent Float64 numerical oracles across native public field APIs."""
+"""Independent numerical oracles across native public field APIs."""
 
 import math
 
@@ -6,9 +6,12 @@ import numpy as np
 import pytest
 
 from akashadb import Collection, PayloadField, PointMutation, VectorField
+from score_oracles import f16_cosine
 
 
-def score(metric, left, right):
+def score(metric, left, right, dtype="f32"):
+    if dtype == "f16" and metric == "cosine":
+        return f16_cosine(left, right)
     if metric == "l2":
         return math.fsum((float(a) - float(b)) ** 2 for a, b in zip(left, right))
     dot = math.fsum(float(a) * float(b) for a, b in zip(left, right))
@@ -42,10 +45,10 @@ def test_native_filtered_topk_matches_independent_oracle_before_after_reopen(tmp
         if i % 2 == 0 or not vector:
             continue
         if kind == "dense":
-            value = score(metric, request, vector)
+            value = score(metric, request, vector, dtype)
         else:
             select = min if metric == "l2" else max
-            value = math.fsum(select(score(metric, row, candidate) for candidate in vector) for row in request)
+            value = math.fsum(select(score(metric, row, candidate, dtype) for candidate in vector) for row in request)
         oracle.append((i, value))
     oracle.sort(key=lambda item: (item[1] if metric == "l2" else -item[1], item[0]))
     expression = {"kind": "condition", "operator": "eq", "name": "eligible", "type": "int", "value": 1}

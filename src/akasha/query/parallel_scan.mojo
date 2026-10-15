@@ -84,24 +84,14 @@ def execute_parallel_scan(
         and metric != BATCH_COSINE_METRIC
     ):
         raise Error("unknown parallel scan metric")
-    var query_norm: Float32 = 0.0
     for value in query:
         if not isfinite(value):
             raise Error("query vector must contain only finite values")
-        query_norm += value * value
-    if metric == BATCH_COSINE_METRIC and query_norm == 0.0:
-        raise Error("cosine similarity requires non-zero vectors")
     for entry_index in range(len(ordinals)):
         if not memtable.is_live_at(ordinals[entry_index]):
             raise Error("parallel scan candidate slot is not live")
         if len(entries[ordinals[entry_index]].values()) != dimension:
             raise Error("parallel scan candidate dimension mismatch")
-        if metric == BATCH_COSINE_METRIC:
-            var candidate_norm: Float32 = 0.0
-            for value in entries[ordinals[entry_index]].values():
-                candidate_norm += value * value
-            if candidate_norm == 0.0:
-                raise Error("cosine similarity requires non-zero vectors")
     if len(ordinals) == 0:
         return List[SearchResult]()
 

@@ -299,7 +299,7 @@ class Collection:
 
     def search_fields(
         self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
-        rank_constant: int = 60, filter: Mapping[str, Any] | None = None,
+        rank_constant: int = 2, filter: Mapping[str, Any] | None = None,
         rerank: FieldQuery | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
     ) -> list[SearchResult]:
@@ -309,7 +309,7 @@ class Collection:
 
     def _search_fields_raw(
         self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
-        rank_constant: int = 60, filter: Mapping[str, Any] | None = None,
+        rank_constant: int = 2, filter: Mapping[str, Any] | None = None,
         rerank: FieldQuery | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
         columns: bool = False,

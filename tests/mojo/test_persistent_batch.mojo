@@ -142,7 +142,7 @@ def test_failed_batch_wal_requires_reopen_and_never_publishes_staged_rows() rais
     var old = collection.snapshot()
     # Mojo open creates missing parent directories; an existing directory is
     # an actual append failure rather than a path that can be created.
-    collection._wal_path = path
+    collection._point_store._path = path + "/wal.bin"
     var mutations: List[BatchMutation] = [
         BatchMutation.upsert(7, [3, 4]),
         BatchMutation.upsert(8, [5, 6]),

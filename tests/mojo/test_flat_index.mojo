@@ -132,8 +132,10 @@ def test_each_search_reprepares_the_callers_query() raises:
     assert_equal(product[0].score, Float32(4.0))
     query[0] = 0.0
     query[1] = 0.0
-    with assert_raises(contains="non-zero"):
-        _ = index.search_cosine(query, 2)
+    var cosine_zero = index.search_cosine(query, 2)
+    assert_equal(cosine_zero[0].id, 1)
+    assert_equal(cosine_zero[0].score, Float32(0))
+    assert_equal(cosine_zero[1].score, Float32(0))
     var zero = index.search_dot(query, 2)
     assert_equal(zero[0].id, 1)
     assert_equal(zero[0].score, Float32(0.0))

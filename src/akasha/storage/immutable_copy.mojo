@@ -72,7 +72,7 @@ def copy_verified_immutable(
                 var expected_header = UInt64(160 if version == 1 else 192)
                 if (
                     size < Int(expected_header) + 4
-                    or (version != 1 and version != 2)
+                    or (version != 1 and version != 2 and version != 3)
                     or _prefix_u64(prefix, 6, 2) != 0
                     or _prefix_u64(prefix, 8, 4) != expected_header
                     or _prefix_u64(prefix, 12, 4) != 0

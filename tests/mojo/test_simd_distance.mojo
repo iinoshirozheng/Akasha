@@ -149,10 +149,8 @@ def test_checked_scores_preserve_existing_accumulator_bits() raises:
                 ),
             )
         var zeros = List[Float32](length=size, fill=0)
-        with assert_raises(contains="non-zero"):
-            _ = simd_cosine_similarity(lhs, zeros)
-        with assert_raises(contains="non-zero"):
-            _ = simd_cosine_similarity(zeros, lhs)
+        assert_equal(simd_cosine_similarity(lhs, zeros), Float32(0))
+        assert_equal(simd_cosine_similarity(zeros, lhs), Float32(0))
     var empty = List[Float32]()
     with assert_raises(contains="empty"):
         _ = simd_cosine_similarity(empty, empty)
@@ -194,10 +192,8 @@ def test_prepared_scores_keep_bits_and_candidate_validation() raises:
                 _ = _prepared_f32_score(metric, query, List[Float32](), prepared)
         var zero = List[Float32](length=size, fill=0)
         var zero_norm = _prepare_f32_query(2, zero)
-        with assert_raises(contains="non-zero"):
-            _ = _prepared_f32_score(2, zero, query, zero_norm)
-        with assert_raises(contains="non-zero"):
-            _ = _prepared_f32_score(2, query, zero, _prepare_f32_query(2, query))
+        assert_equal(_prepared_f32_score(2, zero, query, zero_norm), Float32(0))
+        assert_equal(_prepared_f32_score(2, query, zero, _prepare_f32_query(2, query)), Float32(0))
     for metric in range(3):
         with assert_raises(contains="empty"):
             _ = _prepare_f32_query(metric, List[Float32]())
@@ -234,8 +230,7 @@ def test_prepared_scores_preserve_finite_extremes_and_signed_zero() raises:
                 except:
                     rejected = True
                 if rejected:
-                    with assert_raises(contains="non-zero"):
-                        _ = _prepared_f32_score(metric, query, candidate, norm)
+                    assert_equal(_prepared_f32_score(metric, query, candidate, norm), Float32(0))
                 else:
                     assert_equal(
                         bitcast[DType.uint32](

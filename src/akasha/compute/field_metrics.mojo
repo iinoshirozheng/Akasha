@@ -1,37 +1,13 @@
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from std.bit import pop_count
-from std.math import sqrt
+from std.math import abs, sqrt
 
 
 def validate_field_query(query: VectorValue, field: VectorFieldSpec) raises:
     query.validate(field)
     if field.kind == 2 and query.row_count() == 0:
         raise Error("MaxSim query requires at least one row")
-    if field.metric == 2:
-        # Check every query row even when the searched field has no points.
-        if field.scalar == 0:
-            _validate_cosine_query[DType.float32](query)
-        elif field.scalar == 1:
-            _validate_cosine_query[DType.bfloat16](query)
-        elif field.scalar == 2:
-            _validate_cosine_query[DType.float16](query)
-        elif field.scalar == 3:
-            _validate_cosine_query[DType.int8](query)
-        else:
-            _validate_cosine_query[DType.uint8](query)
-
-
-def _validate_cosine_query[dtype: DType](query: VectorValue) raises:
-    if query.kind() == 0:
-        var row = Span(query.dense_values[dtype]())
-        _ = _numeric_score[dtype](2, row, row)
-        return
-    ref values = query.multivector_values[dtype]()
-    var dimension = query.dimension()
-    for index in range(query.row_count()):
-        var row = Span(values)[index * dimension : (index + 1) * dimension]
-        _ = _numeric_score[dtype](2, row, row)
 
 
 def score_vector_field(
@@ -39,7 +15,9 @@ def score_vector_field(
 ) raises -> Float64:
     """Raw score: Dot/cosine high-first; squared L2/Hamming/Jaccard low-first.
 
-    Accumulate in Float64 without changing native stored scalars. Jaccard is
+    Dense and multivector scores accumulate in Float64, except F16 cosine:
+    it normalizes/rounds to half before Float32 dot scoring, as in Qdrant.
+    Sparse Dot uses Float32 accumulation without changing stored scalars. Jaccard is
     distance, with two zero bitsets at distance zero. MaxSim sums each query
     row's best match (minimum squared L2 or maximum Dot/cosine). Empty matrices
     remain valid stored values but cannot score against a nonempty query.
@@ -74,17 +52,17 @@ def _score_validated_field(
         ref rhs = candidate.sparse_values()
         var left = 0
         var right = 0
-        var total = Float64(0)
+        var total = Float32(0)
         while left < len(lhs) and right < len(rhs):
             if lhs[left].term_id < rhs[right].term_id:
                 left += 1
             elif lhs[left].term_id > rhs[right].term_id:
                 right += 1
             else:
-                total += Float64(lhs[left].weight) * Float64(rhs[right].weight)
+                total += Float32(lhs[left].weight) * Float32(rhs[right].weight)
                 left += 1
                 right += 1
-        return total
+        return Float64(total)
     if field.scalar == 0:
         return _score_numeric_field[DType.float32](query, candidate, field)
     if field.scalar == 1:
@@ -136,6 +114,9 @@ def _numeric_score[
 ](
     metric: UInt8, lhs: Span[Scalar[dtype], _], rhs: Span[Scalar[dtype], _]
 ) raises -> Float64:
+    comptime if dtype == DType.float16:
+        if metric == 2:
+            return _f16_cosine[dtype](lhs, rhs)
     var total = Float64(0)
     var left_norm = Float64(0)
     var right_norm = Float64(0)
@@ -152,6 +133,36 @@ def _numeric_score[
                 right_norm += right * right
     if metric == 2:
         if left_norm == 0 or right_norm == 0:
-            raise Error("cosine similarity requires non-zero vectors")
+            return 0
         return total / (sqrt(left_norm) * sqrt(right_norm))
     return total
+
+
+def _f16_cosine[dtype: DType](
+    lhs: Span[Scalar[dtype], _], rhs: Span[Scalar[dtype], _]
+) -> Float64:
+    """Qdrant metric_f16/simple_cosine.rs: F32 normalize, half-round, F32 dot.
+
+    Derive prepared scalars from native half authority without rewriting the
+    stored vector. Dot products of half scalars are exact in F32 before summing.
+    """
+    comptime assert dtype == DType.float16, "half cosine requires native half scalars"
+    var left_length = Float32(0)
+    var right_length = Float32(0)
+    for index in range(len(lhs)):
+        var left = Float32(lhs[index])
+        var right = Float32(rhs[index])
+        left_length += left * left
+        right_length += right * right
+    var left_divisor = Float32(1)
+    var right_divisor = Float32(1)
+    if left_length >= Float32(1.1920928955078125e-7) and abs(left_length - 1) > 1.0e-6:
+        left_divisor = sqrt(left_length)
+    if right_length >= Float32(1.1920928955078125e-7) and abs(right_length - 1) > 1.0e-6:
+        right_divisor = sqrt(right_length)
+    var total = Float32(0)
+    for index in range(len(lhs)):
+        var left = Float32(Float16(Float32(lhs[index]) / left_divisor))
+        var right = Float32(Float16(Float32(rhs[index]) / right_divisor))
+        total += left * right
+    return Float64(total)

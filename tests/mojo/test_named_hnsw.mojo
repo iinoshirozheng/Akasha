@@ -268,3 +268,34 @@ def test_named_control_cancelled_build_never_publishes() raises:
     collection.close()
     snapshot.close()
     Python.import_module("shutil").rmtree(path)
+
+
+def test_cardinality_plan_skips_build_for_small_or_selective_field() raises:
+    for count in [3, 96]:
+        var path = String(py=Python.import_module("tempfile").mkdtemp(prefix="akasha-field-plan-"))
+        var collection = PersistentCollection.open_with_fields(path, _fields(), maintenance_library_path="")
+        var batch = List[PointMutation]()
+        for row in range(96):
+            var fields = List[FieldUpdate]()
+            if row < count:
+                fields.append(FieldUpdate.set(3, VectorValue.dense[DType.uint8]([UInt8(row), UInt8(1)])))
+            var payload: List[DocumentField] = [DocumentField("group", PayloadValue.integer(Int64(1 if row == 0 else 0)))]
+            batch.append(PointMutation(row, 1, fields^, Optional(payload^)))
+        _ = collection.apply_point_batch(batch)
+        var snapshot = collection.snapshot()
+        var root = snapshot._acquire()
+        var state = root[].field_hnsw[].get(3)
+        state[].fail_for_test = True
+        var query = VectorValue.dense[DType.uint8]([UInt8(0), UInt8(1)])
+        var expected = snapshot.search_field("audio", query, 2, _predicate(count == 96))
+        var actual = snapshot.search_field("audio", query, 2, _predicate(count == 96), approximate=True)
+        assert_equal(len(actual), len(expected))
+        for row in range(len(expected)):
+            assert_equal(actual[row].id, expected[row].id)
+            assert_equal(actual[row].score, expected[row].score)
+        assert_equal(state[].build_count, 0)
+        assert_equal(state[].failure_count, 0)
+        assert_true(not Bool(state[].ready))
+        snapshot.close()
+        collection.close()
+        Python.import_module("shutil").rmtree(path)

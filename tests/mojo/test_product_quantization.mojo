@@ -37,7 +37,7 @@ def test_pq_training_and_codes_are_deterministic() raises:
     var vectors = _training_vectors()
     var lhs = PqCodebook.train(vectors, 2, 4, iterations=6)
     var rhs = PqCodebook.train(vectors, 2, 4, iterations=6)
-    assert_equal(lhs.version(), UInt32(1))
+    assert_equal(lhs.version(), UInt32(2))
     assert_equal(lhs.dimension(), 4)
     assert_equal(lhs.subquantizer_count(), 2)
     assert_equal(lhs.centroid_count(), 4)
@@ -49,6 +49,23 @@ def test_pq_training_and_codes_are_deterministic() raises:
     assert_true(Int(lhs_code[0]) < 4)
 
 
+def test_pq_training_uses_float64_means_before_float32_centroids() raises:
+    # Qdrant kmeans: an F32 running sum loses the middle unit entirely.
+    var vectors: List[List[Float32]] = [[100_000_000.0], [1.0], [-100_000_000.0]]
+    var codebook = PqCodebook.train(vectors, 1, 1, iterations=3)
+    assert_equal(codebook.value(0, 0, 0), Float32(1.0 / 3.0))
+
+
+def test_pq_training_bounds_the_source_ordered_sample() raises:
+    var vectors = List[List[Float32]]()
+    for row in range(10_001):
+        vectors.append([Float32(row)])
+    var codebook = PqCodebook.train(vectors, 1, 1)
+    # The seed-1 uniform reservoir replaces row 6004 with row 10000. Only
+    # 10,000 rows enter the F64 mean, rather than retaining unbounded training.
+    assert_equal(codebook.value(0, 0, 0), Float32(4999.8996))
+
+
 def test_pq_index_searches_all_metrics() raises:
     var vectors = _training_vectors()
     var ids = List[Int](capacity=len(vectors))
@@ -58,9 +75,21 @@ def test_pq_index_searches_all_metrics() raises:
     var query = vectors[9].copy()
     assert_equal(index.search_l2(query, 1)[0].id, 10)
     assert_true(len(index.search_dot(query, 3)) == 3)
-    assert_true(len(index.search_cosine(query, 3)) == 3)
+    var cosine_index = PqIndex.build(ids, vectors, 2, 8, iterations=8, cosine=True)
+    assert_true(len(cosine_index.search_cosine(query, 3)) == 3)
     assert_equal(index.encoded_bytes(), len(vectors) * 2)
     assert_true(index.estimated_bytes() > index.encoded_bytes())
+
+
+def test_pq_cosine_scores_the_normalized_centroid_without_renormalizing() raises:
+    # Mean of unit [1,0] and [0,1]. Qdrant uses its dot score after training;
+    # renormalizing this centroid would incorrectly return sqrt(0.5).
+    var codebook = PqCodebook(2, 1, 1, [0.5, 0.5])
+    var index = PqIndex(codebook^, [1], [UInt8(0)], cosine=True)
+    assert_equal(index.search_cosine([1, 0], 1)[0].score, Float32(0.5))
+    var invalid = PqCodebook(2, 1, 1, [0.5, 0.5])
+    with assert_raises():
+        _ = PqIndex(invalid^, [1], [UInt8(1)], cosine=True)
 
 
 def test_pq_snapshot_rerank_matches_exact_oracle() raises:
@@ -154,6 +183,9 @@ def test_pq_cache_keys_all_training_parameters_and_reuses_across_metrics() raise
         var oracle = PqIndex.build(
             ids, vectors, config[0], config[1], iterations=config[2]
         )
+        var cosine_oracle = PqIndex.build(
+            ids, vectors, config[0], config[1], iterations=config[2], cosine=True
+        )
         for _ in range(3):
             _same(
                 oracle.search_dot(query, 3),
@@ -176,7 +208,7 @@ def test_pq_cache_keys_all_training_parameters_and_reuses_across_metrics() raise
                 ),
             )
             _same(
-                oracle.search_cosine(query, 4),
+                cosine_oracle.search_cosine(query, 4),
                 snapshot.search_pq_cosine(
                     query,
                     4,
@@ -199,7 +231,11 @@ def test_pq_cache_keys_all_training_parameters_and_reuses_across_metrics() raise
         var state = root[].pq[].get(config[0], config[1], config[2])
         assert_equal(state[].build_count, 1)
         assert_equal(state[].status, ARTIFACT_READY)
+        var cosine_state = root[].pq_cosine[].get(config[0], config[1], config[2])
+        assert_equal(cosine_state[].build_count, 1)
+        assert_equal(cosine_state[].status, ARTIFACT_READY)
     assert_equal(root[].pq[].count(), 4)
+    assert_equal(root[].pq_cosine[].count(), 4)
     collection.close()
 
 
@@ -380,7 +416,14 @@ def test_pq_invalid_keys_and_empty_snapshot_do_not_retain_artifacts() raises:
 
 
 def test_pq_training_cooperatively_stops_on_deadline() raises:
-    var vectors = _training_vectors()
+    # A high iteration cap no longer forces work after Lloyd convergence.
+    # Make a single assignment pass exceed the deadline instead.
+    var vectors = List[List[Float32]]()
+    for row in range(8192):
+        var values = List[Float32](capacity=64)
+        for col in range(64):
+            values.append(Float32((row * 17 + col * 7) % 127))
+        vectors.append(values^)
     var token = CancellationToken()
     var control = Optional(
         QueryControl(
@@ -391,10 +434,11 @@ def test_pq_training_cooperatively_stops_on_deadline() raises:
     )
     with assert_raises(contains="query deadline exceeded"):
         _ = PqCodebook.train(
-            vectors, 2, 4, iterations=1_000_000, control=control
+            vectors, 1, 128, iterations=100, control=control
         )
-    var fresh = PqCodebook.train(vectors, 2, 4)
-    assert_equal(len(fresh.encode(vectors[0])), 2)
+    var small = _training_vectors()
+    var fresh = PqCodebook.train(small, 2, 4)
+    assert_equal(len(fresh.encode(small[0])), 2)
 
 
 def main() raises:

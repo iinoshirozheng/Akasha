@@ -1,14 +1,17 @@
+from hnsw_search_helpers import greedy_descent, search_layer
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_payload import attach_payload_graphs
+from akasha.index.metadata import MetadataIndex
+from akasha.document.record import DocumentField
+from akasha.document.value import PayloadValue
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.index.hnsw_core import (
     HnswEligibility,
     HnswIdOrdinalLookup,
     HnswSearchAdmission,
-    greedy_descent,
-    search_layer,
 )
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_stats import HnswSearchStats
@@ -114,7 +117,7 @@ def _first_edge(bytes: List[UInt8]) raises -> Tuple[Int, UInt32]:
     var counts = Int(_u64_at(bytes, 120))
     var edges = Int(_u64_at(bytes, 136))
     for source in range(slots):
-        var node = 160 + source * 40
+        var node = Int(_u64_at(bytes, 88)) + source * 40
         var levels = (
             Int(
                 UInt16(bytes[node + 8]) | (UInt16(bytes[node + 9]) << UInt16(8))
@@ -317,6 +320,11 @@ def test_core_candidate_order_is_identical_for_owned_and_view() raises:
 def test_owned_and_mapped_filtered_widening_share_prepare_once_core() raises:
     var config = _config(MetricKind.l2())
     var original = _graph(config.copy())
+    var metadata = MetadataIndex()
+    for id in range(1, 25):
+        if id != 7:
+            metadata.upsert(id, [DocumentField("parity", PayloadValue.integer(Int64(id % 2)))])
+    attach_payload_graphs(original, metadata)
     var path = _path("filtered-widening")
     remove_file_if_exists(path)
     write_file_sync(path, encode_hnsw_snapshot(original, UInt64(94)))
@@ -425,12 +433,12 @@ def test_view_rejects_invalid_nodes_vectors_counts_edges_and_entry() raises:
 
     var duplicate_id = bytes.copy()
     for index in range(8):
-        duplicate_id[200 + index] = duplicate_id[160 + index]
+        duplicate_id[Int(_u64_at(bytes, 88)) + 40 + index] = duplicate_id[Int(_u64_at(bytes, 88)) + index]
     _seal(duplicate_id)
     _expect_rejected(duplicate_id, config, "duplicate-id")
 
     var bad_level = bytes.copy()
-    _put_u16(bad_level, 168, UInt16(config.max_level + 1))
+    _put_u16(bad_level, Int(_u64_at(bytes, 88)) + 8, UInt16(config.max_level + 1))
     _seal(bad_level)
     _expect_rejected(bad_level, config, "bad-level")
 

@@ -7,6 +7,7 @@ import pytest
 
 from akashadb import Collection, CollectionConfig, FieldQuery, IvfOptions, PayloadField, PointMutation, ResourceLimits, ValidationError, VectorField
 from akashadb.arrow import search_fields_record_batch
+from score_oracles import f16_cosine
 
 
 @pytest.mark.parametrize("mode", ["exact", "approx", "ivf"])
@@ -37,6 +38,9 @@ def test_native_rerank_candidate_bound_oracle_arrow_mutations_and_reopen(tmp_pat
                 scores[id] = float((q ^ v).bit_count()) if metric == "hamming" else 1. - (q & v).bit_count() / (q | v).bit_count()
             else:
                 q, v = np.array(query), np.array(values[id])
+                if metric == "cosine" and dtype == "f16":
+                    scores[id] = sum(max(f16_cosine(qrow, row) for row in v) for qrow in q)
+                    continue
                 if metric == "cosine":
                     q = q / np.linalg.norm(q, axis=1)[:, None]
                     v = v / np.linalg.norm(v, axis=1)[:, None]
