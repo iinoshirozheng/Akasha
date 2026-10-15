@@ -115,11 +115,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   `benchmarks/qdrant_quality_gate_reference.py` produced the same result in
   three fresh native Qdrant trials on that corpus, each checking exact results
   against an independent F64 oracle. This diagnoses the gate; it does not waive it.
-- Latest warm three-corpus, three-trial acceptance after source-bitmap
-  integration: matched recall 36/36, speed **5/36**, overall **FAILED**.
+- Latest warm three-corpus, three-trial acceptance after base-ordinal
+  projection: matched recall 36/36, speed **4/36**, overall **FAILED**.
   The existing symmetric ef grid and all thresholds were retained; see the
-  [measurement report](../benchmarks/2026-10-16-qdrant-source-bitmap.md).
-  The earlier 3/36 and 6/36 runs remain historical evidence, not paired baselines.
+  [measurement report](../benchmarks/2026-10-16-qdrant-base-ordinals.md).
+  The earlier 3/36, 6/36 and 5/36 runs remain historical snapshots, not paired baselines.
+  Fresh serial mixed acceptance passes recall 36/36, speed 10/36 and combined
+  write+flush 5/9. All 5,184 query audits, 18 reopen checks and nine retained
+  Arrow leases pass. Filtered ANN speed parity remains failed in both phases.
   Full M5/M6 requirements still include lifecycle,
   concurrent/non-resident/type matrices and actual supported-platform evidence.
   Source parity and macOS tests cannot substitute for those measurements.

@@ -22,6 +22,7 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import (
+    _HnswIdOrdinalState,
     HnswEligibility,
     HnswIdOrdinalLookup,
     HnswResultAdmission,
@@ -61,14 +62,39 @@ def _should_scan_delta(
     return (physical_slots - 1) // m0 + 1 <= ef
 
 
+struct _BaseOrdinalProjection:
+    """Slot-to-metadata translation pinned to one append-only lookup owner."""
+
+    var lookup: ArcPointer[_HnswIdOrdinalState]
+    var ordinals: List[Int]
+    var missing_slots: List[UInt32]
+    var lookup_count: Int
+
+    def __init__(
+        out self, lookup: ArcPointer[_HnswIdOrdinalState], slots: Int
+    ):
+        self.lookup = lookup
+        self.ordinals = List[Int](length=slots, fill=-1)
+        self.missing_slots = List[UInt32]()
+        self.lookup_count = lookup[].ordinal_count
+
+    def resolve(mut self, slot: UInt32, id: Int) raises -> Bool:
+        if id not in self.lookup[].ordinals:
+            return False
+        self.ordinals[Int(slot)] = self.lookup[].ordinals[id]
+        return True
+
+
 struct _CurrentSourceState:
     var sources: Dict[Int, Int]
     var base_current: Bitmap
+    var base_ordinals: Optional[ArcPointer[_BaseOrdinalProjection]]
     var delta_count: Int
 
     def __init__(out self, base_slots: Int) raises:
         self.sources = Dict[Int, Int]()
         self.base_current = Bitmap(base_slots)
+        self.base_ordinals = None
         self.delta_count = 0
 
 
@@ -164,15 +190,18 @@ struct _SourceAdmission(Copyable, HnswResultAdmission, Movable):
 struct _FilteredSourceAdmission(Copyable, HnswResultAdmission, Movable):
     var _source: _SourceAdmission
     var _eligibility: HnswEligibility
+    var _base_ordinals: Optional[ArcPointer[_BaseOrdinalProjection]]
 
     def __init__(
         out self,
         sources: _CurrentSourceLookup,
         delta: Bool,
         eligibility: HnswEligibility,
+        base_ordinals: Optional[ArcPointer[_BaseOrdinalProjection]],
     ):
         self._source = _SourceAdmission(sources, delta)
         self._eligibility = eligibility.copy()
+        self._base_ordinals = base_ordinals
 
     def is_allow_all(self) -> Bool:
         return False
@@ -180,11 +209,24 @@ struct _FilteredSourceAdmission(Copyable, HnswResultAdmission, Movable):
     def validate(self, slot_count: Int) raises:
         self._source.validate(slot_count)
         self._eligibility.validate(slot_count)
+        if not self._source._delta:
+            if not self._base_ordinals:
+                raise Error("HNSW base ordinal projection is absent")
+            var projection = self._base_ordinals.value()
+            if (
+                len(projection[].ordinals) != slot_count
+                or not (projection[].lookup is self._eligibility._state[].lookup)
+                or projection[].lookup_count != projection[].lookup[].ordinal_count
+            ):
+                raise Error("HNSW base ordinal projection is stale")
 
     def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
-        return self._source._allows_item(
-            slot, id
-        ) and self._eligibility._allows_item(slot, id)
+        if not self._source._allows_item(slot, id):
+            return False
+        if self._source._delta:
+            return self._eligibility.allows(id)
+        var ordinal = self._base_ordinals.value()[].ordinals[Int(slot)]
+        return ordinal >= 0 and self._eligibility._state[].allowed_ordinals.contains(ordinal)
 
 
 def _accumulate_search_stats(
@@ -899,6 +941,42 @@ struct SegmentedHnsw(Movable):
         self._last_stats = stats^
         return merged^
 
+    def _base_id_at(self, slot: UInt32) raises -> Int:
+        if self._base_kind == _MAPPED_BASE:
+            return self._mapped_base.id_at(slot)
+        return self._owned_base.graph.id_at(slot)
+
+    def _prepare_base_ordinals(
+        mut self, allowed: HnswEligibility
+    ) raises -> ArcPointer[_BaseOrdinalProjection]:
+        # Base slots never move within this source owner. Metadata ordinals do
+        # not move within their lookup owner; a rebuild replaces that Arc.
+        # Keeping both owners prevents address reuse from accepting stale data.
+        var lookup = allowed._state[].lookup
+        var cached = self._sources._state[].base_ordinals
+        if not cached or not (cached.value()[].lookup is lookup):
+            var projection = ArcPointer(
+                _BaseOrdinalProjection(lookup, self.base_slot_count())
+            )
+            for index in range(self.base_slot_count()):
+                var slot = UInt32(index)
+                if not projection[].resolve(slot, self._base_id_at(slot)):
+                    projection[].missing_slots.append(slot)
+            # Publish only after every checked graph read succeeds.
+            self._sources._state[].base_ordinals = projection
+            return projection
+        var projection = cached.value()
+        if projection[].lookup_count != lookup[].ordinal_count:
+            # Appending metadata cannot change known ordinals. Resolve only
+            # previously absent IDs; ordinary complete lookups do no slot scan.
+            var missing = List[UInt32]()
+            for slot in projection[].missing_slots:
+                if not projection[].resolve(slot, self._base_id_at(slot)):
+                    missing.append(slot)
+            projection[].missing_slots = missing^
+            projection[].lookup_count = lookup[].ordinal_count
+        return projection
+
     def _collect_allowed_candidates[
         backend_tag: Int
     ](
@@ -939,7 +1017,8 @@ struct SegmentedHnsw(Movable):
         var single_source = base_live == 0 or delta_live == 0
         if base_live > 0:
             var base_admission = _FilteredSourceAdmission(
-                self._sources, False, allowed
+                self._sources, False, allowed,
+                self._prepare_base_ordinals(allowed),
             )
             var base_results: List[SearchResult]
             if self._base_kind == _MAPPED_BASE:
@@ -988,7 +1067,7 @@ struct SegmentedHnsw(Movable):
 
         if delta_live > 0:
             var delta_admission = _FilteredSourceAdmission(
-                self._sources, True, allowed
+                self._sources, True, allowed, None
             )
             var delta_results = self._search_delta_prepared_backend[
                 backend_tag=backend_tag

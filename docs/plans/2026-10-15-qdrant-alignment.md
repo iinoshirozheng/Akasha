@@ -321,3 +321,19 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   filtered ANN cell. The fixed L2 probe finds all nodes reachable but all 13
   missed neighbors unscored at ef=64. Thresholds and production ef are unchanged.
   See the [source bitmap report](../benchmarks/2026-10-16-qdrant-source-bitmap.md).
+- Base-level metadata-read removal was tested and withdrawn because saved-graph
+  gains were small/inconsistent; the [rejected probe](../benchmarks/2026-10-16-hnsw-base-level-probe.md)
+  retains its matching oracles and all regressions (`6822da3`).
+- Added a base-slot-to-metadata-ordinal projection, pinned to both the base-source
+  lifetime and metadata lookup identity. Repeated queries share it; appends
+  resolve only missing IDs; new lookup owners rebuild it. Original segmented
+  21/21, new ownership/append/reorder/promotion tests 3/3, related Mojo 69/69,
+  rebuilt Python/distributed 387 passed/one skipped and C client pass.
+  Both saved-graph orders retain identical results/counters and improve every
+  filtered ANN QPS cell, with one first-order filtered p95 regression.
+- Latest fresh warm acceptance: recall 36/36, speed 4/36. Mixed acceptance:
+  recall 36/36, speed 10/36, combined write+flush 5/9. All 5,184 query audits,
+  18 reopen checks and nine Arrow leases pass. Fixed quality remains 3/4 with
+  L2 .9458333333 below .95. First-filter timing tradeoffs and complete evidence
+  are in the [base ordinal report](../benchmarks/2026-10-16-qdrant-base-ordinals.md).
+  Full M5/M6 remains FAILED; thresholds and ef selection remain unchanged.
