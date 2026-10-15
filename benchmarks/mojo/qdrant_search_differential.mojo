@@ -62,3 +62,22 @@ def main() raises:
         for item in result:
             line += String(" ", item.slot)
         print(line)
+        var batched_stats = HnswSearchStats()
+        var batched = search[backend_tag=1](
+            index.graph,
+            index.metric,
+            query,
+            primary,
+            extra,
+            Int(py=fixture["k"]),
+            Int(py=fixture["ef"]),
+            allowed,
+            index.scratch,
+            batched_stats,
+        )
+        var batched_line = String(
+            "batched case ", case_id, " distances ", batched_stats.distance_evaluations, " ids"
+        )
+        for item in batched:
+            batched_line += String(" ", item.slot)
+        print(batched_line)

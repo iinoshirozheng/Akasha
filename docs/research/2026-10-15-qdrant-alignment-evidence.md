@@ -22,7 +22,7 @@ the failed runs as well as the successful ones.
 | BF16, signed I8, binary Hamming/Jaccard | Qdrant storage datatype enum supports F32/F16/U8; learned binary quantization is a different representation | `test_field_metrics`, `test_named_vectors`, `test_quantization`, compact HNSW and frozen sidecar tests | No directly corresponding raw-field contract. Preserve native values, bounds and independent metric oracles; do not equate signed I8 storage with Qdrant scalar quantization. |
 | Learned SQ8/PQ | `lib/quantization/src/encoded_vectors_u8.rs`, `encoded_vectors_pq.rs`, `kmeans.rs`; segment `quantized_vectors.rs` | PQ centroids: 8/20 before, 20/20 exact after. SQ8 native scores: 0/27 before, 45/45 after including constant vectors. PQ native trained-codebook scoring: 14/18 before, 18/18 after normalized cosine and centroid lookup tables. Snapshot SQ8/PQ and IVF tests pass | SQ8 padding is computed without storing padding bytes. PQ uses deterministic reservoir/reseeding, explicit centroid/iteration parameters, and separate normalized/raw artifact registries. Native PQ scoring uses captured native codebooks to isolate its unseeded training; the separate Rust oracle covers training. |
 | HNSW construction | `index/hnsw_index/{graph_layers_builder,links_container}.rs`; `hnsw/build.rs` | Independent directed backlink pruning, no refill, rounded level sampler, payload level-zero edges. Extracted Rust build comparison: 24/24 fixtures and 2,467 ordered adjacency rows (`.build/qdrant-source-reference/build-2/summary.json`) | Algorithm port verified on fixed serial L2 fixtures. Random stream/ties and payload thresholds are explicit adaptations, not identical upstream defaults. |
-| Entries, traversal and connectivity | `entry_points.rs`, `graph_layers.rs`, `point_scorer.rs`, `hnsw/build.rs` | Production owned/mapped traversal 98/98 including distance counts (`cancellation/summary.json`); probabilistic connectivity 128/128 including RNG consumption (`connectivity-2/summary.json`) | Eligible primary/extra entries, filter-before-score and bounded frontier integrated with payload connectivity. Stable ties and extra-entry capacity remain Akasha policy. |
+| Entries, traversal and connectivity | `entry_points.rs`, `graph_layers.rs`, `point_scorer.rs`, `hnsw/build.rs` | Owned traversal oracle: 98/98 on scalar and batched F32 paths, including distance counts (`four-score-batch-2/summary.json`); mapped scoring separately checked against single-row bits and saved-graph results. Probabilistic connectivity 128/128 including RNG consumption (`connectivity-2/summary.json`) | Eligible primary/extra entries, filter-before-score and bounded frontier integrated with payload connectivity. Stable ties and extra-entry capacity remain Akasha policy. |
 | Scalar payload filtering | `payload_storage/condition_checker.rs`; payload field indexes | New `test_qdrant_payload`: direct/indexed numeric coercion, exact Int64 equality, MatchExcept and missing fields; native live/reopen mixed payload cases | Integer/string MatchExcept includes other present scalar types. Numeric ranges use F64 across integer/float storage, including rounding beyond 2^53. Missing fields fail predicates; outer negation includes them. Boolean match uses extracted Rust because Edge 0.8.0 binds bool as int. |
 | Exact/ANN planner | `hnsw/read_view/{dispatch,sample_estimation}.rs` | Removed 2*k and dimension/ef scan-cost rules. Planner 10/10; named HNSW 4/4, including failure injection proving exact queries do not build unused graphs | Cardinality dispatch aligned. Akasha N/8 threshold and 64-vector readiness floor differ from Qdrant's configured byte threshold; exact cardinality uses deterministic equality, not sampled estimation. |
 | Base/delta authority and rerank | Segment deleted/current vectors, proxy segments; `index/vector_index_search_common.rs` | `test_segmented_hnsw`, `test_point_hnsw_projection`, `test_hnsw_overlay_cache`, field rerank and lifecycle tests | Current-source eligibility precedes scoring. Reranking remains necessary: tests deliberately make graph rows stale while authoritative rows change, and typed fields promise F64 scores. Qdrant's unquantized no-rescore path cannot be copied without changing that invariant. |
@@ -82,6 +82,12 @@ across twelve cells; measured QPS ratios are 1.026–1.252, with two p95 regress
 See the [buffer reuse report](../benchmarks/2026-10-16-qdrant-search-buffers.md)
 for scope, raw artifacts and limitations. It is not a new Qdrant acceptance run.
 
+The subsequent [four-row scorer integration](../benchmarks/2026-10-16-qdrant-score-batch.md)
+reuses the existing F32 batch kernel after filtering/capping. Both old/new/old
+and reversed saved-graph runs preserve all results and counters. High-dimensional
+ANN timings improve in both orders; low-dimensional timings remain inconsistent.
+The report distinguishes these diagnostics from fresh Qdrant acceptance.
+
 ## Remaining acceptance and implementation work
 
 - Learned PQ training and scoring have separate executable references.
@@ -109,9 +115,11 @@ for scope, raw artifacts and limitations. It is not a new Qdrant acceptance run.
   `benchmarks/qdrant_quality_gate_reference.py` produced the same result in
   three fresh native Qdrant trials on that corpus, each checking exact results
   against an independent F64 oracle. This diagnoses the gate; it does not waive it.
-- Warm three-corpus, three-trial acceptance completed: matched recall 36/36,
-  speed **3/36**, overall **FAILED**. The existing symmetric ef grid and all
-  thresholds were retained; see the [measurement report](../benchmarks/2026-10-15-qdrant-alignment-warm.md).
+- Latest warm three-corpus, three-trial acceptance after four-row scorer
+  integration: matched recall 36/36, speed **6/36**, overall **FAILED**.
+  The existing symmetric ef grid and all thresholds were retained; see the
+  [measurement report](../benchmarks/2026-10-16-qdrant-score-batch.md).
+  The earlier 3/36 run remains historical evidence, not a paired baseline.
   Full M5/M6 requirements still include lifecycle,
   concurrent/non-resident/type matrices and actual supported-platform evidence.
   Source parity and macOS tests cannot substitute for those measurements.

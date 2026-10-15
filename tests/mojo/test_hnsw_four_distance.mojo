@@ -1,6 +1,10 @@
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw import HnswIndex
+from akasha.index.hnsw_core import HnswSearchAdmission
+from akasha.index.hnsw_heap import HnswHeapItem
+from akasha.index.hnsw_search import score_points
+from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.hnsw_storage import HnswGraphAccess
 from akasha.storage.hnsw_store import encode_hnsw_snapshot, open_hnsw_snapshot_view
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
@@ -33,6 +37,41 @@ def check[tag: Int, Graph: HnswGraphAccess](graph: Graph, metric: MetricDispatch
         invalid[lane] = UInt32(graph.slot_count())
         with assert_raises(contains="bound"):
             _ = four[tag](graph, metric, query, invalid)
+
+    # Compare the public scorer's compacted groups and 0..3-row tails with
+    # independent single-row calls, including filters, caps, repeats and reuse.
+    var flags: List[Bool] = [True, False, True, False, True, False, True]
+    var allowed = HnswSearchAdmission(flags^)
+    var inputs: List[UInt32] = [3, 6, 1, 0, 5, 2, 4, 6, 0, 2, 4]
+    var scored = List[HnswHeapItem](capacity=len(inputs))
+    var address = Int(scored.unsafe_ptr())
+    for length in range(len(inputs) + 1):
+        for limit in [0, 3, 4, 5, 8]:
+            var points = List[UInt32]()
+            var expected = List[UInt32]()
+            var rejected = 0
+            for i in range(length):
+                points.append(inputs[i])
+                if inputs[i] % 2 == 0:
+                    expected.append(inputs[i])
+                else:
+                    rejected += 1
+            var count = len(expected) if limit == 0 else min(limit, len(expected))
+            var stats = HnswSearchStats()
+            score_points[backend_tag=tag](
+                graph, metric, query, points, limit, allowed, stats, scored
+            )
+            assert_equal(len(scored), count)
+            assert_equal(len(points), count)
+            assert_equal(stats.distance_evaluations, count)
+            assert_equal(stats.filtered_rejections, rejected)
+            assert_equal(Int(scored.unsafe_ptr()), address)
+            for i in range(count):
+                assert_equal(points[i], expected[i])
+                assert_equal(scored[i].slot, expected[i])
+                assert_equal(scored[i].id, Int(expected[i]) - 3)
+                var distance = graph._distance_to_slot_backend[tag](metric, query, expected[i])
+                assert_equal(bitcast[DType.uint32](scored[i].distance), bitcast[DType.uint32](distance))
 
 
 def exercise[tag: Int]() raises:

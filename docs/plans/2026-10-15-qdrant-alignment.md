@@ -294,3 +294,21 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   IVF 3/3, field rerank, distance dispatch and reference scorer tests pass.
   The fixed L2 quality failure remains recorded; the CPU quality suite is not
   reported as wholly passing.
+- Committed the alignment as `4e44f3c`. Continued profiling found that the new
+  scorer had not reused the existing four-row F32 distance kernel. Integrated
+  it after filtering/capping; extended scorer tests cover groups, tails, caps
+  and reused buffers against single-row bits for owned/mapped storage. The
+  extracted traversal now checks both scalar and batched F32 paths (98/98 each);
+  construction remains 24/24 with 2,467 matching adjacency rows. Targeted Mojo
+  checks and 387 Python/distributed/service tests pass (one skip). Two serial
+  saved-graph orders preserve all results/counters, with high-dimensional ANN
+  improvement and inconsistent 128D timings. Full acceptance and raw evidence
+  are recorded in the [scoring report](../benchmarks/2026-10-16-qdrant-score-batch.md).
+- The new three-corpus, three-trial fresh matrix completes with matched recall
+  36/36 and speed 6/36, still FAILED. Thresholds and ef selection are unchanged;
+  all filtered ANN cells still fail. The previous 3/36 matrix is a separate
+  snapshot, not a paired measurement attributing all changes to this patch.
+- Final rebuilt C client passes. The rerun fixed quality suite remains 3/4:
+  Dot .9541666667 and cosine .9583333333 pass, L2 .9458333333 fails, and the
+  subquadratic construction check passes. Complete raw timing/source/validation
+  evidence is retained in the scoring report's compressed archive.

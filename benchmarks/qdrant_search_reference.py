@@ -229,13 +229,16 @@ def main() -> None:
     actual = run(["pixi", "run", "mojo", "run", "-I", "src", "benchmarks/mojo/qdrant_search_differential.mojo", str(data)], output, "mojo-run")
     expected_rows = [line for line in expected.splitlines() if line.startswith("case ")]
     actual_rows = [line for line in actual.splitlines() if line.startswith("case ")]
+    batched_rows = [line.removeprefix("batched ") for line in actual.splitlines() if line.startswith("batched case ")]
     if len(expected_rows) != len(cases) or expected_rows != actual_rows:
         raise AssertionError("Mojo / upstream Rust traversal results or distance counts differ")
+    if expected_rows != batched_rows:
+        raise AssertionError("Batched Mojo / upstream Rust traversal results or distance counts differ")
     inputs = [Path(__file__), ROOT / "benchmarks/mojo/qdrant_search_reference.mojo",
               ROOT / "benchmarks/mojo/qdrant_search_differential.mojo",
               ROOT / "benchmarks/mojo/test_qdrant_search_reference.mojo"]
     inputs.extend(sorted((ROOT / "src/akasha/index").glob("hnsw*.mojo")))
-    summary = dict(status="PASSED", cases=len(cases), revision=REVISION,
+    summary = dict(status="PASSED", cases=len(cases), scoring_paths=["scalar", "batched-f32"], revision=REVISION,
                    upstream_sha256=hashlib.sha256(pinned).hexdigest(),
                    extracted_methods=names,
                    methods_sha256=hashlib.sha256(methods.encode()).hexdigest(),

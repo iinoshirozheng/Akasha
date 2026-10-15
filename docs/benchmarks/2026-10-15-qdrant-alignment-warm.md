@@ -5,6 +5,10 @@ The unchanged three-corpus warm matrix passes matched Recall@10 >= .95 in
 Akasha QPS >= Qdrant and p95 <= Qdrant. Overall acceptance is **FAILED**.
 Failed recall cells and failed speed comparisons are retained; none are waived.
 
+This is the initial algorithm-integration snapshot. The later
+[four-row scorer report](2026-10-16-qdrant-score-batch.md) records the subsequent
+fresh matrix (matched recall 36/36, speed 6/36, still FAILED).
+
 Run directory: `.build/qdrant-alignment/warm-matrix/`. Each corpus has three
 fresh, serial trials, alternating engine order. Configuration remains 8,192
 points, 64 queries, k=10, seed=12345, Dot/F32 and the symmetric ef grid

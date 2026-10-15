@@ -64,8 +64,10 @@ All result digests and every captured query counter agree across each old/new/ol
 triple. QPS increases in this run, but two p95 ratios regress. Selective cells
 use exact search and do not exercise the changed traversal; their variation
 shows why this diagnostic is insufficient to establish a universal speedup.
-The [full warm acceptance](2026-10-15-qdrant-alignment-warm.md) remains the latest
-fresh-build comparison against Qdrant: speed 3/36, FAILED.
+At the time of this diagnostic, the [full warm acceptance](2026-10-15-qdrant-alignment-warm.md)
+reported speed 3/36, FAILED. The subsequent
+[four-row scorer run](2026-10-16-qdrant-score-batch.md) records a new fresh-build
+comparison: speed 6/36, still FAILED.
 
 Raw latency arrays, binary hashes and equality checks are in
 `.build/qdrant-alignment/traversal-profile/*-{before-0,after,before-1}.json`

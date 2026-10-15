@@ -118,7 +118,24 @@ def score_points[
     while len(points) > count:
         _ = points.pop()
     result.clear()
-    for i in range(count):
+    var offset = 0
+    comptime if backend_tag >= 0 and backend_tag <= 2:
+        # The existing F32 kernel shares query loads across four admitted rows,
+        # retaining each row's scalar/SIMD reduction order and checked access.
+        while offset + 4 <= count:
+            var slots = SIMD[DType.uint32, 4](0)
+            comptime for lane in range(4):
+                slots[lane] = points[offset + lane]
+            var distances = graph._distance_to_four_f32[backend_tag](
+                dispatcher, prepared, slots
+            )
+            comptime for lane in range(4):
+                stats.distance_evaluations += 1
+                result.append(
+                    HnswHeapItem(slots[lane], graph.id_at(slots[lane]), distances[lane])
+                )
+            offset += 4
+    for i in range(offset, count):
         var slot = points[i]
         var distance = _distance[backend_tag](graph, dispatcher, prepared, slot)
         stats.distance_evaluations += 1
