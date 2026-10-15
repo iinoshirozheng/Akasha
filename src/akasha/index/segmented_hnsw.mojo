@@ -18,6 +18,7 @@ from akasha.compute.dispatch import (
     select_distance_backend,
 )
 from akasha.compute.topk import BoundedTopK
+from akasha.index.bitmap import Bitmap
 from akasha.index.flat import authoritative_f32_score, SearchResult
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import (
@@ -62,28 +63,33 @@ def _should_scan_delta(
 
 struct _CurrentSourceState:
     var sources: Dict[Int, Int]
-    var base_count: Int
+    var base_current: Bitmap
     var delta_count: Int
 
-    def __init__(out self):
+    def __init__(out self, base_slots: Int) raises:
         self.sources = Dict[Int, Int]()
-        self.base_count = 0
+        self.base_current = Bitmap(base_slots)
         self.delta_count = 0
 
 
 struct _CurrentSourceLookup(Copyable, Movable):
-    """The one Arc-shared authoritative ID-to-segment source map."""
+    """Shared source map with a slot-addressed live-base projection.
+
+    As in Qdrant's NotDeletedChecker, traversal checks a bit by internal slot.
+    The ID map owns source transitions; its mutation methods maintain these
+    bits under the same writer ownership, without per-query reconstruction.
+    """
 
     var _state: ArcPointer[_CurrentSourceState]
 
-    def __init__(out self):
-        self._state = ArcPointer(_CurrentSourceState())
+    def __init__(out self, base_slots: Int = 0) raises:
+        self._state = ArcPointer(_CurrentSourceState(base_slots))
 
     def entry_count(self) -> Int:
         return len(self._state[].sources)
 
     def base_count(self) -> Int:
-        return self._state[].base_count
+        return self._state[].base_current.count()
 
     def delta_count(self) -> Int:
         return self._state[].delta_count
@@ -97,7 +103,7 @@ struct _CurrentSourceLookup(Copyable, Movable):
         return 0
 
     def set_base(mut self, id: Int, source: Int) raises:
-        if source <= 0:
+        if source <= 0 or source > self._state[].base_current.size():
             raise Error("HNSW base source must encode a graph slot")
         self._replace(id, source)
 
@@ -119,7 +125,7 @@ struct _CurrentSourceLookup(Copyable, Movable):
         if source == _DELTA_SOURCE:
             self._state[].delta_count += 1
         else:
-            self._state[].base_count += 1
+            self._state[].base_current.set(source - 1)
 
     def _decrement(mut self, source: Int) raises:
         if source == _DELTA_SOURCE:
@@ -127,9 +133,9 @@ struct _CurrentSourceLookup(Copyable, Movable):
                 raise Error("HNSW delta source count underflow")
             self._state[].delta_count -= 1
         else:
-            if self._state[].base_count <= 0:
-                raise Error("HNSW base source count underflow")
-            self._state[].base_count -= 1
+            if not self._state[].base_current.contains(source - 1):
+                raise Error("HNSW base source is not current")
+            self._state[].base_current.clear(source - 1)
 
 
 struct _SourceAdmission(Copyable, HnswResultAdmission, Movable):
@@ -146,12 +152,13 @@ struct _SourceAdmission(Copyable, HnswResultAdmission, Movable):
     def validate(self, slot_count: Int) raises:
         if slot_count < 0:
             raise Error("HNSW admission slot count cannot be negative")
+        if not self._delta and slot_count != self._sources._state[].base_current.size():
+            raise Error("HNSW source bitmap does not match base slots")
 
     def _allows_item(self, slot: UInt32, id: Int) raises -> Bool:
-        var source = self._sources.source_for(id)
         if self._delta:
-            return source == _DELTA_SOURCE
-        return source == Int(slot) + 1
+            return self._sources.source_for(id) == _DELTA_SOURCE
+        return self._sources._state[].base_current.contains(Int(slot))
 
 
 struct _FilteredSourceAdmission(Copyable, HnswResultAdmission, Movable):
@@ -445,6 +452,8 @@ struct SegmentedHnsw(Movable):
         """Validate delta and source bindings without rescanning frozen base."""
         self._validate_identity()
         self._delta.validate_structure()
+        if self._sources._state[].base_current.size() != self.base_slot_count():
+            raise Error("segmented HNSW source bitmap domain is inconsistent")
         var observed_base_sources = 0
         var observed_delta_sources = 0
         for entry in self._sources._state[].sources.items():
@@ -455,6 +464,8 @@ struct SegmentedHnsw(Movable):
             elif not self._base_source_matches(entry.key, entry.value):
                 raise Error("segmented HNSW base source is inconsistent")
             else:
+                if not self._sources._state[].base_current.contains(entry.value - 1):
+                    raise Error("segmented HNSW source bitmap is inconsistent")
                 observed_base_sources += 1
         if (
             self._base_live_count() - observed_base_sources
@@ -487,7 +498,6 @@ struct SegmentedHnsw(Movable):
         self._owned_base = self._delta^
         self._delta = replacement^
         self._base_kind = _OWNED_BASE
-        self._sources = _CurrentSourceLookup()
         self._index_owned_base_sources()
         self._base_stale_count = 0
         self._delta_mutations = 0
@@ -1276,6 +1286,7 @@ struct SegmentedHnsw(Movable):
         return False
 
     def _index_owned_base_sources(mut self) raises:
+        self._sources = _CurrentSourceLookup(self._owned_base.graph.slot_count())
         for slot_index in range(self._owned_base.graph.slot_count()):
             var slot = UInt32(slot_index)
             if not self._owned_base.graph.is_current(slot):
@@ -1285,6 +1296,7 @@ struct SegmentedHnsw(Movable):
             self._sources.set_base(id, source)
 
     def _index_mapped_base_sources(mut self) raises:
+        self._sources = _CurrentSourceLookup(self._mapped_base.slot_count())
         for slot_index in range(self._mapped_base.slot_count()):
             var slot = UInt32(slot_index)
             if not self._mapped_base.is_current(slot):

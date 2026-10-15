@@ -3,7 +3,7 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_entries import entries_from_legacy
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
-from akasha.index.segmented_hnsw import SegmentedHnsw
+from akasha.index.segmented_hnsw import SegmentedHnsw, _SourceAdmission
 from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
 from akasha.storage.hnsw_store import (
     encode_hnsw_snapshot,
@@ -239,6 +239,78 @@ def test_delta_delete_reinsert_and_candidate_deduplication() raises:
     assert_equal(result[0].id, 7)
     assert_equal(result[0].score, Float32(0.0))
     assert_equal(index.last_search_stats().reranked_candidates, 1)
+
+
+def _exercise_shared_source_admission(mapped: Bool) raises:
+    var config = _config()
+    var base = HnswIndex(config.copy())
+    for slot in range(130):
+        base.add(-(slot * 17 + 9), [Float32(slot)])
+    assert_true(base.delete(-9))
+    assert_true(base.delete(-(65 * 17 + 9)))
+    # A replacement leaves a stale physical slot and appends slot 130.
+    base.upsert(-(2 * 17 + 9), [300.0])
+    var index: SegmentedHnsw
+    var path = String("/tmp/akasha-shared-source-admission.hnsw")
+    if mapped:
+        remove_file_if_exists(path)
+        write_file_sync(path, encode_hnsw_snapshot(base, UInt64(19)))
+        var view = open_hnsw_snapshot_view(path, config, UInt64(19))
+        index = SegmentedHnsw.from_mapped(view^)
+    else:
+        index = SegmentedHnsw.from_owned(base^)
+    var admission = _SourceAdmission(index._sources, False)
+    var delta_admission = _SourceAdmission(index._sources, True)
+    admission.validate(131)
+    for slot in range(131):
+        var id = -(slot * 17 + 9) if slot != 130 else -(2 * 17 + 9)
+        var expected = slot != 0 and slot != 2 and slot != 65
+        assert_equal(admission._allows_item(UInt32(slot), id), expected)
+    index.upsert(-(64 * 17 + 9), [500.0])
+    assert_false(admission._allows_item(UInt32(64), -(64 * 17 + 9)))
+    assert_true(delta_admission._allows_item(UInt32(0), -(64 * 17 + 9)))
+    assert_true(index.delete(-(129 * 17 + 9)))
+    index.upsert(-(129 * 17 + 9), [600.0])
+    assert_false(admission._allows_item(UInt32(129), -(129 * 17 + 9)))
+    assert_true(delta_admission._allows_item(UInt32(1), -(129 * 17 + 9)))
+    assert_true(index.delete(-(64 * 17 + 9)))
+    assert_false(delta_admission._allows_item(UInt32(0), -(64 * 17 + 9)))
+    assert_equal(index._sources.base_count(), 126)
+    assert_equal(index._sources.delta_count(), 1)
+    assert_true(admission._allows_item(UInt32(130), -(2 * 17 + 9)))
+    index.validate_structure()
+    index.close()
+    if mapped:
+        remove_file_if_exists(path)
+
+
+def test_shared_owned_source_admission_tracks_mutations_and_slot_history() raises:
+    _exercise_shared_source_admission(False)
+
+
+def test_shared_mapped_source_admission_tracks_mutations_and_slot_history() raises:
+    _exercise_shared_source_admission(True)
+
+
+def test_source_bitmap_validation_checks_membership_beyond_cardinality() raises:
+    var config = _config()
+    var table = MemTable(1)
+    var base = _base(config, table)
+    base.upsert(1, [10.0])
+    var index = SegmentedHnsw.from_owned(base^)
+    index.validate_overlay()
+    # Swap one live bit for a stale slot; the cardinality is unchanged.
+    index._sources._state[].base_current.clear(4)
+    index._sources._state[].base_current.set(0)
+    assert_equal(index._sources.base_count(), 4)
+    with assert_raises(contains="source bitmap is inconsistent"):
+        index.validate_overlay()
+    index._sources._state[].base_current.clear(0)
+    index._sources._state[].base_current.set(4)
+    index.validate_overlay()
+    var admission = _SourceAdmission(index._sources, False)
+    with assert_raises(contains="bitmap does not match"):
+        admission.validate(4)
 
 
 def test_exact_rerank_reads_authoritative_memtable_vectors() raises:

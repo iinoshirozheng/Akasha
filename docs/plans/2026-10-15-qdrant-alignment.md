@@ -312,3 +312,12 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   Dot .9541666667 and cosine .9583333333 pass, L2 .9458333333 fails, and the
   subquadratic construction check passes. Complete raw timing/source/validation
   evidence is retained in the scoring report's compressed archive.
+- Source admission now follows Qdrant's internal-slot deletion check with a
+  shared live-base bitmap, maintained by source mutations. Segmented HNSW
+  21/21, related lifecycle 47/47, Python/distributed 387 passed/one skipped and
+  rebuilt C client pass. Both serial saved-graph orders preserve all results
+  and counters; all filtered ANN cells improve QPS/p95 in both orders.
+  Fresh acceptance remains FAILED: recall 36/36, speed 5/36, with no passing
+  filtered ANN cell. The fixed L2 probe finds all nodes reachable but all 13
+  missed neighbors unscored at ef=64. Thresholds and production ef are unchanged.
+  See the [source bitmap report](../benchmarks/2026-10-16-qdrant-source-bitmap.md).
