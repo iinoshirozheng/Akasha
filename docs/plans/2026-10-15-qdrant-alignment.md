@@ -337,3 +337,17 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   L2 .9458333333 below .95. First-filter timing tradeoffs and complete evidence
   are in the [base ordinal report](../benchmarks/2026-10-16-qdrant-base-ordinals.md).
   Full M5/M6 remains FAILED; thresholds and ef selection remain unchanged.
+- Rejected a heap item-movement prototype after matching 52 Mojo cases and both
+  98-fixture upstream search paths: uniform-128 all regressed in both saved-graph
+  orders. Five native captures then localized current hot paths, with 335 matching
+  pre/postflight query pairs. See the [heap/profile evidence](../benchmarks/2026-10-16-hnsw-heap-profile.md).
+- Mapped current flags now reuse the existing inline bounded scalar load. The
+  52 related Mojo tests pass; saved-graph results/counters remain identical.
+  Three longer confirmation pairs improve uniform-128 all QPS 5.4–6.6%; all
+  nine ANN median QPS/p95 ratios improve, while initial regressions and unchanged
+  exact-control tails remain recorded. Latest fresh warm recall is 36/36 and
+  speed 4/36; mixed recall 36/36, speed 13/36 and write+flush 5/9. All 5,184 query
+  audits, 18 reopen checks and nine Arrow leases pass. Full M5/M6 remains FAILED;
+  fixed L2 and platform/capacity/concurrency gaps are not waived. The
+  [current-flag report](../benchmarks/2026-10-16-qdrant-current-flag.md) separates
+  paired local gains from the fresh acceptance snapshots.

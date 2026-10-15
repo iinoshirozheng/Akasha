@@ -347,7 +347,7 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             return False
         try:
             return (
-                self._mapping.byte_at(
+                self._mapping.load_scalars[DType.uint8, 1](
                     self._node_offset + Int(slot) * _NODE_BYTES + 10
                 )
                 == _CURRENT_FLAG
