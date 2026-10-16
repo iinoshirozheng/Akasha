@@ -12,7 +12,7 @@ from akasha.storage.filesystem import (
     atomic_replace,
     path_exists,
     sync_directory,
-    write_file_sync,
+    sync_file,
 )
 from akasha.storage.mapped_file import MappedFile
 from std.sys.info import is_little_endian
@@ -61,7 +61,7 @@ struct CacheArtifact(Movable):
         return payload^
 
 
-def encode_cache(artifact: CacheArtifact) raises -> List[UInt8]:
+def _encode_cache_header(artifact: CacheArtifact) raises -> List[UInt8]:
     _validate_header(artifact.kind, artifact.dimension, len(artifact.payload))
     var writer = BinaryWriter()
     writer.write_u8(UInt8(0x41))  # A
@@ -76,13 +76,18 @@ def encode_cache(artifact: CacheArtifact) raises -> List[UInt8]:
     writer.write_u64(artifact.sequence)
     writer.write_u32(artifact.source_checksum)
     writer.write_u32(UInt32(len(artifact.payload)))
-    writer.write_bytes(artifact.payload)
-    var body = writer.take_bytes()
-    var checksum = crc32_range(body, 0, len(body))
-    var final_writer = BinaryWriter()
-    final_writer.write_bytes(body)
-    final_writer.write_u32(checksum)
-    return final_writer.take_bytes()
+    return writer.take_bytes()
+
+
+def encode_cache(artifact: CacheArtifact) raises -> List[UInt8]:
+    var header = _encode_cache_header(artifact)
+    var bytes = List[UInt8](capacity=_FIXED_BYTES + len(artifact.payload))
+    bytes.extend(Span(header))
+    bytes.extend(Span(artifact.payload))
+    var checksum = crc32_range(bytes, 0, len(bytes))
+    for shift in range(0, 32, 8):
+        bytes.append(UInt8(checksum >> UInt32(shift)))
+    return bytes^
 
 
 def decode_cache_bytes(var bytes: List[UInt8]) raises -> CacheArtifact:
@@ -156,7 +161,18 @@ def publish_cache(
     _validate_cache_name(name)
     var final_path = directory + "/" + name
     var temporary_path = final_path + ".tmp"
-    write_file_sync(temporary_path, encode_cache(artifact))
+    # Validate before opening the temporary path. The payload already owns its
+    # bytes; borrow it for CRC and write instead of building another envelope.
+    var header = _encode_cache_header(artifact)
+    var register = crc32_update(CRC32_INITIAL, Span(header))
+    var checksum = ~crc32_update(register, Span(artifact.payload))
+    var footer = BinaryWriter()
+    footer.write_u32(checksum)
+    with open(temporary_path, "w") as file:
+        file.write_all(header)
+        file.write_all(artifact.payload)
+        file.write_all(footer.take_bytes())
+        sync_file(file)
     atomic_replace(temporary_path, final_path)
     sync_directory(directory)
 

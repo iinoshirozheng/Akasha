@@ -525,3 +525,14 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   acknowledged updated rows' native bits/payloads and six exact-state oracles.
   Flush/checkpoint/compaction memory is the next unresolved capacity boundary;
   no full or sustained lifecycle gate is claimed.
+
+- [Cache envelope publication](../benchmarks/2026-10-16-cache-write.md) now
+  borrows the payload and streams unchanged bytes/CRC through the existing
+  atomic publication protocol. The isolated 64 MiB payload test reduces extra
+  peak RSS from 192 MiB to 16 KiB. All 5,184 mixed response audits, 18 reopens,
+  18 leases, 39 relevant Mojo/crash cases, 387 Python/distributed cases and C
+  pass. The unchanged mixed pressure matrix still fails both high-dimensional
+  corpora at 128/192/256 MiB. Validated native probes localize the next
+  boundaries to HNSW snapshot body allocation (128 MiB) and compaction encoding
+  after a separate owned table is loaded (192/256 MiB). These failures and the
+  invalid initial Python-callback probe are retained; no full gate is closed.
