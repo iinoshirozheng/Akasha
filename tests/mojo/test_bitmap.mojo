@@ -1,4 +1,4 @@
-from akasha.index.bitmap import Bitmap
+from akasha.index.bitmap import Bitmap, _word_count
 from std.testing import (
     assert_equal,
     assert_false,
@@ -140,6 +140,43 @@ def test_bitmap_enumeration_skips_empty_words_and_clear_is_idempotent() raises:
     assert_equal(bitmap.count(), 0)
     assert_equal(len(bitmap.set_ordinals()), 0)
     assert_equal(copied.set_ordinals(), expected)
+
+
+def test_bitmap_word_count_does_not_overflow_at_integer_limit() raises:
+    # Exercise the size calculation without requesting an enormous allocation.
+    # Both supported targets use 64-bit Int. Literal expectations avoid repeating
+    # the production ceiling formula, including the first overflowing old input.
+    var sizes: List[Int] = [
+        0, 1, 63, 64, 65, Int.MAX - 64, Int.MAX - 63,
+        Int.MAX - 62, Int.MAX - 1, Int.MAX,
+    ]
+    var expected: List[Int] = [
+        0, 1, 1, 1, 2, 144_115_188_075_855_871, 144_115_188_075_855_871,
+        144_115_188_075_855_872, 144_115_188_075_855_872, 144_115_188_075_855_872,
+    ]
+    for index in range(len(sizes)):
+        assert_equal(_word_count(sizes[index]), expected[index])
+
+
+def test_bitmap_contains_rejects_invalid_logical_bits_after_growth_and_clone() raises:
+    var bitmap = Bitmap()
+    for size in [0, 1, 63, 64, 65, 127, 128, 129, 257]:
+        bitmap.resize(size)
+        if size > 0:
+            bitmap.set(size - 1)
+        var copied = bitmap.clone()
+        var before = bitmap.set_ordinals()
+        # A physical final word may have padding, but padding is never public.
+        for invalid in [Int.MIN, -1, size, size + 1, Int.MAX]:
+            with assert_raises():
+                _ = bitmap.contains(invalid)
+            with assert_raises():
+                _ = copied.contains(invalid)
+        assert_equal(bitmap.set_ordinals(), before)
+        assert_equal(copied.set_ordinals(), before)
+        for ordinal in before:
+            assert_true(bitmap.contains(ordinal))
+            assert_true(copied.contains(ordinal))
 
 
 def main() raises:

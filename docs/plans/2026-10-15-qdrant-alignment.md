@@ -396,3 +396,15 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   [complete probe evidence](../benchmarks/2026-10-16-hnsw-bounded-heap.md)
   retains every variant and regression. Accepted gates remain warm speed 7/36,
   mixed speed 14/36 and write+flush 5/9; no new gate or platform claim is made.
+
+- Bitmap membership now retains logical index errors while reading a word whose
+  bound follows from the owned bitmap shape. Overflow-safe word counting fixes
+  a reproduced Int.MAX boundary failure. All 18 filtered ANN QPS pairs improve
+  in both saved-graph and mixed diagnostics; low-dimensional saved medians gain
+  5.4–5.7%, with exact-query and p95 regressions explicitly retained.
+  Validation passes 149 related Mojo cases, search 98/98 on both scoring paths,
+  construction 24/24, 387 Python/distributed cases (one skip), C/examples and
+  fixed/smoke quality gates. Latest fresh native acceptance is warm quality
+  36/36, speed 6/36; mixed matched quality 36/36, speed 15/36; write+flush 3/9.
+  Full M5/M6 and remaining platform/capacity/concurrency requirements stay open.
+  See the [bitmap evidence](../benchmarks/2026-10-16-bitmap-bounded-read.md).

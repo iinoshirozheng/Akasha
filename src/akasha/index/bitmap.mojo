@@ -58,7 +58,9 @@ struct Bitmap(Movable):
         self._validate_index(index)
         var word_index = index // 64
         var mask = UInt64(1) << UInt64(index % 64)
-        return (self._words[word_index] & mask) != UInt64(0)
+        # Construction and resize provide ceil(size / 64) initialized words.
+        # The logical check above therefore also proves this word is in bounds.
+        return (self._words.unsafe_get(word_index) & mask) != UInt64(0)
 
     def clone(self) raises -> Bitmap:
         var result = Bitmap(self._size)
@@ -131,4 +133,8 @@ struct Bitmap(Movable):
 
 
 def _word_count(size: Int) -> Int:
-    return (size + 63) // 64
+    # Callers validate nonnegative size. Divide first to avoid size + 63 overflow.
+    var words = size // 64
+    if size % 64 != 0:
+        words += 1
+    return words
