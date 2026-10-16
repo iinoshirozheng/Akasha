@@ -289,3 +289,22 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   1.065x, with variable trial results; this regression and the publication
   critical section remain follow-up work. The change is retained as a partial
   improvement, without closing or relaxing any remaining formal acceptance gate.
+
+- [Publication profiling and pre-delete durability fencing](../benchmarks/2026-10-16-unlocked-pin-release.md)
+  locate 14–20% of successful publication lock time in job-pin release and
+  66–72% in durable publication. Moving release past publication was tested
+  and rejected: uniform-128 selective QPS falls to 0.925x and p95 rises to
+  1.173x; real selective QPS falls in all six pairs. Only the separate
+  correctness fix is retained: lease/orphan cleanup syncs observed manifest
+  authority before deleting its first obsolete file. Real fsync injection
+  reproduces premature deletion on the baseline and verifies preservation,
+  retry and reopen with the fix. Retained source passes 53 native Mojo/recovery
+  cases, 388 Python/distributed cases, C and 30 Linux-emulated cases. Across
+  profile, rejected and retained comparisons, all 33,696 response audits,
+  117 exact reopens and 117 Arrow leases agree. The retained fence is not a
+  claimed speedup: low-dimensional selective QPS is 0.947x, correlated p95
+  1.072x, and uniform-1536 independent p95 1.047x. Full formal speed, capacity,
+  type/lifecycle, concurrency and native Linux requirements stay open. Next
+  investigate durable publication frequency and size-based merge selection,
+  preserving tombstones and coverage rather than copying Qdrant's size sort
+  into the current full-base merge.

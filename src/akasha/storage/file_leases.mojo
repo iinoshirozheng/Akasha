@@ -136,10 +136,17 @@ struct ManifestFileLease(Movable):
         )
         var referenced = _manifest_names(manifest)
         var removed = False
+        var authority_synced = False
         for index in range(len(self.names)):
             if self.names[index] in referenced:
                 continue
             if _lock(self.files[index], True):
+                if not authority_synced:
+                    # A publisher may have renamed before its directory sync
+                    # failed. Make the observed authority durable before any
+                    # deletion, including releases by another process.
+                    sync_file(self.directory)
+                    authority_synced = True
                 _unlink_at(self.directory, self.names[index])
                 removed = True
         if removed:
@@ -211,8 +218,12 @@ def reclaim_unreferenced_job_files(path: String, dimension: Int) raises:
         )
         referenced = _manifest_names(manifest)
     var removed = False
+    var authority_synced = False
     for name in listdir(path):
         if name not in referenced and _is_job_output(name):
+            if not authority_synced:
+                sync_file(directory)
+                authority_synced = True
             if try_reclaim_file(directory, name):
                 removed = True
     if removed:

@@ -354,6 +354,21 @@ background lease I/O from indirectly holding writer through a snapshot waiting
 for the registry mutex. Publication and job-pin-release I/O boundaries are
 unchanged. See the [capture measurements](../benchmarks/2026-10-16-unlocked-capture.md).
 
+A subsequent [publication experiment](../benchmarks/2026-10-16-unlocked-pin-release.md)
+kept the job pin through publication and released it outside writer. It was
+rejected after mixed-query regressions. The separate durability fix is retained:
+before last-lease cleanup unlinks its first obsolete file, it syncs the anchored
+directory after reading the current manifest. A publisher may have renamed the
+manifest before its directory sync failed; another process or surviving reader
+lease must make the observed authority durable before deleting old inputs. If
+that sync fails, no input is removed. Open-time orphan cleanup uses the same
+pre-delete fence under the source writer lock. Both paths still sync after
+deletions, and exclusive file leases still exclude live readers. Forward
+publication never resurrects retired names. The retired queue already receives
+paths only after successful durable publication. A loader-based crash test
+forces a real directory fsync failure, verifies old inputs survive, and confirms
+that a later retry and reopen succeed.
+
 #52 implementation notes: `publish_compaction_output` reloads the current manifest
 under the writer lock. The captured segments must equal its leading run (names,
 checksums, sequence ranges, sparse files); otherwise the job conflicts and the
