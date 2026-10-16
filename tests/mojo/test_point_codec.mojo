@@ -202,6 +202,44 @@ def test_dense_and_multivector_codec_covers_all_five_authority_dtypes() raises:
     _numeric[DType.uint8](4)
 
 
+def test_large_unaligned_f32_bodies_preserve_bits_and_validate_the_tail() raises:
+    # Independent little-endian oracle: signed zero, subnormal, smallest normal,
+    # largest finite and ordinary values across many allocation/page boundaries.
+    var patterns: List[UInt32] = [
+        0,
+        0x80000000,
+        1,
+        0x00800000,
+        0x7F7FFFFF,
+        0xBF800000,
+        0x3F812345,
+    ]
+    for kind in [UInt8(0), UInt8(2)]:
+        var field = VectorFieldSpec(2, "x", kind, 0, 0, 0, 4097)
+        var expected = List[UInt8]()
+        if kind == 2:
+            expected.extend([UInt8(2), 0, 0, 0])
+        for index in range(4097 * (2 if kind == 2 else 1)):
+            var bits = patterns[index % len(patterns)]
+            for shift in range(0, 32, 8):
+                expected.append(UInt8(bits >> UInt32(shift)))
+        var unaligned: List[UInt8] = [255]
+        unaligned.extend(Span(expected))
+        var decoded = decode_vector_value(Span(unaligned)[1:], field)
+        # Decoded values must own their storage, independent of this input tape.
+        unaligned.clear()
+        assert_equal(encode_vector_value(decoded, field), expected)
+        for bits in [
+            UInt32(0x7FC01234),
+            UInt32(0x7F800000),
+            UInt32(0xFF800000),
+        ]:
+            var invalid = expected.copy()
+            _u32(invalid, len(invalid) - 4, bits)
+            with assert_raises():
+                _ = decode_vector_value(Span(invalid), field)
+
+
 def test_vector_bodies_reject_overflow_nonfinite_terms_and_padding() raises:
     var sparse = VectorFieldSpec(2, "x", 1, 0, 0, 2, 0)
     var huge: List[UInt8] = [255, 255, 255, 255]

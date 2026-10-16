@@ -13,6 +13,7 @@ from akasha.document.vector_value import VectorValue
 from akasha.index.sparse import SparseElement
 from akasha.storage.checksum import BinaryWriter, BorrowedBinaryReader
 from std.memory import bitcast
+from std.builtin.rebind import rebind_var
 from std.sys import size_of
 
 
@@ -46,13 +47,14 @@ def vector_value_size(value: VectorValue, field: VectorFieldSpec) raises -> Int:
 def _write_numeric[
     dtype: DType
 ](mut writer: BinaryWriter, values: List[Scalar[dtype]]):
-    for value in values:
-        comptime if dtype == DType.float32:
-            writer.write_u32(bitcast[DType.uint32](value))
-        elif dtype == DType.float16 or dtype == DType.bfloat16:
-            writer.write_u16(bitcast[DType.uint16](value))
-        else:
-            writer.write_u8(bitcast[DType.uint8](value))
+    comptime if dtype == DType.float32:
+        writer.write_f32s(rebind[List[Float32]](values))
+    else:
+        for value in values:
+            comptime if dtype == DType.float16 or dtype == DType.bfloat16:
+                writer.write_u16(bitcast[DType.uint16](value))
+            else:
+                writer.write_u8(bitcast[DType.uint8](value))
 
 
 def _write_numeric_value[
@@ -104,14 +106,16 @@ def _read_numeric[
     var count = reader.remaining() // width
     if count % field.dimension != 0 or count // field.dimension != rows:
         raise Error("numeric body length does not match field shape")
-    var values = List[Scalar[dtype]](capacity=count)
-    for _ in range(count):
-        comptime if dtype == DType.float32:
-            values.append(bitcast[dtype](reader.read_u32()))
-        elif dtype == DType.float16 or dtype == DType.bfloat16:
-            values.append(bitcast[dtype](reader.read_u16()))
-        else:
-            values.append(bitcast[dtype](reader.read_u8()))
+    var values: List[Scalar[dtype]]
+    comptime if dtype == DType.float32:
+        values = rebind_var[List[Scalar[dtype]]](reader.read_f32s(count))
+    else:
+        values = List[Scalar[dtype]](capacity=count)
+        for _ in range(count):
+            comptime if dtype == DType.float16 or dtype == DType.bfloat16:
+                values.append(bitcast[dtype](reader.read_u16()))
+            else:
+                values.append(bitcast[dtype](reader.read_u8()))
     if field.kind == 0:
         return VectorValue.dense(values^)
     return VectorValue.multivector(field.dimension, values^)

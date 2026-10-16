@@ -565,3 +565,17 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   profile. A separate 64 KiB syscall-chunk probe did not improve capacity and
   was rejected. Full M5/M6, 128 MiB pressure, sustained/type/lifecycle coverage,
   concurrency and native Linux remain open.
+
+- [F32 point codec tape reuse](../benchmarks/2026-10-16-point-codec-tapes.md)
+  removes scalar packing/unpacking through existing checked storage helpers.
+  The isolated two-pass compaction probe reduces each decode pass from roughly
+  85 ms to 9–10 ms. Direct native pairs reduce high-dimensional flush totals
+  35–48% relative to streamed compaction; against the pre-stream baseline,
+  uniform-1536 is still 1.4% slower and real-1536 is 22% faster. All 10,368 native
+  response audits, 36 reopens and 36 leases agree. The 192/256 MiB pressure
+  cases remain 3/3 each, with 5,184 Linux audits; both 128 MiB cases still OOM
+  and recover all 16 acknowledged rows. 94 relevant Mojo cases, 388 Python
+  cases, C and 27 Linux cases pass. Mixed query timing regresses against the
+  preceding commit, notably real selective p95 at 1.590x; a fixed-state query
+  control and per-thread background timing must distinguish the cause. No
+  full speed, lifecycle, concurrency or platform gate is newly claimed.

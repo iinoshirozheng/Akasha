@@ -201,7 +201,7 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   from cross-engine work accounting.
 
 - [Delta admission before preliminary scoring](../benchmarks/2026-10-16-delta-admission-first.md)
-  is the latest accepted optimization. All-fit scans retain every candidate
+  is an accepted search optimization. All-fit scans retain every candidate
   without graph scores; overflow retains the original heap, and authority
   scoring still validates every admitted row. Two prototypes preserve all
   paired IDs/F32 bits, with expected work reductions. Retained B improves real
@@ -235,3 +235,17 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   operation. Earlier in-worker preparation failures are preserved separately.
   Zero queries test readable state, not recall or sustained pressure; no Qdrant
   speed or native Linux acceptance is inferred.
+
+- [Streaming compaction](../benchmarks/2026-10-16-point-merge.md) removes the
+  second decoded checkpoint table and complete output tape. Both 1536-D corpora
+  now complete the 32-block pressure workload at 192/256 MiB in three trials
+  each. [F32 tape helpers](../benchmarks/2026-10-16-point-codec-tapes.md) then
+  reduce its high-dimensional flush totals by 35–48%, preserving capacity,
+  typed bytes and recovery. Relative to the pre-stream baseline, uniform flush
+  remains 1.4% slower; mixed query tails regress against the preceding commit,
+  including real selective p95 at 1.590x. Both 128 MiB workers still OOM and
+  recover all 16 acknowledged rows. The current change passes 94 relevant Mojo,
+  388 Python/distributed and C cases, plus 27 Linux-emulated Mojo cases; all
+  10,368 native and 5,184 Linux response audits agree. This does not refresh or
+  waive formal Qdrant speed, full type/lifecycle, concurrency or native Linux
+  requirements. Fixed-state query and per-thread background controls are next.
