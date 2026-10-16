@@ -110,8 +110,9 @@ The last formal Qdrant acceptance is the parent
 6/36; mixed matched quality 33/36, speed 12/36; write+flush 3/9. It is not
 rerun or relabeled as this patch's acceptance. All remaining strict speed,
 native Linux, concurrency, sustained pressure and type/capacity requirements
-remain open. A separate emulated Linux capacity follow-up is being prepared;
-it is not evidence of a successful gate here.
+remain open. The subsequent [emulated Linux capacity diagnostic](2026-10-16-point-map-capacity.md)
+verifies the 192 MiB improvement with separate fixture preparation; 128 MiB
+and the full acceptance requirements remain unresolved.
 
 ## Frozen evidence
 

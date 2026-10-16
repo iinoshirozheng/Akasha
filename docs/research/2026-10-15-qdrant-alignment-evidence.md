@@ -225,3 +225,13 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   prior formal Qdrant matrix is not relabeled as current acceptance. Remaining
   capacity/nonresident requirements need actual controlled-pressure evidence;
   an emulated Linux follow-up does not substitute for native Linux performance.
+
+- The [corrected capacity follow-up](../benchmarks/2026-10-16-point-map-capacity.md)
+  completes 60 emulated Linux workers after preparing fresh/cold Linux-volume
+  fixtures outside their caps. All six controls complete; constrained completion
+  improves 15/27 to 21/27. Both high-dimensional 192 MiB cases change from 0/3
+  to 3/3, while 128 MiB remains 0/3 in both versions. All 84 completed response
+  checks match ID/F32 bits. Eighteen Docker-confirmed OOMs remain at the open
+  operation. Earlier in-worker preparation failures are preserved separately.
+  Zero queries test readable state, not recall or sustained pressure; no Qdrant
+  speed or native Linux acceptance is inferred.

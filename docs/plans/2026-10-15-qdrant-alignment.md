@@ -477,5 +477,16 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   remain recorded. Validation passes 55 relevant Mojo/crash cases, 387 Python/
   distributed cases (one skip) and rebuilt C. See the
   [memory and lifecycle evidence](../benchmarks/2026-10-16-point-checkpoint-map.md).
-  This is not a constrained-memory or nonresident gate pass. A separate isolated
-  emulated Linux capacity follow-up is in progress; native Linux remains open.
+  This macOS measurement alone is not a constrained-memory or nonresident gate
+  pass; the separate emulated Linux capacity follow-up is recorded below.
+
+- The corrected [emulated Linux capacity matrix](../benchmarks/2026-10-16-point-map-capacity.md)
+  separates fixture preparation from capped workers and verifies zero initial
+  database residency. All six controls pass; capped completion improves from
+  15/27 to 21/27, fixing both high-dimensional 192 MiB cases in all three trials.
+  All 42 completed workers match both control responses (84 ID/F32-bit checks).
+  Eighteen workers still OOM within open, including both versions at 128 MiB.
+  Initial preparation-stage OOMs remain recorded and are not counted as engine
+  open failures. Both Linux libraries compile and four mapped-reader tests pass
+  under emulation. This open plus two zero-query diagnostic does not establish
+  recall, Qdrant speed, sustained nonresident behavior or native Linux support.
