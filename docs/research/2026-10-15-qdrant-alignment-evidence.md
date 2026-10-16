@@ -248,4 +248,19 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   388 Python/distributed and C cases, plus 27 Linux-emulated Mojo cases; all
   10,368 native and 5,184 Linux response audits agree. This does not refresh or
   waive formal Qdrant speed, full type/lifecycle, concurrency or native Linux
-  requirements. Fixed-state query and per-thread background controls are next.
+  requirements.
+
+- [Query controls and native thread intervals](../benchmarks/2026-10-16-codec-query-control.md)
+  preserve 25,920 audited responses, 90 exact reopens and 90 Arrow leases. Fixed
+  initial-state queries do not reproduce the original real selective 1.590x
+  p95 regression; the median ratio is 0.979x. The evolving-state drain control
+  removes query/maintenance overlap but changes scheduling, so its near-one
+  ratios are diagnostic only. In native interleaved traces, 56 of 57 selective
+  requests above 150 microseconds with CPU below 80% overlap a background
+  writer-lock section: 41 capture, 15 publication. One waiting request remains
+  unexplained. Faster codec jobs increase maintenance frequency in these traces.
+  Clock alignment is checked before/after each retained worker; the first
+  incompatible-clock run and three build failures are excluded and preserved.
+  Production code and formal acceptance are unchanged. The next implementation
+  boundary is reducing capture/publication critical work without dropping
+  generation validation, file leases or durable publication guarantees.

@@ -576,6 +576,21 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   cases remain 3/3 each, with 5,184 Linux audits; both 128 MiB cases still OOM
   and recover all 16 acknowledged rows. 94 relevant Mojo cases, 388 Python
   cases, C and 27 Linux cases pass. Mixed query timing regresses against the
-  preceding commit, notably real selective p95 at 1.590x; a fixed-state query
-  control and per-thread background timing must distinguish the cause. No
+  preceding commit, notably real selective p95 at 1.590x; the subsequent query
+  controls below distinguish standalone queries from maintenance overlap. No
   full speed, lifecycle, concurrency or platform gate is newly claimed.
+
+- [Fixed-state, maintenance-drain and native thread controls](../benchmarks/2026-10-16-codec-query-control.md)
+  complete 25,920 response audits, 90 exact reopens and 90 Arrow leases without
+  changing production code. Fixed-state real selective p95 is 0.979x; drained
+  evolving-state ratios remain near one, without replacing original failures.
+  Of 57 selective requests above 150 microseconds with calling-thread CPU below
+  80%, 41 overlap maintenance capture holding the writer lock and 15 overlap
+  publication holding it; one remains unexplained. All drained queries avoid
+  recorded background spans. Faster builds also increase job frequency in the
+  interleaved high-dimensional traces. The rejected clock probe and build/
+  analysis failures are preserved. Next localize capture's manifest/catalog
+  and file-lease costs, then shorten the proven critical work while preserving
+  generation, lease and crash/recovery invariants. Qdrant's size-based merge
+  batches also identify a possible full-base write-amplification improvement,
+  still requiring a separate design and validation. No formal gate is closed.
