@@ -240,5 +240,98 @@ def test_result_heap_matches_sorted_model_with_repeated_equal_distances() raises
     assert_true(heap.is_empty())
 
 
+def test_candidate_interleaved_pop_refill_matches_sorted_model() raises:
+    var heap = CandidateMinHeap()
+    var model = List[HnswHeapItem]()
+    # Cross allocation and odd/even child boundaries repeatedly, including
+    # draining to empty and immediately refilling the same storage.
+    for round in range(40):
+        for index in range((round * 17) % 65 + 1):
+            var item = _item(
+                round * 100 + index,
+                (index * 7 + round) % 13 - 6,
+                Float32((index + round * 3) % 9 - 4),
+            )
+            heap.push(item)
+            model.append(item)
+        _sort_model_best_first(model)
+        var remove_count = len(model) if round % 4 == 0 else len(model) // 2
+        for index in range(remove_count):
+            _assert_item(
+                heap.peek(), Int(model[index].slot), model[index].id,
+                model[index].distance,
+            )
+            _assert_item(
+                heap.pop(), Int(model[index].slot), model[index].id,
+                model[index].distance,
+            )
+        var retained = List[HnswHeapItem]()
+        for index in range(remove_count, len(model)):
+            retained.append(model[index])
+        model = retained^
+        assert_equal(len(heap), len(model))
+    for index in range(len(model)):
+        _assert_item(
+            heap.pop(), Int(model[index].slot), model[index].id,
+            model[index].distance,
+        )
+    assert_true(heap.is_empty())
+
+
+def test_result_changing_capacity_matches_sorted_model() raises:
+    var heap = ResultMaxHeap()
+    var model = List[HnswHeapItem]()
+    var capacities: List[Int] = [1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 2, 1, 65]
+    for round in range(52):
+        var capacity = capacities[round % len(capacities)]
+        for index in range(70):
+            var item = _item(
+                round * 100 + index,
+                (index * 13 + round) % 23 - 11,
+                Float32((index * 7 + round) % 11 - 5),
+            )
+            # offer first shrinks the existing retained set, then considers
+            # the new item; growing capacity cannot resurrect discarded rows.
+            while len(model) > capacity:
+                _ = model.pop()
+            model.append(item)
+            _sort_model_best_first(model)
+            if len(model) > capacity:
+                _ = model.pop()
+            heap.offer(item, capacity)
+            assert_equal(len(heap), len(model))
+            var worst = model[len(model) - 1]
+            _assert_item(heap.peek_worst(), Int(worst.slot), worst.id, worst.distance)
+        if round % 4 == 0:
+            var drained = heap.take_sorted_best()
+            assert_equal(len(drained), len(model))
+            for index in range(len(model)):
+                _assert_item(
+                    drained[index], Int(model[index].slot), model[index].id,
+                    model[index].distance,
+                )
+            model.clear()
+    var drained = heap.take_sorted_best()
+    assert_equal(len(drained), len(model))
+    for index in range(len(model)):
+        _assert_item(
+            drained[index], Int(model[index].slot), model[index].id,
+            model[index].distance,
+        )
+
+
+def test_negative_reserve_preserves_existing_items() raises:
+    var candidates = CandidateMinHeap()
+    var results = ResultMaxHeap()
+    candidates.push(_item(9, -2, 3.0))
+    results.offer(_item(9, -2, 3.0), 1)
+    with assert_raises():
+        candidates.reserve(-1)
+    with assert_raises():
+        results.reserve(-1)
+    _assert_item(candidates.pop(), 9, -2, 3.0)
+    _assert_item(results.pop_worst(), 9, -2, 3.0)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

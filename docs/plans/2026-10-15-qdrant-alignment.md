@@ -385,3 +385,14 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   cells; three Qdrant real correlated cells fall below .95 and receive no
   speed comparison. See the [complete evidence](../benchmarks/2026-10-16-hnsw-paired-rerank.md).
   No full M5/M6 completion, native Linux or concurrent/nonresident gate is claimed.
+
+- Three bounded heap prototypes are rejected after assembly, 82 related Mojo
+  cases, both 98-fixture search paths and paired saved/mixed timings. The final
+  movement prototype improves all nine saved-graph ANN medians but retains
+  mixed low-dimensional regressions. Production and the Python binary are
+  restored to `3de6e1c`; three independent heap model/error tests are retained.
+  Five refreshed native captures preserve 335 pre/post query pairs and identify
+  bitmap lookup as a concrete next low-dimensional hot path. The
+  [complete probe evidence](../benchmarks/2026-10-16-hnsw-bounded-heap.md)
+  retains every variant and regression. Accepted gates remain warm speed 7/36,
+  mixed speed 14/36 and write+flush 5/9; no new gate or platform claim is made.
