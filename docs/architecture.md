@@ -248,7 +248,12 @@ storage exists separately. The owned delta consumes heap memory until rebuild.
 A small delta can use bounded exact candidate scoring alongside base HNSW when
 its physical history, vector component count and initial search breadth fit the measured
 limits. Both paths preserve current-source filtering and authoritative rerank;
-the combined result remains approximate. Execution stats identify delta scans.
+the combined result remains approximate. Execution stats identify delta scans. If all
+admitted delta IDs fit the candidate breadth, preliminary graph scoring cannot
+prune anything and is omitted; authoritative reranking still scores every ID.
+Filtered scans buffer at most breadth+1 admitted items before deciding whether
+heap selection is needed. Unfiltered scans use the known current-source count
+when it already proves overflow.
 
 After a durable checkpoint, an optional `hnsw-overlay.cache` retains the mutable
 graph, including inactive slots. Recovery verifies its envelope, retained-base

@@ -245,6 +245,13 @@ exact cardinality at the threshold takes the graph path deterministically.
 
 `last_search_stats()` reports the field path, graph encoding, traversal and native
 rerank counts, including any exact fallback after exhausted filtered search.
+For default segmented ANN, `distance_evaluations` counts preliminary graph/delta
+scoring, while `reranked_candidates` counts authoritative scoring afterward.
+A delta scan whose admitted IDs all fit its candidate breadth skips preliminary
+scoring, so zero preliminary distances can accompany a nonzero rerank count.
+Planned exact scans count their scoring in `distance_evaluations`; in that path,
+`reranked_candidates` reports retained hits and must not be added as extra
+scoring work.
 Named search accepts `timeout_ns` and `cancellation`, and enforces
 `limits.max_candidates` against the captured visible point count. Native builds
 check cancellation/deadlines between rows and before publication; graph search

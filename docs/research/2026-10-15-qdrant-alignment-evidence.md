@@ -165,8 +165,8 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   FAILED; low-dimensional/filtered speed, Linux, concurrent, nonresident and
   type/capacity requirements remain open.
 
-- [Bounded bitmap reads](../benchmarks/2026-10-16-bitmap-bounded-read.md) are the
-  latest accepted production checkpoint (`63794d6`): fresh warm quality 36/36,
+- [Bounded bitmap reads](../benchmarks/2026-10-16-bitmap-bounded-read.md) established
+  the preceding accepted production checkpoint (`63794d6`): fresh warm quality 36/36,
   speed 6/36; mixed quality 36/36, speed 15/36, write+flush 3/9.
   The [refreshed concurrent matrix](../benchmarks/2026-10-16-concurrent-current.md)
   passes quality 72/72, but common-HTTP speed only 6/36 (one client) and 12/36
@@ -199,3 +199,18 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   operation counts, not a performance acceptance pass. Explicit default exact
   Akasha calls leave approximate-query statistics unchanged and are excluded
   from cross-engine work accounting.
+
+- [Delta admission before preliminary scoring](../benchmarks/2026-10-16-delta-admission-first.md)
+  is the latest accepted optimization. All-fit scans retain every candidate
+  without graph scores; overflow retains the original heap, and authority
+  scoring still validates every admitted row. Two prototypes preserve all
+  paired IDs/F32 bits, with expected work reductions. Retained B improves real
+  correlated QPS about 11% in saved and mixed diagnostics, with low-dimensional
+  mixed p95 regressions explicitly unresolved. Fresh warm quality 36/36,
+  strict speed 6/36; mixed Akasha quality 36/36, matched quality 33/36, strict
+  speed 12/36 and write+flush 3/9. The three unmatched cells are Qdrant real
+  correlated recall failures under frozen ef, not waived gates. All 5,184 fresh
+  audits, 18 reopens and nine leases pass. Related Mojo/source fixtures and
+  387 unique Python/distributed cases pass; initial stale count assertions and
+  their targeted reruns are retained. Native Linux, current concurrent load,
+  sustained nonresident and full type/capacity/lifecycle acceptance remain open.

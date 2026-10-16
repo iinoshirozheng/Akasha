@@ -514,7 +514,9 @@ def _assert_graph_kernel_pair(metric: MetricKind, scalar: ScalarKind) raises:
         segmented.distance_backend_public_switch_count(), segmented_before + 1
     )
     assert_equal(segmented.distance_backend_hot_loop_selection_count(), 0)
-    assert_true(segmented.last_search_stats().distance_evaluations > 1)
+    # All eight delta IDs fit; only the authoritative rerank needs scores.
+    assert_equal(segmented.last_search_stats().distance_evaluations, 0)
+    assert_equal(segmented.last_search_stats().reranked_candidates, 8)
     assert_equal(len(segmented_results), 8)
     var batch_metric = BATCH_COSINE_METRIC
     if metric == MetricKind.dot():

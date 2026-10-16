@@ -747,7 +747,7 @@ struct SegmentedHnsw(Movable):
         return candidates^
 
     def _search_delta_prepared_backend[
-        AdmissionType: HnswResultAdmission, backend_tag: Int
+        AdmissionType: HnswResultAdmission, backend_tag: Int, filtered: Bool
     ](
         mut self,
         prepared: List[Float32],
@@ -756,7 +756,7 @@ struct SegmentedHnsw(Movable):
         max_ef: Int,
         delta_live: Int,
         allowed: AdmissionType,
-    ) raises -> List[SearchResult]:
+    ) raises -> List[Int]:
         var slots = self._delta.graph.slot_count()
         var target = min(k, delta_live, slots)
         var breadth = min(max(initial_ef, target), max_ef, slots)
@@ -767,9 +767,13 @@ struct SegmentedHnsw(Movable):
             self.config.m0,
             breadth,
         ):
-            return self._delta._search_admitted_prepared_backend[
+            var hits = self._delta._search_admitted_prepared_backend[
                 backend_tag=backend_tag
             ](prepared, k, initial_ef, max_ef, delta_live, allowed)
+            var ids = List[Int](capacity=len(hits))
+            for hit in hits:
+                ids.append(hit.id)
+            return ids^
 
         self._delta._validate_bound_identity()
         if not self._delta.valid or not self._delta.graph.is_valid():
@@ -786,11 +790,21 @@ struct SegmentedHnsw(Movable):
         allowed.validate(slots)
         self._delta.metric.validate_prepared_vector(prepared)
 
-        # Retain the same initial per-source candidate breadth as graph search.
-        # Exact scoring needs no widening or upper-level descent. Final scores
-        # still come from the authoritative vector during the merged rerank.
+        # If all admitted IDs fit the per-source breadth, graph scores cannot
+        # prune anything: authoritative reranking will score them exactly once.
+        # Buffer only breadth+1 IDs; on overflow score that prefix and continue
+        # the original streaming heap. This also bounds mutable-only scans.
+        var scoring = False
+        comptime if not filtered:
+            # Every current delta ID is admitted; no prefix is needed to prove
+            # overflow when its source count already exceeds the breadth.
+            scoring = delta_live > breadth
+        var pending = List[HnswHeapItem]()
         var retained = ResultMaxHeap()
-        retained.reserve(min(breadth, delta_live))
+        if scoring:
+            retained.reserve(min(breadth, delta_live))
+        else:
+            pending.reserve(min(breadth + 1, delta_live))
         var stats = HnswSearchStats()
         stats.requested_ef = breadth
         stats.effective_ef = breadth
@@ -808,20 +822,35 @@ struct SegmentedHnsw(Movable):
             if not allowed._allows_item(slot, id):
                 stats.filtered_rejections += 1
                 continue
+            if not scoring:
+                pending.append(HnswHeapItem(slot, id, 0.0))
+                if len(pending) <= breadth:
+                    continue
+                retained.reserve(min(breadth, delta_live))
+                for item in pending:
+                    var prefix_distance = self._delta.graph._distance_to_slot_backend[
+                        backend_tag
+                    ](self._delta.metric, prepared, item.slot)
+                    stats.distance_evaluations += 1
+                    retained.offer(HnswHeapItem(item.slot, item.id, prefix_distance), breadth)
+                pending.clear()
+                scoring = True
+                continue
             var distance = self._delta.graph._distance_to_slot_backend[
                 backend_tag
             ](self._delta.metric, prepared, slot)
             stats.distance_evaluations += 1
             retained.offer(HnswHeapItem(slot, id, distance), breadth)
-        var exact = retained.take_sorted_best()
-        var results = List[SearchResult](capacity=len(exact))
-        for candidate in exact:
-            results.append(
-                SearchResult(
-                    candidate.id,
-                    self._delta.metric.public_score(candidate.distance),
-                )
-            )
+        var results = List[Int]()
+        if scoring:
+            var exact = retained.take_sorted_best()
+            results.reserve(len(exact))
+            for candidate in exact:
+                results.append(candidate.id)
+        else:
+            results.reserve(len(pending))
+            for candidate in pending:
+                results.append(candidate.id)
         stats.retained_candidates = len(results)
         self._delta.last_search_stats = stats^
         self._delta._last_search_query_preparations = 0
@@ -910,7 +939,7 @@ struct SegmentedHnsw(Movable):
         if delta_live > 0:
             var delta_admission = _SourceAdmission(self._sources, True)
             var delta_results = self._search_delta_prepared_backend[
-                backend_tag=backend_tag
+                backend_tag=backend_tag, filtered=False
             ](
                 prepared,
                 per_source,
@@ -929,13 +958,13 @@ struct SegmentedHnsw(Movable):
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
-            for candidate in delta_results:
+            for id in delta_results:
                 stats.delta_candidates += 1
                 if single_source:
-                    merged.append(candidate.id)
-                elif candidate.id not in seen:
-                    seen[candidate.id] = True
-                    merged.append(candidate.id)
+                    merged.append(id)
+                elif id not in seen:
+                    seen[id] = True
+                    merged.append(id)
                     self._last_candidate_merge_insertions += 1
 
         stats.retained_candidates = len(merged)
@@ -1071,7 +1100,7 @@ struct SegmentedHnsw(Movable):
                 self._sources, True, allowed, None
             )
             var delta_results = self._search_delta_prepared_backend[
-                backend_tag=backend_tag
+                backend_tag=backend_tag, filtered=True
             ](
                 prepared,
                 k,
@@ -1090,13 +1119,13 @@ struct SegmentedHnsw(Movable):
             self._last_search_upper_descents += (
                 self._delta.last_search_upper_descents()
             )
-            for candidate in delta_results:
+            for id in delta_results:
                 stats.delta_candidates += 1
                 if single_source:
-                    merged.append(candidate.id)
-                elif candidate.id not in seen:
-                    seen[candidate.id] = True
-                    merged.append(candidate.id)
+                    merged.append(id)
+                elif id not in seen:
+                    seen[id] = True
+                    merged.append(id)
                     self._last_candidate_merge_insertions += 1
 
         var target = k

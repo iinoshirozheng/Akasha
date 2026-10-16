@@ -450,3 +450,19 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   reuse still requires value/owner/arithmetic proof: current tests deliberately
   separate graph vectors from authority. See the [native work evidence](../benchmarks/2026-10-16-qdrant-native-work.md).
   Diagnostic counts do not change the speed gates or production binary.
+
+- Delta scans now omit preliminary scores when every admitted ID fits the
+  unchanged candidate breadth; authority reranking and finite checks remain.
+  Overflow uses the original bounded heap, with unfiltered source counts
+  avoiding a redundant prefix. Paired results preserve IDs/F32 bits and account
+  for every removed distance; real correlated QPS improves about 11% in both
+  saved and mixed diagnostics, while low-dimensional mixed p95 regressions
+  remain open. A passes 116 related Mojo cases; retained B reruns 45 targeted
+  cases, both 98-fixture source paths and public builds. Python/distributed has
+  387 passing unique cases after three stale count assertions are corrected;
+  fixed quality, C, examples and smokes pass. Fresh warm quality is 36/36,
+  speed 6/36; mixed Akasha quality 36/36, matched quality 33/36, speed 12/36,
+  write+flush 3/9. Qdrant real correlated recall fails three frozen-ef cells;
+  none receives a speed comparison. All 5,184 query audits, 18 reopens and
+  nine leases pass. See the [full retained/rejected evidence and tradeoffs](../benchmarks/2026-10-16-delta-admission-first.md).
+  Full M5/M6, native Linux and remaining capacity/type/lifecycle work stay open.

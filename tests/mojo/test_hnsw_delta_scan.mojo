@@ -112,8 +112,9 @@ def _check_native_case(
             String("segmented-delta-scan-", config.scalar_name()),
         )
         assert_equal(
-            index._delta.last_search_stats.distance_evaluations, admitted_delta
+            index._delta.last_search_stats.distance_evaluations, 0
         )
+        assert_equal(index._delta.last_search_stats.retained_candidates, admitted_delta)
         assert_equal(
             index._delta.last_search_stats.base_visited,
             index.delta_slot_count(),
@@ -134,6 +135,7 @@ def _check_native_case(
         for position in range(2):
             assert_equal(actual[position].id, oracle[position].id)
             assert_equal(actual[position].score, oracle[position].score)
+        assert_equal(index._delta.last_search_stats.distance_evaluations, admitted_delta)
         assert_equal(index._delta.last_search_stats.retained_candidates, 2)
         assert_equal(index._delta.last_search_stats.effective_ef, 2)
     var empty = HnswEligibility(Bitmap(table.slot_count()), lookup)
@@ -250,7 +252,7 @@ def test_physical_history_bounds_overlay_scan_and_mutable_only_scans() raises:
         index.last_search_stats().storage_name, "segmented-delta-scan-f32"
     )
     assert_equal(index._delta.last_search_stats.inactive_rejections, 7)
-    assert_equal(index._delta.last_search_stats.distance_evaluations, 1)
+    assert_equal(index._delta.last_search_stats.distance_evaluations, 0)
     index.upsert(2, [8.0, 0.0, 0.0])
     table.apply_upsert(2, UInt64(10), [8.0, 0.0, 0.0])
     var result = index.search([8.0, 0.0, 0.0], 1, 1, table, lookup)
@@ -297,7 +299,7 @@ def test_delta_scan_candidate_breadth_and_tie_cutoff() raises:
     assert_equal(results[0].id, 20)
     assert_equal(results[1].id, 30)
     assert_equal(index._delta.last_search_stats.filtered_rejections, 1)
-    assert_equal(index._delta.last_search_stats.distance_evaluations, 2)
+    assert_equal(index._delta.last_search_stats.distance_evaluations, 0)
     assert_equal(index._delta.last_search_stats.widening_rounds, 0)
 
 

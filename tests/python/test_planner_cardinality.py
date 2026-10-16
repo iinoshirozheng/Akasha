@@ -29,7 +29,11 @@ def test_cardinality_plan_preserves_scores_filters_updates_and_reopen(tmp_path, 
             stats = collection.last_search_stats()
             assert stats.fallback_reason == ""
             assert stats.storage_name.startswith("segmented-")
-            assert stats.distance_evaluations > 0
+            # The mutable-only population fits ef, so every admitted ID goes
+            # directly to authoritative scoring without preliminary distances.
+            assert stats.distance_evaluations == 0
+            assert stats.reranked_candidates == (95 if condition is None else 23)
+            assert stats.delta_candidates == stats.reranked_candidates
         collection.flush()
     with closing(Collection(tmp_path, 128, config=config)) as collection:
         exact = collection.search(SearchRequest(metric, 3, vector=query, filter=expression))
