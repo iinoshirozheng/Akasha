@@ -17,6 +17,7 @@ from akasha.compute.dispatch import (
     record_distance_dispatch,
     select_distance_backend,
 )
+from akasha.compute.simd import _prepare_f32_query, _prepared_f32_score, _prepared_f32_pair_score
 from akasha.compute.topk import BoundedTopK
 from akasha.index.bitmap import Bitmap
 from akasha.index.flat import authoritative_f32_score, SearchResult
@@ -1240,18 +1241,30 @@ struct SegmentedHnsw(Movable):
             smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
         )
         var scored = 0
-        for id in candidates:
+        var metric = Int(self.config.ann_metric.tag())
+        # The borrowed query stays fixed throughout this authoritative rerank.
+        var query_norm = _prepare_f32_query(metric, query) if len(candidates) > 0 else Float32(0)
+        while scored < len(candidates):
+            var id = candidates[scored]
             var ordinal = lookup.ordinal_for(id)
             self._last_rerank_ordinal_lookups += 1
             self._validate_authoritative_ordinal(id, ordinal, memtable)
             ref entry = memtable.entry_ref_at(ordinal)
-            topk.offer(
-                id,
-                authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values()
-                ),
-            )
-            scored += 1
+            if scored + 1 < len(candidates):
+                var second_id = candidates[scored + 1]
+                var second_ordinal = lookup.ordinal_for(second_id)
+                self._last_rerank_ordinal_lookups += 1
+                self._validate_authoritative_ordinal(second_id, second_ordinal, memtable)
+                ref second = memtable.entry_ref_at(second_ordinal)
+                var scores = _prepared_f32_pair_score(
+                    metric, query, entry.values(), second.values(), query_norm
+                )
+                topk.offer(id, scores[0])
+                topk.offer(second_id, scores[1])
+                scored += 2
+            else:
+                topk.offer(id, _prepared_f32_score(metric, query, entry.values(), query_norm))
+                scored += 1
         self._last_stats.reranked_candidates = scored
         if scored < target:
             self.validate_structure()
@@ -1277,20 +1290,34 @@ struct SegmentedHnsw(Movable):
             smaller_is_better=Int(self.config.ann_metric.tag()) == 1,
         )
         var scored = 0
-        for id in candidates:
+        var metric = Int(self.config.ann_metric.tag())
+        # The borrowed query stays fixed throughout this authoritative rerank.
+        var query_norm = _prepare_f32_query(metric, query) if len(candidates) > 0 else Float32(0)
+        while scored < len(candidates):
+            var id = candidates[scored]
             var ordinal = lookup.ordinal_for(id)
             self._last_rerank_ordinal_lookups += 1
             self._validate_authoritative_ordinal(id, ordinal, memtable)
             if not allowed.allows(id):
                 raise Error("segmented HNSW candidate is not filter eligible")
             ref entry = memtable.entry_ref_at(ordinal)
-            topk.offer(
-                id,
-                authoritative_f32_score(
-                    Int(self.config.ann_metric.tag()), query, entry.values()
-                ),
-            )
-            scored += 1
+            if scored + 1 < len(candidates):
+                var second_id = candidates[scored + 1]
+                var second_ordinal = lookup.ordinal_for(second_id)
+                self._last_rerank_ordinal_lookups += 1
+                self._validate_authoritative_ordinal(second_id, second_ordinal, memtable)
+                if not allowed.allows(second_id):
+                    raise Error("segmented HNSW candidate is not filter eligible")
+                ref second = memtable.entry_ref_at(second_ordinal)
+                var scores = _prepared_f32_pair_score(
+                    metric, query, entry.values(), second.values(), query_norm
+                )
+                topk.offer(id, scores[0])
+                topk.offer(second_id, scores[1])
+                scored += 2
+            else:
+                topk.offer(id, _prepared_f32_score(metric, query, entry.values(), query_norm))
+                scored += 1
         self._last_stats.reranked_candidates = scored
         if scored < target:
             self.validate_structure()

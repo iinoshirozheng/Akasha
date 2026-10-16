@@ -374,3 +374,14 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   [probe report](../benchmarks/2026-10-16-hnsw-id-reuse.md). Production restored
   to `3dafe2a`; the next isolated hypothesis uses the existing paired exact
   kernel in authoritative reranking, without skipping candidates or checks.
+
+- Paired authoritative reranking is retained after 70 targeted Mojo cases,
+  387 Python/distributed passes (one skip), C/examples and quality smokes.
+  Saved-graph high-dimensional ANN median QPS improves 7.3–12.6%; all 18
+  high-dimensional mixed QPS/p95 pairs improve with identical IDs and work.
+  Low-dimensional mixed independent p95 regression remains explicitly open.
+  New native acceptance is warm quality 36/36, speed 7/36; mixed matched
+  quality 33/36, speed 14/36, write+flush 5/9. Akasha passes all mixed recall
+  cells; three Qdrant real correlated cells fall below .95 and receive no
+  speed comparison. See the [complete evidence](../benchmarks/2026-10-16-hnsw-paired-rerank.md).
+  No full M5/M6 completion, native Linux or concurrent/nonresident gate is claimed.

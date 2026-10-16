@@ -124,8 +124,8 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   The larger 1152-query probe includes a one-hit L2 regression and a seed below
   .95 in both implementations. Saved-graph timings do not establish a consistent
   speed improvement; all regressions and unchanged exact controls are retained.
-- Latest warm three-corpus, three-trial acceptance after bounded mapped
-  current-flag loading: matched recall 36/36, speed **4/36**, overall **FAILED**.
+- Earlier warm three-corpus, three-trial acceptance after bounded mapped
+  current-flag loading (before upper candidate reuse and paired reranking): matched recall 36/36, speed **4/36**, overall **FAILED**.
   The existing symmetric ef grid and all thresholds were retained; see the
   [measurement report](../benchmarks/2026-10-16-qdrant-current-flag.md).
   Earlier matrices, including base-ordinal warm 4/36 and mixed 10/36, remain
@@ -147,3 +147,20 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   and the 98-fixture source oracle, but real independent-filter QPS falls
   about 3.5% and p95 rises about 10.2% in two of three saved-graph pairs.
   Source and binary were restored to `3dafe2a`; no speed gate closes.
+
+- [Paired authoritative reranking](../benchmarks/2026-10-16-hnsw-paired-rerank.md)
+  reuses the existing checked two-row exact kernel. All 36 saved-graph paired
+  cells preserve digests, recall and statistics; high-dimensional ANN median
+  QPS improves 7.3–12.6%. A separate mixed before/after matrix preserves 5,184
+  query responses, 18 reopen checks and 18 leases; all 18 high-dimensional ANN
+  QPS/p95 pairs improve. Low-dimensional mixed independent p95 regresses in
+  all three pairs (median +3.1%), so no universal speed claim is made.
+  Validation: 70 targeted Mojo cases, 387 Python/distributed passes (one skip),
+  rebuilt C client/examples and both quality smokes. Latest fresh native warm
+  acceptance: recall 36/36, strict speed **7/36**. Mixed: Akasha recall 36/36,
+  matched quality **33/36**, strict speed **14/36**, write+flush **5/9**.
+  Qdrant real correlated recall is .9458333333 under the frozen warm ef in
+  three mixed cells; those receive no speed comparison or post-hoc retuning.
+  All fresh query audits, reopen checks and leases pass. Overall M5/M6 stays
+  FAILED; low-dimensional/filtered speed, Linux, concurrent, nonresident and
+  type/capacity requirements remain open.
