@@ -514,3 +514,14 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   attribution remains unresolved. Instrumented repetitions do not replace
   original p95 failures or alter performance gates; no new production change
   is justified by this diagnostic alone.
+
+- The [streamed mixed-pressure diagnostic](../benchmarks/2026-10-16-streamed-pressure-mixed.md)
+  extends the short open check to 32 query/write/flush blocks and reopen without
+  loading the full plan in capped workers. All three 6144 MiB controls and all
+  three low-dimensional capped cells complete; 1,728 responses match controls
+  with mean recall >= 0.95. Both high-dimensional corpora OOM at 128/192/256 MiB.
+  The old binary reproduces both 256 MiB failures at the same fifth flush.
+  All six current killed databases recover under 6144 MiB, preserving 152
+  acknowledged updated rows' native bits/payloads and six exact-state oracles.
+  Flush/checkpoint/compaction memory is the next unresolved capacity boundary;
+  no full or sustained lifecycle gate is claimed.
