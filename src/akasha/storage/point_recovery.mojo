@@ -1,12 +1,12 @@
 from akasha.document.point_state import PointState
 from akasha.document.vector_schema import FieldCatalog
-from akasha.storage.filesystem import path_exists, read_file_bytes
+from akasha.storage.filesystem import path_exists
 from akasha.storage.manifest import Manifest, load_manifest
 from akasha.storage.point_migration import (
     PointRecovery,
     preflight_migrating_points,
 )
-from akasha.storage.point_segment import decode_point_segment
+from akasha.storage.point_segment import read_point_segment
 from akasha.storage.point_table import PointTable
 from akasha.storage.point_wal import FieldWalReader
 from akasha.storage.sparse_store import preflight_sparse_wal
@@ -82,8 +82,7 @@ def load_point_checkpoint(
             or descriptor.sparse_checksum != 0
         ):
             raise Error("point checkpoints cannot carry legacy sparse segments")
-        var bytes = read_file_bytes(path + "/" + descriptor.name)
-        var segment = decode_point_segment(bytes, catalog[])
+        var segment = read_point_segment(path + "/" + descriptor.name, catalog[])
         if (
             segment.min_sequence != descriptor.min_sequence
             or segment.last_sequence != descriptor.max_sequence

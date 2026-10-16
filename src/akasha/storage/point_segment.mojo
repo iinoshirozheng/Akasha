@@ -13,6 +13,7 @@ from akasha.storage.checksum import (
     CRC32_INITIAL,
 )
 from akasha.storage.field_catalog import field_catalog_checksum
+from akasha.storage.mapped_file import MappedFile
 
 
 comptime _MAGIC = UInt32(0x47534B41)
@@ -98,6 +99,37 @@ def decode_point_segment(
     if ~crc32_update(CRC32_INITIAL, bytes[4 : len(bytes) - 4]) != checksum:
         raise Error("point segment checksum mismatch")
     var reader = BorrowedBinaryReader(bytes[: len(bytes) - 4])
+    var header = _decode_point_segment_header(
+        reader.read_span(48), len(bytes) - 52, catalog, catalog_crc
+    )
+    var version = header[0]
+    var kind = header[1]
+    var count = header[2]
+    var minimum = header[3]
+    var maximum = header[4]
+    var points = List[PointState](capacity=count)
+    var previous_id = 0
+    for index in range(count):
+        var start = reader.position()
+        var size = Int(reader.read_u32())
+        _validate_record_length(size, reader.remaining() + 4)
+        _ = reader.read_span(size - 4)
+        var point = _decode_segment_point(
+            bytes[start : start + size], catalog, version, kind,
+            minimum, maximum, index, previous_id,
+        )
+        previous_id = point.id
+        points.append(point^)
+    if reader.remaining() != 0:
+        raise Error("unexpected point segment trailing bytes")
+    return PointSegment(kind, minimum, maximum, checksum, points^)
+
+
+def _decode_point_segment_header(
+    bytes: Span[UInt8, _], record_bytes: Int,
+    catalog: FieldCatalog, catalog_crc: UInt32,
+) raises -> Tuple[Int, Int, Int, UInt64, UInt64]:
+    var reader = BorrowedBinaryReader(bytes)
     var magic = reader.read_u32()
     var version = reader.read_u16()
     if magic != _MAGIC or (version != 4 and version != 5):
@@ -113,29 +145,76 @@ def decode_point_segment(
     var minimum = reader.read_u64()
     var maximum = reader.read_u64()
     _validate_interval(kind, minimum, maximum, catalog)
-    if count > UInt64(reader.remaining() // 40):
+    if count > UInt64(record_bytes // 40):
         raise Error("point segment count exceeds available bytes")
-    var points = List[PointState](capacity=Int(count))
+    return (Int(version), kind, Int(count), minimum, maximum)
+
+
+def _validate_record_length(size: Int, remaining: Int) raises:
+    if size < 40 or size > MAX_POINT_RECORD_BYTES:
+        raise Error("invalid point segment record length")
+    if size > remaining:
+        raise Error("truncated binary value")
+
+
+def _decode_segment_point(
+    bytes: Span[UInt8, _], catalog: FieldCatalog, version: Int, kind: Int,
+    minimum: UInt64, maximum: UInt64, index: Int, previous_id: Int,
+) raises -> PointState:
+    var point = decode_point_record(bytes, catalog)
+    if version == 4:
+        for field_index in range(point.field_count()):
+            ref value = point.field_at(field_index).value()
+            if value.kind() == 1:
+                for element in value.sparse_values():
+                    if element.weight == 0:
+                        raise Error("v4 sparse weights must be non-zero")
+    if index > 0 and point.id <= previous_id:
+        raise Error("point segment IDs must strictly increase")
+    _validate_point(point, kind, minimum, maximum)
+    return point^
+
+
+def read_point_segment(path: String, catalog: FieldCatalog) raises -> PointSegment:
+    """Decode immutable committed bytes with at most one owned record tape.
+
+    The mapping stays local, and every returned point owns its decoded values.
+    Checksum, header and point validation match the owned-byte decoder.
+    """
+    var mapping = MappedFile.open_readonly(path)
+    var catalog_crc = field_catalog_checksum(catalog)
+    var encoded_size = mapping.byte_length()
+    if encoded_size < 52:
+        raise Error("truncated point segment")
+    var checksum = mapping.load_scalars[DType.uint32, 1](encoded_size - 4)
+    if mapping.checksum(4, UInt64(encoded_size - 8)) != checksum:
+        raise Error("point segment checksum mismatch")
+    var header_bytes = mapping.copy_scalars[DType.uint8](0, 48)
+    var header = _decode_point_segment_header(
+        Span(header_bytes), encoded_size - 52, catalog, catalog_crc
+    )
+    var version = header[0]
+    var kind = header[1]
+    var count = header[2]
+    var minimum = header[3]
+    var maximum = header[4]
+    var points = List[PointState](capacity=count)
+    var offset = 48
+    var end = encoded_size - 4
     var previous_id = 0
-    for index in range(Int(count)):
-        var start = reader.position()
-        var size = Int(reader.read_u32())
-        if size < 40 or size > MAX_POINT_RECORD_BYTES:
-            raise Error("invalid point segment record length")
-        _ = reader.read_span(size - 4)
-        var point = decode_point_record(bytes[start : start + size], catalog)
-        if version == 4:
-            for field_index in range(point.field_count()):
-                ref value = point.field_at(field_index).value()
-                if value.kind() == 1:
-                    for element in value.sparse_values():
-                        if element.weight == 0:
-                            raise Error("v4 sparse weights must be non-zero")
-        if index > 0 and point.id <= previous_id:
-            raise Error("point segment IDs must strictly increase")
+    for index in range(count):
+        if end - offset < 4:
+            raise Error("truncated binary value")
+        var size = Int(mapping.load_scalars[DType.uint32, 1](offset))
+        _validate_record_length(size, end - offset)
+        var bytes = mapping.copy_scalars[DType.uint8](offset, size)
+        var point = _decode_segment_point(
+            Span(bytes), catalog, version, kind, minimum, maximum,
+            index, previous_id,
+        )
         previous_id = point.id
-        _validate_point(point, kind, minimum, maximum)
         points.append(point^)
-    if reader.remaining() != 0:
+        offset += size
+    if offset != end:
         raise Error("unexpected point segment trailing bytes")
     return PointSegment(kind, minimum, maximum, checksum, points^)

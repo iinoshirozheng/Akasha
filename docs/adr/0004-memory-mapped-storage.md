@@ -120,6 +120,16 @@ and validation. Committed segment inodes, like HNSW sidecars, must remain
 immutable throughout the read. See the
 [recovery measurements and compatibility tests](../benchmarks/2026-10-13-mapped-segment-read.md).
 
+Point checkpoint v4/v5 recovery also maps the immutable file and verifies its
+full checksum before decoding. Its shared header and point validators serve
+both owned bytes and the file reader. The file reader copies a 48-byte header
+and one size-checked record at a time through `copy_scalars`, then uses the
+existing owned point codec. Temporary encoded storage is bounded by one record
+(at most 256 MiB), rather than the whole checkpoint. No mapped Span or pointer
+escapes, and decoded native values remain independent owned data. This reduces
+transient encoded storage; it does not make the retained point authority
+nonresident or remove its decoded-vector memory requirement.
+
 The wrapper does not silently fall back. An unsupported ABI is a compile-time
 error: an owned loader for such a target must be selected at compile time,
 before instantiating `open_readonly`. The collection's runtime mmap fallback

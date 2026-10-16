@@ -466,3 +466,16 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   none receives a speed comparison. All 5,184 query audits, 18 reopens and
   nine leases pass. See the [full retained/rejected evidence and tradeoffs](../benchmarks/2026-10-16-delta-admission-first.md).
   Full M5/M6, native Linux and remaining capacity/type/lifecycle work stay open.
+
+- Point checkpoint recovery now uses the existing mapping API and one bounded
+  record copy instead of owning the entire encoded v4/v5 file. Shared validation
+  preserves native bits, catalog/CRC/order checks and versioned sparse behavior;
+  returned points own their values after the mapping closes. Three native macOS
+  pairs per corpus reduce high-dimensional peak process footprint about 49%
+  (262 to 134 MiB), with about 4% shorter open times. All 5,184 mixed response
+  IDs/F32 bits/statistics, 18 reopens and 18 Arrow leases agree; tail regressions
+  remain recorded. Validation passes 55 relevant Mojo/crash cases, 387 Python/
+  distributed cases (one skip) and rebuilt C. See the
+  [memory and lifecycle evidence](../benchmarks/2026-10-16-point-checkpoint-map.md).
+  This is not a constrained-memory or nonresident gate pass. A separate isolated
+  emulated Linux capacity follow-up is in progress; native Linux remains open.

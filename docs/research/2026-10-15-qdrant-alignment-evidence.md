@@ -214,3 +214,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   387 unique Python/distributed cases pass; initial stale count assertions and
   their targeted reruns are retained. Native Linux, current concurrent load,
   sustained nonresident and full type/capacity/lifecycle acceptance remain open.
+
+- [Mapped point checkpoint recovery](../benchmarks/2026-10-16-point-checkpoint-map.md)
+  removes the file-sized encoded buffer from the unified v4/v5 recovery path,
+  while preserving owned decoded values and all durable validation. Native
+  macOS paired high-dimensional peak footprint falls about 49% (262 to 134 MiB).
+  Fifty-five relevant Mojo/crash cases, 387 Python/distributed cases (one skip)
+  and C pass. All 5,184 paired mixed responses preserve IDs/F32 bits/statistics;
+  18 reopens and 18 leases pass. Mixed tail regressions are retained, and the
+  prior formal Qdrant matrix is not relabeled as current acceptance. Remaining
+  capacity/nonresident requirements need actual controlled-pressure evidence;
+  an emulated Linux follow-up does not substitute for native Linux performance.
