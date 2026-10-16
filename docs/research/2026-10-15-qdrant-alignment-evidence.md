@@ -156,11 +156,27 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   QPS/p95 pairs improve. Low-dimensional mixed independent p95 regresses in
   all three pairs (median +3.1%), so no universal speed claim is made.
   Validation: 70 targeted Mojo cases, 387 Python/distributed passes (one skip),
-  rebuilt C client/examples and both quality smokes. Latest fresh native warm
-  acceptance: recall 36/36, strict speed **7/36**. Mixed: Akasha recall 36/36,
+  rebuilt C client/examples and both quality smokes. That revision’s fresh native
+  warm acceptance: recall 36/36, strict speed **7/36**. Mixed: Akasha recall 36/36,
   matched quality **33/36**, strict speed **14/36**, write+flush **5/9**.
   Qdrant real correlated recall is .9458333333 under the frozen warm ef in
   three mixed cells; those receive no speed comparison or post-hoc retuning.
   All fresh query audits, reopen checks and leases pass. Overall M5/M6 stays
   FAILED; low-dimensional/filtered speed, Linux, concurrent, nonresident and
   type/capacity requirements remain open.
+
+- [Bounded bitmap reads](../benchmarks/2026-10-16-bitmap-bounded-read.md) are the
+  latest accepted production checkpoint (`63794d6`): fresh warm quality 36/36,
+  speed 6/36; mixed quality 36/36, speed 15/36, write+flush 3/9.
+  The [refreshed concurrent matrix](../benchmarks/2026-10-16-concurrent-current.md)
+  passes quality 72/72, but common-HTTP speed only 6/36 (one client) and 12/36
+  (four clients). No source optimization or native platform gate can be inferred
+  from a changed pass count across separately built graph snapshots.
+
+- [Two source lookup probes](../benchmarks/2026-10-16-hnsw-source-probes.md)
+  are rejected after correct oracle results but repeatable mixed timing
+  regressions. One dictionary probe and smaller generated code are not enough
+  to establish an end-to-end gain. Forced outlining is a distinct optimizer
+  experiment, not proof of the cause of the first variant’s regression.
+  Production remains the bitmap checkpoint; source and Python binary identities
+  match it, with a fresh rebuilt C-client check after restoration.

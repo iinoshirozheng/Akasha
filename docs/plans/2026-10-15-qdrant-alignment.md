@@ -408,3 +408,25 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   36/36, speed 6/36; mixed matched quality 36/36, speed 15/36; write+flush 3/9.
   Full M5/M6 and remaining platform/capacity/concurrency requirements stay open.
   See the [bitmap evidence](../benchmarks/2026-10-16-bitmap-bounded-read.md).
+
+- Refreshed external-client evidence for bitmap commit `63794d6`: quality
+  passes 72/72 cells; strict common-HTTP speed passes 6/36 with one client and
+  12/36 with four. All 36 workers, 9,648 exact preflights and 73,728 timed
+  response checks pass. This uses corresponding fresh warm trial graphs and
+  frozen per-engine ef; earlier concurrent counts are not a paired baseline.
+  Both Python entry paths lack a GIL-release section, while native Akasha ANN
+  also protects shared scratch/statistics with its writer lock. These facts
+  do not isolate either lock as the cause of the gap; removing the lock alone
+  would be unsafe. See the [current matrix](../benchmarks/2026-10-16-concurrent-current.md).
+
+- Two single-probe source lookup prototypes are rejected. Ordinary `Dict.get`
+  removes a second probe chain but triggers inlining and regresses mixed
+  low-dimensional correlated p95 in all three pairs. Forced outlining reduces
+  the admission body from 656 to 528 bytes, but real filtered mixed QPS and p95
+  regress in all six pairs. Each variant preserves all 36 warm paired cells
+  and 5,184 mixed responses, 18 reopen checks and 18 retained Arrow leases.
+  A passes 60 Mojo cases, both 98-fixture source paths, 387 Python/distributed
+  tests (one skip), C and quality smokes; B passes 27 targeted cases, both source
+  paths and its build. Source/Python binary restore exactly to `63794d6`, and
+  the C artifact is rebuilt/tested after restoration. No production change or
+  gate closure is retained. See the [complete probes](../benchmarks/2026-10-16-hnsw-source-probes.md).
