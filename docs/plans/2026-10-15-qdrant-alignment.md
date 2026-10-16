@@ -594,3 +594,17 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   generation, lease and crash/recovery invariants. Qdrant's size-based merge
   batches also identify a possible full-base write-amplification improvement,
   still requiring a separate design and validation. No formal gate is closed.
+
+- [Capture subphases and a rejected manifest-reuse candidate](../benchmarks/2026-10-16-compaction-capture.md)
+  locate 68–83 microseconds of median capture time in generation/file pinning.
+  Reusing already validated authority reduces traced capture lock time 8–12%,
+  but uninstrumented uniform-128/1536 selective p95 regresses to 2.299x/1.672x
+  and QPS to 0.918x/0.944x. The candidate is rejected despite 76 native Mojo/
+  recovery cases, 388 Python/distributed cases, C and 17 Linux-emulated cases
+  passing. All 12,960 response audits, 45 exact reopens and 45 leases agree.
+  Accepted source/Python binaries are restored and C is rebuilt/tested; the
+  candidate patch, tests and results remain archived. Next investigate capture
+  and file pinning outside the writer lock, retaining source ownership and
+  retrying actual generation/retirement races without hiding unchanged-generation
+  corruption. Deterministic race tests must establish that protocol. No gate
+  is closed by this rejected optimization.

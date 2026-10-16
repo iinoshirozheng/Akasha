@@ -264,3 +264,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   Production code and formal acceptance are unchanged. The next implementation
   boundary is reducing capture/publication critical work without dropping
   generation validation, file leases or durable publication guarantees.
+
+- [Capture subphase measurements](../benchmarks/2026-10-16-compaction-capture.md)
+  show generation/file pinning at 68–83 microseconds median. A tested candidate
+  reusing the validated manifest shortens capture locks 8–12%, but regresses
+  uniform selective mixed p95 to 2.299x/1.672x and throughput to 0.918x/0.944x.
+  It is rejected and production restored. Candidate validation passes 76 native
+  Mojo/recovery cases, 388 Python/distributed cases, C, 17 Linux-emulated cases,
+  12,960 response audits, 45 reopens and 45 Arrow leases; none is presented as
+  new performance acceptance. Next examine a source-owned capture/lease protocol
+  outside the writer lock with explicit generation-race retries and corruption
+  failures. All remaining formal gates stay open.
