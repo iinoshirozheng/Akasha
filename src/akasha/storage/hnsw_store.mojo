@@ -16,12 +16,13 @@ from akasha.storage.checksum import (
     BinaryWriter,
     crc32_range,
 )
-from akasha.storage.filesystem import read_file_bytes_bounded, write_file_sync
+from akasha.storage.filesystem import read_file_bytes_bounded, sync_file
+from akasha.storage.byte_sink import ByteSink, OwnedByteSink, FileByteSink, CheckedByteSink, drain_bytes, write_checksum
 from akasha.storage.mapped_file import MappedFile
 from std.collections import Dict
 from std.math import isfinite
 from std.memory import bitcast
-from std.sys.info import is_64bit
+from std.sys.info import is_64bit, is_little_endian
 
 
 struct HnswOpenStats(Copyable, Movable):
@@ -163,189 +164,242 @@ struct _DecodedNodes(Movable):
         self.live_count = 0
 
 
-def encode_hnsw_snapshot(
-    index: HnswIndex, sequence: UInt64
-) raises -> List[UInt8]:
-    """Encode the v3 directed graph, preserving native scalar storage."""
-    _require_snapshot_config(index.config)
-    index.validate_structure()
-    _validate_snapshot_graph_vectors(index)
+struct HnswSnapshotEncoder[origin: ImmOrigin](Movable):
+    """Validated borrowed graph plus small layout and entry buffers.
 
-    var slots = index.graph.slot_count()
-    if slots > _MAX_SLOTS:
-        raise Error("HNSW snapshot slot count exceeds implementation limit")
-    var level_cells = UInt64(0)
-    var directed_edges = UInt64(0)
-    var allocated_neighbor_cells = UInt64(0)
-    var live_points = UInt64(0)
-    for slot_index in range(slots):
-        var slot = UInt32(slot_index)
-        level_cells = _checked_add_u64(
-            level_cells, UInt64(index.graph.level(slot)) + UInt64(1)
-        )
-        allocated_neighbor_cells = _checked_add_u64(
-            allocated_neighbor_cells,
-            UInt64(index.graph.allocated_neighbor_slot_count(slot)),
-        )
-        if index.graph.is_current(slot):
-            live_points += UInt64(1)
-        for level in range(index.graph.level(slot) + 1):
-            directed_edges = _checked_add_u64(
-                directed_edges,
-                UInt64(index.graph.neighbor_count(slot, level)),
-            )
+    The borrow prevents mutation between preflight and output. Validation and
+    entries still have graph-dependent memory costs; encoded vector/edge tapes
+    are never materialized by the file path.
+    """
 
-    var node_length = _checked_mul_u64(
-        UInt64(slots), UInt64(HNSW_SNAPSHOT_NODE_BYTES)
-    )
-    var vector_scalars = _checked_mul_u64(
-        UInt64(slots), UInt64(index.config.dimension)
-    )
-    var version = _snapshot_version(index.config.scalar_kind)
-    var header_bytes = _snapshot_header_bytes(version)
-    var vector_width = _snapshot_vector_width(index.config.scalar_kind)
-    var scale_width = _snapshot_scale_width(
-        index.config.ann_metric, index.config.scalar_kind
-    )
-    var vector_length = _checked_mul_u64(vector_scalars, UInt64(vector_width))
-    var scale_length = _checked_mul_u64(UInt64(slots), UInt64(scale_width))
-    var count_length = _checked_mul_u64(level_cells, UInt64(4))
-    var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
-    var node_offset = UInt64(header_bytes)
-    var vector_offset = _align8(_checked_add_u64(node_offset, node_length))
-    var scale_offset = _align8(_checked_add_u64(vector_offset, vector_length))
-    var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
-    var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
-    var entries = encode_entries(index.entries)
-    var entry_offset = _align8(_checked_add_u64(edge_offset, edge_length))
-    var entry_length = UInt64(len(entries))
-    var body_length = _checked_add_u64(entry_offset, entry_length)
-    var file_length = _checked_add_u64(body_length, UInt64(_CHECKSUM_BYTES))
-    _require_supported_file_length(file_length)
-    _validate_decode_allocation(
-        file_length,
-        UInt64(slots),
-        UInt64(index.config.dimension),
-        level_cells,
-        directed_edges,
-        allocated_neighbor_cells,
-    )
+    var _index: Pointer[HnswIndex, Self.origin]
+    var _header: List[UInt8]
+    var _entries: List[UInt8]
+    var byte_length: UInt64
 
-    var writer = BinaryWriter()
-    _write_magic(writer)
-    writer.write_u16(version)
-    writer.write_u16(UInt16(0))
-    writer.write_u32(UInt32(header_bytes))
-    writer.write_u32(UInt32(0))
-    writer.write_u64(index.config.fingerprint())
-    writer.write_u64(sequence)
-    writer.write_u32(UInt32(index.config.dimension))
-    writer.write_u8(index.config.ann_metric.tag())
-    writer.write_u8(index.config.scalar_kind.tag())
-    writer.write_u16(UInt16(index.config.m))
-    writer.write_u16(UInt16(index.config.m0))
-    writer.write_u16(UInt16(index.config.max_level))
-    writer.write_u32(UInt32(0))
-    writer.write_u64(UInt64(slots))
-    writer.write_u64(live_points)
-    writer.write_u64(directed_edges)
-    if Bool(index.entry_slot):
-        writer.write_u64(UInt64(index.entry_slot.value()))
-    else:
-        writer.write_u64(_ENTRY_NONE)
-    writer.write_i64(Int64(index.entry_level))
-    writer.write_u64(node_offset)
-    writer.write_u64(node_length)
-    writer.write_u64(vector_offset)
-    writer.write_u64(vector_length)
-    writer.write_u64(count_offset)
-    writer.write_u64(count_length)
-    writer.write_u64(edge_offset)
-    writer.write_u64(edge_length)
-    if version == HNSW_SNAPSHOT_VERSION:
-        writer.write_u64(UInt64(0))
-    else:
-        writer.write_u8(UInt8(vector_width))
-        writer.write_u8(UInt8(scale_width))
-        _write_zeros(writer, 6)
-        writer.write_u64(scale_offset)
-        writer.write_u64(scale_length)
-        writer.write_u64(entry_offset)
-        writer.write_u64(entry_length)
+    def __init__(out self, ref[Self.origin] index: HnswIndex, sequence: UInt64) raises:
+        _require_snapshot_config(index.config)
+        index.validate_structure()
+        _validate_snapshot_graph_vectors(index)
 
-    var count_base = UInt64(0)
-    var edge_base = UInt64(0)
-    for slot_index in range(slots):
-        var slot = UInt32(slot_index)
-        var node_edge_count = UInt64(0)
-        for level in range(index.graph.level(slot) + 1):
-            node_edge_count = _checked_add_u64(
-                node_edge_count,
-                UInt64(index.graph.neighbor_count(slot, level)),
-            )
-        writer.write_i64(Int64(index.graph.id_at(slot)))
-        writer.write_u16(UInt16(index.graph.level(slot)))
-        writer.write_u8(_slot_flag(index, slot))
-        writer.write_u8(UInt8(0))
-        writer.write_u32(UInt32(0))
-        writer.write_u64(count_base)
-        writer.write_u64(edge_base)
-        writer.write_u64(node_edge_count)
-        count_base = _checked_add_u64(
-            count_base, UInt64(index.graph.level(slot)) + UInt64(1)
-        )
-        edge_base = _checked_add_u64(edge_base, node_edge_count)
-
-    _write_zeros(writer, Int(vector_offset - (node_offset + node_length)))
-    if index.config.scalar_kind == ScalarKind.f32():
-        # Structure and prepared-vector validation above prove the complete
-        # flat tape's bounds and contents before copying its identical bytes.
-        writer.write_f32s(index.graph.vector_scalars)
-    else:
+        var slots = index.graph.slot_count()
+        if slots > _MAX_SLOTS:
+            raise Error("HNSW snapshot slot count exceeds implementation limit")
+        var level_cells = UInt64(0)
+        var directed_edges = UInt64(0)
+        var allocated_neighbor_cells = UInt64(0)
+        var live_points = UInt64(0)
         for slot_index in range(slots):
             var slot = UInt32(slot_index)
-            var scale = _graph_i8_scale(index, slot)
-            for component in range(index.config.dimension):
-                var value = index.graph.vector_value(slot, component)
-                if index.config.scalar_kind == ScalarKind.bf16():
-                    writer.write_u16(encode_bf16(value))
-                elif index.config.scalar_kind == ScalarKind.f16():
-                    writer.write_u16(encode_f16(value))
-                else:
-                    writer.write_u8(
-                        bitcast[DType.uint8](encode_symmetric_i8(value, scale))
-                    )
-
-    _write_zeros(writer, Int(scale_offset - (vector_offset + vector_length)))
-    if scale_width == 4:
-        for slot_index in range(slots):
-            writer.write_f32(_graph_i8_scale(index, UInt32(slot_index)))
-
-    _write_zeros(writer, Int(count_offset - (scale_offset + scale_length)))
-    for slot_index in range(slots):
-        var slot = UInt32(slot_index)
-        for level in range(index.graph.level(slot) + 1):
-            writer.write_u32(UInt32(index.graph.neighbor_count(slot, level)))
-
-    _write_zeros(writer, Int(edge_offset - (count_offset + count_length)))
-    for slot_index in range(slots):
-        var slot = UInt32(slot_index)
-        for level in range(index.graph.level(slot) + 1):
-            for edge_index in range(index.graph.neighbor_count(slot, level)):
-                writer.write_u32(
-                    index.graph.neighbor_at(slot, level, edge_index)
+            level_cells = _checked_add_u64(
+                level_cells, UInt64(index.graph.level(slot)) + UInt64(1)
+            )
+            allocated_neighbor_cells = _checked_add_u64(
+                allocated_neighbor_cells,
+                UInt64(index.graph.allocated_neighbor_slot_count(slot)),
+            )
+            if index.graph.is_current(slot):
+                live_points += UInt64(1)
+            for level in range(index.graph.level(slot) + 1):
+                directed_edges = _checked_add_u64(
+                    directed_edges,
+                    UInt64(index.graph.neighbor_count(slot, level)),
                 )
 
-    _write_zeros(writer, Int(entry_offset - (edge_offset + edge_length)))
-    writer.write_bytes(entries)
-    var body = writer.take_bytes()
-    if UInt64(len(body)) != body_length:
-        raise Error("HNSW snapshot encoder size mismatch")
-    var checksum = crc32_range(body, 0, len(body))
-    var complete = BinaryWriter()
-    complete.write_bytes(body)
-    complete.write_u32(checksum)
-    return complete.take_bytes()
+        var node_length = _checked_mul_u64(
+            UInt64(slots), UInt64(HNSW_SNAPSHOT_NODE_BYTES)
+        )
+        var vector_scalars = _checked_mul_u64(
+            UInt64(slots), UInt64(index.config.dimension)
+        )
+        var version = _snapshot_version(index.config.scalar_kind)
+        var header_bytes = _snapshot_header_bytes(version)
+        var vector_width = _snapshot_vector_width(index.config.scalar_kind)
+        var scale_width = _snapshot_scale_width(
+            index.config.ann_metric, index.config.scalar_kind
+        )
+        var vector_length = _checked_mul_u64(vector_scalars, UInt64(vector_width))
+        var scale_length = _checked_mul_u64(UInt64(slots), UInt64(scale_width))
+        var count_length = _checked_mul_u64(level_cells, UInt64(4))
+        var edge_length = _checked_mul_u64(directed_edges, UInt64(4))
+        var node_offset = UInt64(header_bytes)
+        var vector_offset = _align8(_checked_add_u64(node_offset, node_length))
+        var scale_offset = _align8(_checked_add_u64(vector_offset, vector_length))
+        var count_offset = _align8(_checked_add_u64(scale_offset, scale_length))
+        var edge_offset = _align8(_checked_add_u64(count_offset, count_length))
+        var entries = encode_entries(index.entries)
+        var entry_offset = _align8(_checked_add_u64(edge_offset, edge_length))
+        var entry_length = UInt64(len(entries))
+        var body_length = _checked_add_u64(entry_offset, entry_length)
+        var file_length = _checked_add_u64(body_length, UInt64(_CHECKSUM_BYTES))
+        _require_supported_file_length(file_length)
+        _validate_decode_allocation(
+            file_length,
+            UInt64(slots),
+            UInt64(index.config.dimension),
+            level_cells,
+            directed_edges,
+            allocated_neighbor_cells,
+        )
+
+        var writer = BinaryWriter()
+        _write_magic(writer)
+        writer.write_u16(version)
+        writer.write_u16(UInt16(0))
+        writer.write_u32(UInt32(header_bytes))
+        writer.write_u32(UInt32(0))
+        writer.write_u64(index.config.fingerprint())
+        writer.write_u64(sequence)
+        writer.write_u32(UInt32(index.config.dimension))
+        writer.write_u8(index.config.ann_metric.tag())
+        writer.write_u8(index.config.scalar_kind.tag())
+        writer.write_u16(UInt16(index.config.m))
+        writer.write_u16(UInt16(index.config.m0))
+        writer.write_u16(UInt16(index.config.max_level))
+        writer.write_u32(UInt32(0))
+        writer.write_u64(UInt64(slots))
+        writer.write_u64(live_points)
+        writer.write_u64(directed_edges)
+        if Bool(index.entry_slot):
+            writer.write_u64(UInt64(index.entry_slot.value()))
+        else:
+            writer.write_u64(_ENTRY_NONE)
+        writer.write_i64(Int64(index.entry_level))
+        writer.write_u64(node_offset)
+        writer.write_u64(node_length)
+        writer.write_u64(vector_offset)
+        writer.write_u64(vector_length)
+        writer.write_u64(count_offset)
+        writer.write_u64(count_length)
+        writer.write_u64(edge_offset)
+        writer.write_u64(edge_length)
+        if version == HNSW_SNAPSHOT_VERSION:
+            writer.write_u64(UInt64(0))
+        else:
+            writer.write_u8(UInt8(vector_width))
+            writer.write_u8(UInt8(scale_width))
+            _write_zeros(writer, 6)
+            writer.write_u64(scale_offset)
+            writer.write_u64(scale_length)
+            writer.write_u64(entry_offset)
+            writer.write_u64(entry_length)
+        self._index = Pointer(to=index)
+        self._header = writer.take_bytes()
+        self._entries = entries^
+        self.byte_length = file_length
+
+    def write_to(self, mut sink: Some[ByteSink]) raises -> UInt32:
+        ref index = self._index[]
+        var slots = index.graph.slot_count()
+        var checked = CheckedByteSink(sink)
+        checked.write(Span(self._header))
+        var writer = BinaryWriter()
+        var count_base = UInt64(0)
+        var edge_base = UInt64(0)
+        for slot_index in range(slots):
+            var slot = UInt32(slot_index)
+            var node_edge_count = UInt64(0)
+            for level in range(index.graph.level(slot) + 1):
+                node_edge_count = _checked_add_u64(
+                    node_edge_count,
+                    UInt64(index.graph.neighbor_count(slot, level)),
+                )
+            writer.write_i64(Int64(index.graph.id_at(slot)))
+            writer.write_u16(UInt16(index.graph.level(slot)))
+            writer.write_u8(_slot_flag(index, slot))
+            writer.write_u8(UInt8(0))
+            writer.write_u32(UInt32(0))
+            writer.write_u64(count_base)
+            writer.write_u64(edge_base)
+            writer.write_u64(node_edge_count)
+            count_base = _checked_add_u64(
+                count_base, UInt64(index.graph.level(slot)) + UInt64(1)
+            )
+            edge_base = _checked_add_u64(edge_base, node_edge_count)
+            _drain_snapshot_chunk(writer, checked)
+
+        drain_bytes(writer, checked)
+        _pad_snapshot_section(checked)
+        if index.config.scalar_kind == ScalarKind.f32():
+            comptime if is_little_endian():
+                # Validation proves the entire native tape. Borrow its bytes for
+                # synchronous CRC and output; no pointer escapes the graph borrow.
+                ref values = index.graph.vector_scalars
+                checked.write(Span(unsafe_ptr=values.unsafe_ptr().unsafe_bitcast[UInt8](), length=len(values) * 4))
+            else:
+                for value in index.graph.vector_scalars:
+                    writer.write_f32(value)
+                    _drain_snapshot_chunk(writer, checked)
+        else:
+            for slot_index in range(slots):
+                var slot = UInt32(slot_index)
+                var scale = _graph_i8_scale(index, slot)
+                for component in range(index.config.dimension):
+                    var value = index.graph.vector_value(slot, component)
+                    if index.config.scalar_kind == ScalarKind.bf16():
+                        writer.write_u16(encode_bf16(value))
+                    elif index.config.scalar_kind == ScalarKind.f16():
+                        writer.write_u16(encode_f16(value))
+                    else:
+                        writer.write_u8(
+                            bitcast[DType.uint8](encode_symmetric_i8(value, scale))
+                        )
+                    _drain_snapshot_chunk(writer, checked)
+
+        drain_bytes(writer, checked)
+        _pad_snapshot_section(checked)
+        if _snapshot_scale_width(index.config.ann_metric, index.config.scalar_kind) == 4:
+            for slot_index in range(slots):
+                writer.write_f32(_graph_i8_scale(index, UInt32(slot_index)))
+                _drain_snapshot_chunk(writer, checked)
+
+        drain_bytes(writer, checked)
+        _pad_snapshot_section(checked)
+        for slot_index in range(slots):
+            var slot = UInt32(slot_index)
+            for level in range(index.graph.level(slot) + 1):
+                writer.write_u32(UInt32(index.graph.neighbor_count(slot, level)))
+                _drain_snapshot_chunk(writer, checked)
+
+        drain_bytes(writer, checked)
+        _pad_snapshot_section(checked)
+        for slot_index in range(slots):
+            var slot = UInt32(slot_index)
+            for level in range(index.graph.level(slot) + 1):
+                for edge_index in range(index.graph.neighbor_count(slot, level)):
+                    writer.write_u32(
+                        index.graph.neighbor_at(slot, level, edge_index)
+                    )
+                    _drain_snapshot_chunk(writer, checked)
+
+        drain_bytes(writer, checked)
+        _pad_snapshot_section(checked)
+        checked.write(Span(self._entries))
+        if checked.byte_length != self.byte_length - UInt64(_CHECKSUM_BYTES):
+            raise Error("HNSW snapshot encoder size mismatch")
+        var checksum = ~checked.register
+        write_checksum(sink, checksum)
+        return checksum
+
+
+def _drain_snapshot_chunk(mut writer: BinaryWriter, mut sink: Some[ByteSink]) raises:
+    if writer.byte_length() >= 64 * 1024:
+        drain_bytes(writer, sink)
+
+
+def _pad_snapshot_section(mut sink: CheckedByteSink[_, _]) raises:
+    var padding = Int(_align8(sink.byte_length) - sink.byte_length)
+    if padding:
+        var zeros = List[UInt8](length=padding, fill=0)
+        sink.write(Span(zeros))
+
+
+def encode_hnsw_snapshot(index: HnswIndex, sequence: UInt64) raises -> List[UInt8]:
+    """Encode the same v3 byte stream into an exactly reserved owned buffer."""
+    var encoder = HnswSnapshotEncoder(index, sequence)
+    var sink = OwnedByteSink(Int(encoder.byte_length))
+    _ = encoder.write_to(sink)
+    return sink.take_bytes()
 
 
 def hnsw_snapshot_max_bytes() -> UInt64:
@@ -849,9 +903,13 @@ def write_hnsw_snapshot(
     path: String, index: HnswIndex, sequence: UInt64
 ) raises -> HnswSnapshotInfo:
     """Synchronously write one sidecar and return its manifest metadata."""
-    var bytes = encode_hnsw_snapshot(index, sequence)
-    var checksum = _read_u32_at(bytes, len(bytes) - _CHECKSUM_BYTES)
-    write_file_sync(path, bytes)
+    # Complete validation before opening/truncating a sidecar pathname.
+    var encoder = HnswSnapshotEncoder(index, sequence)
+    var checksum: UInt32
+    with open(path, "w") as file:
+        var sink = FileByteSink(file)
+        checksum = encoder.write_to(sink)
+        sync_file(file)
     return HnswSnapshotInfo(
         _snapshot_version(index.config.scalar_kind),
         sequence,
@@ -860,7 +918,7 @@ def write_hnsw_snapshot(
         UInt64(index.graph.slot_count()),
         UInt64(index.graph.slot_count() - index.inactive_count()),
         _count_directed_edges(index),
-        UInt64(len(bytes)),
+        encoder.byte_length,
     )
 
 

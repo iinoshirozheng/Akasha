@@ -186,6 +186,9 @@ struct BinaryWriter:
     def write_bytes(mut self, values: List[UInt8]):
         self._bytes.extend(Span(values))
 
+    def byte_length(self) -> Int:
+        return len(self._bytes)
+
     def update_crc32_and_clear(mut self, register: UInt32) -> UInt32:
         """Advance an unfinalized register, retaining capacity for the next chunk.
         """

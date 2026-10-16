@@ -159,6 +159,17 @@ changes the directory entry to a new inode; it does not truncate the inode held
 by an existing mapping. `write_hnsw_snapshot` must therefore continue to target
 the temporary pathname, never a live mapped final sidecar.
 
+HNSW publication validates the borrowed graph before opening its output path,
+then streams the unchanged v3 layout and incremental CRC through a byte sink.
+The immutable graph borrow spans preflight and output. On little-endian hosts,
+F32 vector bytes are borrowed directly; compact scalars, nodes and edges use
+bounded encoding chunks. Entry encoding and graph validation retain their
+existing graph-dependent allocations, so this is not a claim that all writer
+memory is constant. The owned codec consumes the same stream into one exactly
+reserved buffer. Overlay caches nest this stream inside the unchanged AKIC
+envelope and retain file fsync, atomic replacement and directory fsync; neither
+the whole snapshot nor a second envelope is materialized on the file path.
+
 Error text uses `std.sys._libc_errno.get_errno`, the same existing internal
 standard-library dependency already used by Akasha's filesystem and collection
 lock wrappers. Mojo 1.0 has no public errno accessor. This dependency is kept at

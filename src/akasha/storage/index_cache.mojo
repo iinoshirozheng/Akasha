@@ -62,20 +62,35 @@ struct CacheArtifact(Movable):
 
 
 def _encode_cache_header(artifact: CacheArtifact) raises -> List[UInt8]:
-    _validate_header(artifact.kind, artifact.dimension, len(artifact.payload))
+    return encode_cache_header(
+        artifact.kind, artifact.dimension, artifact.generation,
+        artifact.sequence, artifact.source_checksum, len(artifact.payload),
+    )
+
+
+def encode_cache_header(
+    kind: UInt8,
+    dimension: Int,
+    generation: UInt64,
+    sequence: UInt64,
+    source_checksum: UInt32,
+    payload_bytes: Int,
+) raises -> List[UInt8]:
+    """Validate a sized payload before either owned or streamed publication."""
+    _validate_header(kind, dimension, payload_bytes)
     var writer = BinaryWriter()
     writer.write_u8(UInt8(0x41))  # A
     writer.write_u8(UInt8(0x4B))  # K
     writer.write_u8(UInt8(0x49))  # I
     writer.write_u8(UInt8(0x43))  # C
     writer.write_u16(_VERSION)
-    writer.write_u8(artifact.kind)
+    writer.write_u8(kind)
     writer.write_u8(UInt8(0))
-    writer.write_u32(UInt32(artifact.dimension))
-    writer.write_u64(artifact.generation)
-    writer.write_u64(artifact.sequence)
-    writer.write_u32(artifact.source_checksum)
-    writer.write_u32(UInt32(len(artifact.payload)))
+    writer.write_u32(UInt32(dimension))
+    writer.write_u64(generation)
+    writer.write_u64(sequence)
+    writer.write_u32(source_checksum)
+    writer.write_u32(UInt32(payload_bytes))
     return writer.take_bytes()
 
 

@@ -2,14 +2,15 @@ from akasha.common.config import CollectionConfig
 from akasha.index.hnsw import HnswIndex
 from akasha.storage.hnsw_store import (
     decode_hnsw_snapshot_owned,
-    encode_hnsw_snapshot,
+    HnswSnapshotEncoder,
 )
 from akasha.storage.index_cache import (
     CACHE_HNSW_OVERLAY_KIND,
-    CacheArtifact,
+    encode_cache_header,
     load_cache_artifact,
-    publish_cache,
 )
+from akasha.storage.byte_sink import FileByteSink, CheckedByteSink, write_checksum
+from akasha.storage.filesystem import atomic_replace, sync_directory, sync_file
 
 
 def load_hnsw_overlay_cache(
@@ -58,16 +59,29 @@ def publish_hnsw_overlay_cache_best_effort(
     """Publish only a derived artifact after the authority checkpoint commits.
     """
     try:
-        var payload = encode_hnsw_snapshot(delta, base_sequence)
-        var artifact = CacheArtifact(
+        var encoder = HnswSnapshotEncoder(delta, base_sequence)
+        var header = encode_cache_header(
             CACHE_HNSW_OVERLAY_KIND,
             delta.config.dimension,
             generation,
             sequence,
             base_checksum,
-            payload^,
+            Int(encoder.byte_length),
         )
-        publish_cache(path, "hnsw-overlay.cache", artifact)
+        var final_path = path + "/hnsw-overlay.cache"
+        var temporary_path = final_path + ".tmp"
+        with open(temporary_path, "w") as file:
+            var sink = FileByteSink(file)
+            var envelope = CheckedByteSink(sink)
+            envelope.write(Span(header))
+            # Inner footer belongs to the outer checksum, but neither format
+            # includes its own footer. No owned snapshot payload is created.
+            _ = encoder.write_to(envelope)
+            var checksum = ~envelope.register
+            write_checksum(sink, checksum)
+            sync_file(file)
+        atomic_replace(temporary_path, final_path)
+        sync_directory(path)
         return True
     except:
         return False

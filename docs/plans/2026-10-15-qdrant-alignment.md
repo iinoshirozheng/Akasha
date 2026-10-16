@@ -536,3 +536,16 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   boundaries to HNSW snapshot body allocation (128 MiB) and compaction encoding
   after a separate owned table is loaded (192/256 MiB). These failures and the
   invalid initial Python-callback probe are retained; no full gate is closed.
+
+- [Streamed HNSW publication](../benchmarks/2026-10-16-hnsw-stream.md) removes
+  whole snapshot/envelope materialization from sidecar and overlay writes.
+  All 22 frozen format fixtures, larger chunk boundaries, 64 Mojo/crash cases,
+  387 Python/distributed cases, C, 5,184 paired responses, 18 reopens and 18
+  leases pass. The 64 MiB tape test reduces extra peak RSS from about 170 MiB
+  to no observed increase above the prior peak. All six high-dimensional
+  capped lifecycle cells still OOM; all recover, preserving 152 acknowledged
+  rows. Native phase evidence places the 128 MiB failure in borrowed vector
+  emission near a 122 MiB anonymous baseline. Higher-cap records expose
+  overlapping foreground writes and background compaction; latest-marker
+  attribution is insufficient without per-thread framing. Bound I/O pressure
+  and compaction's separate table/whole output next; no full gate is closed.
