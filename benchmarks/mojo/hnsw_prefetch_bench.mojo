@@ -106,7 +106,7 @@ def run[
     var admission = HnswSearchAdmission()
     var current = search_entry[backend_tag=tag](
         view, metric, query, graph._entry_slot.value(), graph._entry_level, 0,
-        admission, stats
+        admission, scratch, stats
     )
     return search_level[backend_tag=tag](
         view, metric, query, current, 0, ef, admission, scratch, stats

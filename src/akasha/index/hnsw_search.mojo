@@ -1,4 +1,4 @@
-"""Qdrant's ordinary filtered HNSW search, before performance adaptations.
+"""Qdrant-derived filtered HNSW traversal with bounded query seed reuse.
 
 Adapted from Qdrant (Apache-2.0), commit
 21db2f3ff95d50de3a2b88a741312c056fd1762d, graph_layers.rs,
@@ -7,7 +7,8 @@ qdrant_search_reference.md for provenance and benchmarks/licenses/
 qdrant-APACHE-2.0.txt for the upstream license.
 
 This HNSW uses Akasha's checked graph access, metrics and deterministic
-distance/ID/slot ties. Construction and queries share this traversal.
+distance/ID/slot ties. Construction retains single-entry traversal; queries
+reuse at most ef candidates already scored on the last upper layer.
 Rejection counters count checks, which can repeat; distance counters count
 actual calls. They deliberately do not claim production counter equivalence.
 """
@@ -166,6 +167,7 @@ def search_level[
     mut scratch: HnswSearchScratch,
     mut stats: HnswSearchStats,
     control: Optional[QueryControl] = None,
+    seeds: List[HnswHeapItem] = List[HnswHeapItem](),
 ) raises -> List[HnswHeapItem]:
     if ef <= 0 or level < 0:
         raise Error(
@@ -176,10 +178,25 @@ def search_level[
     if not graph.is_current(entry.slot) or not allowed._allows_item(entry.slot, graph.id_at(entry.slot)):
         raise Error("HNSW layer entry must be eligible")
     var bounded_ef = min(ef, graph.slot_count())
+    if len(seeds) > bounded_ef:
+        raise Error("HNSW initial candidates exceed ef")
+    for seed in seeds:
+        if UInt64(seed.slot) >= UInt64(graph.slot_count()):
+            raise Error("HNSW initial candidate slot out of bounds")
+        if graph.level(seed.slot) < level:
+            raise Error("HNSW initial candidate does not own requested level")
+        if not graph.is_current(seed.slot) or not allowed._allows_item(seed.slot, graph.id_at(seed.slot)):
+            raise Error("HNSW initial candidate must be eligible")
     scratch.begin(graph.slot_count(), bounded_ef)
-    _ = scratch.visit(entry.slot)
-    _process_candidate(entry, bounded_ef, scratch)
-    stats.base_visited += 1
+    if len(seeds) == 0:
+        _ = scratch.visit(entry.slot)
+        _process_candidate(entry, bounded_ef, scratch)
+        stats.base_visited += 1
+    else:
+        for seed in seeds:
+            if scratch.visit(seed.slot):
+                _process_candidate(seed, bounded_ef, scratch)
+                stats.base_visited += 1
     var limit = graph.graph_m0() if level == 0 else graph.graph_m()
     var points = List[UInt32](capacity=2 * limit)
     var scored = List[HnswHeapItem](capacity=limit)
@@ -235,12 +252,13 @@ def search[
     var entry = choose_entry(graph, primary, extra, allowed)
     if not entry:
         return List[HnswHeapItem]()
-    var current_item = search_entry[backend_tag=backend_tag](
+    var breadth = min(max(ef, k), graph.slot_count())
+    var current_item = search_entry[backend_tag=backend_tag, collect_seeds=True](
         graph, dispatcher, prepared, entry.value().slot, entry.value().level,
-        0, allowed, stats,
-        control=control,
+        0, allowed, scratch, stats,
+        control=control, seed_ef=breadth,
     )
-    var breadth = ef if ef >= k else k
+    var seeds = scratch.results.take_unordered()
     var results = search_level[backend_tag=backend_tag](
         graph,
         dispatcher,
@@ -251,7 +269,7 @@ def search[
         allowed,
         scratch,
         stats,
-        control=control,
+        control=control, seeds=seeds,
     )
     while len(results) > k:
         _ = results.pop()
@@ -269,13 +287,23 @@ def _distance[backend_tag: Int, GraphType: HnswGraphAccess](
 
 
 def search_entry[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, backend_tag: Int = -1
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission,
+    backend_tag: Int = -1, collect_seeds: Bool = False,
 ](
     graph: GraphType, dispatcher: MetricDispatcher, prepared: List[Float32],
     entry: UInt32, highest: Int, lowest: Int, allowed: AdmissionType,
+    mut scratch: HnswSearchScratch,
     mut stats: HnswSearchStats,
     control: Optional[QueryControl] = None,
+    seed_ef: Int = 1,
 ) raises -> HnswHeapItem:
+    """Greedy descent, optionally retaining scored final-upper-layer seeds.
+
+    Construction keeps the Qdrant single-entry traversal. Queries retain at
+    most ef unique scored candidates for one shared base-layer frontier, as
+    in Faiss search_type=2; this does not increase ef or score extra points.
+    The caller consumes scratch.results before starting the base traversal.
+    """
     if control:
         control.value().checkpoint(0)
     _validate_search_boundary(graph, dispatcher, prepared, entry, highest)
@@ -284,6 +312,9 @@ def search_entry[
     allowed.validate(graph.slot_count())
     if not graph.is_current(entry) or not allowed._allows_item(entry, graph.id_at(entry)):
         raise Error("HNSW descent entry must be eligible")
+    var bounded_seeds = min(seed_ef, graph.slot_count())
+    comptime if collect_seeds:
+        scratch.begin(graph.slot_count(), bounded_seeds)
     var current = entry
     var current_item = HnswHeapItem(current, graph.id_at(current), 0.0)
     var points = List[UInt32](capacity=2 * graph.graph_m0())
@@ -299,6 +330,9 @@ def search_entry[
         while True:
             if control:
                 control.value().checkpoint(0)
+            comptime if collect_seeds:
+                if level == lowest + 1 and scratch.visit(current_item.slot):
+                    scratch.results.offer(current_item, bounded_seeds)
             points.clear()
             var edges = graph.neighbor_range(current_item.slot, level)
             for i in range(edges[1]):
@@ -320,6 +354,9 @@ def search_entry[
             stats.upper_visited += len(scored)
             var changed = False
             for item in scored:
+                comptime if collect_seeds:
+                    if level == lowest + 1 and scratch.visit(item.slot):
+                        scratch.results.offer(item, bounded_seeds)
                 # Upstream upper descent moves only on strictly better score.
                 if item.distance < current_item.distance:
                     current_item = item
@@ -334,4 +371,7 @@ def search_entry[
             _distance[backend_tag](graph, dispatcher, prepared, current),
         )
         stats.distance_evaluations += 1
+    comptime if collect_seeds:
+        if scratch.visit(current_item.slot):
+            scratch.results.offer(current_item, bounded_seeds)
     return current_item

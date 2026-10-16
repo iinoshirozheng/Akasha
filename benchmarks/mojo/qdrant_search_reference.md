@@ -1,9 +1,11 @@
 # Qdrant ordinary filtered-search reference
 
-The benchmark facade now re-exports the production traversal in
-`src/akasha/index/hnsw_search.mojo`. The Rust executable remains independent:
-it runs extracted upstream methods over the same fixed fixtures. Neither
-runner measures timings.
+The benchmark facade composes the production single-entry descent and beam
+primitives in `src/akasha/index/hnsw_search.mojo`. The Rust executable remains
+independent: it runs extracted upstream methods over the same fixed fixtures.
+Neither runner measures timings. Production queries additionally reuse bounded
+upper-layer candidates; this oracle does **not** claim equivalence of that
+multi-entry query algorithm to Qdrant's single-entry search.
 
 The source is Qdrant's Apache-2.0 implementation at
 [`21db2f3ff95d50de3a2b88a741312c056fd1762d`](https://github.com/qdrant/qdrant/commit/21db2f3ff95d50de3a2b88a741312c056fd1762d),
@@ -34,7 +36,7 @@ scorer, queues and a no-op cancellation check. The extracted upper/level-zero
 search methods are unedited. It does not run the complete Edge crate, payload
 index, graph builder, persistence, bindings or concurrent searches.
 
-The nine boundary tests cover rejection before scoring, filtering before the
+The boundary tests cover rejection before scoring, filtering before the
 neighbor limit, entry selection, missing eligible entries, filtered upper
 descent, score reuse, traversal termination, stable ties and invalid limits.
 The disconnected bridge fixture deliberately shows why this search cannot be
@@ -45,8 +47,19 @@ be hidden by a new exact-search fallback or a changed recall threshold.
 `HnswSearchStats` is used only as a convenient counter container. Here rejection
 counters count actual checks (including repeats), distances count calls, and
 level-zero visits count scored nodes including the already-scored entry.
-Production traversal uses these counter definitions; they are not a claim
-of equivalence to Qdrant's production telemetry.
+Production traversal uses these counter definitions; seeded base traversal
+counts each unique reused seed as a base visit without an extra distance call.
+They are not a claim of equivalence to Qdrant's production telemetry.
+
+Query seed reuse follows the shared-frontier pattern in Faiss
+`faiss/impl/HNSW.cpp::search_level_0_impl` (`search_type == 2`), inspected at
+commit `613e0acac507c7593ff14dee2c6204a83a539acb`. Akasha retains at most the
+effective ef unique candidates already scored on the final upper layer, so
+initialization never raises ef. Its existing checked access, filtered beam,
+stable ties and score kernels remain. No Faiss source is copied. Construction
+does not collect query seeds and retains the single-entry source comparison.
+`tests/mojo/test_hnsw_search_layer.mojo` separately checks bounded retention,
+reuse without extra scoring, filtering, duplicates, invalid seeds and epoch wrap.
 
 Run the boundary tests:
 

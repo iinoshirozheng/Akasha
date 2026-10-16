@@ -566,7 +566,8 @@ struct HnswIndex:
             var current = search_entry[backend_tag=backend_tag](
                 self.graph, self.metric, prepared, construction_entry.value().slot,
                 construction_entry.value().level,
-                min(new_level, construction_entry.value().level), admission, construction_stats,
+                min(new_level, construction_entry.value().level), admission,
+                self._construction_scratch, construction_stats,
             )
             var shared_level = min(new_level, construction_entry.value().level)
             while shared_level >= 0:
@@ -1213,15 +1214,16 @@ struct HnswIndex:
             return List[SearchResult]()
 
         var chosen = selected_entry.value()
-        var entry_item = search_entry[backend_tag=backend_tag](
+        var entry_item = search_entry[backend_tag=backend_tag, collect_seeds=True](
             self.graph, self.metric, prepared, chosen.slot, chosen.level,
-            0, allowed, stats,
-            control=control,
+            0, allowed, self.scratch, stats,
+            control=control, seed_ef=effective_ef,
         )
+        var seeds = self.scratch.results.take_unordered()
         var candidates = search_level[backend_tag=backend_tag](
             self.graph, self.metric, prepared, entry_item, 0,
             effective_ef, allowed, self.scratch, stats,
-            control=control,
+            control=control, seeds=seeds,
         )
         var result = List[SearchResult](capacity=min(target_count, len(candidates)))
         for ordinal in range(min(target_count, len(candidates))):

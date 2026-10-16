@@ -238,8 +238,21 @@ def test_compact_storage_requires_matching_dispatcher_identity() raises:
     )
     with assert_raises():
         _ = i8_cosine.append(1, [127.0, 0.0, 0.0, 0.5], 0)
-    with assert_raises():
-        _ = i8_cosine.append(1, [0.0, 0.0, 0.0, Float32(1.0 / 127.0)], 0)
+    # Qdrant cosine accepts zero vectors; the nonzero unit-norm rule above
+    # still applies. A zero vector's public similarity is zero.
+    var zero_slot = i8_cosine.append(
+        1, [0.0, 0.0, 0.0, Float32(1.0 / 127.0)], 0
+    )
+    i8_cosine.validate_structure()
+    var i8_dispatcher = MetricDispatcher(
+        MetricKind.cosine(), ScalarKind.i8(), 3
+    )
+    assert_equal(
+        i8_dispatcher.public_score(
+            i8_cosine.distance_between(i8_dispatcher, zero_slot, zero_slot)
+        ),
+        Float32(0.0),
+    )
 
     var i8_dot = HnswStorage(
         3,

@@ -71,7 +71,7 @@ def test_eligible_entry_fills_connected_results_without_widening() raises:
     assert_equal(results[0].id, 12)
     assert_equal(results[1].id, 13)
     _assert_unique_ids(results)
-    assert_equal(index.scratch.epoch, starting_epoch + UInt32(1))
+    assert_equal(index.scratch.epoch, starting_epoch + UInt32(2))
     assert_equal(index.last_search_stats.requested_ef, 2)
     assert_equal(index.last_search_stats.effective_ef, 2)
     assert_equal(index.last_search_stats.widening_rounds, 0)
@@ -120,7 +120,7 @@ def test_matched_count_below_k_does_not_widen_after_target_is_filled() raises:
 
     assert_equal(len(results), 1)
     assert_equal(results[0].id, 12)
-    assert_equal(index.scratch.epoch, starting_epoch + UInt32(1))
+    assert_equal(index.scratch.epoch, starting_epoch + UInt32(2))
     assert_equal(index.last_search_stats.widening_rounds, 0)
     assert_equal(index.last_search_stats.fallback_reason, "")
 

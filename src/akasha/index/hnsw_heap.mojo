@@ -171,6 +171,12 @@ struct ResultMaxHeap(Sized):
             output_index -= 1
         return results^
 
+    def take_unordered(mut self) -> List[HnswHeapItem]:
+        """Drain without sorting when the consumer builds its own frontier."""
+        var results = self._heap.copy()
+        self._heap.clear()
+        return results^
+
     def _sift_up(mut self, start_index: Int):
         var index = start_index
         while index > 0:

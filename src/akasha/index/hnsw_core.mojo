@@ -798,10 +798,11 @@ def search_prepared_allowed_with_widening_core[
     if selected_entry:
         var current = selected_entry.value()
         upper_descents = current.level
-        var entry = search_entry[backend_tag=backend_tag](
-            graph, dispatcher, prepared, current.slot, upper_descents, 0, allowed, stats,
-            control=control,
+        var entry = search_entry[backend_tag=backend_tag, collect_seeds=True](
+            graph, dispatcher, prepared, current.slot, upper_descents, 0, allowed, scratch, stats,
+            control=control, seed_ef=current_ef,
         )
+        var seeds = scratch.results.take_unordered()
         var upper_stats = stats^
         while True:
             stats = HnswSearchStats()
@@ -816,7 +817,7 @@ def search_prepared_allowed_with_widening_core[
             var limit = current_ef if return_search_breadth else target_count
             var candidates = search_level[backend_tag=backend_tag](
                 graph, dispatcher, prepared, entry, 0, current_ef, allowed, scratch, stats,
-                control=control,
+                control=control, seeds=seeds,
             )
             results = List[SearchResult](capacity=min(limit, len(candidates)))
             for ordinal in range(min(limit, len(candidates))):

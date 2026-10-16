@@ -111,10 +111,19 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
 - F16 cosine uses Qdrant's metric on canonical half inputs without changing
   stored raw values. Hardware SIMD summation order and original F32 ingestion
   rounding remain explicit limits on a bitwise score-parity claim.
-- The unchanged Akasha L2 quality gate remains `0.9458333333 < 0.95`.
-  `benchmarks/qdrant_quality_gate_reference.py` produced the same result in
-  three fresh native Qdrant trials on that corpus, each checking exact results
-  against an independent F64 oracle. This diagnoses the gate; it does not waive it.
+- The fixed Akasha L2 quality gate now passes **228/240 = 0.95** through
+  bounded reuse of already scored upper-layer query candidates. Dot, cosine
+  and construction growth also pass. Dataset, seeds, ef=64, threshold and
+  construction remain unchanged; recall aggregation now divides integer totals
+  once rather than accumulating per-query Float64 rounding. The earlier
+  227/240 Akasha/native-Qdrant diagnoses remain historical evidence.
+  This is an explicit post-alignment query optimization informed by Faiss's
+  shared-frontier pattern; the Qdrant differential now clearly covers the
+  retained single-entry production primitives, not the multi-entry query path.
+  See the [quality repair and timing diagnostics](../benchmarks/2026-10-16-hnsw-upper-seeds.md).
+  The larger 1152-query probe includes a one-hit L2 regression and a seed below
+  .95 in both implementations. Saved-graph timings do not establish a consistent
+  speed improvement; all regressions and unchanged exact controls are retained.
 - Latest warm three-corpus, three-trial acceptance after bounded mapped
   current-flag loading: matched recall 36/36, speed **4/36**, overall **FAILED**.
   The existing symmetric ef grid and all thresholds were retained; see the

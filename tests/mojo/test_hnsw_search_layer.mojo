@@ -7,6 +7,7 @@ from akasha.index.hnsw_core import (
 )
 from akasha.index.hnsw_heap import HnswHeapItem
 from akasha.index.hnsw_scratch import HnswSearchScratch
+from akasha.index.hnsw_search import search_entry, search_level
 from akasha.index.hnsw_storage import HnswStorage
 from std.testing import (
     assert_equal,
@@ -55,6 +56,117 @@ def _assert_item(
     assert_equal(results[index].slot, UInt32(slot))
     assert_equal(results[index].id, id)
     assert_equal(results[index].distance, distance)
+
+
+def test_upper_seeds_reach_another_base_component_without_rescoring() raises:
+    var graph = HnswStorage(1, 4, 8)
+    _ = _append(graph, 0, 5.0, 1)
+    _ = _append(graph, 1, 1.0, 1)
+    _ = _append(graph, 2, 2.0, 1)
+    _ = _append(graph, 3, 3.0, 1)
+    _ = _append(graph, 4, 0.0)
+    _set(graph, 0, 1, [UInt32(1), UInt32(2), UInt32(3)])
+    # Repeat an upper candidate to exercise unique retention.
+    _set(graph, 1, 1, [UInt32(2)])
+    _set(graph, 2, 0, [UInt32(4), UInt32(1)])
+    var metric = _metric()
+    var query = _query(0.0)
+    var allowed = HnswSearchAdmission()
+    var baseline_scratch = HnswSearchScratch()
+    var baseline_stats = HnswSearchStats()
+    var baseline = search_entry(
+        graph, metric, query, UInt32(0), 1, 0, allowed,
+        baseline_scratch, baseline_stats,
+    )
+    var baseline_result = search_level(
+        graph, metric, query, baseline, 0, 2, allowed,
+        baseline_scratch, baseline_stats,
+    )
+    assert_equal(len(baseline_result), 1)
+    assert_equal(baseline_result[0].id, 1)
+
+    var scratch = HnswSearchScratch()
+    var stats = HnswSearchStats()
+    var entry = search_entry[collect_seeds=True](
+        graph, metric, query, UInt32(0), 1, 0, allowed, scratch, stats,
+        seed_ef=2,
+    )
+    var seeds = scratch.results.take_sorted_best()
+    assert_equal(entry.slot, baseline.slot)
+    assert_equal(stats.distance_evaluations, baseline_stats.distance_evaluations)
+    assert_equal(len(seeds), 2)
+    _assert_item(seeds, 0, 1, 1, 1.0)
+    _assert_item(seeds, 1, 2, 2, 4.0)
+    var results = search_level(
+        graph, metric, query, entry, 0, 2, allowed, scratch, stats,
+        seeds=seeds,
+    )
+    _assert_item(results, 0, 4, 4, 0.0)
+    _assert_item(results, 1, 1, 1, 1.0)
+    assert_equal(stats.distance_evaluations, baseline_stats.distance_evaluations + 1)
+    assert_equal(stats.base_visited, 3)
+    assert_equal(scratch.result_reserved_capacity(), 2)
+
+
+def test_upper_seed_collection_filters_and_handles_level_zero() raises:
+    var graph = HnswStorage(1, 4, 8)
+    _ = _append(graph, 0, 5.0, 1)
+    _ = _append(graph, 1, 0.0, 1)
+    _ = _append(graph, 2, 2.0, 1)
+    _set(graph, 0, 1, [UInt32(1), UInt32(2)])
+    var metric = _metric()
+    var query = _query(0.0)
+    var allowed = HnswSearchAdmission([True, False, True])
+    var scratch = HnswSearchScratch()
+    var stats = HnswSearchStats()
+    _ = search_entry[collect_seeds=True](
+        graph, metric, query, UInt32(0), 1, 0, allowed, scratch, stats,
+        seed_ef=2,
+    )
+    var seeds = scratch.results.take_sorted_best()
+    assert_equal(len(seeds), 2)
+    assert_equal(seeds[0].id, 2)
+    assert_equal(seeds[1].id, 0)
+    assert_equal(stats.distance_evaluations, 2)
+    assert_equal(stats.filtered_rejections, 1)
+    scratch._force_epoch_for_test(UInt32.MAX)
+    _ = search_entry[collect_seeds=True](
+        graph, metric, query, UInt32(2), 0, 0, allowed, scratch, stats,
+        seed_ef=2,
+    )
+    seeds = scratch.results.take_sorted_best()
+    assert_equal(len(seeds), 1)
+    assert_equal(seeds[0].id, 2)
+    assert_equal(scratch.epoch, UInt32(1))
+    assert_equal(stats.distance_evaluations, 3)
+
+
+def test_base_seeds_reject_invalid_inputs_before_changing_scratch() raises:
+    var graph = HnswStorage(1, 4, 8)
+    _ = _append(graph, 0, 1.0)
+    _ = _append(graph, 1, 2.0)
+    var metric = _metric()
+    var query = _query(0.0)
+    var allowed = HnswSearchAdmission([True, False])
+    var scratch = HnswSearchScratch()
+    var stats = HnswSearchStats()
+    var entry = HnswHeapItem(UInt32(0), 0, 1.0)
+    var invalid: List[HnswHeapItem] = [HnswHeapItem(UInt32(2), 2, 0.0)]
+    with assert_raises():
+        _ = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+    invalid[0] = HnswHeapItem(UInt32(1), 1, 4.0)
+    with assert_raises():
+        _ = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+    invalid = [entry, entry]
+    with assert_raises():
+        _ = search_level(graph, metric, query, entry, 0, 1, allowed, scratch, stats, seeds=invalid)
+    assert_equal(scratch.epoch, UInt32(0))
+    assert_equal(stats.base_visited, 0)
+    # Repeated initial slots are visited once when the list is within ef.
+    var result = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+    assert_equal(len(result), 1)
+    assert_equal(stats.base_visited, 1)
+    assert_equal(stats.distance_evaluations, 0)
 
 
 def test_upper_greedy_descends_multiple_hops_and_stops_locally() raises:

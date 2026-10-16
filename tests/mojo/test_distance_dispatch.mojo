@@ -740,9 +740,9 @@ def test_execution_policy_keeps_cpu_gpu_fallback_and_hnsw_layers_separate() rais
     assert_equal(index.last_search_stats.requested_ef, 12)
     assert_equal(index.last_search_stats.effective_ef, 12)
     assert_true(index.last_search_stats.base_visited > 0)
-    # The base entry reuses the final upper-layer score instead of scoring twice.
-    assert_equal(
-        index.last_search_stats.distance_evaluations,
+    # Base traversal reuses at least the entry and may reuse more upper scores.
+    assert_true(
+        index.last_search_stats.distance_evaluations <=
         index.last_search_stats.upper_visited
         + index.last_search_stats.base_visited - 1,
     )

@@ -1,6 +1,6 @@
 from akasha.document.vector_value import VectorValue
 from akasha.document.vector_schema import VectorFieldSpec
-from akasha.index.sparse import SparseElement, validate_sparse
+from akasha.index.sparse import SparseElement, validate_sparse, validate_legacy_sparse
 from std.memory import bitcast
 from std.testing import assert_equal, assert_raises, TestSuite
 
@@ -67,13 +67,20 @@ def test_shape_and_finite_checks_precede_acceptance() raises:
         _ = VectorValue.multivector[DType.float32](2, [1, 2, 3])
 
 
-def test_new_sparse_empty_is_present_and_legacy_sparse_rule_is_preserved() raises:
+def test_sparse_empty_and_zero_are_present_and_legacy_rules_are_preserved() raises:
     var empty = VectorValue.sparse(List[SparseElement]())
     assert_equal(empty.kind(), UInt8(1))
     assert_equal(len(empty.sparse_values()), 0)
     empty.validate(VectorFieldSpec(2, "sparse", 1, 0, 0, 2, 0))
+    validate_sparse(empty.sparse_values())
     with assert_raises():
-        validate_sparse(empty.sparse_values())
+        validate_legacy_sparse(empty.sparse_values())
+    var zero = VectorValue.sparse([SparseElement(1, 0)])
+    zero.validate(VectorFieldSpec(2, "sparse", 1, 0, 0, 2, 0))
+    assert_equal(len(zero.sparse_values()), 1)
+    assert_equal(zero.sparse_values()[0].weight, Float32(0))
+    with assert_raises():
+        validate_legacy_sparse(zero.sparse_values())
     var terms: List[SparseElement] = [
         SparseElement(0, -1),
         SparseElement(Int.MAX, 2),
@@ -83,7 +90,6 @@ def test_new_sparse_empty_is_present_and_legacy_sparse_rule_is_preserved() raise
     assert_equal(Int(value.sparse_values().unsafe_ptr()), address)
     var invalids: List[List[SparseElement]] = [
         [SparseElement(-1, 1)],
-        [SparseElement(1, 0)],
         [SparseElement(1, 1), SparseElement(1, 2)],
         [SparseElement(2, 1), SparseElement(1, 2)],
         [SparseElement(1, bitcast[DType.float32](UInt32(0x7F800000)))],

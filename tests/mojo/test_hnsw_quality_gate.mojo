@@ -41,16 +41,22 @@ def _vector(mut rng: SplitMix64) -> List[Float32]:
     return values^
 
 
-def _recall_at_k(
+def _matches_at_k(
     exact: List[SearchResult], approximate: List[SearchResult]
-) -> Float64:
+) -> Int:
     var matches = 0
     for expected in exact:
         for candidate in approximate:
             if candidate.id == expected.id:
                 matches += 1
                 break
-    return Float64(matches) / Float64(len(exact))
+    return matches
+
+
+def _recall_at_k(
+    exact: List[SearchResult], approximate: List[SearchResult]
+) -> Float64:
+    return Float64(_matches_at_k(exact, approximate)) / Float64(len(exact))
 
 
 def _exact_search(
@@ -82,13 +88,17 @@ def _measure_recall(metric: MetricKind) raises -> Float64:
         approximate.add(point_id, values)
         exact.add(point_id, values^)
 
-    var recall_sum = Float64(0.0)
+    var total_matches = 0
+    var total_expected = 0
     for _ in range(_QUERY_COUNT):
         var query = _vector(rng)
         var ground_truth = _exact_search(exact, metric, query)
         var candidates = approximate.search(query, _K, ef_search=_EF_SEARCH)
-        recall_sum += _recall_at_k(ground_truth, candidates)
-    return recall_sum / Float64(_QUERY_COUNT)
+        total_matches += _matches_at_k(ground_truth, candidates)
+        total_expected += len(ground_truth)
+    # One division avoids repeated rounding turning 228/240 into a value below
+    # the unchanged 0.95 gate. Every query has the same fixed k.
+    return Float64(total_matches) / Float64(total_expected)
 
 
 def _build_distances(point_count: Int) raises -> Int:

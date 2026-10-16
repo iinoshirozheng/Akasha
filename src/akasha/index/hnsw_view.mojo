@@ -977,17 +977,18 @@ struct HnswGraphView(HnswGraphAccess, Movable):
 
         var current = selected_entry.value()
         var admission = HnswSearchAdmission()
-        var entry = search_entry[backend_tag=backend_tag](
-            self, self._metric, prepared, current.slot, current.level,
-            0, admission, stats,
-            control=control,
-        )
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
+        var entry = search_entry[backend_tag=backend_tag, collect_seeds=True](
+            self, self._metric, prepared, current.slot, current.level,
+            0, admission, scratch, stats,
+            control=control, seed_ef=effective_ef,
+        )
+        var seeds = scratch.results.take_unordered()
         var candidates = search_level[backend_tag=backend_tag](
             self, self._metric, prepared, entry, 0, effective_ef,
             admission, scratch, stats,
-            control=control,
+            control=control, seeds=seeds,
         )
         while len(candidates) > target_count:
             _ = candidates.pop()

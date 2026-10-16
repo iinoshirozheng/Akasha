@@ -169,6 +169,27 @@ def test_clear_reserve_and_reuse_preserve_item_associations() raises:
     _assert_item(results.peek_worst(), 71, -8, -1.5)
 
 
+def test_unordered_drain_preserves_retained_items_and_capacity() raises:
+    var heap = ResultMaxHeap()
+    heap.reserve(8)
+    for i in range(10):
+        heap.offer(_item(i, 10 - i, Float32(10 - i)), 4)
+    var capacity = heap.capacity()
+    var drained = heap.take_unordered()
+    assert_equal(len(drained), 4)
+    _sort_model_best_first(drained)
+    for i in range(4):
+        _assert_item(drained[i], 9 - i, i + 1, Float32(i + 1))
+    assert_equal(len(heap), 0)
+    assert_equal(heap.capacity(), capacity)
+    heap.offer(_item(20, 20, 0.0), 4)
+    var second = heap.take_unordered()
+    assert_equal(len(second), 1)
+    _assert_item(second[0], 20, 20, 0.0)
+    _assert_item(drained[0], 9, 1, 1.0)
+    assert_equal(len(heap.take_unordered()), 0)
+
+
 def test_candidate_heap_matches_sorted_model_for_many_operations() raises:
     var heap = CandidateMinHeap()
     heap.reserve(1_000)

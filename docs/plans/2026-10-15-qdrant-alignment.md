@@ -351,3 +351,19 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   fixed L2 and platform/capacity/concurrency gaps are not waived. The
   [current-flag report](../benchmarks/2026-10-16-qdrant-current-flag.md) separates
   paired local gains from the fresh acceptance snapshots.
+- Bounded upper-layer query seed reuse closes the fixed L2 quality gate:
+  228/240 = .95 at unchanged ef=64, versus 227/240 before. Dot .9541666667,
+  cosine .9583333333 and construction growth 3.4405554 pass. Integer hit-total
+  aggregation corrects the old floating accumulation error at exactly .95.
+  Construction remains single-entry; queries use the best at-most-ef already
+  scored final-upper candidates in one frontier, informed by Faiss's shared
+  frontier design. The source oracle explicitly excludes this query adaptation.
+  A 1152-query integration probe matches the standalone candidate's results and
+  counts, including its retained one-hit regression. Sorted seed transfer was
+  simplified to an unordered drain with identical results and distance work.
+  Paired public timings remain mixed, so speed/platform/capacity/concurrency
+  requirements stay open. See the [upper-seed report](../benchmarks/2026-10-16-hnsw-upper-seeds.md).
+  Complete local CPU validation passes 152 Mojo files / 1036 cases, 387 Python/
+  distributed/service tests (one skip), rebuilt C client, three examples and
+  both quality smoke tasks. The full suite exposed and corrected two obsolete
+  zero-cosine/sparse test contracts; legacy rejection rules remain tested.

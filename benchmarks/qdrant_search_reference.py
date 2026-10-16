@@ -246,7 +246,7 @@ def main() -> None:
                    python_version=sys.version,
                    rust_version=subprocess.check_output(["rustc", "--version"], text=True).strip(),
                    mojo_version=subprocess.check_output(["pixi", "run", "mojo", "--version"], text=True).strip(),
-                   scope="Search control flow on distinct-score fixtures; no Edge binary, graph build, timing, or production acceptance claim")
+                   scope="Production single-entry descent/beam primitives on distinct-score fixtures; excludes multi-entry query seed reuse, Edge binary, graph build, timing and production acceptance")
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
 
