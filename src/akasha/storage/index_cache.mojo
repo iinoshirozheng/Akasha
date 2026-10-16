@@ -1,5 +1,6 @@
 from akasha.storage.checksum import (
     BinaryReader,
+    BorrowedBinaryReader,
     BinaryWriter,
     crc32_range,
     crc32_update,
@@ -10,10 +11,10 @@ from akasha.storage.memtable import MemTable
 from akasha.storage.filesystem import (
     atomic_replace,
     path_exists,
-    read_file_bytes_bounded,
     sync_directory,
     write_file_sync,
 )
+from akasha.storage.mapped_file import MappedFile
 from std.sys.info import is_little_endian
 
 
@@ -88,14 +89,30 @@ def decode_cache_bytes(var bytes: List[UInt8]) raises -> CacheArtifact:
     if len(bytes) < _FIXED_BYTES:
         raise Error("derived index cache is truncated")
     var stored_offset = len(bytes) - 4
-    var stored_reader = BinaryReader(bytes.copy())
-    _ = stored_reader.read_bytes(stored_offset)
+    var stored_reader = BorrowedBinaryReader(Span(bytes)[stored_offset:])
     var stored_checksum = stored_reader.read_u32()
-    var actual_checksum = crc32_range(bytes, 0, stored_offset)
-    if stored_checksum != actual_checksum:
+    if stored_checksum != crc32_range(bytes, 0, stored_offset):
         raise Error("derived index cache checksum mismatch")
-
+    var header = _decode_cache_header(
+        Span(bytes)[:36], len(bytes) - _FIXED_BYTES
+    )
     var reader = BinaryReader(bytes^)
+    _ = reader.read_bytes(36)
+    return CacheArtifact(
+        header[0],
+        header[1],
+        header[2],
+        header[3],
+        header[4],
+        reader.read_bytes(header[5]),
+    )
+
+
+def _decode_cache_header(
+    bytes: Span[UInt8, _],
+    payload_bytes: Int,
+) raises -> Tuple[UInt8, Int, UInt64, UInt64, UInt32, Int]:
+    var reader = BorrowedBinaryReader(bytes)
     if (
         reader.read_u8() != UInt8(0x41)
         or reader.read_u8() != UInt8(0x4B)
@@ -120,18 +137,16 @@ def decode_cache_bytes(var bytes: List[UInt8]) raises -> CacheArtifact:
     if payload_length_u32 > UInt32(_MAX_PAYLOAD_BYTES):
         raise Error("derived index cache payload is too large")
     var payload_length = Int(payload_length_u32)
-    if reader.remaining() != payload_length + 4:
+    if payload_bytes != payload_length:
         raise Error("derived index cache payload length mismatch")
-    var payload = reader.read_bytes(payload_length)
-    _ = reader.read_u32()
     _validate_header(kind, dimension, payload_length)
-    return CacheArtifact(
+    return (
         kind,
         dimension,
         generation,
         sequence,
         source_checksum,
-        payload^,
+        payload_length,
     )
 
 
@@ -151,9 +166,25 @@ def load_cache_artifact(path: String) -> Optional[CacheArtifact]:
     if not path_exists(path):
         return None
     try:
+        # Cache publishers replace the inode atomically. Keep the read-only
+        # mapping local and return only an independently owned payload.
+        var mapping = MappedFile.open_readonly(path)
+        var size = mapping.byte_length()
+        if size < _FIXED_BYTES or size > _MAX_PAYLOAD_BYTES + _FIXED_BYTES:
+            return None
+        var checksum = mapping.load_scalars[DType.uint32, 1](size - 4)
+        if checksum != mapping.checksum(0, UInt64(size - 4)):
+            return None
+        var bytes = mapping.copy_scalars[DType.uint8](0, 36)
+        var header = _decode_cache_header(Span(bytes), size - _FIXED_BYTES)
         return Optional(
-            decode_cache_bytes(
-                read_file_bytes_bounded(path, _MAX_PAYLOAD_BYTES + _FIXED_BYTES)
+            CacheArtifact(
+                header[0],
+                header[1],
+                header[2],
+                header[3],
+                header[4],
+                mapping.copy_scalars[DType.uint8](36, header[5]),
             )
         )
     except:

@@ -130,6 +130,16 @@ escapes, and decoded native values remain independent owned data. This reduces
 transient encoded storage; it does not make the retained point authority
 nonresident or remove its decoded-vector memory requirement.
 
+Derived AKIC v1 caches also use a local mapping during load. The reader checks
+its total size against the existing 512 MiB payload limit plus the 40-byte
+envelope, verifies the complete envelope CRC and shares header validation with
+the owned-byte decoder. It copies only the 36-byte header and the returned
+payload. The mapping closes before the caller receives that independently owned
+payload. Cache publication already uses fsync and atomic replacement, satisfying
+the immutable-inode precondition during this synchronous read. Missing,
+unreadable or invalid derived caches remain safe misses; this does not affect
+committed point/graph corruption handling or the durable format.
+
 The wrapper does not silently fall back. An unsupported ABI is a compile-time
 error: an owned loader for such a target must be selected at compile time,
 before instantiating `open_readonly`. The collection's runtime mmap fallback

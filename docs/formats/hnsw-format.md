@@ -361,7 +361,10 @@ The outer latest sequence binds the current authority version. For kind 3, the
 `source_checksum` field stores the retained base snapshot CRC32. The artifact
 generation must be no newer than the recovered generation; compaction may advance
 the generation or reorder physical rows while preserving the same vectors. The cache reader bounds the file to the
-existing 512 MiB payload limit plus the 40-byte envelope before materialization.
+existing 512 MiB payload limit plus the 40-byte envelope before materialization. It
+validates the envelope CRC and header through a local read-only mapping, then
+copies only the independently owned payload used by the snapshot decoder.
+Neither the envelope format nor the inner snapshot format changes.
 
 Publication is best-effort atomic replacement after authority checkpoint commit.
 This is not referenced by the manifest and is not required in backups. Older

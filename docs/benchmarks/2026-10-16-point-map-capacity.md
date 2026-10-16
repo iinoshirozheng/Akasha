@@ -88,3 +88,12 @@ and mapped-test logs, every initial/corrected job/report/inspection, preparation
 records, source/input hashes, runtime manifests and drivers. Databases and
 binaries are identified rather than embedded. All embedded hashes verify.
 Archive SHA-256: `75533006cd46a4e282229a6c902ff2dd3ed5fd26f276f9d43f97e2695613dd64`.
+
+## Subsequent cache-loading fix
+
+The [mapped-cache follow-up](2026-10-16-cache-map.md) localizes the remaining
+128 MiB failures to overlay graph decoding and removes redundant cache-envelope
+copies. Its unchanged controlled matrix completes 27/27 capped candidate jobs,
+including all six previously failing high-dimensional 128 MiB cases. This
+supersedes the unresolved short-open result above; the broader capacity and
+native Linux limitations still apply.

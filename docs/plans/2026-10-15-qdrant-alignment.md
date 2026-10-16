@@ -490,3 +490,18 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   open failures. Both Linux libraries compile and four mapped-reader tests pass
   under emulation. This open plus two zero-query diagnostic does not establish
   recall, Qdrant speed, sustained nonresident behavior or native Linux support.
+
+- Derived cache loading now validates through a local mapping and copies only
+  the returned payload; the owned decoder no longer copies entire files to
+  inspect their footer. Native phase probes localized the previous 128 MiB
+  failures to overlay graph decoding after redundant envelope copies. The
+  unchanged externally prepared capacity matrix improves from 21/27 to 27/27
+  capped completions, resolving both high-dimensional 128 MiB cases in all
+  three trials; all 108 response checks match. Native macOS peak opening
+  footprint falls another 10–16%. Paired mixed responses/statistics, 18 reopens
+  and 18 leases agree, but low-dimensional selective/correlated p95 regressions
+  remain open. Validation passes 56 Mojo/crash cases, five mapped-cache tests
+  under Linux emulation, 387 Python/distributed cases (one skip) and rebuilt C.
+  See the [cache loading evidence](../benchmarks/2026-10-16-cache-map.md).
+  This closes the short open/read capacity failures only; full M5/M6,
+  sustained pressure/type/lifecycle, concurrency and native Linux remain open.
