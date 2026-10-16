@@ -549,3 +549,19 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   overlapping foreground writes and background compaction; latest-marker
   attribution is insufficient without per-thread framing. Bound I/O pressure
   and compaction's separate table/whole output next; no full gate is closed.
+
+- [Streaming point compaction](../benchmarks/2026-10-16-point-merge.md) replaces
+  the separate decoded checkpoint table and whole output with validated sorted
+  cursors and incremental output. The isolated 64 MiB fixture reduces native
+  extra peak RSS from about 107 MiB to 0–1.6 MiB. Mapping descriptors are released
+  without unmapping; a 64-input merge now passes under a 32-descriptor limit.
+  All 64 relevant Mojo/crash cases, 388 Python/distributed cases, C and targeted
+  Linux tests pass. The unchanged mixed pressure matrix improves from 6/12 to
+  10/12 complete: both high-dimensional corpora finish at 192/256 MiB in all
+  three repetitions, while both 128 MiB cases still OOM and recover all 16
+  acknowledged rows. 5,184 Linux and 5,184 native paired response audits agree.
+  High-dimensional process peaks fall 39–43%, but total flush time rises
+  42–54%; this regression is retained and is the next performance issue to
+  profile. A separate 64 KiB syscall-chunk probe did not improve capacity and
+  was rejected. Full M5/M6, 128 MiB pressure, sustained/type/lifecycle coverage,
+  concurrency and native Linux remain open.

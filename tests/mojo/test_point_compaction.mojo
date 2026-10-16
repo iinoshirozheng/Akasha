@@ -177,5 +177,40 @@ def test_point_compaction_uses_existing_generation_leases_and_publication() rais
     store.close()
 
 
+def test_partial_unpublished_point_compaction_output_is_removed_on_reopen() raises:
+    var path = _path("partial-output")
+    var store = PointStore.open(path, _fields())
+    _write(store, 1, 1)
+    _write(store, 2, 2)
+    var inputs = capture_compaction_inputs(path, 2)
+    var output = build_compaction_output(path, 2, inputs.value())
+    var complete = read_file_bytes(path + "/" + output.segment_name)
+    var partial = List[UInt8]()
+    partial.extend(Span(complete)[:53])
+    write_file_sync(path + "/" + output.segment_name, partial)
+    var manifest = read_file_bytes(path + "/manifest.bin")
+    store.close()
+    var reopened = PointStore.open(path, _fields())
+    assert_equal(read_file_bytes(path + "/manifest.bin"), manifest)
+    assert_false(path_exists(path + "/" + output.segment_name))
+    assert_equal(
+        reopened.get(1)
+        .value()
+        .field_at(0)
+        .value()
+        .dense_values[DType.float16]()[0],
+        Float16(1),
+    )
+    assert_equal(
+        reopened.get(2)
+        .value()
+        .field_at(0)
+        .value()
+        .dense_values[DType.float16]()[0],
+        Float16(2),
+    )
+    reopened.close()
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

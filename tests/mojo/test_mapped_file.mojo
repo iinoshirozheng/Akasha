@@ -217,6 +217,33 @@ def test_explicit_move_transfers_the_only_descriptor_owner() raises:
     sentinel.close()
 
 
+def test_released_descriptor_preserves_mapping_and_never_closes_reused_handle() raises:
+    var path = _fixture_path("release-descriptor")
+    _write_page_fixture(path)
+    var mapped = MappedFile.open_readonly(path)
+    var descriptor = mapped._descriptor_for_testing()
+    mapped.release_descriptor()
+    mapped.release_descriptor()
+    _assert_descriptor_closed(descriptor)
+    assert_equal(mapped.byte_at(64), UInt8(64))
+    var sentinel = open(path, "r")
+    assert_equal(sentinel.handle, Int(descriptor))
+    mapped.close()
+    _assert_descriptor_open(descriptor)
+    sentinel.close()
+    with assert_raises():
+        mapped.release_descriptor()
+
+    write_file_sync(path, List[UInt8]())
+    var empty = MappedFile.open_readonly(path)
+    descriptor = empty._descriptor_for_testing()
+    empty.release_descriptor()
+    _assert_descriptor_closed(descriptor)
+    assert_equal(empty.checked_slice(0, 0).byte_length(), 0)
+    empty.close()
+    remove_file_if_exists(path)
+
+
 def test_default_owner_is_closed_and_harmless() raises:
     var mapped = MappedFile()
     assert_equal(mapped.byte_length(), 0)

@@ -2,17 +2,14 @@ from akasha.document.vector_schema import FieldCatalog
 from akasha.storage.field_catalog import load_field_catalog
 from akasha.storage.point_recovery import (
     is_point_checkpoint,
-    load_point_checkpoint,
 )
-from akasha.storage.point_segment import encode_point_segment
-from akasha.storage.checksum import BorrowedBinaryReader
+from akasha.storage.point_merge import PointMerge
 from akasha.index.sparse import SparseIndex
 from akasha.storage.filesystem import (
     create_file_exclusive,
     path_exists,
     remove_file_if_exists,
     sync_directory,
-    write_file_sync,
 )
 from akasha.storage.manifest import (
     load_manifest,
@@ -455,23 +452,13 @@ def _load_sparse(
 def _build_point_compaction(
     directory: String, inputs: CompactionInputs
 ) raises -> CompactionOutput:
-    var table = load_point_checkpoint(
-        directory, inputs.manifest, inputs.catalog.value().copy()
-    )
-    var bytes = encode_point_segment(
-        1,
-        0,
-        inputs.manifest.last_sequence,
-        table.live_points(),
-        inputs.catalog.value()[],
-    )
-    var reader = BorrowedBinaryReader(Span(bytes)[len(bytes) - 4 :])
-    var checksum = reader.read_u32()
+    var merge = PointMerge(directory, inputs.manifest, inputs.catalog.value()[])
     var name = _claim_output(
         directory, _SEGMENT_OUTPUT_PREFIX, inputs.manifest.generation + 1
     )
+    var checksum: UInt32
     try:
-        write_file_sync(directory + "/" + name, bytes)
+        checksum = merge.write_base(directory + "/" + name)
         sync_directory(directory)
     except error:
         try:

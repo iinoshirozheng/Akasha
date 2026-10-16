@@ -244,6 +244,23 @@ struct MappedFile(Movable):
         """
         self._close()
 
+    def release_descriptor(mut self) raises:
+        """Close the backing descriptor while retaining the immutable mapping.
+
+        POSIX mappings retain their inode independently of the descriptor.
+        This bounds descriptor use when a merge holds many mapped inputs.
+        """
+        self._ensure_open()
+        if self._descriptor < 0:
+            return
+        var descriptor = self._descriptor
+        # Disarm before close: never retry or close a reused descriptor later.
+        self._descriptor = -1
+        if external_call["close", c_int](c_int(descriptor)) != 0:
+            raise Error(
+                "close mapped descriptor failed: " + String(get_errno())
+            )
+
     def _descriptor_for_testing(self) raises -> Int32:
         """Returns the borrowed descriptor number for lifecycle assertions."""
         self._ensure_open()

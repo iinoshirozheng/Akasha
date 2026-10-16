@@ -96,6 +96,16 @@ error to the caller; it does not retain or retry ownership after attempting the
 release. Acquisition failures preserve `errno` before any cleanup call and do
 raise.
 
+`release_descriptor()` explicitly closes only the backing descriptor while
+retaining the mapping and its immutable-inode requirement. POSIX keeps a mapping
+valid after the descriptor closes; see the [Linux mmap manual](https://man7.org/linux/man-pages/man2/mmap.2.html).
+The method is idempotent for an open owner, rejects a closed owner, disarms the
+descriptor before attempting close, and reports a close error without retrying.
+Subsequent destruction still unmaps pages but cannot close a reused descriptor.
+Point-segment cursors use this capability so a legal multi-segment merge does
+not consume one open descriptor per input. Ordinary mapping acquisition retains
+its existing descriptor ownership until explicit release or close.
+
 `MappedBytes` never stores or returns a pointer into mapped pages. It stores an
 origin-tracked safe pointer to its `MappedFile` owner plus a validated offset and
 length. Every byte read goes back through the owner, which checks closed state
@@ -129,6 +139,19 @@ existing owned point codec. Temporary encoded storage is bounded by one record
 escapes, and decoded native values remain independent owned data. This reduces
 transient encoded storage; it does not make the retained point authority
 nonresident or remove its decoded-vector memory requirement.
+
+Point compaction uses one origin-bound cursor per captured input and a min-heap
+ordered by point ID, with manifest order breaking ties. It validates every
+version, including overwritten and deleted records, and counts live output in
+a complete preflight pass. Rewinding the same immutable mappings then emits
+canonical v5 records and an incremental checksum directly to the claimed
+output, retaining file/directory fsync and the existing publication protocol.
+It no longer constructs a separate complete checkpoint table or encoded output
+tape. Decoded working storage depends on the input fan-in and record sizes:
+one head per input plus the current record and encoding buffer. This is not a
+constant bound independent of data shape. A constrained-process regression
+merges 64 inputs with a descriptor soft limit of 32 and compares exact output
+bytes with the owned recovery/encoding path.
 
 Derived AKIC v1 caches also use a local mapping during load. The reader checks
 its total size against the existing 512 MiB payload limit plus the 40-byte
