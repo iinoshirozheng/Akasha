@@ -141,3 +141,9 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   pass, but public timings regress) and five unchanged-parent native captures.
   Checked authority scoring accounts for 26–29% of real filtered main-thread
   top-of-stack observations; this is not permission to remove required reranking.
+
+- The [checked-ID scorer reuse probe](../benchmarks/2026-10-16-hnsw-id-reuse.md)
+  is rejected. It removes one ID read per scored point, passes 55 Mojo cases
+  and the 98-fixture source oracle, but real independent-filter QPS falls
+  about 3.5% and p95 rises about 10.2% in two of three saved-graph pairs.
+  Source and binary were restored to `3dafe2a`; no speed gate closes.

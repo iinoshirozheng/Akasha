@@ -367,3 +367,10 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   distributed/service tests (one skip), rebuilt C client, three examples and
   both quality smoke tasks. The full suite exposed and corrected two obsolete
   zero-cosine/sparse test contracts; legacy rejection rules remain tested.
+
+- Checked-ID reuse in `score_points` was tested and rejected: fewer ID loads
+  preserve results/counters but regress real independent-filter timing in two
+  of three pairs. All evidence is retained in the
+  [probe report](../benchmarks/2026-10-16-hnsw-id-reuse.md). Production restored
+  to `3dafe2a`; the next isolated hypothesis uses the existing paired exact
+  kernel in authoritative reranking, without skipping candidates or checks.
