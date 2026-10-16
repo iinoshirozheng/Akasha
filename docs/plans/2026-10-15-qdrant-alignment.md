@@ -505,3 +505,12 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   See the [cache loading evidence](../benchmarks/2026-10-16-cache-map.md).
   This closes the short open/read capacity failures only; full M5/M6,
   sustained pressure/type/lifecycle, concurrency and native Linux remain open.
+
+- A [tail-localization follow-up](../benchmarks/2026-10-16-cache-tail-trace.md)
+  preserves both binaries and confirms 3,456 paired response/statistic audits,
+  12 reopens and 12 Arrow leases. No measured query overlaps GC; all 23
+  selective spikes above 150 microseconds in the CPU-timed probe spend only
+  22–67% of their wall interval executing on the calling thread. Exact wait
+  attribution remains unresolved. Instrumented repetitions do not replace
+  original p95 failures or alter performance gates; no new production change
+  is justified by this diagnostic alone.
