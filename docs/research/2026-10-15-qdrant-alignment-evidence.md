@@ -180,3 +180,11 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   experiment, not proof of the cause of the first variant’s regression.
   Production remains the bitmap checkpoint; source and Python binary identities
   match it, with a fresh rebuilt C-client check after restoration.
+
+- [Current sampling and neighbor-tail pairing](../benchmarks/2026-10-16-neighbor-tail-pair.md)
+  preserve 335 profile query pairs and reject another measured prototype:
+  64 Mojo cases and both source-search paths pass, but roughly 3–5% filtered
+  high-dimensional gains retain low-dimensional and individual p95 regressions.
+  All 36 warm pairs and 5,184 mixed responses preserve results/statistics;
+  18 reopen and 18 lease checks pass. Source/test/Python restore to the bitmap
+  checkpoint. No speed, concurrency or platform requirement is newly satisfied.

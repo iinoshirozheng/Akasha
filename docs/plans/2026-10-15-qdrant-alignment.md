@@ -430,3 +430,12 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   paths and its build. Source/Python binary restore exactly to `63794d6`, and
   the C artifact is rebuilt/tested after restoration. No production change or
   gate closure is retained. See the [complete probes](../benchmarks/2026-10-16-hnsw-source-probes.md).
+
+- A fresh accepted-binary native profile preserves 335 pre/post query audits.
+  High-dimensional filtered authority kernels remain 18–20% of main-thread
+  leaf samples; low-dimensional heap costs remain prominent. A two-row F32
+  neighbor-tail prototype passes 64 Mojo cases and both 98-fixture source paths,
+  but its small high-dimensional gains retain low-dimensional/p95 regressions.
+  All warm/mixed result and lifecycle audits pass; the prototype is rejected
+  and source/test/Python binary restored. No gate closes. See the
+  [profile and complete paired evidence](../benchmarks/2026-10-16-neighbor-tail-pair.md).
