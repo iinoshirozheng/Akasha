@@ -439,3 +439,14 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   All warm/mixed result and lifecycle audits pass; the prototype is rejected
   and source/test/Python binary restored. No gate closes. See the
   [profile and complete paired evidence](../benchmarks/2026-10-16-neighbor-tail-pair.md).
+
+- Full native Qdrant scorer instrumentation now closes the operation-count
+  observability gap for the current Dot/F32 baseline. All 1,608 unique requests
+  match official-wheel IDs and F32 bits in two repeat runs; 804 exact controls
+  count the eligible population. Another 134 same-ef requests match exactly.
+  Real correlated matched-ef work is 1,621 evaluations versus Qdrant 872 (1.86x).
+  At the same ef, Akasha search work is lower, but 256–461 authority reranks add
+  overhead; ef=128 recall is 605/640, below the unchanged 608/640 gate. Graph score
+  reuse still requires value/owner/arithmetic proof: current tests deliberately
+  separate graph vectors from authority. See the [native work evidence](../benchmarks/2026-10-16-qdrant-native-work.md).
+  Diagnostic counts do not change the speed gates or production binary.

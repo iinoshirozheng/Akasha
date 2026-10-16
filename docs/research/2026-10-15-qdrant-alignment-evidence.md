@@ -188,3 +188,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   All 36 warm pairs and 5,184 mixed responses preserve results/statistics;
   18 reopen and 18 lease checks pass. Source/test/Python restore to the bitmap
   checkpoint. No speed, concurrency or platform requirement is newly satisfied.
+
+- [Native Qdrant work counts](../benchmarks/2026-10-16-qdrant-native-work.md)
+  use an isolated, instrumented pinned source build; the reference checkout and
+  official speed-comparison wheel remain unchanged. 1,608 unique requests match
+  wheel IDs/F32 bits in two repeats; all 804 exact count controls pass. Another
+  134 same-ef comparisons also match. At matched ef, real correlated work is
+  1.860x Qdrant; same-ef controls isolate extra authoritative scoring and the
+  605/640 recall miss at ef=128. This supplies previously unavailable native
+  operation counts, not a performance acceptance pass. Explicit default exact
+  Akasha calls leave approximate-query statistics unchanged and are excluded
+  from cross-engine work accounting.
