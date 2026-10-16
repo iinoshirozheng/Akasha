@@ -5,7 +5,6 @@ from akasha.storage.committed_compaction import (
     begin_compaction,
     build_compaction,
     COMPACTION_ATTEMPTS,
-    CompactionInputs,
 )
 from akasha.storage.filesystem import (
     ensure_directory,
@@ -184,10 +183,13 @@ def test_foreground_and_worker_on_the_same_inputs_publish_once() raises:
 
     # While the worker still holds its pin it has not published, so this
     # foreground job captures the same inputs.
-    var job: Optional[CompactionInputs]
-    with BlockingScopedLock(collection._writer_lock[]):
-        assert_true(collection._pins[].active_count() > 0)
-        job = begin_compaction(path, _DIMENSION, collection._pins)
+    assert_true(collection._pins[].active_count() > 0)
+    var capture = begin_compaction(
+        path, _DIMENSION, collection._pins,
+    )
+    assert_false(capture.stale)
+    var job = capture.inputs^
+    capture.inputs = None
     assert_equal(job.value().manifest.generation, captured.generation)
     var output = build_compaction(
         path, _DIMENSION, job.value(), collection._pins
@@ -342,7 +344,10 @@ def test_exhausted_worker_budget_is_counted_not_a_failure() raises:
             assert_equal(counts.conflicts, attempt)
             collection._upsert_unlocked(id, _vector(id, _DIMENSION))
             _ = collection._checkpoint_unlocked()
-        var injected = collection._begin_compaction()
+        var capture_1 = collection._begin_compaction()
+        assert_true(not capture_1.stale)
+        var injected = capture_1.inputs^
+        capture_1.inputs = None
         var output = collection._build_compaction(injected.value())
         assert_true(collection._finish_compaction(injected.value(), output))
         with BlockingScopedLock(collection._writer_lock[]):

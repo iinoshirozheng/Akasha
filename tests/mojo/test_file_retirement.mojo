@@ -192,7 +192,10 @@ def test_captured_compaction_retains_writer_ownership_until_discard() raises:
     collection.flush()
     collection.upsert(2, [2.0])
     collection.flush()
-    var inputs = collection._begin_compaction()
+    var capture_1 = collection._begin_compaction()
+    assert_true(not capture_1.stale)
+    var inputs = capture_1.inputs^
+    capture_1.inputs = None
     assert_true(Bool(inputs))
     collection.close()
     with assert_raises(contains="already open"):
@@ -259,7 +262,10 @@ def test_file_lease_survives_an_independent_reader_process() raises:
     var subprocess = Python.import_module("subprocess")
     var time = Python.import_module("time")
     var args = Python.list()
-    for arg in ["mojo", "run", "-I", "src", argv()[0], "lease-reader", path]:
+    if argv()[0].endswith(".mojo"):
+        for arg in ["mojo", "run", "-I", "src"]:
+            args.append(arg)
+    for arg in [argv()[0], "lease-reader", path]:
         args.append(arg)
     var child = subprocess.Popen(
         args, stdout=subprocess.PIPE, stderr=subprocess.PIPE

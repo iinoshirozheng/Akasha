@@ -23,7 +23,10 @@ def test_close_can_finish_during_reclaim_but_new_writer_waits_for_source_owner()
     collection.flush()
     collection.upsert(2, [2.0])
     collection.flush()
-    var inputs = collection._begin_compaction()
+    var capture_1 = collection._begin_compaction()
+    assert_true(not capture_1.stale)
+    var inputs = capture_1.inputs^
+    capture_1.inputs = None
     assert_true(Bool(inputs))
     var generation = inputs.value().manifest.generation
     var output = collection._build_compaction(inputs.value())

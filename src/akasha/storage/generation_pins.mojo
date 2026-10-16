@@ -1,5 +1,7 @@
 from std.utils import BlockingScopedLock, BlockingSpinLock
+from std.memory import Pointer
 from akasha.storage.file_leases import ManifestFileLease
+from akasha.storage.manifest import Manifest
 
 
 struct _GenerationPin(Movable):
@@ -35,19 +37,19 @@ struct GenerationPinRegistry(Movable):
         self._cleanup_error = ""
 
     def pin(mut self, generation: UInt64) raises:
-        with BlockingScopedLock(self._lock):
-            for index in range(len(self._pins)):
-                if self._pins[index].generation == generation:
-                    self._pins[index].count += 1
-                    return
-            var lease = Optional[ManifestFileLease]()
-            if generation > 0 and self._directory.byte_length() > 0:
-                lease = Optional(
-                    ManifestFileLease(
-                        self._directory, self._dimension, generation
-                    )
-                )
-            self._pins.append(_GenerationPin(generation, 1, lease^))
+        _pin_generation(Pointer(to=self), generation)
+
+    def pin_manifest(mut self, manifest: Manifest) raises:
+        """Lease captured authority; the caller must revalidate after this call."""
+        _pin_manifest(Pointer(to=self), manifest)
+
+    def _retain(mut self, generation: UInt64) -> Bool:
+        """Increment an existing entry; caller holds the registry lock."""
+        for index in range(len(self._pins)):
+            if self._pins[index].generation == generation:
+                self._pins[index].count += 1
+                return True
+        return False
 
     def unpin(mut self, generation: UInt64):
         var released = Optional[ManifestFileLease]()
@@ -81,3 +83,53 @@ struct GenerationPinRegistry(Movable):
             for index in range(len(self._pins)):
                 result += self._pins[index].count
             return result
+
+
+def _pin_generation[origin: MutOrigin](
+    registry: Pointer[GenerationPinRegistry, origin], generation: UInt64
+) raises:
+    # Do not borrow the entire mutable registry across a lock wait. File I/O
+    # must also stay outside this lock: snapshot acquisition holds writer.
+    with BlockingScopedLock(registry[]._lock):
+        if registry[]._retain(generation):
+            return
+    var lease = Optional[ManifestFileLease]()
+    if generation > 0 and registry[]._directory.byte_length() > 0:
+        lease = Optional(
+            ManifestFileLease(
+                registry[]._directory, registry[]._dimension, generation
+            )
+        )
+    _install_pin(registry, generation, lease^)
+
+
+def _pin_manifest[origin: MutOrigin](
+    registry: Pointer[GenerationPinRegistry, origin], manifest: Manifest
+) raises:
+    if (
+        registry[]._directory.byte_length() > 0
+        and manifest.dimension != registry[]._dimension
+    ):
+        raise Error("captured manifest dimension does not match registry")
+    with BlockingScopedLock(registry[]._lock):
+        if registry[]._retain(manifest.generation):
+            return
+    var lease = Optional[ManifestFileLease]()
+    if manifest.generation > 0 and registry[]._directory.byte_length() > 0:
+        lease = Optional(ManifestFileLease(open(registry[]._directory, "r"), manifest))
+    _install_pin(registry, manifest.generation, lease^)
+
+
+def _install_pin[origin: MutOrigin](
+    registry: Pointer[GenerationPinRegistry, origin],
+    generation: UInt64,
+    var lease: Optional[ManifestFileLease],
+):
+    with BlockingScopedLock(registry[]._lock):
+        if not registry[]._retain(generation):
+            registry[]._pins.append(_GenerationPin(generation, 1, lease^))
+            lease = None
+    # A concurrent first pin may have installed its own lease. Drop our
+    # redundant descriptors after unlocking, without reclaiming its files.
+    if lease:
+        _ = lease.take()

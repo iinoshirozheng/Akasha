@@ -12,9 +12,12 @@ from akasha.storage.filesystem import (
     sync_directory,
 )
 from akasha.storage.manifest import (
+    _validate_manifest_names,
+    decode_manifest_bytes,
     load_manifest,
     Manifest,
     publish_manifest,
+    read_manifest_bytes,
     SegmentDescriptor,
 )
 from akasha.storage.generation_pins import GenerationPinRegistry
@@ -51,7 +54,7 @@ comptime COMPACTION_ATTEMPTS = 4
 
 
 struct CompactionInputs(Movable):
-    """The committed state one compaction job captured under the writer lock."""
+    """Committed files leased and revalidated against published authority."""
 
     var manifest: Manifest
     var source_lock: Optional[ArcPointer[CollectionLock]]
@@ -61,6 +64,14 @@ struct CompactionInputs(Movable):
         self.manifest = manifest^
         self.source_lock = None
         self.catalog = None
+
+
+@fieldwise_init
+struct CompactionCapture(Movable):
+    """A capture may have inputs, have no work, or need another attempt."""
+
+    var inputs: Optional[CompactionInputs]
+    var stale: Bool
 
 
 struct CompactionOutput(Movable):
@@ -90,17 +101,72 @@ def begin_compaction(
     pins: ArcPointer[GenerationPinRegistry],
     *,
     var source_lock: Optional[ArcPointer[CollectionLock]] = None,
-) raises -> Optional[CompactionInputs]:
-    """Capture the committed inputs and pin them; None when nothing to merge.
+) raises -> CompactionCapture:
+    """Capture and lease committed inputs without holding the writer lock.
 
-    The caller holds the writer lock. The pin keeps the inputs readable until
-    `finish_compaction` or a failed `build_compaction` releases it.
+    The caller keeps the collection lock alive. Atomic manifest replacement
+    gives a consistent read; a second read after leasing proves the input
+    names still exist. An appended tail is safe, replaced inputs need a retry.
     """
-    var inputs = capture_compaction_inputs(directory, dimension)
-    if inputs:
-        pins[].pin(inputs.value().manifest.generation)
-        inputs.value().source_lock = source_lock^
-    return inputs^
+    if not path_exists(directory + "/manifest.bin"):
+        return CompactionCapture(None, False)
+    return _lease_compaction_inputs(
+        directory, dimension, _read_capture_manifest(directory, dimension),
+        pins, source_lock=source_lock^,
+    )
+
+
+def _read_capture_manifest(directory: String, dimension: Int) raises -> Manifest:
+    # load_manifest also stats referenced files, which may already be retired.
+    var manifest = decode_manifest_bytes(read_manifest_bytes(directory), dimension)
+    _validate_manifest_names(manifest, True)
+    return manifest^
+
+
+def _lease_compaction_inputs(
+    directory: String,
+    dimension: Int,
+    var manifest: Manifest,
+    pins: ArcPointer[GenerationPinRegistry],
+    *,
+    var source_lock: Optional[ArcPointer[CollectionLock]] = None,
+) raises -> CompactionCapture:
+    var has_work = len(manifest.segments) > 1
+    if has_work and manifest.generation == UInt64.MAX:
+        raise Error("manifest generation exhausted")
+    var inputs = CompactionInputs(manifest^)
+    var pinned = False
+    try:
+        pins[].pin_manifest(inputs.manifest)
+        pinned = True
+        if has_work:
+            _capture_catalog(directory, dimension, inputs)
+    except error:
+        if pinned:
+            pins[].unpin(inputs.manifest.generation)
+        var current = _read_capture_manifest(directory, dimension)
+        if not _contains_inputs(inputs.manifest, current):
+            return CompactionCapture(None, True)
+        # Still-authoritative missing/corrupt files are never a benign race.
+        raise error^
+    var current: Manifest
+    try:
+        current = _read_capture_manifest(directory, dimension)
+    except error:
+        pins[].unpin(inputs.manifest.generation)
+        raise error^
+    if not _contains_inputs(inputs.manifest, current):
+        # Even a successful flock can refer to an already-unlinked inode.
+        # A manifest read after all shared leases proves names still belong
+        # to this authority. Later retirement cannot unlink the leased files.
+        pins[].unpin(inputs.manifest.generation)
+        return CompactionCapture(None, True)
+    if not has_work:
+        # A no-op still checks authority; a missing single segment is an error.
+        pins[].unpin(inputs.manifest.generation)
+        return CompactionCapture(None, False)
+    inputs.source_lock = source_lock^
+    return CompactionCapture(Optional(inputs^), False)
 
 
 def build_compaction(
@@ -169,18 +235,22 @@ def capture_compaction_inputs(
         return None
     if manifest.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
-    var catalog = Optional[ArcPointer[FieldCatalog]]()
-    if is_point_checkpoint(directory, manifest):
+    var inputs = CompactionInputs(manifest^)
+    _capture_catalog(directory, dimension, inputs)
+    return Optional(inputs^)
+
+
+def _capture_catalog(
+    directory: String, dimension: Int, mut inputs: CompactionInputs
+) raises:
+    if is_point_checkpoint(directory, inputs.manifest):
         var identity = load_field_catalog(directory)
         if (
             identity.format_version != 2
             or identity.field_at(0).dimension != dimension
         ):
             raise Error("point compaction requires a matching field catalog")
-        catalog = Optional(ArcPointer(identity^))
-    var inputs = CompactionInputs(manifest^)
-    inputs.catalog = catalog^
-    return Optional(inputs^)
+        inputs.catalog = Optional(ArcPointer(identity^))
 
 
 def build_compaction_output(
@@ -268,11 +338,8 @@ def publish_compaction_output(
     """
     ref captured = inputs.manifest
     var current = load_manifest(directory, dimension)
-    if len(current.segments) < len(captured.segments):
+    if not _contains_inputs(captured, current):
         return None
-    for index in range(len(captured.segments)):
-        if not _same_segment(captured.segments[index], current.segments[index]):
-            return None
     if current.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
     var descriptors = List[SegmentDescriptor]()
@@ -336,6 +403,15 @@ def compaction_input_paths(
         if manifest.segments[index].sparse_name.byte_length() > 0:
             paths.append(directory + "/" + manifest.segments[index].sparse_name)
     return paths^
+
+
+def _contains_inputs(captured: Manifest, current: Manifest) -> Bool:
+    if len(current.segments) < len(captured.segments):
+        return False
+    for index in range(len(captured.segments)):
+        if not _same_segment(captured.segments[index], current.segments[index]):
+            return False
+    return True
 
 
 def _same_segment(

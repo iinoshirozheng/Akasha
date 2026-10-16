@@ -116,7 +116,10 @@ def test_compact_publishes_one_job_unique_base_at_disk_generation() raises:
 def test_writes_between_capture_and_publish_keep_their_wal_tail() raises:
     var path = String("/tmp/akasha-51-compaction-wal-tail")
     var collection = _two_segment_collection(path)
-    var inputs = collection._begin_compaction()
+    var capture_1 = collection._begin_compaction()
+    assert_true(not capture_1.stale)
+    var inputs = capture_1.inputs^
+    capture_1.inputs = None
     assert_true(Bool(inputs))
     var captured = inputs.value().manifest.last_sequence
 
@@ -191,7 +194,10 @@ def test_flush_during_build_rebases_onto_newer_manifest() raises:
     config.delta_max_points = 1
     var collection = _two_segment_collection(path, config)
     var captured = load_manifest(path, 1)
-    var inputs = collection._begin_compaction()
+    var capture_2 = collection._begin_compaction()
+    assert_true(not capture_2.stale)
+    var inputs = capture_2.inputs^
+    capture_2.inputs = None
     var output = collection._build_compaction(inputs.value())
 
     # A checkpoint appends a segment above the captured prefix.
@@ -282,8 +288,14 @@ def test_losing_job_pin_keeps_inputs_until_released() raises:
     var path = String("/tmp/akasha-51-compaction-two-jobs")
     var collection = _two_segment_collection(path)
     var captured = load_manifest(path, 1)
-    var first = collection._begin_compaction()
-    var second = collection._begin_compaction()
+    var capture_3 = collection._begin_compaction()
+    assert_true(not capture_3.stale)
+    var first = capture_3.inputs^
+    capture_3.inputs = None
+    var capture_4 = collection._begin_compaction()
+    assert_true(not capture_4.stale)
+    var second = capture_4.inputs^
+    capture_4.inputs = None
     assert_equal(
         first.value().manifest.generation, second.value().manifest.generation
     )
@@ -360,7 +372,10 @@ def test_output_io_failure_keeps_old_generation() raises:
     var collection = _two_segment_collection(path)
     var manifest_bytes = read_file_bytes(path + "/manifest.bin")
     var pins = collection._pins[].active_count()
-    var inputs = collection._begin_compaction()
+    var capture_5 = collection._begin_compaction()
+    assert_true(not capture_5.stale)
+    var inputs = capture_5.inputs^
+    capture_5.inputs = None
 
     _set_mode(path, 0o555)
     var failed = False
@@ -389,7 +404,10 @@ def test_close_before_publish_cancels_and_discards_output() raises:
     var path = String("/tmp/akasha-51-compaction-cancel")
     var collection = _two_segment_collection(path)
     var manifest_bytes = read_file_bytes(path + "/manifest.bin")
-    var inputs = collection._begin_compaction()
+    var capture_6 = collection._begin_compaction()
+    assert_true(not capture_6.stale)
+    var inputs = capture_6.inputs^
+    capture_6.inputs = None
     var output = collection._build_compaction(inputs.value())
     collection.close()
 
@@ -419,7 +437,10 @@ def test_restart_removes_unpublished_outputs_but_keeps_leased_inputs() raises:
 
     # A crash after output fsync leaves durable but unpublished job files.
     collection.upsert(42, [42.0])
-    var inputs = collection._begin_compaction()
+    var capture_7 = collection._begin_compaction()
+    assert_true(not capture_7.stale)
+    var inputs = capture_7.inputs^
+    capture_7.inputs = None
     var orphan = collection._build_compaction(inputs.value())
     collection._pins[].unpin(inputs.value().manifest.generation)
     _ = inputs^  # Simulated crash drops the captured operation's file lock.

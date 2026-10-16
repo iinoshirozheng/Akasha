@@ -21,7 +21,10 @@ def test_publication_defers_file_io_to_the_reclaim_phase() raises:
     collection.upsert(2, [2.0])
     collection.flush()
     var before = load_manifest(path, 1)
-    var inputs = collection._begin_compaction()
+    var capture_1 = collection._begin_compaction()
+    assert_true(not capture_1.stale)
+    var inputs = capture_1.inputs^
+    capture_1.inputs = None
     assert_true(Bool(inputs))
     var output = collection._build_compaction(inputs.value())
     with BlockingScopedLock(collection._writer_lock[]):

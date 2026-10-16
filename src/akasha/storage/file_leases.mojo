@@ -97,6 +97,15 @@ struct ManifestFileLease(Movable):
         )
         if manifest.generation != generation:
             raise Error("cannot lease a different manifest generation")
+        self = Self(directory^, manifest)
+
+    def __init__(out self, var directory: FileHandle, manifest: Manifest) raises:
+        """Lease captured files; an unlocked caller must revalidate authority.
+
+        An open descriptor can outlive an unlink that preceded its shared
+        lock. After acquisition, the caller must prove the inputs remain in a
+        committed manifest before reopening their names.
+        """
         var names = List[String]()
         var files = List[FileHandle]()
         var referenced = _manifest_names(manifest)
@@ -107,11 +116,13 @@ struct ManifestFileLease(Movable):
                     continue  # Missing derived state may be rebuilt on open.
                 raise Error("cannot lease a missing authoritative file")
             if not _lock(file.value(), False):
+                if manifest.hnsw_name and name == manifest.hnsw_name.value():
+                    continue  # A retired derived cache is also rebuildable.
                 raise Error("cannot lease an immutable file during reclamation")
             names.append(name.copy())
             files.append(file.take())
         self.directory = directory^
-        self.dimension = dimension
+        self.dimension = manifest.dimension
         self.names = names^
         self.files = files^
 

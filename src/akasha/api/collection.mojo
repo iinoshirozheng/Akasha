@@ -57,6 +57,7 @@ from akasha.storage.committed_compaction import (
     begin_compaction,
     build_compaction,
     COMPACTION_ATTEMPTS,
+    CompactionCapture,
     CompactionInputs,
     CompactionOutput,
     finish_compaction,
@@ -1588,7 +1589,11 @@ struct PersistentCollection:
         """Run under the compaction lock, acquiring writer only at boundaries.
         """
         for _ in range(COMPACTION_ATTEMPTS):
-            var inputs = self._begin_compaction()
+            var capture = self._begin_compaction()
+            if capture.stale:
+                continue
+            var inputs = capture.inputs^
+            capture.inputs = None
             if not inputs:
                 return
             var output = self._build_compaction(inputs.value())
@@ -1596,20 +1601,31 @@ struct PersistentCollection:
                 return
         raise Error("compaction retry budget exhausted")
 
-    def _begin_compaction(mut self) raises -> Optional[CompactionInputs]:
+    def _begin_compaction(mut self) raises -> CompactionCapture:
         """Checkpoint, then capture and pin the committed inputs."""
         self._prepare_hnsw_checkpoint()
+        var source_lock: Optional[ArcPointer[CollectionLock]]
         with BlockingScopedLock(self._writer_lock[]):
             _ = self._checkpoint_unlocked()
-            var inputs = begin_compaction(
-                self._path,
-                self._config.dimension,
-                self._pins,
-                source_lock=self._lock.copy(),
-            )
-            if inputs:
-                self._compaction_attempts += 1
-            return inputs^
+            source_lock = self._lock.copy()
+        var capture = begin_compaction(
+            self._path,
+            self._config.dimension,
+            self._pins,
+            source_lock=source_lock^,
+        )
+        try:
+            with BlockingScopedLock(self._writer_lock[]):
+                self._ensure_open()
+                if capture.inputs or capture.stale:
+                    self._compaction_attempts += 1
+                    if capture.stale:
+                        self._compaction_conflicts += 1
+        except error:
+            if capture.inputs:
+                self._pins[].unpin(capture.inputs.value().manifest.generation)
+            raise error^
+        return capture^
 
     def _build_compaction(
         self, mut inputs: CompactionInputs

@@ -2,7 +2,6 @@ from akasha.storage.committed_compaction import (
     begin_compaction,
     build_compaction,
     COMPACTION_ATTEMPTS,
-    CompactionInputs,
     finish_compaction,
 )
 from akasha.storage.generation_pins import GenerationPinRegistry
@@ -161,15 +160,29 @@ def _compact[origin: MutOrigin](
     """
     with BlockingScopedLock(state[].compaction_lock[]):
         for _ in range(COMPACTION_ATTEMPTS):
-            var inputs: Optional[CompactionInputs]
             with BlockingScopedLock(state[].writer_lock[]):
                 if state[].cancelled:
                     return False
-                inputs = begin_compaction(
-                    state[].path, state[].dimension, state[].pins
-                )
-                if inputs:
+            var capture = begin_compaction(
+                state[].path,
+                state[].dimension,
+                state[].pins,
+            )
+            var cancelled_after_capture: Bool
+            with BlockingScopedLock(state[].writer_lock[]):
+                cancelled_after_capture = state[].cancelled
+                if not cancelled_after_capture and (capture.inputs or capture.stale):
                     state[].count_attempt()
+                    if capture.stale:
+                        state[].count_conflict()
+            if cancelled_after_capture:
+                if capture.inputs:
+                    state[].pins[].unpin(capture.inputs.value().manifest.generation)
+                return False
+            if capture.stale:
+                continue
+            var inputs = capture.inputs^
+            capture.inputs = None
             if not inputs:
                 return False
             if state[].compaction_delay_for_test > 0:

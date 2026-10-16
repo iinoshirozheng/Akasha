@@ -331,6 +331,29 @@ former locked memtable
 compaction used by synchronous maintenance and the no-worker path was removed on
 2026-09-30; all public compaction paths now use the captured-input builder.
 
+The 2026-10-16 capture change also moves manifest, catalog and file-lease I/O
+outside the writer lock. A foreground job retains the source collection lock;
+background close joins its worker before releasing that owner. Capture reads an
+atomic manifest, leases its exact files, then reads another atomic manifest and
+requires the same leading input run. This final read is necessary even after a
+successful shared `flock`: an already-open descriptor can refer to an inode
+unlinked before the shared lock was acquired. Once all shared leases are held,
+a committed manifest still naming that prefix proves its names remain usable;
+later reclamation cannot obtain exclusive leases. Appended tails are accepted.
+A strict generation-equality check was rejected because racing flushes exhausted
+the established four-attempt budget despite never replacing inputs.
+
+Missing/corrupt files still in the authoritative prefix raise; replaced inputs
+release partial/acquired leases and use the same bounded retry budget as a lost
+publication. Cancellation is rechecked after capture, and a closed/cancelled
+caller releases its job pin before returning. The pin registry checks for an
+existing entry under its mutex, creates a new file lease outside that mutex,
+then rechecks before installing it. Concurrent first pins share one counted
+entry; unused duplicate descriptors are closed after unlocking. This prevents
+background lease I/O from indirectly holding writer through a snapshot waiting
+for the registry mutex. Publication and job-pin-release I/O boundaries are
+unchanged. See the [capture measurements](../benchmarks/2026-10-16-unlocked-capture.md).
+
 #52 implementation notes: `publish_compaction_output` reloads the current manifest
 under the writer lock. The captured segments must equal its leading run (names,
 checksums, sequence ranges, sparse files); otherwise the job conflicts and the

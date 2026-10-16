@@ -125,7 +125,10 @@ def _prepare_compaction(
     for name in input_names:
         inputs.append(read_file_bytes(path + "/" + name))
 
-    var job = collection._begin_compaction()
+    var capture = collection._begin_compaction()
+    assert_true(not capture.stale)
+    var job = capture.inputs^
+    capture.inputs = None
     collection.upsert(41, [41.0])
     collection.upsert_sparse(41, [SparseElement(41, 41.0)])
     if flush_during_build:

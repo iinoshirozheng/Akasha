@@ -159,7 +159,11 @@ def test_point_compaction_uses_existing_generation_leases_and_publication() rais
     var retired = ArcPointer(RetiredFileQueue())
     var before = load_manifest(path, 2)
     pins[].pin(before.generation)
-    var inputs = begin_compaction(path, 2, pins)
+    cache[].publish(before.generation)
+    var capture = begin_compaction(path, 2, pins)
+    assert_false(capture.stale)
+    var inputs = capture.inputs^
+    capture.inputs = None
     var output = build_compaction(path, 2, inputs.value(), pins)
     assert_true(
         finish_compaction(

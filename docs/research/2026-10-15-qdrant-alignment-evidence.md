@@ -275,3 +275,17 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   new performance acceptance. Next examine a source-owned capture/lease protocol
   outside the writer lock with explicit generation-race retries and corruption
   failures. All remaining formal gates stay open.
+
+- [Unlocked compaction capture](../benchmarks/2026-10-16-unlocked-capture.md)
+  moves manifest/catalog/file-lease I/O outside writer and pin-registry locks.
+  Post-lease manifest-prefix validation accepts appended tails and rejects
+  replaced inputs; strict generation equality was tested and rejected because
+  it exhausted the existing budget during harmless concurrent flushes. Eight
+  new tests plus existing persistence/concurrency checks pass: 81 native Mojo/
+  recovery cases, 388 Python/distributed cases, C and 48 Linux-emulated cases.
+  Six uninstrumented pairs per corpus reduce selective p95 to 0.479x/0.858x/
+  0.616x and improve QPS to 1.097x/1.076x/1.074x. All 15,552 response audits,
+  54 exact reopens and 54 leases agree. Uniform-128 independent p95 remains
+  1.065x, with variable trial results; this regression and the publication
+  critical section remain follow-up work. The change is retained as a partial
+  improvement, without closing or relaxing any remaining formal acceptance gate.
