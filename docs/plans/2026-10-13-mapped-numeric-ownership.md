@@ -946,3 +946,32 @@ The last strict mixed result remains **25/36**, production remains `a6822c3`,
 and no M5/M6, quality, warm, concurrency, capacity or native Linux gate closes.
 Verified evidence contains **83 text artifacts, 725,566 bytes**, SHA-256
 `0f5e9346c8af6ddca2487eeebace29293a9e62683cbe6c53c0ddc73e00292aa7`.
+
+## 2026-10-20: Reject scoped mapped F32 loops
+
+The [scoped mapped-score probe](../research/2026-10-20-immutable-point-mapped-loop.md)
+starts from deferred-ID and changes one existing graph file plus one private
+compute module. It validates whole row extents, then consumes local unaligned
+pointers synchronously and returns only copied scores. It exports no mapped
+reader or raw-pointer factory. Admission, traversal, authoritative rerank,
+formats and publication ownership remain unchanged.
+
+The candidate passes **117 cases / 16 modules** and all **3,456 timed responses,
+12 exact reopens and 12 leases** in a serial two-order mixed screen. Warmup
+returns are not compared. Exact-binary disassembly confirms that the main
+width-16 dot loops shrink from **22→13 / 61→31 instructions**, with only the
+loop backedge remaining as a branch. Both kernels are inlined; this is not a
+failure to eliminate the intended checks.
+
+Nevertheless, uniform-1536 correlated/independent median paired QPS ratios are
+**.9904/.9957**, and p95 ratios **1.0295/1.0086**. There is no consistent target
+improvement. **Reject this candidate and keep deferred-ID as the parent.**
+Do not infer equivalent elapsed savings from static instruction counts or
+declare memory bandwidth the cause without measurements. Next inspect actual
+memory-access and candidate working-set behavior before another arithmetic
+rewrite. The rejected candidate receives no fresh strict Qdrant or broad
+acceptance run. Production stays `a6822c3`; the retained mixed result stays
+25/36, and all open M5/M6 requirements remain active.
+
+Verified evidence: **522 text artifacts, 1,397,273 bytes**, SHA-256
+`e376a4442a7581201025fec5411a97220d9f1d05bde67189ef8b6ba6c9b00b5c`.
