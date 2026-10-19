@@ -847,3 +847,34 @@ All full M5/M6, quality, capacity, concurrency and native Linux gates remain ope
 
 Verified evidence: **391 text artifacts, 1,371,349 bytes**, SHA-256
 `7784854b5091c9c1e03cb0595d72c7f83ef78d341154a43ca9e830924826e599`.
+
+## 2026-10-20: Reject copied node-metadata buffers
+
+The [two metadata probes](../research/2026-10-20-immutable-point-node-metadata.md)
+start from the retained query-lock source. Both retain checked scalar access,
+level validation, current-flag behavior, query results and counters. The first
+copies metadata even for visited neighbors; the follow-up copies it only for
+unvisited neighbors, while still checking every visited target's level.
+
+The first passes **41 cases / five modules** and the follow-up **43 cases / six
+modules**. Together, 24 serial mixed workers preserve **6,912 timed responses,
+24 exact reopens and 24 Arrow leases**. Warmup returned values are not compared.
+Builds/tests and timed workers run serially. Both execution orders are retained.
+Uniform-1536 correlated/independent median QPS ratios are **.9823/.9747** for
+the first and **.9814/.9815** for the follow-up, each relative to its own paired
+query-lock baseline. Neither resolves the target; **both are rejected**.
+Production remains `a6822c3`, and the retained query-lock candidate remains Z.
+
+Next inspect deferred public-ID resolution, starting from Z rather than either
+rejected buffer. Base source/filtered admission use slot bitmaps and cached
+ordinals, so their eagerly supplied public IDs are unused. Pinned Qdrant's
+filtered/metric scorers operate on point offsets. Keep the UInt32 candidate
+buffer and preserve ID tie order, error/counter contracts and the delta/ID-based
+admission paths. No speedup is yet established for this next hypothesis.
+
+The verified archives contain **246 / 243 text artifacts**, SHA-256
+`d947653cdbcec47de68ebbd77eecdbfda2aa94ecb56f2825d88fd132052f92a0` and
+`076638f8dc93860e59ce7c22f743d2cc2039d707086b42f94af9ef7528b6f9ec`.
+There is no new Qdrant acceptance matrix or full CPU/Python/crash/C/Linux run
+for these rejected candidates. All remaining M5/M6, quality, capacity,
+concurrency and native Linux gates remain open.
