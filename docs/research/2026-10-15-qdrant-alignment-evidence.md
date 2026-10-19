@@ -602,3 +602,24 @@ each variant. Do not carry this candidate forward. Stop buffer-layout tuning;
 next measure the remaining writer-locked live-owner staging, durable publication
 and owner/root exchange, from the prior HNSW List-batch source. Production stays
 `a6822c3`; all original performance, ownership and environment gates remain open.
+
+
+## Head-only compaction projection — 2026-10-20
+
+The [publication-phase and head-projection experiment](2026-10-20-immutable-point-head-projection.md)
+starts from the retained HNSW List source, excluding both rejected buffers.
+Six initial diagnostic workers locate 18.8–20.9% of publication hold in full
+projection/head preparation. The candidate filters head membership and sequence
+before cloning descriptors, preserving full authority/head validation and the
+unchanged manifest/owner publication order. 140 unique CPU cases, 23 crash
+cases, 379 Python cases and candidate C ABI pass. Twelve balanced diagnostic
+workers preserve 3,456 responses, 12 reopens and 12 leases; head preparation
+falls 58.7–61.1% and writer hold 10.6–17.8% in both orderings. Fresh 36-worker
+mixed results preserve 10,368 responses, 36 reopens and 27 leases, with strict
+production/prior/candidate passes 22/19/20 of 36 and combined write-plus-flush
+9/9 each. Both production and prior lose uniform-1536 trial 0 selective and
+real-1536 trial 0 independent; those failures are retained. Keep the isolated
+candidate for further work, without production adoption or a completed gate.
+Next audit read-root and mutable HNSW query state for Qdrant-style separation
+of update exclusion from reader access during durable publication. Production
+remains `a6822c3`; ef, all strict gates and pending user decisions are unchanged.
