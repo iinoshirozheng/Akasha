@@ -881,3 +881,24 @@ Carry the core improvement only within the isolated candidate, then address
 HNSW authoritative reranking and publication interference. Production stays
 `a6822c3`; full warm/concurrent, sustained capacity, integration/example, native
 Linux and M5/M6 gates remain open.
+
+
+## Authoritative HNSW borrowed-row batches — 2026-10-20
+
+The [isolated HNSW batch layer](../research/2026-10-20-immutable-point-hnsw-batch.md)
+extends the pinned Qdrant gather/scorer boundary to both authoritative rerank
+paths, preserving exact bits, eligibility, error precedence and partial lookup
+counters. 113 CPU cases, 379 Python cases and candidate C ABI validation pass.
+Twelve balanced diagnostic workers preserve 3,456 responses, 12 reopens and
+12 leases. Rerank medians improve 4.2–12.9% in six 1536-dimensional groups but
+regress 5.2–6.9% in all three 128-dimensional groups. Reranking is only 8–24%
+of prior ANN core time, and publication waits remain a separate cost.
+The fresh 36-worker comparison preserves 10,368 responses, 36 reopens and
+27 leases. Strict production/prior/candidate results are 24/20/22 of 36, with
+two production pass-to-fail cells and no prior pass-to-fail cells in this batch.
+Combined write-plus-flush passes 9/9 for all variants. All failures remain,
+including Qdrant's three fixed-ef recall failures; no retuning decision is assumed.
+Next test the difference between Qdrant's fixed local batch buffer and the
+candidate's bounded-capacity List without weakening behavioral checks. The
+candidate stays isolated and production stays `a6822c3`. Full warm/concurrent,
+sustained capacity, integration/example, native Linux and M5/M6 gates remain open.
