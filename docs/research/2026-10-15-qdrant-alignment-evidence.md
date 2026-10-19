@@ -308,3 +308,20 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   investigate durable publication frequency and size-based merge selection,
   preserving tombstones and coverage rather than copying Qdrant's size sort
   into the current full-base merge.
+
+- [Size-based partial point compaction](../benchmarks/2026-10-19-partial-compaction.md)
+  addresses measured full-base rewrite amplification using Qdrant size selection
+  and RocksDB contiguous-run principles. Automatic merges retain tombstones in
+  existing point v5 deltas; explicit compaction/scheduling still force a full
+  base. A three-input policy reduces bytes but increases jobs to 15 and regresses
+  low-dimensional selective p95 to 1.467x, so it is rejected. The retained minimum
+  of four reduces jobs to ten and logical output bytes 87–90% versus the baseline.
+  Selective p95 ratios are 0.938/0.884/0.899 across the three corpora, with all
+  throughput medians improved. Uniform-128 all/independent p95 remain regressions
+  at 1.072x/1.063x; final disk use grows 5–6% and reopen time 1–2%. Protocol checks
+  pass 141 native Mojo/recovery, 388 Python/distributed, C and 61 Linux-emulated
+  cases; the final batch policy repeats 32 affected native/Linux cases plus
+  Python and C. All 28,512 response audits, 99 reopens and 99 Arrow leases agree.
+  No formal speed, 128 MiB capacity, full type/lifecycle, concurrency or native
+  Linux gate is closed. The remaining low-dimensional tails and retained base
+  lifetime must be included in subsequent formal mixed/lifecycle verification.

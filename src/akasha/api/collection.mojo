@@ -1321,7 +1321,7 @@ struct PersistentCollection:
             waited = True
             sleep(_BACKPRESSURE_SLEEP_SECONDS)
         if inline_compaction:
-            self.compact()
+            self._compact_automatic()
 
     def rebuild_hnsw(mut self) raises:
         """Build from a pinned root while writes continue; catch up and publish.
@@ -1480,7 +1480,7 @@ struct PersistentCollection:
         # replaces them before the backup starts copying.
         if inline_compaction:
             try:
-                self.compact()
+                self._compact_automatic()
             except error:
                 self._end_backup(captured)
                 raise error^
@@ -1511,7 +1511,7 @@ struct PersistentCollection:
             return True
         if not waited:
             self._backpressure_waits += 1
-        _ = self._maintenance.request_compaction()
+        _ = self._maintenance.request_compaction(automatic=True)
         return False
 
     def _flush_unlocked(mut self) raises -> Bool:
@@ -1519,7 +1519,7 @@ struct PersistentCollection:
         var published = self._checkpoint_unlocked()
         if published and CompactionPolicy(4).should_compact(published.value()):
             if self._maintenance.enabled():
-                _ = self._maintenance.request_compaction()
+                _ = self._maintenance.request_compaction(automatic=True)
             else:
                 return True
         return False
@@ -1585,11 +1585,15 @@ struct PersistentCollection:
         with BlockingScopedLock(self._maintenance.compaction_lock[]):
             self._compact_exclusive()
 
-    def _compact_exclusive(mut self) raises:
+    def _compact_automatic(mut self) raises:
+        with BlockingScopedLock(self._maintenance.compaction_lock[]):
+            self._compact_exclusive(automatic=True)
+
+    def _compact_exclusive(mut self, *, automatic: Bool = False) raises:
         """Run under the compaction lock, acquiring writer only at boundaries.
         """
         for _ in range(COMPACTION_ATTEMPTS):
-            var capture = self._begin_compaction()
+            var capture = self._begin_compaction(automatic=automatic)
             if capture.stale:
                 continue
             var inputs = capture.inputs^
@@ -1601,7 +1605,9 @@ struct PersistentCollection:
                 return
         raise Error("compaction retry budget exhausted")
 
-    def _begin_compaction(mut self) raises -> CompactionCapture:
+    def _begin_compaction(
+        mut self, *, automatic: Bool = False
+    ) raises -> CompactionCapture:
         """Checkpoint, then capture and pin the committed inputs."""
         self._prepare_hnsw_checkpoint()
         var source_lock: Optional[ArcPointer[CollectionLock]]
@@ -1613,6 +1619,7 @@ struct PersistentCollection:
             self._config.dimension,
             self._pins,
             source_lock=source_lock^,
+            automatic=automatic,
         )
         try:
             with BlockingScopedLock(self._writer_lock[]):
@@ -1702,7 +1709,7 @@ struct PersistentCollection:
                 var manifest = load_manifest(self._path, self._config.dimension)
                 if not CompactionPolicy(4).should_compact(manifest):
                     return False
-            self._compact_exclusive()
+            self._compact_exclusive(automatic=True)
             return True
 
     def _reclaim_retired(mut self) raises:

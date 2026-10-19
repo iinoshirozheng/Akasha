@@ -108,7 +108,7 @@ def test_merge_matches_owned_oracle_for_frozen_v4_and_typed_v5() raises:
             _install(path, catalog, [base.copy()])
             var manifest = load_manifest(path, catalog.field_at(0).dimension)
             var merge = PointMerge(path, manifest, catalog)
-            _ = merge.write_base(path + "/merged.bin")
+            _ = merge.write_segment(path + "/merged.bin")
             assert_equal(
                 read_file_bytes(path + "/merged.bin"),
                 encode_point_segment(1, 0, UInt64.MAX, decoded.points, catalog),

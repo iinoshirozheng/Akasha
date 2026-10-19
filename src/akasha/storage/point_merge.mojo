@@ -62,7 +62,7 @@ struct PointMerge[origin: ImmOrigin](Movable):
     """Two passes over the same immutable mappings, with one head per input.
 
     Preflight validates every version, including overwritten/deleted records,
-    and counts live output before an output file is claimed. The second pass
+    and counts output records before an output file is claimed. The second pass
     emits unchanged canonical v5 records, without a table or whole output tape.
     """
 
@@ -70,14 +70,22 @@ struct PointMerge[origin: ImmOrigin](Movable):
     var _heap: BinaryHeap[_Head]
     var _catalog: Pointer[FieldCatalog, Self.origin]
     var _last_sequence: UInt64
-    var live_count: Int
+    var _kind: Int
+    var _minimum: UInt64
+    var output_count: Int
 
     def __init__(
         out self,
         directory: String,
         manifest: Manifest,
         ref[Self.origin] catalog: FieldCatalog,
+        *,
+        first: Int = 0,
+        limit: Int = -1,
     ) raises:
+        var end = len(manifest.segments) if limit == -1 else limit
+        if first < 0 or first >= end or end > len(manifest.segments):
+            raise Error("invalid point compaction input range")
         catalog.validate()
         if (
             catalog.format_version != 2
@@ -85,12 +93,14 @@ struct PointMerge[origin: ImmOrigin](Movable):
             or manifest.last_sequence < catalog.legacy_cutover_sequence
         ):
             raise Error("point checkpoint catalog does not match manifest")
-        self._runs = List[_Run[Self.origin]](capacity=len(manifest.segments))
-        self._heap = BinaryHeap[_Head](capacity=len(manifest.segments))
+        self._runs = List[_Run[Self.origin]](capacity=end - first)
+        self._heap = BinaryHeap[_Head](capacity=end - first)
         self._catalog = Pointer(to=catalog)
-        self._last_sequence = manifest.last_sequence
-        self.live_count = 0
-        for index in range(len(manifest.segments)):
+        self._last_sequence = manifest.segments[end - 1].max_sequence
+        self._kind = 1 if first == 0 else 2
+        self._minimum = UInt64(0) if first == 0 else manifest.segments[first].min_sequence
+        self.output_count = 0
+        for index in range(first, end):
             ref descriptor = manifest.segments[index]
             if (
                 descriptor.sparse_name.byte_length() != 0
@@ -111,16 +121,16 @@ struct PointMerge[origin: ImmOrigin](Movable):
             ):
                 raise Error("point segment does not match committed manifest")
             self._runs.append(_Run(cursor^))
-            self._offer(index)
+            self._offer(index - first)
         while True:
-            var point = self._next_live()
+            var point = self._next_state()
             if not point:
                 break
-            if self.live_count == Int.MAX:
+            if self.output_count == Int.MAX:
                 raise Error(
                     "point compaction record count exceeds implementation limit"
                 )
-            self.live_count += 1
+            self.output_count += 1
         self._rewind()
 
     def _offer(mut self, run: Int):
@@ -133,7 +143,7 @@ struct PointMerge[origin: ImmOrigin](Movable):
             self._runs[index].rewind()
             self._offer(index)
 
-    def _next_live(mut self) raises -> Optional[PointState]:
+    def _next_state(mut self) raises -> Optional[PointState]:
         while len(self._heap) != 0:
             var item = self._heap.pop()
             var id = item.id
@@ -156,13 +166,13 @@ struct PointMerge[origin: ImmOrigin](Movable):
                 if len(self._heap) == 0 or self._heap.peek().id != id:
                     break
                 item = self._heap.pop()
-            if not latest.value().tombstone:
+            if self._kind == 2 or not latest.value().tombstone:
                 return latest^
         return None
 
-    def write_base(mut self, path: String) raises -> UInt32:
+    def write_segment(mut self, path: String) raises -> UInt32:
         var header = encode_point_segment_header(
-            1, 0, self._last_sequence, self.live_count, self._catalog[]
+            self._kind, self._minimum, self._last_sequence, self.output_count, self._catalog[]
         )
         var checksum: UInt32
         with open(path, "w") as file:
@@ -173,13 +183,13 @@ struct PointMerge[origin: ImmOrigin](Movable):
             checked.write(Span(header)[4:])
             var emitted = 0
             while True:
-                var point = self._next_live()
+                var point = self._next_state()
                 if not point:
                     break
                 var bytes = encode_point_record(point.value(), self._catalog[])
                 checked.write(Span(bytes))
                 emitted += 1
-            if emitted != self.live_count:
+            if emitted != self.output_count:
                 raise Error(
                     "point compaction count changed across immutable passes"
                 )

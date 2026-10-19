@@ -388,13 +388,34 @@ a flush during the build no longer costs an attempt.
 The 2026-09-30 admission fix adds one shared full-compaction lock. Public
 `compact()`, synchronous `maintenance()`, the worker, and no-worker flush/backup
 maintenance take it before taking the writer lock. They never wait for a job while
-holding the writer lock. Every current job selects the full committed input set,
-so parallel compactions would necessarily overlap; segment-level scheduling would
-add no useful parallelism here. Flushes still append during an unlocked build and
-publication still validates/rebases as before. Low-level publication tests bypass
+holding the writer lock. Originally every job selected the full committed input
+set. Automatic point compactions now select contiguous ranges (see below), but
+builders still serialize and revalidate the entire captured manifest prefix.
+There is no independent range scheduler. Flushes still append during an unlocked
+build and publication still validates/rebases as before. Low-level publication tests bypass
 admission deliberately to keep stale-output and exhausted-budget coverage.
 No-worker backup captures and pins before synchronous compaction, preserving the
 exact pre-compaction file set until its copy finishes.
+
+The 2026-10-19 automatic policy measures leased file sizes outside the writer
+lock. At four L0 files, it chooses at least four contiguous deltas, accumulating
+newest-to-oldest runs with 1% size slack. If no such group exists, it selects the
+cheapest adjacent group of four. Delta bytes at least twice the base bytes trigger a
+full-prefix merge. This adapts Qdrant's size-based batches and RocksDB universal
+compaction's size/space limits without reordering Akasha's sequence ranges.
+
+A selected range beginning after the base emits an existing kind-2 point v5 delta
+with the same min/max sequence coverage, retaining the latest tombstone for each
+ID. Full-prefix output remains a kind-1 base and elides tombstones. Publication
+constructs `untouched prefix + output + untouched suffix + appended tail`, carries
+current committed sequence/HNSW authority, and retires only replaced files. The
+captured whole manifest must still be the current leading run; source ownership,
+file leases, publication fsync, pre-delete durability fencing, and the retry
+budget remain unchanged. No durable format version changes. Explicit `compact()`
+and `schedule_maintenance()` force full coverage, and an explicit request dominates
+an automatic request in either coalescing order. Synchronous `maintenance()` and
+no-worker flush/backup use the automatic policy. See the
+[implementation and validation](../benchmarks/2026-10-19-partial-compaction.md).
 
 The worker's job runs `_compact`, the same begin, build and finish functions and the
 same 4-attempt budget as `compact()`, with the build outside the lock. Spending the

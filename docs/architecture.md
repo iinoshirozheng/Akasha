@@ -162,21 +162,30 @@ flat ordered fields with unique,
 non-empty names. Supported values are String, Int64, finite Float64, and Bool,
 with a maximum of 1,024 fields and 16 MiB encoded payload per document.
 
-The first checkpoint publishes paired dense/sparse base segments; later flushes
-append only the latest changed states as paired L0 deltas. Recovery validates
-and applies descriptors in manifest order, then ignores WAL sequence numbers
-already covered by the committed generation. Four L0 generations trigger a
-bounded engine-owned maintenance request. A small portable pthread shim invokes
-a Mojo callback; the callback pins the committed manifest under the same writer
-lock, merges its dense and sparse segments without the lock, and atomically
-publishes one L1 base under a short lock, keeping segments flushed during the
-merge after it. A flush that finds eight L0 segments (`LEVEL_ZERO_SEGMENT_LIMIT`)
-waits without the lock until the worker publishes, so a writer that flushes faster
-than the merge cannot grow L0 without bound. The callback never modifies or rotates
-a newer WAL. At most one callback waits
-behind the active callback. Failure is stored and surfaced by the next public
-data operation, explicit wait, later scheduling, or close. If the shared
-library cannot load, flush uses the same synchronous compaction path.
+The first point checkpoint publishes a complete-state base; later flushes append
+only the latest changed states as L0 deltas. Recovery validates and applies
+descriptors in manifest order, then ignores WAL sequence numbers already covered
+by the committed generation. Four L0 generations trigger a bounded engine-owned
+maintenance request. A small portable pthread shim invokes a Mojo callback. The
+callback captures and leases the committed manifest outside the writer lock,
+revalidates its input prefix, and selects a contiguous range by file size. It
+merges at least four deltas when possible, preserving tombstones so older base
+records cannot reappear. If delta bytes reach twice the base bytes, it folds the
+whole prefix into a new base and drops covered tombstones. Explicit `compact()`
+and `schedule_maintenance()` also request a full merge; explicit requests take
+precedence when coalesced with automatic requests. Legacy paired dense/sparse
+checkpoints retain their full-merge path.
+
+Build and file sync happen outside the writer lock. Publication replaces only
+the selected descriptors under the lock, preserving the untouched prefix,
+suffix, and segments flushed during the build. A flush that finds eight L0
+segments (`LEVEL_ZERO_SEGMENT_LIMIT`) waits without the lock until the worker
+publishes, so a writer that flushes faster than the merge cannot grow L0 without
+bound. The callback never modifies or rotates a newer WAL. At most one callback
+waits behind the active callback. Failure is stored and surfaced by the next
+public data operation, explicit wait, later scheduling, or close. If the shared
+library cannot load, flush uses the same automatic policy synchronously. See
+[partial-compaction evidence](benchmarks/2026-10-19-partial-compaction.md).
 
 `PersistentCollection.snapshot()` shares an immutable base/sealed-run chain and
 captures bounded head descriptors at one accepted sequence. Repeated unchanged

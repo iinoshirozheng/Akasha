@@ -461,8 +461,9 @@ Implemented:
   and deterministic dense/sparse RRF hybrid search.
 - Backward-compatible Manifest v2 and Segment v3 readers with ordered base and
   L0 delta recovery for both dense and sparse state.
-- Threshold-triggered full-coverage compaction that publishes one new base,
-  drops covered tombstones, and reclaims only files removed from the manifest.
+- Size-based automatic compaction of contiguous point deltas, retaining
+  tombstones until a full-prefix merge. Explicit compaction publishes one base;
+  both paths reclaim only files removed from the durable manifest.
 - Immutable read snapshots with shared unchanged-generation roots for dense,
   sparse, payload, and metadata state; strong root ownership keeps generation
   pins alive through sibling close and compaction, while writes and manifest

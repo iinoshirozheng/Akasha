@@ -39,7 +39,8 @@ struct _MaintenanceState(Movable):
     var error_message: String
     var run_count: Int
     var compaction_count: Int
-    var compaction_requested: Bool
+    var compaction_request: Optional[Bool]
+    """Pending request: True selects automatic policy; False forces a full merge."""
     var counts: CompactionCounts
     var compaction_delay_for_test: Float64
     """Seconds a job sleeps between capture and build."""
@@ -65,7 +66,7 @@ struct _MaintenanceState(Movable):
         self.error_message = String()
         self.run_count = 0
         self.compaction_count = 0
-        self.compaction_requested = False
+        self.compaction_request = None
         self.counts = CompactionCounts(0, 0, 0)
         self.compaction_delay_for_test = 0
 
@@ -88,15 +89,21 @@ struct _MaintenanceState(Movable):
         with BlockingScopedLock(self.status_lock):
             return self.run_count
 
-    def request_compaction(mut self):
+    def request_compaction(mut self, *, automatic: Bool = False):
         with BlockingScopedLock(self.status_lock):
-            self.compaction_requested = True
+            # An explicit full merge must survive coalescing with later flushes.
+            if self.compaction_request:
+                self.compaction_request = Optional(
+                    self.compaction_request.value() and automatic
+                )
+            else:
+                self.compaction_request = Optional(automatic)
 
-    def take_compaction_request(mut self) -> Bool:
+    def take_compaction_request(mut self) -> Optional[Bool]:
         with BlockingScopedLock(self.status_lock):
-            var requested = self.compaction_requested
-            self.compaction_requested = False
-            return requested
+            var requested = self.compaction_request^
+            self.compaction_request = None
+            return requested^
 
     def compaction_counts(mut self) -> CompactionCounts:
         with BlockingScopedLock(self.status_lock):
@@ -120,8 +127,9 @@ def _maintenance_entry(context: OpaquePointer[MutAnyOrigin]) abi("C") -> Int32:
     try:
         _merge_sealed_runs(state)
         var compacted = False
-        if state[].take_compaction_request():
-            compacted = _compact(state)
+        var request = state[].take_compaction_request()
+        if request:
+            compacted = _compact(state, automatic=request.value())
         state[].record_success(compacted)
         return 0
     except error:
@@ -151,6 +159,8 @@ def _merge_sealed_runs[origin: MutOrigin](
 
 def _compact[origin: MutOrigin](
     state: Pointer[_MaintenanceState, origin],
+    *,
+    automatic: Bool,
 ) raises -> Bool:
     """Run the foreground job's steps; the build holds no writer lock.
 
@@ -167,6 +177,7 @@ def _compact[origin: MutOrigin](
                 state[].path,
                 state[].dimension,
                 state[].pins,
+                automatic=automatic,
             )
             var cancelled_after_capture: Bool
             with BlockingScopedLock(state[].writer_lock[]):
@@ -221,8 +232,8 @@ struct MaintenanceController(Movable):
     """Own the background worker and its shared, heap-stable state."""
 
     var _state: ArcPointer[_MaintenanceState]
-    # Acquire before the writer lock, never while holding it. All full
-    # compactions overlap, so serialize builders without blocking writers.
+    # Acquire before the writer lock, never while holding it. Serialize
+    # builders without blocking writers; each validates its captured manifest.
     var compaction_lock: ArcPointer[BlockingSpinLock]
     var _worker: Optional[NativeWorker]
     var _enabled: Bool
@@ -287,11 +298,11 @@ struct MaintenanceController(Movable):
     def enabled(self) -> Bool:
         return self._enabled and not self._closed
 
-    def request_compaction(mut self) raises -> Bool:
+    def request_compaction(mut self, *, automatic: Bool = False) raises -> Bool:
         if not self.enabled():
             return False
         self._raise_failure()
-        self._state[].request_compaction()
+        self._state[].request_compaction(automatic=automatic)
         return self._worker.value().request()
 
     def request_merge(mut self):

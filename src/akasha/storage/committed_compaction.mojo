@@ -1,3 +1,4 @@
+from akasha.storage.compaction import CompactionPolicy, select_point_merge_range
 from akasha.document.vector_schema import FieldCatalog
 from akasha.storage.field_catalog import load_field_catalog
 from akasha.storage.point_recovery import (
@@ -57,10 +58,14 @@ struct CompactionInputs(Movable):
     """Committed files leased and revalidated against published authority."""
 
     var manifest: Manifest
+    var first: Int
+    var limit: Int
     var source_lock: Optional[ArcPointer[CollectionLock]]
     var catalog: Optional[ArcPointer[FieldCatalog]]
 
     def __init__(out self, var manifest: Manifest):
+        self.first = 0
+        self.limit = len(manifest.segments)
         self.manifest = manifest^
         self.source_lock = None
         self.catalog = None
@@ -101,6 +106,7 @@ def begin_compaction(
     pins: ArcPointer[GenerationPinRegistry],
     *,
     var source_lock: Optional[ArcPointer[CollectionLock]] = None,
+    automatic: Bool = False,
 ) raises -> CompactionCapture:
     """Capture and lease committed inputs without holding the writer lock.
 
@@ -112,7 +118,7 @@ def begin_compaction(
         return CompactionCapture(None, False)
     return _lease_compaction_inputs(
         directory, dimension, _read_capture_manifest(directory, dimension),
-        pins, source_lock=source_lock^,
+        pins, source_lock=source_lock^, automatic=automatic,
     )
 
 
@@ -130,8 +136,11 @@ def _lease_compaction_inputs(
     pins: ArcPointer[GenerationPinRegistry],
     *,
     var source_lock: Optional[ArcPointer[CollectionLock]] = None,
+    automatic: Bool = False,
 ) raises -> CompactionCapture:
-    var has_work = len(manifest.segments) > 1
+    var has_work = len(manifest.segments) > 1 and (
+        not automatic or CompactionPolicy(4).should_compact(manifest)
+    )
     if has_work and manifest.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
     var inputs = CompactionInputs(manifest^)
@@ -141,6 +150,10 @@ def _lease_compaction_inputs(
         pinned = True
         if has_work:
             _capture_catalog(directory, dimension, inputs)
+            if automatic and inputs.catalog:
+                var selected = select_point_merge_range(directory, inputs.manifest)
+                inputs.first = selected[0]
+                inputs.limit = selected[1]
     except error:
         if pinned:
             pins[].unpin(inputs.manifest.generation)
@@ -216,7 +229,7 @@ def finish_compaction(
             inputs.source_lock = None
             return False
         read_generations[].publish(replaced.value() + 1)
-        retired[].enqueue(compaction_input_paths(directory, inputs.manifest))
+        retired[].enqueue(compaction_input_paths(directory, inputs))
     except error:
         inputs.source_lock = None
         raise error^
@@ -343,30 +356,24 @@ def publish_compaction_output(
     if current.generation == UInt64.MAX:
         raise Error("manifest generation exhausted")
     var descriptors = List[SegmentDescriptor]()
+    for index in range(inputs.first):
+        descriptors.append(current.segments[index].clone())
+    var level = 1 if inputs.first == 0 else 0
+    var minimum = UInt64(0) if inputs.first == 0 else captured.segments[inputs.first].min_sequence
+    var maximum = captured.segments[inputs.limit - 1].max_sequence
     if output.sparse_name.byte_length() == 0:
         descriptors.append(
-            SegmentDescriptor(
-                1,
-                0,
-                captured.last_sequence,
-                output.checksum,
-                output.segment_name,
-            )
+            SegmentDescriptor(level, minimum, maximum, output.checksum, output.segment_name)
         )
     else:
         descriptors.append(
             SegmentDescriptor.with_sparse(
-                1,
-                0,
-                captured.last_sequence,
-                output.checksum,
-                output.segment_name,
-                output.sparse_checksum,
-                output.sparse_name,
+                level, minimum, maximum, output.checksum, output.segment_name,
+                output.sparse_checksum, output.sparse_name,
             )
         )
-    for index in range(len(captured.segments), len(current.segments)):
-        if current.segments[index].min_sequence <= captured.last_sequence:
+    for index in range(inputs.limit, len(current.segments)):
+        if current.segments[index].min_sequence <= maximum:
             raise Error("appended segment overlaps the compaction output")
         descriptors.append(current.segments[index].clone())
     var compacted: Manifest
@@ -394,11 +401,12 @@ def publish_compaction_output(
 
 
 def compaction_input_paths(
-    directory: String, manifest: Manifest
+    directory: String, inputs: CompactionInputs
 ) -> List[String]:
-    """Paths a publish replaces: every dense and sparse file of the inputs."""
+    """Only the selected files are retired; untouched prefix/suffix stay live."""
+    ref manifest = inputs.manifest
     var paths = List[String]()
-    for index in range(len(manifest.segments)):
+    for index in range(inputs.first, inputs.limit):
         paths.append(directory + "/" + manifest.segments[index].name)
         if manifest.segments[index].sparse_name.byte_length() > 0:
             paths.append(directory + "/" + manifest.segments[index].sparse_name)
@@ -528,13 +536,16 @@ def _load_sparse(
 def _build_point_compaction(
     directory: String, inputs: CompactionInputs
 ) raises -> CompactionOutput:
-    var merge = PointMerge(directory, inputs.manifest, inputs.catalog.value()[])
+    var merge = PointMerge(
+        directory, inputs.manifest, inputs.catalog.value()[],
+        first=inputs.first, limit=inputs.limit,
+    )
     var name = _claim_output(
         directory, _SEGMENT_OUTPUT_PREFIX, inputs.manifest.generation + 1
     )
     var checksum: UInt32
     try:
-        checksum = merge.write_base(directory + "/" + name)
+        checksum = merge.write_segment(directory + "/" + name)
         sync_directory(directory)
     except error:
         try:
