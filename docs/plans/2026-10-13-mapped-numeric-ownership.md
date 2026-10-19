@@ -975,3 +975,38 @@ acceptance run. Production stays `a6822c3`; the retained mixed result stays
 
 Verified evidence: **522 text artifacts, 1,397,273 bytes**, SHA-256
 `e376a4442a7581201025fec5411a97220d9f1d05bde67189ef8b6ba6c9b00b5c`.
+
+## 2026-10-20: Full mixed access traces and rejected admitted prefetch
+
+The [CPU-counter comparison](../research/2026-10-20-immutable-point-memory-profile.md)
+contains eight valid five-second captures of the unchanged deferred-ID and
+Qdrant binaries. Both search threads overwhelmingly use performance cores.
+Akasha does not have a larger critical-L1D-idle fraction in these short,
+two-query captures. Separate thread/core fractions do not establish the cause
+of the full mixed performance gap.
+
+The [full mixed access trace](../research/2026-10-20-immutable-point-access-trace.md)
+then replays all three frozen corpora. All **864 responses, three exact reopens
+and three retained leases** pass. Diagnostic row counts agree with the actual
+search/rerank statistics; nine warmup returns are not compared. Applying the
+pinned Qdrant sequential heuristic to Akasha slots admits only **23/152,656**
+multi-row chunks. Virtual-address range coverage is not cache-miss, physical-page
+or nonresident evidence. Keep the two-query counter and full-workload trace
+conclusions separate.
+
+A [first-address prefetch candidate](../research/2026-10-20-immutable-point-admitted-prefetch.md)
+issues hints only after filter compaction and cap, unlike the old all-neighbor
+probe. It passes **71 CPU cases / nine modules**, all **3,456 screen responses,
+12 exact reopens and 12 leases**, and emits the intended native `prfm` instruction.
+However, uniform-1536 correlated/independent QPS is lower in both execution
+orders, and real-correlated p95 is higher in both. **Reject this candidate;
+deferred-ID remains the parent.** No dimension exception or gate change is added.
+
+Next inspect per-candidate metadata/admission work against Qdrant's direct
+bitmap checks, preserving current-slot classification, closed mapping behavior,
+error precedence, result bits and stats. Do not repeat rejected all-neighbor
+prefetch, this first-address variant, neighbor tail pairs or copied node metadata.
+Production remains `a6822c3`, strict mixed remains **25/36**, and all unresolved
+quality, warm, concurrency, capacity, integration/example and native Linux gates
+remain required for M5/M6 completion. Both linked reports include complete
+verified archives and reproduction scripts.
