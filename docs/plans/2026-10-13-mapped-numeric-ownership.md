@@ -605,3 +605,30 @@ Production stays `a6822c3`, with no adoption or M5/M6 completion. Next move
 immutable read-run preparation out of writer while preserving current writes,
 snapshot owners and publication checks, then continue all unchanged performance,
 sustained capacity and native Linux gates.
+
+
+## Unlocked immutable read-run preparation — 2026-10-20
+
+The [isolated read-preparation layer](../research/2026-10-20-immutable-point-read-preparation.md) captures immutable run owners,
+builds replacement descriptors outside writer, then validates the captured chain
+and stages only the current bounded head before publication. New writes and old
+snapshots survive; changed chains use the existing conflict/retry protocol.
+Four new cases cover interleaving, stale chains, build failure and cancellation.
+Validation passes 134 cases in 23 CPU modules, 23 checkpoint/WAL cases,
+379 Python cases and the candidate C ABI. Exact source/native identities and all
+initial compile failures are archived.
+
+Diagnostic combined lock holds are .776/.901/.825 ms across the three corpora,
+with .804/.893/.847 ms of read-run construction now outside writer. However,
+waits over 100 microseconds increase from 9/2/6 to 16/7/13 across separate
+diagnostic batches, suggesting a cost from two critical sections. Next reduce
+capture to shared immutable references and prepare replacements from validated
+output while preserving legacy cutover/version rules and final live checks.
+
+The fresh 36-worker comparison audits 10,368 responses, 36 exact reopens and
+27 Arrow leases. Production/prior/candidate strict quality-plus-speed passes
+are 22/14/18 of 36, with four production and one prior-candidate pass-to-fail
+regressions retained. Combined write-plus-flush passes 9/9 for each variant.
+Production remains `a6822c3`; the candidate stays isolated. Full warm/concurrent,
+sustained nonresident capacity, integration/example and native Linux gates remain
+open, with no M5/M6 completion or threshold changes.
