@@ -665,3 +665,32 @@ The source/test/reference/native/result audit and verified archive contain
 **902 text artifacts, 3,239,267 bytes**, SHA-256
 `cee93573303bc99ad13b192ffd1f75658b3bdfdf28e480d3da9c67b85202b234`.
 Exact frozen plans are referenced by checked hash/key in the parent archive.
+
+## 2026-10-20: Locate remaining filtered-search source costs
+
+The [source-phase/native-sampling diagnosis](2026-10-20-immutable-point-source-phases.md) keeps the query-lock
+candidate unchanged. Six instrumented mixed workers preserve all **1,728 timed
+responses, six exact reopens and six leases**; 18 warmup clocks are retained
+separately. Base search accounts for **73.05% / 73.02%** of uniform-1536
+correlated/independent core time. Rerank remains required and costs about one
+fifth; delta search is much smaller.
+
+Four serial native captures compare the uninstrumented Akasha and Qdrant
+runtimes on two fixed initial-state queries per mode. Eight preflight and eight
+postflight responses match each engine's frozen results. Thread-local exclusive
+counts locate **11.88–13.95%** of Akasha observations in mapped metadata/readiness
+access. Qdrant executes its dense graph scorer and appendable scan; its separate
+search-thread denominator is preserved. Sampling is not elapsed-time attribution
+or a speed gate. The initial generic-signature heap grouping error is corrected
+and retained with its original output.
+
+Next evaluate one copied node-metadata record per gathered target, reusing
+ID/level/current while preserving every bounds/close/error/counter contract.
+Do not repeat the already rejected base-level-only skip, broad inlining,
+header-read removal, adjacency-range reuse or raw borrowed-span variants.
+No product source changes or new acceptance claims occur here; the retained
+query-lock mixed result stays **25/36** and production stays `a6822c3`.
+All full M5/M6, quality, capacity, concurrency and native Linux gates remain open.
+
+Verified evidence: **391 text artifacts, 1,371,349 bytes**, SHA-256
+`7784854b5091c9c1e03cb0595d72c7f83ef78d341154a43ca9e830924826e599`.
