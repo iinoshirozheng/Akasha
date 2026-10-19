@@ -501,7 +501,7 @@ def decode_hnsw_snapshot_owned(
     config: CollectionConfig,
     sequence: UInt64,
 ) raises -> HnswIndex:
-    """Fully validate and materialize one owned v1 or v2 HNSW snapshot."""
+    """Fully validate and materialize one owned v1, v2 or v3 HNSW snapshot."""
     _require_snapshot_config(config)
     if len(bytes) < 8 + _CHECKSUM_BYTES:
         raise Error("HNSW snapshot is truncated")
@@ -706,20 +706,26 @@ def decode_hnsw_snapshot_owned(
 
     var index = HnswIndex(config)
     _read_zero_padding(reader, Int(vector_offset - (node_offset + node_length)))
-    var vector_scalars = List[Float32](
-        capacity=_bounded_count(
-            _checked_mul_u64(slot_count_u64, UInt64(config.dimension)),
-            Int.MAX,
-            "vector scalar",
-        )
+    var scalar_count = _bounded_count(
+        _checked_mul_u64(slot_count_u64, UInt64(config.dimension)),
+        Int.MAX,
+        "vector scalar",
     )
+    # Decode each validated row into its final graph tape. A complete promoted
+    # F32 tape would duplicate F32 storage and inflate compact scalar snapshots.
+    if config.scalar_kind == ScalarKind.f32():
+        index.graph.vector_scalars.reserve(scalar_count)
+    else:
+        index.graph.vector_bytes.reserve(Int(vector_length))
+        if scale_width == 4:
+            index.graph.vector_scales.reserve(slots)
     var vector_codes = List[Int8](
         capacity=(
             slots * config.dimension if config.scalar_kind
             == ScalarKind.i8() else 0
         )
     )
-    for _ in range(slots):
+    for slot_index in range(slots):
         var prepared = List[Float32]()
         if config.scalar_kind == ScalarKind.f32():
             prepared = reader.read_f32s(config.dimension)
@@ -736,8 +742,7 @@ def decode_hnsw_snapshot_owned(
             index.metric.validate_prepared_vector(prepared)
             if version < HNSW_SNAPSHOT_V3_VERSION:
                 index.metric.validate_legacy_cosine_prepared(prepared)
-            for value in prepared:
-                vector_scalars.append(value)
+            _restore_owned_snapshot_slot(index, nodes, slot_index, prepared^)
 
     _read_zero_padding(
         reader, Int(scale_offset - (vector_offset + vector_length))
@@ -766,6 +771,7 @@ def decode_hnsw_snapshot_owned(
             index.metric.validate_prepared_vector(prepared)
             if version < HNSW_SNAPSHOT_V3_VERSION:
                 index.metric.validate_legacy_cosine_prepared(prepared)
+            _restore_owned_snapshot_slot(index, nodes, slot_index, prepared^)
 
     _read_zero_padding(
         reader, Int(count_offset - (scale_offset + scale_length))
@@ -844,38 +850,6 @@ def decode_hnsw_snapshot_owned(
     ):
         raise Error("HNSW snapshot entry point is invalid")
 
-    var vector_index = 0
-    var inactive_count = 0
-    for slot_index in range(slots):
-        var vector = List[Float32](
-            capacity=config.dimension
-            + (1 if config.scalar_kind == ScalarKind.i8() else 0)
-        )
-        if config.scalar_kind == ScalarKind.i8():
-            var code_base = slot_index * config.dimension
-            for component in range(config.dimension):
-                vector.append(Float32(vector_codes[code_base + component]))
-            var scale = Float32(1.0 / 127.0)
-            if scale_width == 4:
-                scale = vector_scales[slot_index]
-            vector.append(scale)
-        else:
-            for _ in range(config.dimension):
-                vector.append(vector_scalars[vector_index])
-                vector_index += 1
-        var slot = index.graph.append(
-            nodes.ids[slot_index], vector^, nodes.levels[slot_index]
-        )
-        if Int(slot) != slot_index:
-            raise Error("HNSW snapshot slot materialization is inconsistent")
-        if nodes.flags[slot_index] == _DELETED_FLAG:
-            if not index.graph.mark_deleted(nodes.ids[slot_index]):
-                raise Error("HNSW snapshot deleted slot is inconsistent")
-            inactive_count += 1
-        elif nodes.flags[slot_index] == _REPLACED_FLAG:
-            _ = index.graph.mark_replaced(nodes.ids[slot_index])
-            inactive_count += 1
-
     _validate_decode_allocation(UInt64(encoded_size), slot_count_u64,
         UInt64(config.dimension), UInt64(level_count), directed_edges_u64,
         allocated_neighbor_cells)
@@ -885,7 +859,7 @@ def decode_hnsw_snapshot_owned(
         index.entry_slot = Optional(UInt32(entry_slot_u64))
         index.entry_level = entry_level
     index.build_stats.slot_count = slots
-    index.build_stats.inactive_slots = inactive_count
+    index.build_stats.inactive_slots = slots - nodes.live_count
     index.build_stats.maximum_level = entry_level
     index.build_stats.directed_edges = directed_edges
     index.build_stats.serialized_bytes = encoded_size
@@ -897,6 +871,24 @@ def decode_hnsw_snapshot_owned(
     if version < HNSW_SNAPSHOT_V3_VERSION:
         validate_bidirectional_links(index.graph)
     return index^
+
+
+def _restore_owned_snapshot_slot(
+    mut index: HnswIndex,
+    nodes: _DecodedNodes,
+    slot_index: Int,
+    var vector: List[Float32],
+) raises:
+    var slot = index.graph.append(
+        nodes.ids[slot_index], vector^, nodes.levels[slot_index]
+    )
+    if Int(slot) != slot_index:
+        raise Error("HNSW snapshot slot materialization is inconsistent")
+    if nodes.flags[slot_index] == _DELETED_FLAG:
+        if not index.graph.mark_deleted(nodes.ids[slot_index]):
+            raise Error("HNSW snapshot deleted slot is inconsistent")
+    elif nodes.flags[slot_index] == _REPLACED_FLAG:
+        _ = index.graph.mark_replaced(nodes.ids[slot_index])
 
 
 def write_hnsw_snapshot(

@@ -325,3 +325,16 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   No formal speed, 128 MiB capacity, full type/lifecycle, concurrency or native
   Linux gate is closed. The remaining low-dimensional tails and retained base
   lifetime must be included in subsequent formal mixed/lifecycle verification.
+
+- [HNSW owned decoder memory](../benchmarks/2026-10-19-hnsw-decode-memory.md)
+  removes the complete promoted F32 intermediate tape and reserves final graph
+  storage before restoring rows. The 64 MiB snapshot regression fails on baseline
+  and passes after the change: additional peak RSS falls from 117.1 to 64.5 MiB
+  on macOS and 130.0 to 64.0 MiB in Linux emulation. Forty native Mojo cases pass;
+  Linux reproduces and fixes the same memory assertion. All 3,456 completed-worker
+  response audits and 12 reopens agree; all 40 acknowledged rows from four OOM
+  volumes recover with original F32 bits, payloads and exact oracles. Both high-D
+  128 MiB cells remain failures: uniform reaches block 2 flush, real still block 0.
+  Phase attribution places the largest open-time increase in point recovery;
+  point values remain owned. No formal speed, capacity, type/lifecycle,
+  concurrency or native Linux gate is closed.
