@@ -561,3 +561,24 @@ distinct Python cases and a candidate merge with 32 descriptors. Fixture and
 implementation failures are retained. Production stays `a6822c3`; full consumer,
 type/lifecycle, fixed performance, sustained capacity and native Linux acceptance
 remain open. No new speed result or M5/M6 completion is claimed.
+
+
+## Numeric consumers and fresh failed speed gates — 2026-10-20
+
+The [isolated consumer layer](../research/2026-10-20-immutable-point-consumers.md) applies pinned Qdrant's borrowed-read
+boundary to Arrow, Python conversion, GPU upload and legacy recovery. Shared
+registry propagation preserves exact-file ownership, and no-op flush now retries
+PointStore's pending cleanup. Validation covers 151 cases in 34 CPU modules,
+23 checkpoint/WAL cases, 379 Python cases, the candidate C ABI and 12 actual
+Metal cases (reused across the subsequent cleanup-only change). Initial
+materialization, lifetime-fixture, cleanup and process-runner failures are retained.
+
+The fresh 27-worker mixed comparison audits 7,776 responses, 27 exact reopens and
+18 Arrow leases. Production/candidate results, score bits and query statistics
+match; both Akasha variants meet all 36 quality cells, while matched quality is
+33/36 because Qdrant's three real correlated cells remain below .95. Strict
+quality-plus-speed passes are 25/36 production versus 18/36 candidate, with nine
+pass-to-fail regressions; combined write-plus-flush passes 9/9 for each. No
+threshold or sample exclusions change. Production stays `a6822c3`. Next measure
+publication/lock stalls suggested by retained latency spikes, then continue the
+fixed performance, sustained capacity and native Linux gates. M5/M6 remain open.
