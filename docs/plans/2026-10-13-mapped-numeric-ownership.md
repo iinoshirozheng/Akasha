@@ -878,3 +878,44 @@ The verified archives contain **246 / 243 text artifacts**, SHA-256
 There is no new Qdrant acceptance matrix or full CPU/Python/crash/C/Linux run
 for these rejected candidates. All remaining M5/M6, quality, capacity,
 concurrency and native Linux gates remain open.
+
+## 2026-10-20: Retain deferred public-ID admission
+
+The [deferred-ID candidate](../research/2026-10-20-immutable-point-deferred-id.md)
+starts from Z/query-lock. Slot-based graph admission now resolves a public ID
+only when the admission implementation requires it. Known-ID delta scans,
+fallback and extra-entry heap checks retain their existing operation. The
+UInt32 neighbor buffer, graph/mapped accessors, numeric kernels, visited/level
+checks, score ties, counters, query locks and durable formats remain unchanged.
+Runtime regression tests demonstrate ID reads falling **9→1, 11→4 and 8→1**;
+ID-based and delta membership retain the required public-ID resolution.
+
+Final-source validation passes **262 unique CPU cases / 43 modules**, **23
+crash cases**, **379 Python cases / four native-identity processes**, and the
+C ABI build/tests. Fresh extracted-Qdrant oracles match **98 search fixtures**
+on scalar/batched paths and **24 construction fixtures / 2,467 adjacency rows**.
+The initial stale test-oracle compile error and its immutable-reader fixture
+adaptation are retained in the evidence.
+
+Twelve two-order screen workers and 36 three-order mixed workers audit **13,824
+timed responses**, including **11,232 Akasha responses** matching the retained
+baseline's IDs/F32 bits/stats/routes/recall/oracles, **48 exact reopens** and
+**39 Arrow leases**. Warmup returned values are not compared. Every worker is
+serial; all original plans, efs and strict gates remain intact.
+
+The fresh strict comparison is **production 24 / Z 24 / deferred-ID 25 of 36**,
+with **zero production/Z pass-to-fail cells**. Quality remains **33/36** and
+write-plus-flush **9/9** for each implementation. The old Z 25/36 result is a
+different run. Relative to contemporary Z, uniform-1536 correlated/independent
+median QPS improves **2.48% / 3.24%**. Numerical control regressions, including
+the initial uniform-128 selective regression, are retained.
+
+**Carry the candidate forward; do not adopt it into production yet.** Eight
+speed failures and three real-correlated Qdrant quality failures remain. Next
+reprofile this retained source against Qdrant to locate the remaining base
+search/rerank costs. Full M5/M6 warm, concurrency, nonresident capacity,
+integration/example and native Linux gates remain open. Production stays
+`a6822c3`.
+
+Verified evidence: **703 text artifacts, 2,718,032 bytes**, SHA-256
+`f2b129cf133ec06161b24121751112fcc0a0437ae68c23ef9c0a28f20eeff713`.
