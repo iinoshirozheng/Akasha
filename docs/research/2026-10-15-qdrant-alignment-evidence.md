@@ -429,3 +429,26 @@ pass-to-fail regressions; combined write-plus-flush passes 9/9 for each. No
 threshold or sample exclusions change. Production stays `a6822c3`. Next measure
 publication/lock stalls suggested by retained latency spikes, then continue the
 fixed performance, sustained capacity and native Linux gates. M5/M6 remain open.
+
+
+## Publication critical section — 2026-10-20
+
+The [isolated publication experiment](2026-10-20-immutable-point-publication.md) follows pinned Qdrant's separation
+of expensive preparation from locked finalization. Instrumented runs identify
+repeated point validation and full read-run descriptor copies inside Akasha's
+shared query/publication writer lock. Removing only the already completed point
+validation reduces median publication holds from 1.80–1.87 ms to 1.33–1.48 ms;
+8,224–8,440 read descriptors still copy under writer. This does not implement
+Qdrant's full read/update lock separation.
+
+A valid-CRC semantic-corruption regression covers v4/v5 rejection and cleanup.
+The unchanged candidate passes 60 cases in ten CPU modules, 23 checkpoint/WAL
+cases, 379 Python cases and the C ABI checks. Fresh uninstrumented mixed tests
+run 36 serial workers, auditing 10,368 responses, 36 exact reopens and 27 Arrow
+leases. Production/prior/candidate strict quality-plus-speed passes are 26/15/20
+of 36. Seven production passes and one prior-candidate pass become failures;
+all remain recorded. Combined write-plus-flush passes 9/9 for all three variants.
+Production stays `a6822c3`, with no adoption or M5/M6 completion. Next move
+immutable read-run preparation out of writer while preserving current writes,
+snapshot owners and publication checks, then continue all unchanged performance,
+sustained capacity and native Linux gates.
