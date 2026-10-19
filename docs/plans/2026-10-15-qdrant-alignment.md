@@ -920,3 +920,23 @@ continue from the prior HNSW List-batch source. Next inspect Qdrant's initialize
 prefix storage protocol without assuming a cause from these timings. All ef,
 quality, lifetime and performance requirements remain unchanged. Production is
 still `a6822c3`; no M5/M6 or remaining environment gate is closed.
+
+
+## Initialized-prefix batch not adopted — 2026-10-20
+
+The [prefix-buffer experiment](../research/2026-10-20-immutable-point-prefix-batch.md)
+follows Qdrant's initialized-prefix protocol with checked access, explicit cleanup
+and compiler-verified trivial descriptor copying/moving. 114 unique CPU cases,
+379 Python cases and candidate C ABI validation pass. AddressSanitizer builds
+with an installed compatible runtime, but that runtime spins before main in
+macOS dyld/malloc initialization; the stack sample and termination are retained,
+and no sanitizer pass is claimed. Twelve balanced diagnostic workers preserve
+3,456 responses, 12 reopens and 12 leases; low-dimensional rerank aggregates
+improve 3.1–5.6%, with two small high-dimensional regressions retained. Fresh
+36-worker mixed results preserve 10,368 responses, 36 reopens and 27 leases,
+but strict production/prior/candidate passes are 19/17/14 of 36. Six production
+and three prior pass-to-fail cells remain; combined write-plus-flush is 9/9 for
+each variant. Do not carry this candidate forward. Stop buffer-layout tuning;
+next measure the remaining writer-locked live-owner staging, durable publication
+and owner/root exchange, from the prior HNSW List-batch source. Production stays
+`a6822c3`; all original performance, ownership and environment gates remain open.
