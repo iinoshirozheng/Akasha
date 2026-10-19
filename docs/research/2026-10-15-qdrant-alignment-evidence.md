@@ -525,3 +525,21 @@ batch-read/scorer boundary without changing arithmetic, eligibility or lifetimes
 lock shortening alone cannot remove the measured query-core gap. This adds no
 product change or acceptance result. The prior strict 23/36 production versus
 16/36 candidate result, all regressions and open M5/M6 gates remain unchanged.
+
+
+## Bounded borrowed-row scoring — 2026-10-20
+
+The [isolated batch-scoring layer](2026-10-20-immutable-point-batch-score.md)
+uses the pinned Qdrant 64-row gather boundary in selective exact search. It
+retains safe nested borrows, original score pairs and deferred acquisition-error
+ordering. No owner copies, numeric materialization, formats, ef or stats change.
+68 CPU cases, 379 Python cases and candidate C ABI validation pass. Balanced
+phase diagnostics preserve 3,456 responses, 12 reopens and 12 Arrow leases;
+selective core medians decrease 6.4%/11.0%/11.6%. Publication waits remain.
+The separate 36-worker comparison preserves 10,368 responses, 36 reopens and
+27 leases, with strict production/prior/batch results 24/20/21 of 36. Three
+production and one prior pass-to-fail cells remain; no regressions are waived.
+Carry the core improvement only within the isolated candidate, then address
+HNSW authoritative reranking and publication interference. Production stays
+`a6822c3`; full warm/concurrent, sustained capacity, integration/example, native
+Linux and M5/M6 gates remain open.
