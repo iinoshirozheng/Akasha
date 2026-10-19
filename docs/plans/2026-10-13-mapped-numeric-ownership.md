@@ -546,3 +546,18 @@ Next complete shared live authority and mapped publication for foreground,
 background and partial compaction, preserving selected-range cutoffs, newer writes,
 legacy cutover versions and destruction outside writer. Every strict M5/M6 gate
 and the remaining consumer/type/lifecycle requirements stay open.
+
+
+## Live compaction ownership — 2026-10-20
+
+The [isolated compaction layer](../research/2026-10-20-immutable-point-live-compaction.md)
+uses shared PointTable/MemTable authority and validates mapped outputs before
+foreground/background/partial publication. Selected-range version cutoffs preserve
+later writes; matching read runs keep existing indexes and old readers retain
+their exact-file leases. It follows pinned Qdrant's locked publication and deferred
+retirement principles within Akasha's current durability protocol. Validation
+covers 191 cases in 37 selected Mojo modules, 23 checkpoint/WAL cases, 379
+distinct Python cases and a candidate merge with 32 descriptors. Fixture and
+implementation failures are retained. Production stays `a6822c3`; full consumer,
+type/lifecycle, fixed performance, sustained capacity and native Linux acceptance
+remain open. No new speed result or M5/M6 completion is claimed.
