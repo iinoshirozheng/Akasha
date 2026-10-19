@@ -163,3 +163,10 @@ It contains 512 text artifacts, 32,877,176 compressed bytes, SHA-256
 `720d443ad1ecf812b393d24d0c1e415965b021fc099a3f347e700b19c75b83b1`;
 every embedded artifact hash was verified after decompression. Large generated
 assembly is represented by hashes and the extracted call evidence, not embedded.
+
+The [follow-up row-traversal experiment](2026-10-20-immutable-point-query.md)
+restores the pinned native Qdrant dependency and moves the immutable range into
+the row descriptor. Its same-batch selective QPS improves 6–9% over this
+candidate, but production regressions and incomplete live ownership still prevent
+adoption. It records current mixed query and combined write/flush evidence;
+the capacity figures above continue to identify only this earlier binary.

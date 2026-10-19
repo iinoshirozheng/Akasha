@@ -367,3 +367,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   The 67 archived Mojo cases and six negative compile cases establish only
   their stated scope. Full live rebasing, type/export/GPU and destruction paths
   remain incomplete; production source stays `a6822c3`. No formal gate is closed.
+
+- [Immutable row traversal and fresh native mixed comparison](2026-10-20-immutable-point-query.md)
+  restores the exact pinned Qdrant wheel; its previously skipped adapter case now
+  passes. In the 36-worker fixed-state mixed comparison, production/prior/new
+  candidate quality-plus-speed passes are 16/17/18 of 36, matched quality 33/36,
+  and combined write-plus-flush 9/9 for each variant. The new descriptor's selective
+  QPS improves 6–9% over the prior prototype but still has production regressions,
+  including one pass-to-fail. The report retains all 10,368 audited responses,
+  36 reopens, 27 Arrow leases, source identities and failed/reverted diagnostics.
+  No full warm, concurrent, sustained-capacity, type/lifecycle or native Linux
+  acceptance is inferred from this subset.

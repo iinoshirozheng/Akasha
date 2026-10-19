@@ -514,3 +514,20 @@ register-passable variant or alignment-only hypothesis unchanged. Then complete
 live checkpoint/compaction rebasing, legacy recovery, remaining typed/export/GPU
 consumers and destruction/error reporting before full acceptance. No durable
 format change is inferred from this experiment. M5/M6 remain open.
+
+The [recovered-row follow-up](../research/2026-10-20-immutable-point-query.md)
+now separates actual MemTable traversal from retained mapped-owner and owned-row
+scoring. A raw-pointer scoring trial does not remove the gap and is reverted.
+Moving the checked immutable Span beside its owner preserves the existing Variant
+size and improves same-batch selective QPS 6–9% over the preceding prototype.
+Eighteen owner/lifecycle cases and six negative compile probes pass. This is the
+next isolated implementation base, not production adoption: a production pass
+still becomes a failure and live publication remains incomplete.
+
+The pinned Qdrant wheel is restored and its exact adapter case passes. Across 36
+mixed workers, candidate matched quality is 33/36 and quality-plus-speed 18/36
+versus production 16/36. All three Akasha variants pass combined write-plus-flush
+9/9 in this batch. Proceed to typed live flush/partial-compaction owner rebasing
+and retirement/error reporting, using the existing typed-publication design and
+current v5/durability contracts. Preserve the unresolved warm, concurrent,
+sustained capacity and native Linux gates; do not repeat rejected microchanges.

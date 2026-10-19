@@ -702,3 +702,17 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   Next isolate actual recovered-row traversal/scoring costs, then finish live
   publication ownership, all consumers and full lifecycle validation. No formal
   Qdrant, sustained capacity, concurrency or native Linux gate is closed.
+
+- [Immutable mapped-row traversal](../research/2026-10-20-immutable-point-query.md)
+  restores and verifies the pinned native Qdrant wheel. The new inline-range
+  descriptor improves selective QPS 6–9% over the prior prototype. In 36 frozen
+  mixed workers, production/prior/candidate quality-plus-speed passes are
+  16/17/18 of 36; matched quality stays 33/36 because three Qdrant correlated
+  cells remain below .95. One production pass becomes a candidate failure and
+  is not offset by three improvements. Combined write-plus-flush passes 9/9
+  for all three Akasha variants, providing fresh evidence for current production
+  but not sustained maintenance. All 10,368 responses, 36 exact reopens and
+  27 Arrow leases are audited. Eighteen owner cases, six negative compiles and
+  both targeted production/Qdrant adapter cases pass. The candidate stays isolated;
+  next complete live typed checkpoint/partial-compaction ownership and its failure
+  paths before full integration and gate validation.
