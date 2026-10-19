@@ -378,3 +378,18 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   36 reopens, 27 Arrow leases, source identities and failed/reverted diagnostics.
   No full warm, concurrent, sustained-capacity, type/lifecycle or native Linux
   acceptance is inferred from this subset.
+
+
+## Live checkpoint ownership — 2026-10-20
+
+The [isolated live-flush layer](2026-10-20-immutable-point-live-flush.md)
+publishes validated mapped numeric owners to PointStore, the collection projection
+and matching read runs, retaining old roots and sharing existing run indexes.
+Validation covers 77 selected Mojo cases (including two corrected exact-file lease
+fixtures), 23 checkpoint/WAL cases and 379 distinct Python cases after correcting
+the spawned-client launcher. Original failures remain archived. The candidate
+library builds; production stays `a6822c3`, with no new speed or capacity claim.
+Next complete shared live authority and mapped publication for foreground,
+background and partial compaction, preserving selected-range cutoffs, newer writes,
+legacy cutover versions and destruction outside writer. Every strict M5/M6 gate
+and the remaining consumer/type/lifecycle requirements stay open.

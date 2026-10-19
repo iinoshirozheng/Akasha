@@ -531,3 +531,18 @@ versus production 16/36. All three Akasha variants pass combined write-plus-flus
 and retirement/error reporting, using the existing typed-publication design and
 current v5/durability contracts. Preserve the unresolved warm, concurrent,
 sustained capacity and native Linux gates; do not repeat rejected microchanges.
+
+
+## Live checkpoint ownership — 2026-10-20
+
+The [isolated live-flush layer](../research/2026-10-20-immutable-point-live-flush.md)
+publishes validated mapped numeric owners to PointStore, the collection projection
+and matching read runs, retaining old roots and sharing existing run indexes.
+Validation covers 77 selected Mojo cases (including two corrected exact-file lease
+fixtures), 23 checkpoint/WAL cases and 379 distinct Python cases after correcting
+the spawned-client launcher. Original failures remain archived. The candidate
+library builds; production stays `a6822c3`, with no new speed or capacity claim.
+Next complete shared live authority and mapped publication for foreground,
+background and partial compaction, preserving selected-range cutoffs, newer writes,
+legacy cutover versions and destruction outside writer. Every strict M5/M6 gate
+and the remaining consumer/type/lifecycle requirements stay open.
