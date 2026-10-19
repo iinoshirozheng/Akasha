@@ -902,3 +902,21 @@ Next test the difference between Qdrant's fixed local batch buffer and the
 candidate's bounded-capacity List without weakening behavioral checks. The
 candidate stays isolated and production stays `a6822c3`. Full warm/concurrent,
 sustained capacity, integration/example, native Linux and M5/M6 gates remain open.
+
+
+## Fixed optional-row buffer rejected — 2026-10-20
+
+The [fixed-buffer experiment](../research/2026-10-20-immutable-point-fixed-batch.md)
+replaces pair Lists with local Arrays while preserving semantic checks. It passes
+113 CPU cases, 379 Python cases and candidate C ABI validation. Twelve balanced
+diagnostic workers preserve all 3,456 responses, 12 reopens and 12 leases, but
+all nine rerank aggregates regress 2.8–10.4%. The six high-dimensional groups
+regress in both trials; the three low-dimensional groups reverse direction
+between trials. The 36-worker mixed comparison preserves 10,368 responses,
+36 reopens and 27 leases, with strict production/prior/candidate results 18/16/15
+of 36. Five production and two prior pass-to-fail cells remain; combined write
+plus flush passes 9/9 for each variant. Reject this Array-of-Optional variant and
+continue from the prior HNSW List-batch source. Next inspect Qdrant's initialized-
+prefix storage protocol without assuming a cause from these timings. All ef,
+quality, lifetime and performance requirements remain unchanged. Production is
+still `a6822c3`; no M5/M6 or remaining environment gate is closed.
