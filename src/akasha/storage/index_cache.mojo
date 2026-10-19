@@ -15,6 +15,7 @@ from akasha.storage.filesystem import (
     sync_file,
 )
 from akasha.storage.mapped_file import MappedFile
+from akasha.storage.mapped_reader import MappedBinaryReader
 from std.sys.info import is_little_endian
 
 
@@ -192,13 +193,32 @@ def publish_cache(
     sync_directory(directory)
 
 
-def load_cache_artifact(path: String) -> Optional[CacheArtifact]:
+@fieldwise_init
+struct MappedCacheArtifact(Movable):
+    """Own an immutable cache inode while its bounded payload is decoded."""
+
+    var version: UInt16
+    var kind: UInt8
+    var dimension: Int
+    var generation: UInt64
+    var sequence: UInt64
+    var source_checksum: UInt32
+    var payload_length: Int
+    var _mapping: MappedFile
+
+    def payload_reader(self) raises -> MappedBinaryReader[origin_of(self._mapping)]:
+        return MappedBinaryReader(
+            Pointer(to=self._mapping), 36, self.payload_length
+        )
+
+
+def load_cache_artifact(path: String) -> Optional[MappedCacheArtifact]:
     """Bound and validate one optional derived artifact before using its key."""
     if not path_exists(path):
         return None
     try:
-        # Cache publishers replace the inode atomically. Keep the read-only
-        # mapping local and return only an independently owned payload.
+        # Cache publishers replace the inode atomically. Keep the old inode
+        # mapped until its consumer has finished decoding the bounded payload.
         var mapping = MappedFile.open_readonly(path)
         var size = mapping.byte_length()
         if size < _FIXED_BYTES or size > _MAX_PAYLOAD_BYTES + _FIXED_BYTES:
@@ -209,28 +229,30 @@ def load_cache_artifact(path: String) -> Optional[CacheArtifact]:
         var bytes = mapping.copy_scalars[DType.uint8](0, 36)
         var header = _decode_cache_header(Span(bytes), size - _FIXED_BYTES)
         return Optional(
-            CacheArtifact(
+            MappedCacheArtifact(
+                UInt16(1),
                 header[0],
                 header[1],
                 header[2],
                 header[3],
                 header[4],
-                mapping.copy_scalars[DType.uint8](36, header[5]),
+                header[5],
+                mapping^,
             )
         )
     except:
         return None
 
 
-def load_cache_payload(
+def load_matching_cache_artifact(
     path: String,
     expected_kind: UInt8,
     expected_dimension: Int,
     expected_generation: UInt64,
     expected_sequence: UInt64,
     expected_source_checksum: UInt32,
-) -> Optional[List[UInt8]]:
-    """Return a current payload; all derived-cache failures are safe misses."""
+) -> Optional[MappedCacheArtifact]:
+    """Match a cache key before decoding; invalid artifacts are safe misses."""
     var loaded = load_cache_artifact(path)
     if not loaded:
         return None
@@ -243,7 +265,7 @@ def load_cache_payload(
         or artifact.source_checksum != expected_source_checksum
     ):
         return None
-    return Optional(artifact.take_payload())
+    return Optional(artifact^)
 
 
 def authoritative_index_checksum(memtable: MemTable) raises -> UInt32:

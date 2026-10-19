@@ -13,12 +13,14 @@ from akasha.index.hnsw_entries import entries_from_legacy, encode_entries, decod
 from akasha.index.hnsw_view import HnswGraphView
 from akasha.storage.checksum import (
     BinaryReader,
+    BinaryReaderSource,
     BinaryWriter,
     crc32_range,
 )
 from akasha.storage.filesystem import read_file_bytes_bounded, sync_file
 from akasha.storage.byte_sink import ByteSink, OwnedByteSink, FileByteSink, CheckedByteSink, drain_bytes, write_checksum
 from akasha.storage.mapped_file import MappedFile
+from akasha.storage.mapped_reader import MappedBinaryReader
 from std.collections import Dict
 from std.math import isfinite
 from std.memory import bitcast
@@ -514,6 +516,33 @@ def decode_hnsw_snapshot_owned(
 
     var encoded_size = len(bytes)
     var reader = BinaryReader(bytes^)
+    return _decode_hnsw_snapshot_reader(reader, encoded_size, config, sequence)
+
+
+def decode_hnsw_snapshot_mapped(
+    mapping: MappedFile, offset: Int, length: Int,
+    config: CollectionConfig, sequence: UInt64,
+) raises -> HnswIndex:
+    """Materialize independent graph storage from a checked mapped range."""
+    _require_snapshot_config(config)
+    var reader = MappedBinaryReader(Pointer(to=mapping), offset, length)
+    if length < 8 + _CHECKSUM_BYTES:
+        raise Error("HNSW snapshot is truncated")
+    if length > _MAX_SNAPSHOT_BYTES:
+        raise Error("HNSW snapshot exceeds implementation size limit")
+    var checksum_offset = length - _CHECKSUM_BYTES
+    var stored_checksum = mapping.load_scalars[DType.uint32, 1](
+        offset + checksum_offset
+    )
+    if mapping.checksum(UInt64(offset), UInt64(checksum_offset)) != stored_checksum:
+        raise Error("HNSW snapshot checksum mismatch")
+    return _decode_hnsw_snapshot_reader(reader, length, config, sequence)
+
+
+def _decode_hnsw_snapshot_reader[Reader: BinaryReaderSource](
+    mut reader: Reader, encoded_size: Int,
+    config: CollectionConfig, sequence: UInt64,
+) raises -> HnswIndex:
     _read_magic(reader)
     var version = reader.read_u16()
     var header_bytes = _snapshot_header_bytes(version)
@@ -752,7 +781,7 @@ def decode_hnsw_snapshot_owned(
     )
     if scale_width == 4:
         for _ in range(slots):
-            var scale = reader.read_f32()
+            var scale = bitcast[DType.float32](reader.read_u32())
             if not isfinite(scale) or scale < 0.0:
                 raise Error("HNSW snapshot I8 scale is invalid")
             vector_scales.append(scale)
@@ -1561,7 +1590,7 @@ def _write_magic(mut writer: BinaryWriter):
     writer.write_u8(UInt8(0x47))  # G
 
 
-def _read_magic(mut reader: BinaryReader) raises:
+def _read_magic[Reader: BinaryReaderSource](mut reader: Reader) raises:
     if (
         reader.read_u8() != UInt8(0x41)
         or reader.read_u8() != UInt8(0x4B)
@@ -1576,7 +1605,7 @@ def _write_zeros(mut writer: BinaryWriter, count: Int):
         writer.write_u8(UInt8(0))
 
 
-def _read_zero_padding(mut reader: BinaryReader, count: Int) raises:
+def _read_zero_padding[Reader: BinaryReaderSource](mut reader: Reader, count: Int) raises:
     for _ in range(count):
         if reader.read_u8() != UInt8(0):
             raise Error("nonzero HNSW snapshot alignment padding")

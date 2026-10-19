@@ -307,6 +307,9 @@ trait BinaryReaderSource(Movable):
     def remaining(self) -> Int:
         ...
 
+    def position(self) -> Int:
+        ...
+
     def read_u8(mut self) raises -> UInt8:
         ...
 

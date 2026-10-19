@@ -77,7 +77,7 @@ from akasha.storage.index_cache import (
     authoritative_index_checksum,
     CACHE_METADATA_KIND,
     CacheArtifact,
-    load_cache_payload,
+    load_matching_cache_artifact,
     publish_cache,
 )
 from akasha.storage.filesystem import (
@@ -2622,7 +2622,7 @@ def _load_or_build_metadata_cache(
     source_checksum: UInt32,
     memtable: MemTable,
 ) raises -> _MetadataCacheLoad:
-    var cached = load_cache_payload(
+    var cached = load_matching_cache_artifact(
         path + "/metadata.cache",
         CACHE_METADATA_KIND,
         dimension,
@@ -2632,8 +2632,9 @@ def _load_or_build_metadata_cache(
     )
     if Bool(cached):
         try:
-            var payload = cached.value().copy()
-            var decoded = MetadataIndex.decode_cache_payload(payload^)
+            var artifact = cached.take()
+            var reader = artifact.payload_reader()
+            var decoded = MetadataIndex.decode_cache_reader(reader)
             if (
                 decoded.slot_count() != memtable.slot_count()
                 or decoded.live_count() != memtable.live_count()

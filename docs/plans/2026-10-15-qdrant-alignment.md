@@ -671,3 +671,21 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   Phase attribution places the largest open-time increase in point recovery;
   point values remain owned. No formal speed, capacity, type/lifecycle,
   concurrency or native Linux gate is closed.
+
+- [Mapped cache decoding and rejected metadata writers](../benchmarks/2026-10-19-mapped-cache-stream.md)
+  removes full encoded input copies from metadata and HNSW-overlay recovery.
+  High-dimensional unconstrained open anonymous memory falls about 8 MiB.
+  The retained 128 MiB trials pass uniform-1536 3/3 but real-1536 only 2/3;
+  its block-8 OOM recovers all 72 acknowledged rows exactly. All 4,320 retained
+  cgroup responses, 15 reopens, 10,368 native paired responses, 36 native reopens
+  and 36 Arrow leases agree. Validation passes 71 native Mojo cases, 16 Linux-
+  emulated cases and 388 Python/distributed cases; one optional Qdrant-adapter
+  test remains skipped because its pinned wheel is absent. Native flush ratios
+  are 1.001/0.989/0.996x, but query regressions remain, including real all p95
+  1.155x and uniform-128 independent p95 1.056x. Two streamed metadata writers
+  save large-payload memory but regress flush time; both are rejected and
+  archived. Their additional OOM trials recover all 512 acknowledged rows.
+  Point-value ownership remains the largest measured open-time increase, and
+  metadata output still materializes its payload. No full speed, capacity,
+  type/lifecycle, concurrency or native Linux gate is closed; the last formal
+  Qdrant checkpoint remains `45e04d2`.

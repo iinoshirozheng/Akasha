@@ -1,7 +1,7 @@
 from akasha.common.config import CollectionConfig
 from akasha.index.hnsw import HnswIndex
 from akasha.storage.hnsw_store import (
-    decode_hnsw_snapshot_owned,
+    decode_hnsw_snapshot_mapped,
     HnswSnapshotEncoder,
 )
 from akasha.storage.index_cache import (
@@ -40,8 +40,9 @@ def load_hnsw_overlay_cache(
         return None
     try:
         return Optional(
-            decode_hnsw_snapshot_owned(
-                artifact.take_payload(), config, base_sequence
+            decode_hnsw_snapshot_mapped(
+                artifact._mapping, 36, artifact.payload_length,
+                config, base_sequence
             )
         )
     except:

@@ -87,5 +87,37 @@ def test_empty_mapped_reader_has_no_data_pointer_to_dereference() raises:
     assert_equal(reader.position(), 0)
 
 
+def test_subrange_rejects_reads_into_valid_surrounding_bytes() raises:
+    var path = String("/tmp/akasha-mapped-reader-range.bin")
+    write_file_sync(path, [UInt8(99), 1, 2, 3, 4, 88, 77, 66, 55])
+    var mapping = MappedFile.open_readonly(path)
+    var reader = MappedBinaryReader(Pointer(to=mapping).as_imm(), 1, 4)
+    assert_equal(reader.remaining(), 4)
+    for count in [-1, 5, Int.MAX]:
+        with assert_raises():
+            _ = reader.read_bytes(count)
+        assert_equal(reader.position(), 0)
+    with assert_raises():
+        _ = reader.read_f32s(2)
+    with assert_raises():
+        _ = reader.read_u64()
+    assert_equal(reader.position(), 0)
+    assert_equal(reader.read_u32(), UInt32(0x04030201))
+    assert_equal(reader.remaining(), 0)
+    with assert_raises():
+        _ = reader.read_u8()
+    assert_equal(reader.position(), 4)
+    for start in [-1, 10, Int.MAX]:
+        with assert_raises():
+            _ = MappedBinaryReader(Pointer(to=mapping).as_imm(), start, 0)
+    for length in [-1, 9, Int.MAX]:
+        with assert_raises():
+            _ = MappedBinaryReader(Pointer(to=mapping).as_imm(), 1, length)
+    var empty = MappedBinaryReader(Pointer(to=mapping).as_imm(), 9, 0)
+    assert_equal(len(empty.read_bytes(0)), 0)
+    with assert_raises():
+        _ = empty.read_u8()
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

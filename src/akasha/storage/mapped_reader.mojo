@@ -9,20 +9,39 @@ struct MappedBinaryReader[origin: ImmOrigin](BinaryReaderSource):
     """
 
     var _file: Pointer[MappedFile, Self.origin]
+    var _start: Int
+    var _length: Int
     var _offset: Int
 
     def __init__(out self, mapping: Pointer[MappedFile, Self.origin]):
         self._file = mapping
+        self._start = 0
+        self._length = mapping[].byte_length()
+        self._offset = 0
+
+    def __init__(
+        out self, mapping: Pointer[MappedFile, Self.origin], start: Int, length: Int
+    ) raises:
+        if start < 0 or length < 0:
+            raise Error("negative mapped reader range")
+        _ = mapping[].checked_slice(UInt64(start), UInt64(length))
+        self._file = mapping
+        self._start = start
+        self._length = length
         self._offset = 0
 
     def remaining(self) -> Int:
-        return self._file[].byte_length() - self._offset
+        return self._length - self._offset
 
     def position(self) -> Int:
         return self._offset
 
     def _read[dtype: DType](mut self) raises -> Scalar[dtype]:
-        var value = self._file[].load_scalars[dtype, 1](self._offset)
+        if size_of[Scalar[dtype]]() > self.remaining():
+            raise Error("truncated mapped reader value")
+        var value = self._file[].load_scalars[dtype, 1](
+            self._start + self._offset
+        )
         self._offset += size_of[Scalar[dtype]]()
         return value
 
@@ -42,13 +61,19 @@ struct MappedBinaryReader[origin: ImmOrigin](BinaryReaderSource):
         return bitcast[DType.int64](self.read_u64())
 
     def read_f32s(mut self, count: Int) raises -> List[Float32]:
+        if count < 0 or count > self.remaining() // 4:
+            raise Error("truncated mapped reader values")
         var values = self._file[].copy_scalars[DType.float32](
-            self._offset, count
+            self._start + self._offset, count
         )
         self._offset += count * 4
         return values^
 
     def read_bytes(mut self, count: Int) raises -> List[UInt8]:
-        var values = self._file[].copy_scalars[DType.uint8](self._offset, count)
+        if count < 0 or count > self.remaining():
+            raise Error("truncated mapped reader bytes")
+        var values = self._file[].copy_scalars[DType.uint8](
+            self._start + self._offset, count
+        )
         self._offset += count
         return values^

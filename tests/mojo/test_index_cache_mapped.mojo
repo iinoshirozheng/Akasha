@@ -87,7 +87,7 @@ def _reject(bytes: List[UInt8], path: String) raises:
     assert_false(Bool(load_cache_artifact(path)))
 
 
-def test_mapped_cache_owns_frozen_payload_after_file_replacement() raises:
+def test_mapped_cache_retains_old_inode_after_file_replacement() raises:
     var path = String("/tmp/akasha-cache-mapped-frozen.cache")
     var bytes = _frozen()
     write_file_sync(path, bytes)
@@ -103,13 +103,17 @@ def test_mapped_cache_owns_frozen_payload_after_file_replacement() raises:
     assert_equal(mapped.generation, UInt64.MAX)
     assert_equal(mapped.sequence, UInt64(19))
     assert_equal(mapped.source_checksum, UInt32(0x12345678))
-    assert_equal(mapped.payload, owned.payload)
+    var reader = mapped.payload_reader()
+    var payload = reader.read_bytes(mapped.payload_length)
+    assert_equal(payload, owned.payload)
     assert_equal(
-        mapped.payload,
+        payload,
         [UInt8(0), UInt8(255), UInt8(4), UInt8(0), UInt8(128), UInt8(42)],
     )
-    var payload = mapped.take_payload()
-    assert_equal(len(mapped.payload), 0)
+    assert_equal(reader.remaining(), 0)
+    with assert_raises():
+        _ = reader.read_u8()
+    mapped._mapping.close()
     assert_equal(payload[5], UInt8(42))
     remove_file_if_exists(path)
 
@@ -134,7 +138,9 @@ def test_mapped_cache_round_trips_all_kinds_and_empty_payload() raises:
             assert_equal(mapped.generation, UInt64(0))
             assert_equal(mapped.sequence, UInt64.MAX)
             assert_equal(mapped.source_checksum, UInt32.MAX)
-            assert_equal(mapped.payload, artifact.payload)
+            var reader = mapped.payload_reader()
+            assert_equal(reader.read_bytes(size), artifact.payload)
+            assert_equal(reader.remaining(), 0)
     remove_file_if_exists(path)
 
 

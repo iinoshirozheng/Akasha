@@ -11,7 +11,7 @@ from akasha.storage.index_cache import (
     CacheArtifact,
     decode_cache_bytes,
     encode_cache,
-    load_cache_payload,
+    load_matching_cache_artifact,
     publish_cache,
 )
 from akasha.document import DocumentField, PayloadValue
@@ -87,7 +87,7 @@ def test_cache_publish_is_atomic_and_stale_or_bad_cache_is_a_miss() raises:
     publish_cache(path, "hnsw.cache", artifact)
     assert_true(path_exists(path + "/hnsw.cache"))
     assert_false(path_exists(path + "/hnsw.cache.tmp"))
-    var hit = load_cache_payload(
+    var hit = load_matching_cache_artifact(
         path + "/hnsw.cache",
         CACHE_HNSW_KIND,
         2,
@@ -96,10 +96,11 @@ def test_cache_publish_is_atomic_and_stale_or_bad_cache_is_a_miss() raises:
         UInt32(77),
     )
     assert_true(Bool(hit))
-    assert_equal(hit.value()[1], UInt8(5))
+    var reader = hit.value().payload_reader()
+    assert_equal(reader.read_bytes(2)[1], UInt8(5))
     assert_false(
         Bool(
-            load_cache_payload(
+            load_matching_cache_artifact(
                 path + "/hnsw.cache",
                 CACHE_HNSW_KIND,
                 2,
@@ -112,7 +113,7 @@ def test_cache_publish_is_atomic_and_stale_or_bad_cache_is_a_miss() raises:
     write_file_sync(path + "/hnsw.cache", [UInt8(0), UInt8(1)])
     assert_false(
         Bool(
-            load_cache_payload(
+            load_matching_cache_artifact(
                 path + "/hnsw.cache",
                 CACHE_HNSW_KIND,
                 2,
@@ -174,7 +175,7 @@ def test_oversized_cache_is_rejected_before_materialization() raises:
     file.close()
     assert_false(
         Bool(
-            load_cache_payload(
+            load_matching_cache_artifact(
                 path + "/oversized.cache",
                 CACHE_METADATA_KIND,
                 1,

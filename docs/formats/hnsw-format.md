@@ -362,8 +362,12 @@ The outer latest sequence binds the current authority version. For kind 3, the
 generation must be no newer than the recovered generation; compaction may advance
 the generation or reorder physical rows while preserving the same vectors. The cache reader bounds the file to the
 existing 512 MiB payload limit plus the 40-byte envelope before materialization. It
-validates the envelope CRC and header through a local read-only mapping, then
-copies only the independently owned payload used by the snapshot decoder.
+validates the envelope CRC and header through a read-only mapping, then decodes
+the nested snapshot directly from the bounded payload range. The mapping owns
+the captured inode until decoding finishes; the returned mutable graph owns its
+vectors and links independently. Readers cannot consume the outer footer or
+surrounding bytes as part of the nested snapshot. Metadata cache recovery uses
+the same bounded input ownership and produces an independent metadata index.
 Neither the envelope format nor the inner snapshot format changes.
 
 Publication is best-effort atomic replacement after authority checkpoint commit.

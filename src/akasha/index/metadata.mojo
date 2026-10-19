@@ -10,7 +10,7 @@ from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
 from std.collections import Dict
 from std.memory import bitcast
-from akasha.storage.checksum import BinaryReader, BinaryWriter
+from akasha.storage.checksum import BinaryReader, BinaryReaderSource, BinaryWriter
 
 
 struct MetadataIndex:
@@ -146,6 +146,12 @@ struct MetadataIndex:
     @staticmethod
     def decode_cache_payload(var payload: List[UInt8]) raises -> MetadataIndex:
         var reader = BinaryReader(payload^)
+        return MetadataIndex.decode_cache_reader(reader)
+
+    @staticmethod
+    def decode_cache_reader[Reader: BinaryReaderSource](
+        mut reader: Reader
+    ) raises -> MetadataIndex:
         var slot_count = Int(reader.read_u32())
         if slot_count > 10_000_000:
             raise Error("metadata cache slot count exceeds limit")
