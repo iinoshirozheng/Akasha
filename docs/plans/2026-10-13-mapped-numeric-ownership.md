@@ -776,3 +776,45 @@ candidate for further work, without production adoption or a completed gate.
 Next audit read-root and mutable HNSW query state for Qdrant-style separation
 of update exclusion from reader access during durable publication. Production
 remains `a6822c3`; ef, all strict gates and pending user decisions are unchanged.
+
+## 2026-10-20: Separate live ANN exclusion from compaction publication
+
+The [query-lock experiment](../research/2026-10-20-immutable-point-query-lock.md) starts from the retained head-projection
+source and reuses the October 14 lock experiment after auditing current live
+owner replacement. Pinned Qdrant's separate update mutex and short segment
+swap motivate the boundary. Six ANN entries use query-only exclusion; 52
+foreground scopes acquire writer then query. Compaction keeps writer through
+preflight and disk publication, then guards the point/projection/read-root
+exchange with query. Snapshot/pin behavior and durable ordering are unchanged.
+
+The parent reproduces the intended progress failure (3 pass, 1 fail); the
+candidate passes the four lock tests plus a new manifest-progress/live-owner
+barrier. All **145 CPU cases in 27 modules, 23 crash cases in eight modules,
+379 Python cases with four native identity processes, and C ABI checks** pass.
+No new GPU, sustained-capacity or native Linux result is claimed.
+
+Twelve balanced serial diagnostic workers validate 3,456 timed responses,
+12 exact reopens and 12 leases; 36 warmup clock traces are retained separately.
+Query exclusion falls **94.6–97.2%**,
+from 490–572 µs to 14–31 µs trial medians. Candidate uniform-1536 writer hold
+increases to 1.12–1.38 ms while waiting for active queries. Other foreground
+APIs and concurrent ANN still serialize; diagnostics do not close that gate.
+
+Fresh 36-worker mixed counts are **production 25/36, prior 22/36, candidate
+25/36**; all have matched quality 33/36 and combined write-plus-flush 9/9.
+There are **zero production/prior pass-to-fail cells**. All 10,368 responses,
+36 exact reopens and 27 Akasha leases pass. Eight speed failures and the three
+unchanged real-correlated Qdrant recall failures remain explicit, without
+retuning or exclusions. Some aggregate ratios still regress.
+
+Retain the isolated candidate for further work, not production adoption or
+M5/M6 completion. Next profile the six uniform-1536 correlated/independent
+failures against pinned Qdrant filtered traversal/scoring; the two uniform-128
+all-mode and all quality failures remain in the complete matrix. Production
+stays `a6822c3`; full warm/concurrent, sustained nonresident capacity,
+integration/example and native Linux gates remain open.
+
+The source/test/reference/native/result audit and verified archive contain
+**902 text artifacts, 3,239,267 bytes**, SHA-256
+`cee93573303bc99ad13b192ffd1f75658b3bdfdf28e480d3da9c67b85202b234`.
+Exact frozen plans are referenced by checked hash/key in the parent archive.

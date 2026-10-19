@@ -129,8 +129,11 @@ publication boundaries. Projection now occurs inside head staging, so compare
 the sum of projection and head time per publication, not the renamed phase
 alone. Medians below are computed from those per-publication sums.
 
-All **3,456 timed responses, 36 warmups, 12 exact reopens and 12 Arrow leases**
-match. All 120 returned publication attempts publish. No timed or publication
+All **3,456 timed responses, 12 exact reopens and 12 Arrow leases** match.
+The **36 warmup calls** execute successfully and retain clock traces; their
+result values are not retained or compared. The same distinction applies to
+the 18 initial-diagnosis warmups above. All 120 returned publication attempts
+publish. No timed or publication
 sample is omitted. The core query implementation, routes and counters are
 unchanged.
 
