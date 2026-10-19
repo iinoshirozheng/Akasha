@@ -848,3 +848,18 @@ time in search. Next compare production/candidate native search phases and
 separate publication wait costs before choosing the next change. Production stays
 `a6822c3`; full warm/concurrent, sustained capacity, integration/example and native
 Linux gates remain open. No adoption or M5/M6 completion is claimed.
+
+
+## Paired native query phases — 2026-10-20
+
+The [paired phase diagnosis](../research/2026-10-20-immutable-point-query-phases.md)
+compiles identically instrumented production/candidate kernels and runs twelve
+serial workers in balanced paired order. All 3,456 timed responses, 12 exact
+reopens and 12 Arrow leases match; all 36 warmups remain recorded separately.
+Candidate search-core medians exceed production across all twelve groups,
+including 5.25/6.00/6.50 microsecond selective gaps, while filter costs are similar.
+Publication waits remain a separate cost. Next evaluate the pinned Qdrant
+batch-read/scorer boundary without changing arithmetic, eligibility or lifetimes;
+lock shortening alone cannot remove the measured query-core gap. This adds no
+product change or acceptance result. The prior strict 23/36 production versus
+16/36 candidate result, all regressions and open M5/M6 gates remain unchanged.
