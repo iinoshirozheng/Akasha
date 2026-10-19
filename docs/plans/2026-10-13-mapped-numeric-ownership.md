@@ -632,3 +632,34 @@ regressions retained. Combined write-plus-flush passes 9/9 for each variant.
 Production remains `a6822c3`; the candidate stays isolated. Full warm/concurrent,
 sustained nonresident capacity, integration/example and native Linux gates remain
 open, with no M5/M6 completion or threshold changes.
+
+
+## Shared-owner capture from immutable output — 2026-10-20
+
+The [isolated owner-capture layer](../research/2026-10-20-immutable-point-owner-capture.md) removes point traversal and row
+projection from the first writer-lock section. Typed replacements use validated
+output points; legacy replacements preserve cutover/document versions and existing
+sparse/payload owners. Final live-authority validation remains locked. Validation
+passes 137 CPU cases in 24 modules, 23 checkpoint/WAL cases, 379 Python cases and
+the candidate C ABI. The legacy fixture initially used a foreground capture that
+checkpointed away its intended inputs; its original failure and corrected use of
+the background capture path are retained.
+
+Diagnostic capture medians are .001 ms and combined holds .569/.638/.632 ms.
+Uniform-128 has nine published attempts and one unpublished final attempt whose
+original trace does not distinguish cancellation from conflict; output cleanup,
+exact reopen and lease audits pass. The analyzer now records all outcomes rather
+than requiring every background attempt to publish. No diagnostic worker is
+rerun and no acceptance threshold changes. Published-only combined hold for
+uniform-128 is .570 ms. Wait counts over 100 microseconds change from 16/7/13 to
+7/8/5 across separate diagnostic batches.
+
+The fresh 36-worker comparison audits 10,368 responses, 36 exact reopens and
+27 Arrow leases. Production/prior/candidate strict quality-plus-speed passes
+are 23/13/16 of 36; seven production and two prior-candidate pass-to-fail cells
+remain recorded. Combined write-plus-flush passes 9/9 for each variant. Selective
+queries still show publication sensitivity, while other modes spend most native
+time in search. Next compare production/candidate native search phases and
+separate publication wait costs before choosing the next change. Production stays
+`a6822c3`; full warm/concurrent, sustained capacity, integration/example and native
+Linux gates remain open. No adoption or M5/M6 completion is claimed.
