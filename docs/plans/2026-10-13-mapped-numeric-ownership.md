@@ -490,3 +490,27 @@ The new test filenames are implementation targets and do not exist yet. For isol
 runs substitute the complete copied source/package and route relative AND absolute
 child compiler includes; existing validation drivers demonstrate the required audit.
 Preserve user changes. One semantic package per commit. Do not delegate to subagents.
+
+## 2026-10-20: Current immutable-owner prototype
+
+[The current-source owner experiment](../research/2026-10-20-immutable-point-owner.md)
+implements the narrower immutable-source invariant required above, preserving v4/v5
+point semantics, current native scoring and public owned getters. It is isolated
+from production `a6822c3`; Tasks 1–4 have partial implementation, not adoption.
+The evidence includes 67 distinct archived Mojo cases, six intended negative
+compile cases, 10,368 native query audits, 36 reopens and 36 retained Arrow leases.
+
+The cached-range candidate reduces high-dimensional Linux-emulated after-open
+anonymous memory by about 50 MiB and passes all 9 short 128 MiB trials plus three
+controls. All 3,456 responses and 12 reopens match prior controls. This does not
+close sustained capacity. Its native selective QPS ratios are 0.860/0.883/0.915;
+other regressions and every individual trial remain recorded. It is not adopted.
+The fixed row-alignment control does not explain the whole-query slowdown.
+
+Next compare reader acquisition, scoring and end-to-end selective queries on the
+actual recovered MemTable and identical candidate IDs. Preserve the immutable
+operation owner and score/error order. Do not retry the old mutable-List reader,
+register-passable variant or alignment-only hypothesis unchanged. Then complete
+live checkpoint/compaction rebasing, legacy recovery, remaining typed/export/GPU
+consumers and destruction/error reporting before full acceptance. No durable
+format change is inferred from this experiment. M5/M6 remain open.

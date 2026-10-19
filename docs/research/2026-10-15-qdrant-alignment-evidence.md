@@ -356,3 +356,14 @@ The report distinguishes these diagnostics from fresh Qdrant acceptance.
   metadata output still materializes its payload. No full speed, capacity,
   type/lifecycle, concurrency or native Linux gate is closed; the last formal
   Qdrant checkpoint remains `45e04d2`.
+
+- [Immutable point-owner prototype](2026-10-20-immutable-point-owner.md) records
+  the Qdrant borrowed-row source references and Akasha's immutable lifetime
+  adaptation. Linux-emulated high-dimensional after-open anonymous memory falls
+  about 50 MiB; three controls and 9/9 short 128 MiB trials pass, with 3,456
+  matching responses and 12 reopens. Two native candidate comparisons retain
+  10,368 matching responses, 36 reopens and 36 Arrow leases, but selective QPS
+  still regresses. The cached-range ratios are 0.860/0.883/0.915x baseline.
+  The 67 archived Mojo cases and six negative compile cases establish only
+  their stated scope. Full live rebasing, type/export/GPU and destruction paths
+  remain incomplete; production source stays `a6822c3`. No formal gate is closed.

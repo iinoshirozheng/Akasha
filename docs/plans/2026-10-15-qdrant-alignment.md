@@ -689,3 +689,16 @@ Files: sparse, field metrics/fusion, metadata evaluators, document mutations, Py
   metadata output still materializes its payload. No full speed, capacity,
   type/lifecycle, concurrency or native Linux gate is closed; the last formal
   Qdrant checkpoint remains `45e04d2`.
+
+- [Immutable point-owner prototype](../research/2026-10-20-immutable-point-owner.md)
+  applies Qdrant's storage-owner/borrowed-row boundary to current v4/v5 point
+  recovery. It saves about 50 MiB of high-dimensional after-open anonymous
+  memory in Linux emulation; three controls and 9/9 short 128 MiB trials pass.
+  All 3,456 Linux responses/12 reopens and 10,368 native responses/36 reopens/
+  36 retained Arrow leases agree. The prototype remains unadopted: native
+  selective QPS is 0.860/0.883/0.915x baseline in the cached-range comparison.
+  Alignment alone does not explain the slowdown. The archive retains 67 Mojo
+  cases, six negative compile cases, both candidates and every timing trial.
+  Next isolate actual recovered-row traversal/scoring costs, then finish live
+  publication ownership, all consumers and full lifecycle validation. No formal
+  Qdrant, sustained capacity, concurrency or native Linux gate is closed.
