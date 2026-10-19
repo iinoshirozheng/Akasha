@@ -919,3 +919,30 @@ integration/example and native Linux gates remain open. Production stays
 
 Verified evidence: **703 text artifacts, 2,718,032 bytes**, SHA-256
 `f2b129cf133ec06161b24121751112fcc0a0437ae68c23ef9c0a28f20eeff713`.
+
+## 2026-10-20: Reprofile deferred-ID with resolved native symbols
+
+The [fresh native-sampling diagnosis](../research/2026-10-20-immutable-point-deferred-profile.md)
+keeps the retained deferred-ID source and native binary unchanged. Four serial
+five-second captures repeat two frozen initial-state queries per mode; eight
+preflight and eight postflight responses preserve IDs/F32 bits/stats. These
+repetitions are diagnostic observations, not new acceptance samples.
+
+Apple's sample output omits some constrained-generic Mojo function names.
+Resolving their PCs against the exact binary's symbol table, with every printed
+offset checked, corrects an initial admission undercount. Current admission
+shares are **8.35%/7.98%**, not the initial **.37%/.60%**. Metadata shares are
+**9.80%/9.78%** versus prior **13.95%/11.88%**. Mapped scoring and authoritative
+pair scoring remain substantial frames; these shares do not establish elapsed
+cost, speedup or equivalent cross-engine work.
+
+Pinned Qdrant sources again confirm filter-before-cap/reusable-score-buffer and
+slice-based dense batch scoring. Next inspect the exact candidate's generated
+mapped-score loops before choosing a bounded-read optimization, retaining score
+bits, authoritative rerank, error precedence and close/bounds ownership checks.
+Do not repeat rejected raw-borrow, copied-buffer or broad-inlining probes.
+
+The last strict mixed result remains **25/36**, production remains `a6822c3`,
+and no M5/M6, quality, warm, concurrency, capacity or native Linux gate closes.
+Verified evidence contains **83 text artifacts, 725,566 bytes**, SHA-256
+`0f5e9346c8af6ddca2487eeebace29293a9e62683cbe6c53c0ddc73e00292aa7`.
