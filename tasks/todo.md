@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新完整 mixed 重跑（2026-10-23）：** 使用者核准 Qdrant real-1536／correlated
+ef=128，其餘參數與嚴格門檻不變；原生 Linux x86_64 依指示暫緩，未列為通過。
+36 workers／10,368 回應，production／保留版本／新候選為 25／26／26 個通過格，
+品質皆 36／36、write＋flush 皆 9／9。兩版 ordinal 邊界讀取皆過 70 項測試，
+但新候選一格改善、一格退步，未採用；正式引擎與保留版本不變。原 ef=96 失敗
+及診斷資料完整保留，不能把不同基準的分數變動當成優化。M5/M6 尚未達標。
+[完整結果與可重播封存](../docs/research/2026-10-23-immutable-point-ordinal-bounds.md)。
+
 **最新兩項複製優化組合（2026-10-14，尚未整合）：** 三個來源檔精確組合前兩候選；
 49 Mojo、13 crash-state、369 Python 通過。54 workers 全完成，查詢與 18 組 cache
 payload 完全一致；九組 flush QPS 改善 10.9–18.5%，p95 全改善。暖速度 23→26/36、

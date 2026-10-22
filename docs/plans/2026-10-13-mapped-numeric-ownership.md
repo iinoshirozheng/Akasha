@@ -1215,3 +1215,35 @@ M5/M6 remain incomplete.
 
 Archive-only replay verifies **2,693 artifacts, 3,291,203 bytes**, SHA-256
 `4ba8a87f063da1ef47df66d787626be1307f80d13660aed8d98bea41ae5aa86d`.
+
+## 2026-10-23: Explicit acceptance decisions
+
+The user authorized exactly one calibration change: Qdrant's
+`real-1536 / correlated` search uses **ef=128** for the next complete comparison,
+instead of 96. Preserve all original plans and failed trials. Create separately
+identified plans and rerun the complete matrix; do not substitute diagnostic
+timings into earlier trials. Every other engine parameter, workload, sample and
+strict per-cell Recall@10 ≥ .95, QPS ≥ Qdrant, p95 ≤ Qdrant requirement is
+unchanged. This is the sole authorized exception to Task 5's frozen-ef rule.
+
+The user also deferred native Linux x86_64 acceptance because no test machine is
+available. Record that environment as **not evaluated, deferred by the user**;
+it is outside the current local acceptance scope and must not be reported as
+passed. Continue all local correctness, performance and sustained-capacity gates.
+
+The [complete rerun and ordinal-read experiment](../research/2026-10-23-immutable-point-ordinal-bounds.md)
+now records **production 25 / retained 26 / candidate 26 of 36** strict mixed
+cells, with all 36 quality cells and nine update-plus-flush comparisons passing
+for each version. The candidate gains one cell and loses another, so neither
+tested ordinal-read version is adopted. Both pass 70 targeted cases; all 10,368
+measured responses in the full four-version matrix retain their expected exact
+IDs/bits/stats/routes. Earlier ef=96 failures and both diagnostic probes remain
+separate. The new score must not be presented as an implementation improvement.
+
+Retained's ten failures include all six uniform-1536 filtered cells and all three
+real-1536 correlated cells. Continue measuring and reducing filtered-search work
+under the established live-admission and deterministic ordering contracts.
+Warm, concurrent and sustained nonresident gates remain open. Production `src`
+is unchanged from `a6822c3`; M5/M6 remain incomplete. Archive-only replay verifies
+737 expanded artifacts, 18,717,248 bytes, SHA-256
+`ac3169d074d8aa528900c0a2554e07fd1642e517531bfc8c8f70bea9d23a158d`.

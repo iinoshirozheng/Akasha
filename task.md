@@ -1,7 +1,14 @@
 # AkashaDB 工作交接入口
 
-更新：2026-10-13。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
-本次在 `main` 的 `a710aa5` 上繼續 profiling，發現並修正 maintenance deadlock
+更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
+目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
+real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
+完整 mixed 重跑為 production 25、保留版本 26、新候選 26／36；品質皆 36／36，
+write＋flush 皆 9／9。新候選一格改善、一格退步，未採用；正式 `src` 不變。
+高維過濾搜尋、完整 warm／concurrent 與 sustained nonresident 仍待完成。
+[最新量測、原始失敗與驗證證據](docs/research/2026-10-23-immutable-point-ordinal-bounds.md)。
+
+2026-10-13 歷史紀錄：在 `main` 的 `a710aa5` 上繼續 profiling，發現並修正 maintenance deadlock
 （`be3be53`）。前次 Git 交付的 push／merge 紀錄屬於 10/02，不能視為本次已 push。
 
 ## 閱讀順序
