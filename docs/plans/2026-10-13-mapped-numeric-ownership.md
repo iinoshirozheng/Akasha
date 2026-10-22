@@ -1247,3 +1247,17 @@ Warm, concurrent and sustained nonresident gates remain open. Production `src`
 is unchanged from `a6822c3`; M5/M6 remain incomplete. Archive-only replay verifies
 737 expanded artifacts, 18,717,248 bytes, SHA-256
 `ac3169d074d8aa528900c0a2554e07fd1642e517531bfc8c8f70bea9d23a158d`.
+
+### 2026-10-23 complete fixed-graph warm and external-client replay
+
+The [local matrix](../research/2026-10-23-immutable-point-local-matrix.md)
+finishes all 54 serial workers: 36/36 quality cells at each boundary, but only
+9/36 strict warm, 8/36 one-client and 12/36 four-client cells. The warm phase
+uses the full original ef grid and each trial's frozen graph; it does not rerun
+index construction. The authorized Qdrant real correlated ef=128 applies, with
+every other selected parameter unchanged. Both engines use the same HTTP shim.
+All 129,024 measured responses are audited; full-grid warm IDs/recalls match
+the frozen reports, and concurrent replies match selected warm IDs/F32 bits.
+Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
+These completed measurements remain failed acceptance gates. The retained
+engine is unchanged; sustained nonresident capacity and M5/M6 remain open.

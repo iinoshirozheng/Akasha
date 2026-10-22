@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新固定圖 warm／外部客戶端矩陣（2026-10-23）：** 54 workers 全完成，
+warm 9／36、1 client 8／36、4 clients 12／36 通過嚴格門檻，品質皆 36／36。
+129,024 筆量測回應、各模式原始時間戳、完整 ef grid 與逐 trial frozen graph
+均保留；獨立封存重播通過。引擎未改，未執行 fresh build 或容量驗收。
+[完整結果與封存](../docs/research/2026-10-23-immutable-point-local-matrix.md)。
+
 **最新完整 mixed 重跑（2026-10-23）：** 使用者核准 Qdrant real-1536／correlated
 ef=128，其餘參數與嚴格門檻不變；原生 Linux x86_64 依指示暫緩，未列為通過。
 36 workers／10,368 回應，production／保留版本／新候選為 25／26／26 個通過格，

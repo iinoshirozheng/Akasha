@@ -5,8 +5,10 @@
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
 完整 mixed 重跑為 production 25、保留版本 26、新候選 26／36；品質皆 36／36，
 write＋flush 皆 9／9。新候選一格改善、一格退步，未採用；正式 `src` 不變。
-高維過濾搜尋、完整 warm／concurrent 與 sustained nonresident 仍待完成。
-[最新量測、原始失敗與驗證證據](docs/research/2026-10-23-immutable-point-ordinal-bounds.md)。
+完整固定圖 warm 重播與外部客戶端矩陣完成：warm 9／36、1 client 8／36、
+4 clients 12／36；品質皆 36／36。129,024 筆量測回應核對與封存重播通過。
+搜尋效能與 sustained nonresident 仍待達標；本輪未重建圖、未改引擎。
+[最新矩陣與驗證證據](docs/research/2026-10-23-immutable-point-local-matrix.md)。
 
 2026-10-13 歷史紀錄：在 `main` 的 `a710aa5` 上繼續 profiling，發現並修正 maintenance deadlock
 （`be3be53`）。前次 Git 交付的 push／merge 紀錄屬於 10/02，不能視為本次已 push。
