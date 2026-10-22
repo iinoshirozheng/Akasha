@@ -1165,3 +1165,27 @@ production remains `a6822c3`, and M5/M6 remain incomplete.
 
 Verified evidence: **64 artifacts, 103,004 bytes**, SHA-256
 `7af7ac40dded50da83b4384f9f1baa8657476e06af921b674c9e3b6660729f8f`.
+
+## 2026-10-22: Existing examples, multiprocess integration and CI smoke quality
+
+The [local integration audit](../research/2026-10-22-immutable-point-example-integration.md)
+passes all **3 runnable Mojo examples**, **10 distributed tests** with **26 native
+identity checks**, and **11 × 4 post-HNSW modes / 528 measured queries**, all with
+final recall 1.0. Six HNSW smoke datasets also report recall 1.0; that original
+program does not assert a threshold. No tests are claimed for the integration
+README or placeholder Python examples.
+
+Two isolated benchmark consumers needed explicit MemTable-owner dereferences.
+The query-stage CLI also used the obsolete v1-only config reader; the repository
+benchmark now uses the same field-catalog loader as the engine. Both retained
+and production builds pass twelve private/public result comparisons after
+reopening separately created current-format databases. Initial compilation,
+runtime and wrapper-assertion failures remain archived.
+
+This closes the existing local example/integration and smoke-quality checks,
+not full adoption. Audit all remaining Mojo consumers next: **262 prior cases
+were a subset**, not the complete **166-module repository suite**. Retained
+engine bytes and production `src` are unchanged; strict mixed is still **21/36**.
+Performance, sustained capacity, native Linux and the remaining M5/M6 gates
+remain open. Archive-only replay verifies **165 artifacts, 153,329 bytes**,
+SHA-256 `005fc5892ea48547182a920ab8f59f1e7bed1c4748e5ad180eb35c9fc421c2e1`.

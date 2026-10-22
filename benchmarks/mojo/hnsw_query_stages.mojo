@@ -2,7 +2,7 @@
 
 from akasha import PersistentCollection
 from akasha.storage.checksum import BorrowedBinaryReader
-from akasha.storage.collection_config import load_collection_config
+from akasha.storage.field_catalog import load_field_catalog
 from akasha.storage.filesystem import read_file_bytes
 from std.sys.arg import argv
 from std.testing import assert_equal, assert_true
@@ -13,7 +13,8 @@ def main() raises:
     var args = argv()
     if len(args) != 4:
         raise Error("usage: hnsw-query-stages DATABASE QUERIES.f32 EF")
-    var config = load_collection_config(args[1])
+    var catalog = load_field_catalog(args[1])
+    var config = catalog.field_at(0).hnsw.value().copy()
     var ef = Int(args[3])
     var bytes = read_file_bytes(args[2])
     if len(bytes) == 0 or len(bytes) % (config.dimension * 4) != 0:
