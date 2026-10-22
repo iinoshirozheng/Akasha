@@ -1137,3 +1137,31 @@ candidate-source compilation in subprocess tests. Retained strict mixed remains
 Archive-only analysis and audit reproduce exactly. Verified evidence: **108
 artifacts, 2,845,584 bytes**, SHA-256
 `fd4dd6bcfa1c3acb9aa6e23157a2362073e597513d9d7ac47b4a677fc26b142b`.
+
+## 2026-10-22: Close retained Python child-compiler source ambiguity
+
+The [child-compiler audit](../research/2026-10-22-immutable-point-child-compiler.md)
+confirms that the previous retained driver checked Python native imports but
+did not redirect repository-source paths in Mojo subprocess tests. An isolated
+wrapper now records and routes those arguments to the unchanged 132-file
+retained candidate, without changing tests or target flags.
+
+The fresh complete suite passes **379 tests / 23 Python modules**. All **15
+suite compiler invocations** are audited: **14 use candidate source**, and one
+is a stdlib-only generic-target probe. Four Python processes verify the native
+identity. An additional relative-include invocation passes six existing owner
+cases; the same candidate-only fixture fails against production because its
+private module is absent. Those replayed cases are not new unique coverage.
+
+The initial direct-Python launch missed Pixi activation and failed to locate
+`std` in 14 tests. Its full failure is retained; the complete rerun under
+`pixi run python` passes. Source/package/native bytes remain unchanged, and the
+archive-only audit reproduces all command routing and outcome checks.
+
+This closes that specific candidate-source validation gap. Existing runnable
+examples/integration, performance, sustained capacity and native Linux gates
+still need their own evidence. Retained strict mixed remains **21/36**;
+production remains `a6822c3`, and M5/M6 remain incomplete.
+
+Verified evidence: **64 artifacts, 103,004 bytes**, SHA-256
+`7af7ac40dded50da83b4384f9f1baa8657476e06af921b674c9e3b6660729f8f`.
