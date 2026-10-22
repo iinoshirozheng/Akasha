@@ -1261,3 +1261,28 @@ the frozen reports, and concurrent replies match selected warm IDs/F32 bits.
 Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
 These completed measurements remain failed acceptance gates. The retained
 engine is unchanged; sustained nonresident capacity and M5/M6 remain open.
+
+### 2026-10-23 scoped mapped adjacency candidate
+
+The [synchronous adjacency gather](../research/2026-10-23-immutable-point-neighbor-gather.md)
+changes three source files and follows Qdrant's bounded adjacency iteration.
+It keeps target slot/level checks, first-error/partial-output order and live
+visited semantics; only copied IDs leave the mapping borrow. No ownership,
+format, score or ef change is introduced.
+
+104 targeted cases pass, plus fresh candidate comparisons against 98 existing
+pinned Rust search fixtures and 24 build fixtures / 2,467 adjacency rows.
+Both mixed screen orders improve all nine ANN modes in QPS and p95. The full
+mixed quartet improves retained 21/36 to candidate 26/36, without pass-to-fail;
+all quality and combined write/flush comparisons pass. Full fixed-graph warm
+improves 11/36 to 12/36 but includes uniform-128 selective trial 0 pass-to-fail.
+That exact path does not call the changed gather, but the timing cause remains
+unresolved and the failed gate is retained.
+
+Across both screens and complete mixed/warm comparisons, all 96 workers and
+127,488 measured replies preserve expected IDs/F32 bits/stats/routes. Keep the
+candidate isolated for follow-up and proportionate broader validation; do not
+claim production adoption or M5/M6 completion. Current source/binary identities,
+all failures and independent replay are frozen with the report. External-client,
+sustained-capacity and final performance acceptance remain open; native Linux
+remains explicitly deferred by the user.

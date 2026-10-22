@@ -3,12 +3,13 @@
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
 目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
-完整 mixed 重跑為 production 25、保留版本 26、新候選 26／36；品質皆 36／36，
-write＋flush 皆 9／9。新候選一格改善、一格退步，未採用；正式 `src` 不變。
-完整固定圖 warm 重播與外部客戶端矩陣完成：warm 9／36、1 client 8／36、
-4 clients 12／36；品質皆 36／36。129,024 筆量測回應核對與封存重播通過。
-搜尋效能與 sustained nonresident 仍待達標；本輪未重建圖、未改引擎。
-[最新矩陣與驗證證據](docs/research/2026-10-23-immutable-point-local-matrix.md)。
+最新同步鄰接遍歷候選：同批完整 mixed 保留版本 21 → 候選 26／36，無 pass→fail；
+完整固定圖 warm 11 → 12／36，含一個 selective exact pass→fail。品質皆 36／36，
+mixed write＋flush 皆 9／9。104 項相關測試、98 組搜尋與 24 組建圖 oracle 通過。
+96 workers／127,488 筆量測回應保持預期結果、F32 bits、stats 與路徑一致。
+保留隔離候選繼續診斷，正式 `src` 不變；外部客戶端、容量與整體驗收仍待完成。
+[最新實作、全部對照與證據](docs/research/2026-10-23-immutable-point-neighbor-gather.md)。
+前一版完整客戶端矩陣為 1 client 8／36、4 clients 12／36；不能當成新候選驗收。
 
 2026-10-13 歷史紀錄：在 `main` 的 `a710aa5` 上繼續 profiling，發現並修正 maintenance deadlock
 （`be3be53`）。前次 Git 交付的 push／merge 紀錄屬於 10/02，不能視為本次已 push。
