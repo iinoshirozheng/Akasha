@@ -1042,3 +1042,28 @@ driver was confirmed terminal; no timed work was restarted.
 
 Verified evidence: **542 text artifacts, 2,161,696 bytes**, SHA-256
 `459372123f84619a4a571b7aacb77784ca4b850160f78081d9c4cc94796fab1f`.
+
+## 2026-10-22: Reject Qdrant's identity-store compaction guard
+
+The [stable-compaction experiment](../research/2026-10-22-immutable-point-stable-compaction.md)
+copies the pinned Qdrant `Rest::Discard` rule: write a retained candidate only
+when its position changes. One source file changes; filtering/check order,
+visited semantics, rejection counters, caps and all scoring remain unchanged.
+The source review also confirms that ordinary Qdrant traversal rechecks rejected
+points; it does not justify adding rejection memoization to Akasha.
+
+The candidate passes **64 CPU cases / seven modules**, all **3,456 timed
+responses, 12 exact reopens and 12 retained leases**. Thirty-six warmup returns
+are not compared. Disassembly confirms the conditional store, and an archive-only
+replay independently reproduces every reported QPS/p95 ratio and median.
+
+Uniform-1536 independent QPS declines in both orders (**.9091 / .9968**), as do
+both uniform-128 filtered QPS values. The untouched selective controls also vary;
+all observations are retained without causal attribution or exclusion.
+**Reject this candidate; keep deferred-ID.** Next inspect the complete
+scorer/admission call boundary and repeated state passing against Qdrant batch
+checks, retaining cancellation, stats and first-error behavior.
+
+Production remains `a6822c3`; strict mixed remains **25/36**, with all existing
+M5/M6 requirements open. Verified evidence: **276 artifacts, 1,025,038 bytes**,
+SHA-256 `6a17a62d7b5680d054fafd5005a365d441e1b31bb252f4b7ecbf0a66927e7277`.
