@@ -1105,3 +1105,35 @@ integration/example and native Linux gates remain open. Production stays
 Archive-only replay independently reproduces both raw-result audits. Verified
 evidence: **417 artifacts, 2,679,540 bytes**, SHA-256
 `5f35728b900cad7cc986060e9cf931d93c3e662773ce0b97f1efd7969ba21704`.
+
+## 2026-10-22: Full mixed profiles do not reproduce the filtered regression
+
+The [complete-plan profiling diagnosis](../research/2026-10-22-immutable-point-full-mixed-profile.md)
+captures both unchanged binaries in both orders, eight fresh-clone plans per
+capture. All **9,216 responses, 32 reopens and 32 leases** pass. An additional
+four fresh unsampled single-plan controls pass **1,152 responses, four reopens
+and four leases**. The combined 108 warmup returns are not compared.
+
+Every full plan finishes within the sampling window. The analyzer resolves
+**4,674 non-stub native frame records** with PC/offset checks and conserves each
+thread's exclusive counts. Initial parser failures for other truncated generic
+names and alternate explicit main-thread labels are recorded and corrected
+without restarting workers. Visible mapped filtered-search ancestry is useful;
+inlining/tail calls prevent claiming exhaustive base/delta/rerank phase costs.
+
+The previous **7–10% filtered CPU regression does not reproduce**. Sampled
+candidate/retained filtered CPU ratios are **.9760/.9775** and **.9815/.9783**;
+fresh unsampled single-plan ratios are **.9648/.9634** and **.9959/.9867**. The
+unsampled worker/module are byte-identical to the prior diagnostic. This neither
+explains the earlier failure nor invalidates it. Keep both datasets and the
+static-source rejection; no candidate is adopted from these observations.
+
+Before more local performance edits, establish a reproducible failing execution
+under controlled conditions. Continue the independent adoption audit, including
+all child compiler include paths: Python native import identity does not prove
+candidate-source compilation in subprocess tests. Retained strict mixed remains
+**21/36**, production stays `a6822c3`, and all original M5/M6 gates remain open.
+
+Archive-only analysis and audit reproduce exactly. Verified evidence: **108
+artifacts, 2,845,584 bytes**, SHA-256
+`fd4dd6bcfa1c3acb9aa6e23157a2362073e597513d9d7ac47b4a677fc26b142b`.
