@@ -1010,3 +1010,35 @@ Production remains `a6822c3`, strict mixed remains **25/36**, and all unresolved
 quality, warm, concurrency, capacity, integration/example and native Linux gates
 remain required for M5/M6 completion. Both linked reports include complete
 verified archives and reproduction scripts.
+
+## 2026-10-22: Reject non-raising current predicates in both code shapes
+
+The [bounded current-predicate experiment](../research/2026-10-22-immutable-point-current-predicate.md)
+compares a private non-raising mapped-byte predicate with retained deferred-ID,
+then adds one explicit `@no_inline` control. Both final sources preserve early
+open/slot checks, byte bounds and exact flag equality; neither substitutes live
+counts or source membership for actual current flags.
+
+Each variant passes the same **89 CPU cases / 12 modules**. Across both screens,
+all **6,912 timed responses, 24 exact reopens and 24 retained leases** pass.
+Seventy-two warmup returns are not compared. All raw-latency QPS/p95 summaries
+and medians independently reproduce, including from the archive alone.
+
+The automatic variant inlines `is_current` and regresses both uniform-1536
+filtered targets in both execution orders. The outlined function shrinks from
+95 to 23 total instructions, removes its 144-byte frame and all calls, and
+preserves a call from the inspected scorer. Nevertheless, reverse-order target
+p95 ratios are **1.0657 / 1.0485**, with other control regressions retained.
+Removing this error path is not a stable end-to-end improvement. **Reject both
+variants; deferred-ID remains the parent.**
+
+Next inspect repeated admission checks against Qdrant query-local filtering,
+preserving stats, cancellation/error precedence and current-source semantics.
+Do not repeat these predicates, copied node metadata or base-level skipping
+without new evidence. Production remains `a6822c3`, strict mixed remains
+**25/36**, and every outstanding quality, warm, concurrency, sustained capacity,
+integration/example and native Linux requirement remains open. The resumed
+driver was confirmed terminal; no timed work was restarted.
+
+Verified evidence: **542 text artifacts, 2,161,696 bytes**, SHA-256
+`459372123f84619a4a571b7aacb77784ca4b850160f78081d9c4cc94796fab1f`.
