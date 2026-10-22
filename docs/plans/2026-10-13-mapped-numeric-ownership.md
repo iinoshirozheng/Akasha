@@ -1287,6 +1287,13 @@ nonresident capacity remain open. The authorized Qdrant ef=128 exception is
 unchanged. Native Linux remains deferred. Earlier rejected stateless byte-proof
 results below remain valid; cross-query proof reuse is a different design.
 
+The [selective follow-up](../research/2026-10-23-immutable-point-certificate-selective.md)
+uses eight serial workers and 8,192 measured responses before/after ANN priming.
+It does not consistently reproduce the low-dimensional slowdown; individual
+regressions remain visible. The driver differs from full warm report allocation
+and serialization, so no causal explanation or revised acceptance follows.
+Keep the formal failure and isolate those conditions before changing exact code.
+
 ### 2026-10-23 score reuse feasibility
 
 The [score-reuse diagnostic](../research/2026-10-23-immutable-point-score-reuse-proof.md)

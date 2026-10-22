@@ -14,6 +14,9 @@ mixed write＋flush 皆 9／9；135 項相關測試與 84 workers／124,416 筆�
 完整稽核通過。保留所有失敗，正式來源未改；real correlated、低維 selective、
 client、容量與更廣整合驗證仍待完成，M5/M6 未完成。
 [實作、原始結果與獨立封存稽核](../docs/research/2026-10-23-immutable-point-score-certificate.md)。
+後續 [selective 診斷](../docs/research/2026-10-23-immutable-point-certificate-selective.md)：
+8 workers／8,192 筆量測，在 ANN 前後均未重現一致退步；仍有個別退步，不解釋或
+覆蓋正式失敗。driver 報表序列化等執行條件尚待隔離，來源與驗收結果不變。
 
 **前次重排診斷（2026-10-23）：** 逐 byte 核對後重用圖分數的 48 組配對皆退步，
 耗時中位數為重算的 1.38–1.68 倍。paired SIMD 範圍檢查簡化雖改善 128 維，

@@ -10,6 +10,9 @@ real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
 驗證相同不可變 owner，安全重用已證明相等的 F32 Dot/L2 圖分數；不延長映射檔壽命。
 保留此隔離候選；正式 `src` 不變，real correlated、低維 selective 與其他未達標項目
 仍需處理。[最新實作與完整證據](docs/research/2026-10-23-immutable-point-score-certificate.md)。
+後續 selective 診斷：8 workers／8,192 筆量測，在 ANN 前後均未重現一致退步；
+個別退步與正式失敗仍保留。此診斷未重現完整 driver 的逐格報表序列化，原因尚未
+確定，不改引擎或驗收結果。[完整補充診斷](docs/research/2026-10-23-immutable-point-certificate-selective.md)。
 前次診斷排除兩條路徑：逐 byte 核對後重用分數耗時為重算的 1.38–1.68 倍；
 paired SIMD 範圍檢查簡化在 1536 維沒有穩定收益。22 項相關案例通過，
 原始量測與失敗紀錄已封存，兩者皆未採用，正式及保留候選不變。
