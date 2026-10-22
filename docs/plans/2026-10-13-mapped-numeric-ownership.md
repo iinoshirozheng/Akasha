@@ -1262,6 +1262,18 @@ Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
 These completed measurements remain failed acceptance gates. The retained
 engine is unchanged; sustained nonresident capacity and M5/M6 remain open.
 
+### 2026-10-23 score reuse feasibility
+
+The [score-reuse diagnostic](../research/2026-10-23-immutable-point-score-reuse-proof.md)
+rejects per-query exact byte comparison before reusing graph scores: all 48
+paired cases regress, with median time ratios 1.38–1.68. A separate scoped
+authoritative pair-kernel probe improves 128D synthetic cases but not 1536D
+consistently. It passes 22 relevant cases; six paired workers retain every raw
+observation. Neither implementation is integrated. Complete evidence and an
+archive-only audit preserve both decisions and setup failures. Continue from
+the adjacency candidate below; no acceptance gate changes. Avoid repeating a
+full byte-scan proof or treating pointer/sequence identity as value identity.
+
 ### 2026-10-23 scoped mapped adjacency candidate
 
 The [synchronous adjacency gather](../research/2026-10-23-immutable-point-neighbor-gather.md)

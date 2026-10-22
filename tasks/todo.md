@@ -6,6 +6,12 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新重排診斷（2026-10-23）：** 逐 byte 核對後重用圖分數的 48 組配對皆退步，
+耗時中位數為重算的 1.38–1.68 倍。paired SIMD 範圍檢查簡化雖改善 128 維，
+1536 維三輪無穩定收益；22 項相關測試通過。兩方案不採用，保留鄰接候選與正式
+來源不變；未重跑正式矩陣、未關閉任何 gate。
+[完整診斷與封存](../docs/research/2026-10-23-immutable-point-score-reuse-proof.md)。
+
 **最新同步鄰接遍歷候選（2026-10-23）：** 參考 Qdrant bounded adjacency iterator，
 將 mapped 遍歷收進同步複製操作，保留 slot／level bounds、first error 與 visited 順序。
 104 項相關 Mojo、98 搜尋 fixtures 與 24 建圖 fixtures／2,467 adjacency rows 通過。
