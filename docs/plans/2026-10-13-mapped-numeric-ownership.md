@@ -1067,3 +1067,41 @@ checks, retaining cancellation, stats and first-error behavior.
 Production remains `a6822c3`; strict mixed remains **25/36**, with all existing
 M5/M6 requirements open. Verified evidence: **276 artifacts, 1,025,038 bytes**,
 SHA-256 `6a17a62d7b5680d054fafd5005a365d441e1b31bb252f4b7ecbf0a66927e7277`.
+
+## 2026-10-22: Reject compile-time source admission after full comparison
+
+The [static-source experiment](../research/2026-10-22-immutable-point-static-source.md)
+specializes the existing fixed base/delta selector while preserving raising
+checks, error order and live shared-state semantics. It changes one source file
+from retained deferred-ID and passes **67 CPU cases / eight modules**. The
+admission callee shrinks **225 → 165 instructions**, but its explicit `0x870`
+stack reservation remains; the inspected scorer grows **1,000 → 1,043**.
+
+Both orders of the initial screen improve the high-dimensional filtered modes.
+The fresh full comparison instead regresses correlated/independent QPS in
+**all three trials**, by roughly **6–8%**. Production/retained/candidate strict
+counts are **20/21/22 of 36**, with no pass-to-fail cells. The additional passing
+cell does not justify these target regressions. **Reject the candidate and
+retain deferred-ID.** Its latest count is now **21/36**, with **12 speed and
+three quality failures**; the previous **25/36** is historical, not current.
+Quality remains **33/36** and write/flush **9/9** for all three implementations.
+
+All **11,232 Akasha responses** across the screen/full comparison match exactly;
+the protocols contain **13,824 total timed responses, 48 reopens and 39 leases**.
+The 144 warmup returns are not compared. A separate four-worker full-plan CPU
+diagnosis passes **1,152 responses, four reopens and four leases**, with another
+12 warmup returns not compared. It reproduces a **7–10% calling-thread CPU
+increase** in the filtered targets. Zero reported per-query major faults does
+not exclude cache, paging or other memory effects; global VM activity and the
+post-run host observation remain separate, without causal attribution.
+
+Next profile the complete frozen mixed workload on these exact unchanged
+binaries to locate the additional CPU cost. Do not infer elapsed gains from
+static instruction counts or repeat small scorer/admission changes without new
+evidence. All original M5/M6 quality, warm, concurrency, sustained capacity,
+integration/example and native Linux gates remain open. Production stays
+`a6822c3`; no ef, tolerance, workload or sample selection changes.
+
+Archive-only replay independently reproduces both raw-result audits. Verified
+evidence: **417 artifacts, 2,679,540 bytes**, SHA-256
+`5f35728b900cad7cc986060e9cf931d93c3e662773ce0b97f1efd7969ba21704`.
