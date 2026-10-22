@@ -1189,3 +1189,29 @@ engine bytes and production `src` are unchanged; strict mixed is still **21/36**
 Performance, sustained capacity, native Linux and the remaining M5/M6 gates
 remain open. Archive-only replay verifies **165 artifacts, 153,329 bytes**,
 SHA-256 `005fc5892ea48547182a920ab8f59f1e7bed1c4748e5ad180eb35c9fc421c2e1`.
+
+## 2026-10-22: Complete repository Mojo CPU coverage
+
+The [complete CPU audit](../research/2026-10-22-immutable-point-full-cpu.md)
+now covers **166 modules / 1,095 tests**, with zero final failures or skips:
+**138 modules / 885 tests freshly executed**, plus **28 modules / 210 tests**
+reused only after verifying unchanged archived source and successful logs.
+The original test function names and counts are checked for every module.
+
+Three additional private callers needed adaptation: checkpoint retention must
+outlive the writer lock, and two HNSW oracle callers must pass numeric readers.
+Two differently named owner-aware fixtures also needed mapping back to their
+repository module names. Their six cases had already passed and are not new
+unique coverage. All initial runner, compile and immediate-deletion assertion
+failures remain archived. Each fresh module executes in a separate process;
+the file-lease child-reader protocol is preserved without adding runner args.
+
+This completes the local full Mojo CPU validation requirement for the unchanged
+retained engine, alongside the existing Python, crash, C ABI, examples and
+multiprocess results. Production `src` is unchanged from `a6822c3`. The latest
+strict mixed count remains **21/36**; no performance, sustained-capacity,
+native-Linux or actual-device GPU gate is inferred from CPU correctness.
+M5/M6 remain incomplete.
+
+Archive-only replay verifies **2,693 artifacts, 3,291,203 bytes**, SHA-256
+`4ba8a87f063da1ef47df66d787626be1307f80d13660aed8d98bea41ae5aa86d`.
