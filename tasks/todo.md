@@ -6,7 +6,16 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
-**最新重排診斷（2026-10-23）：** 逐 byte 核對後重用圖分數的 48 組配對皆退步，
+**最新分數證明候選（2026-10-23，隔離保留）：** 利用標準庫 WeakPointer 驗證
+不可變向量 owner，初次核對 bytes／finite 後重用 F32 Dot/L2 圖分數，不延長向量
+或映射檔生命週期。同批完整 mixed 24 → 28／36，無 pass→fail；完整固定圖 warm
+12 → 12／36，一格改善、一格 uniform-128 selective 退步。品質皆 36／36，
+mixed write＋flush 皆 9／9；135 項相關測試與 84 workers／124,416 筆量測回應
+完整稽核通過。保留所有失敗，正式來源未改；real correlated、低維 selective、
+client、容量與更廣整合驗證仍待完成，M5/M6 未完成。
+[實作、原始結果與獨立封存稽核](../docs/research/2026-10-23-immutable-point-score-certificate.md)。
+
+**前次重排診斷（2026-10-23）：** 逐 byte 核對後重用圖分數的 48 組配對皆退步，
 耗時中位數為重算的 1.38–1.68 倍。paired SIMD 範圍檢查簡化雖改善 128 維，
 1536 維三輪無穩定收益；22 項相關測試通過。兩方案不採用，保留鄰接候選與正式
 來源不變；未重跑正式矩陣、未關閉任何 gate。

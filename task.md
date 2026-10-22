@@ -3,11 +3,18 @@
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
 目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
-最新診斷排除兩條路徑：逐 byte 核對後重用分數耗時為重算的 1.38–1.68 倍；
+最新 immutable-value 分數證明候選：同批完整 mixed 保留版本 24 → 候選 28／36，
+無 pass→fail；完整固定圖 warm 12 → 12／36，一格改善、一格 selective 退步。
+品質皆 36／36，mixed write＋flush 皆 9／9。135 項相關案例通過，84 workers／
+124,416 筆量測回應保持 IDs／F32 bits／stats／路徑一致。利用標準庫 WeakPointer
+驗證相同不可變 owner，安全重用已證明相等的 F32 Dot/L2 圖分數；不延長映射檔壽命。
+保留此隔離候選；正式 `src` 不變，real correlated、低維 selective 與其他未達標項目
+仍需處理。[最新實作與完整證據](docs/research/2026-10-23-immutable-point-score-certificate.md)。
+前次診斷排除兩條路徑：逐 byte 核對後重用分數耗時為重算的 1.38–1.68 倍；
 paired SIMD 範圍檢查簡化在 1536 維沒有穩定收益。22 項相關案例通過，
 原始量測與失敗紀錄已封存，兩者皆未採用，正式及保留候選不變。
 [診斷與決策](docs/research/2026-10-23-immutable-point-score-reuse-proof.md)。
-最新同步鄰接遍歷候選：同批完整 mixed 保留版本 21 → 候選 26／36，無 pass→fail；
+前一版同步鄰接遍歷候選：同批完整 mixed 保留版本 21 → 候選 26／36，無 pass→fail；
 完整固定圖 warm 11 → 12／36，含一個 selective exact pass→fail。品質皆 36／36，
 mixed write＋flush 皆 9／9。104 項相關測試、98 組搜尋與 24 組建圖 oracle 通過。
 96 workers／127,488 筆量測回應保持預期結果、F32 bits、stats 與路徑一致。

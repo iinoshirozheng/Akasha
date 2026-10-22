@@ -1262,6 +1262,31 @@ Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
 These completed measurements remain failed acceptance gates. The retained
 engine is unchanged; sustained nonresident capacity and M5/M6 remain open.
 
+### 2026-10-23 weak immutable-value score certificates
+
+The [score-certificate candidate](../research/2026-10-23-immutable-point-score-certificate.md)
+uses Mojo 1.0's existing WeakPointer to recognize the same live immutable vector
+owner after an initial bounded byte/finite proof. Only proven F32 Dot/L2 base
+pairs reuse scores carried through the same query. Weak certificates retain
+neither vector payloads nor mapped files. Replacements, expired owners and base
+source changes require a new proof; query scores are never cached across queries.
+
+135 targeted cases pass, including same-sequence replacements, nonfinite error
+precedence, owner exchange and mapped-file reclamation. The same-batch full
+mixed comparison improves prior 24/36 to candidate 28/36 without pass-to-fail.
+Full fixed-graph warm stays 12/36: one uniform-1536 independent gain and one
+uniform-128 selective loss. Both quality matrices pass all 36 cells; mixed
+write-plus-flush passes all nine. Across 84 serial workers, 124,416 measured
+replies preserve IDs/F32 bits/stats/routes. The complete raw evidence and all
+failures are independently reproducible from the text archive.
+
+Keep the isolated candidate for follow-up, without production adoption or a
+full-acceptance claim. Diagnose the low-dimensional selective slowdown and
+remaining real correlated cost; broader integration, clients and sustained
+nonresident capacity remain open. The authorized Qdrant ef=128 exception is
+unchanged. Native Linux remains deferred. Earlier rejected stateless byte-proof
+results below remain valid; cross-query proof reuse is a different design.
+
 ### 2026-10-23 score reuse feasibility
 
 The [score-reuse diagnostic](../research/2026-10-23-immutable-point-score-reuse-proof.md)
