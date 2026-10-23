@@ -1,0 +1,41 @@
+{
+  "main_before_cleanup": "f528aff4d842e2a86f784828417f1dddaa1da9f4",
+  "local_branches_removed": [
+    "feat/qdrant-alignment",
+    "feat/48-bounded-generation-head"
+  ],
+  "worktrees_removed": [
+    "/Users/ray/Projects/Akasha/.worktrees/qdrant-alignment"
+  ],
+  "generated_paths_removed": [
+    ".pytest_cache",
+    "tools/__pycache__",
+    "python/akashadb/__pycache__",
+    "python/akashadb/distributed/__pycache__",
+    "tests/python/__pycache__",
+    "tests/distributed/__pycache__",
+    "examples/__pycache__",
+    "benchmarks/__pycache__",
+    "benchmarks/competitors/__pycache__",
+    "apps/__pycache__",
+    "apps/server/__pycache__",
+    "apps/server/routes/__pycache__",
+    "apps/cli/__pycache__",
+    "python/akashadb/_kernel.so",
+    ".pixi/task-cache-v0",
+    ".build"
+  ],
+  "temporary_entries_removed": 3795,
+  "docker_containers_removed": 344,
+  "docker_volumes_removed": [
+    "akasha-first-flush-20261019",
+    "akasha-immutable-point-20261020",
+    "akasha-m5-memory-20261013",
+    "akasha-mapped-cache-20261019"
+  ],
+  "remote_mutations": false,
+  "remaining_local_branches": [
+    "main"
+  ],
+  "remaining_worktrees": "worktree /Users/ray/Projects/Akasha\nHEAD f528aff4d842e2a86f784828417f1dddaa1da9f4\nbranch refs/heads/main"
+}

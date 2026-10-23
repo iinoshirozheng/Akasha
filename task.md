@@ -1,12 +1,12 @@
 # AkashaDB 工作入口
 
 **2026-10-23 使用者暫停效能優化，改為合併分支與清理。**
-當前整合目標為 `main`；下方「下一步」與工作樹路徑是歷史紀錄，暫不執行。
+目前僅保留本機 `main` 分支與主工作樹；下方「下一步」與舊路徑是歷史紀錄，暫不執行。
 M5/M6 尚未達標，原生 Linux x86_64 驗收仍依指示暫緩。
 最後未提交原型與原主工作樹研究檔已封存，見 [暫停工作快照](docs/research/2026-10-23-paused-work-snapshot.md)。
 
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
-目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
+以下為暫停前 `feat/qdrant-alignment` 的工作紀錄；使用者核准僅將 Qdrant 的
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
 最新九組固定圖計分量診斷完成：扣除 base 分數重用，real correlated 仍多算約 33%，
 real independent 多約 11%。54 workers／24,120 筆引擎回應完整留存並核對；

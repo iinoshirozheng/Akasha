@@ -68,9 +68,21 @@ source/test hashes, native artifact hashes and cleanup inventory are preserved i
 were read back and verified against `MANIFEST.json` before cleanup. Archive SHA-256:
 `fdb0bd92f350f9c727d6a1def553281c1ee5c2d88f6c7891ec005023b53372d1`.
 
-The guarded cleanup runs after this validated merge is committed. It removes only
-merged local branches, the extra worktree, generated project build/test files,
-project-specific temporary entries, and the stopped Akasha benchmark containers
-and their four dedicated volumes. Installed dependencies, reference checkouts,
-committed evidence, Git history and remote refs are preserved. Final cleanup
-counts are recorded separately after execution.
+Merge commit: `f528aff4d842e2a86f784828417f1dddaa1da9f4`, with parents `d3b8bdd`
+and `8241450`. Every original branch head is an ancestor of main.
+
+Cleanup completed after the validated merge was committed:
+
+- Removed both merged local feature branches and the extra worktree. Only `main`
+  and `/Users/ray/Projects/Akasha` remain locally.
+- Removed both build trees, project bytecode/test caches, Pixi task cache and the
+  generated Python native library. Installed dependencies and reference checkouts
+  remain available; generated artifacts can be rebuilt with the project tasks.
+- Removed 3,795 project temporary entries, 344 stopped Akasha test containers and
+  their four dedicated volumes. No Akasha container or volume remains.
+- Current source and all 50 selected test-module hashes still match the successful
+  validation. Project cache/worktree/temp checks passed after removal.
+
+[Cleanup record](2026-10-23-cleanup.json) contains the exact scope and counts.
+Committed evidence and Git history are retained. No push, remote branch deletion,
+new benchmark run or resumption of the paused optimization goal occurred.
