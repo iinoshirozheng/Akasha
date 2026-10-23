@@ -3,6 +3,12 @@
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
 目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
+最新 List.shrink 實驗未採用：同批完整 mixed 29 → 32／36，無 pass→fail；
+完整 warm 11 → 10／36，兩格改善、三格 selective 退步。135 項相關測試及
+124,416 筆量測回應通過。完整 driver 的 GC 診斷另核對 12,288 筆，發現雙方
+相同查詢的回收尖峰，但 p95 查詢沒有 GC，仍不能解釋正式失敗。四次原生取樣與
+九份圖檔對齊檢查已封存；正式引擎與下述 weak-certificate 保留候選均不變。
+[最新取樣、實驗與完整證據](docs/research/2026-10-23-immutable-point-list-shrink.md)。
 最新 immutable-value 分數證明候選：同批完整 mixed 保留版本 24 → 候選 28／36，
 無 pass→fail；完整固定圖 warm 12 → 12／36，一格改善、一格 selective 退步。
 品質皆 36／36，mixed write＋flush 皆 9／9。135 項相關案例通過，84 workers／

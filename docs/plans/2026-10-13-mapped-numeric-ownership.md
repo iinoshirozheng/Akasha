@@ -1262,6 +1262,27 @@ Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
 These completed measurements remain failed acceptance gates. The retained
 engine is unchanged; sustained nonresident capacity and M5/M6 remain open.
 
+### 2026-10-23 native profile, bulk truncation and selective GC
+
+The [List.shrink experiment](../research/2026-10-23-immutable-point-list-shrink.md)
+profiles all 64 frozen real-correlated queries in four serial captures, then
+tests Qdrant-style one-call truncation using the installed standard-library API.
+One function changes. All 135 relevant cases and 124,416 measured responses
+pass; same-batch mixed improves 29/36 to 32/36 without pass-to-fail. Full warm
+instead drops 11/36 to 10/36, with two gains and three prior selective losses.
+Do not adopt or advance this candidate; retain the weak-certificate parent.
+
+A complete-driver GC diagnostic audits another 12,288 responses. Both binaries
+collect generation 0 at selective ef10 ordinal24, producing a shared 103–112 us
+pause. The p95-determining queries have no GC, and instrumented paired timings
+do not reproduce a stable candidate regression. This does not explain or excuse
+the original failure. No sample is excluded or GC disabled. All nine frozen
+graph vector sections already start on a 64-byte boundary, so a format-alignment
+rewrite is also unjustified for these inputs. Preserve all evidence; investigate
+selective native/wrapper phase costs and remaining real-correlated scoring.
+Current thresholds, authorized ef selection, native-Linux deferral and all open
+integration/client/capacity gates remain unchanged.
+
 ### 2026-10-23 weak immutable-value score certificates
 
 The [score-certificate candidate](../research/2026-10-23-immutable-point-score-certificate.md)

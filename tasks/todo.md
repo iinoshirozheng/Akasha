@@ -6,6 +6,15 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新清單截斷實驗（2026-10-23，未採用）：** 原生取樣完整 64 筆 real correlated
+查詢，對照 Qdrant truncate 與 Mojo 1.0 List.shrink，單一函式移除逐筆 pop。
+135 項案例、84 workers／124,416 筆量測回應通過；同批 mixed 29 → 32／36
+且無 pass→fail，但 warm 11 → 10／36，兩格改善、三格 selective 退步。
+完整 driver GC 診斷另核對 12,288 筆：雙方同一查詢有回收尖峰，p95 查詢無 GC；
+仍未解釋正式失敗，不排除樣本。九份 frozen 圖向量已對齊 64 bytes，排除不必要的
+格式對齊改寫。保留 weak-certificate parent，正式來源不變，M5/M6 未完成。
+[完整原始資料、決策與獨立稽核](../docs/research/2026-10-23-immutable-point-list-shrink.md)。
+
 **最新分數證明候選（2026-10-23，隔離保留）：** 利用標準庫 WeakPointer 驗證
 不可變向量 owner，初次核對 bytes／finite 後重用 F32 Dot/L2 圖分數，不延長向量
 或映射檔生命週期。同批完整 mixed 24 → 28／36，無 pass→fail；完整固定圖 warm
