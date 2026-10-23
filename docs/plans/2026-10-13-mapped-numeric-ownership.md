@@ -1262,6 +1262,24 @@ Archive-only replay verifies 317 artifacts and reproduces the audit exactly.
 These completed measurements remain failed acceptance gates. The retained
 engine is unchanged; sustained nonresident capacity and M5/M6 remain open.
 
+### 2026-10-23 actual score work after weak certificates
+
+The [fixed-graph work audit](../research/2026-10-23-immutable-point-work-audit.md)
+replays all nine graph pairs twice, with 54 successful workers and complete
+native/wheel bit checks. The retained hot Dot kernels already emit NEON FMA.
+After subtracting actual reused base scores, real correlated still performs
+32.6–33.0% more metric evaluations than Qdrant. Real independent performs
+10.8–11.1% more, including 128 duplicate delta evaluations per query. The
+correlated delta admission path scores nothing until its one authority pass;
+those 204.75 mean delta evaluations cannot be removed as duplicate work.
+
+Next extend the established immutable-owner score proof only to already-scored
+delta candidates. Carry scores within the same query, handle graph promotion,
+replacement/expiry and unsupported scalar/metric paths, preserve first-error
+and partial-stat order, and screen before full fixed warm/mixed acceptance.
+This cannot by itself close real correlated. No new timing or production
+adoption is claimed; all gates, frozen ef choices and Linux deferral persist.
+
 ### 2026-10-23 native profile, bulk truncation and selective GC
 
 The [List.shrink experiment](../research/2026-10-23-immutable-point-list-shrink.md)

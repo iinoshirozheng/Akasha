@@ -6,6 +6,14 @@
 [完整交付計畫](../docs/plans/2026-09-30-complete-single-node.md)。狀態須附實際驗證證據。
 路徑皆相對 repository root。每個工作包獨立提交，不把不同語意改動混成一筆。
 
+**最新實際計分量診斷（2026-10-23）：** 九組固定圖各重跑兩次；54 workers、
+4,824 筆 Akasha 與兩種 Qdrant 各 9,648 筆回應核對通過。扣除 base 分數重用後，
+real correlated 仍比 Qdrant 多算 32.6–33.0%；real independent 多 10.8–11.1%，
+其中每筆 128 個 delta 分數可進一步研究安全重用。correlated 的 delta 已只算一次，
+不能套用相同省工假設。目前熱點機器碼已有 FMA，未改算術或 ef。正式與保留候選
+均不變，未新增速度驗收；下一步做 scored delta 的 immutable-owner 證明與固定矩陣。
+[完整計數、來源、驗證與限制](../docs/research/2026-10-23-immutable-point-work-audit.md)。
+
 **最新清單截斷實驗（2026-10-23，未採用）：** 原生取樣完整 64 筆 real correlated
 查詢，對照 Qdrant truncate 與 Mojo 1.0 List.shrink，單一函式移除逐筆 pop。
 135 項案例、84 workers／124,416 筆量測回應通過；同批 mixed 29 → 32／36

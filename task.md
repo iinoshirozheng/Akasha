@@ -3,6 +3,12 @@
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
 目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
 real-1536／correlated ef 改為 128，並暫緩原生 Linux x86_64 驗收。
+最新九組固定圖計分量診斷完成：扣除 base 分數重用，real correlated 仍多算約 33%，
+real independent 多約 11%。54 workers／24,120 筆引擎回應完整留存並核對；
+4,824 個 Qdrant exact 計數控制通過。現有熱點已用 NEON FMA；下一步針對
+real independent 每次 128 個重複 delta 計分擴充分數證明。correlated 的 delta
+已只算一次，需另行處理遍歷成本。本輪沒有引擎優化或速度驗收，所有失敗仍保留。
+[最新計分量與機器碼證據](docs/research/2026-10-23-immutable-point-work-audit.md)。
 最新 List.shrink 實驗未採用：同批完整 mixed 29 → 32／36，無 pass→fail；
 完整 warm 11 → 10／36，兩格改善、三格 selective 退步。135 項相關測試及
 124,416 筆量測回應通過。完整 driver 的 GC 診斷另核對 12,288 筆，發現雙方
