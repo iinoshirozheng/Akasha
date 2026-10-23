@@ -27,8 +27,10 @@ from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
+from akasha.storage.field_hnsw_cache import publish_field_hnsw_cache_best_effort
 from std.memory import ArcPointer
 from std.time import sleep
+from std.utils import BlockingSpinLock
 
 
 comptime HEAD_MAX_POINTS = 1024
@@ -74,12 +76,18 @@ struct ReadRun(Movable):
 
     var memtable: MemTable
     var index: Optional[RunIndex]
+    # Graphs describe this immutable run, shared by every root that retains it.
+    var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
+    # Read-only optional cache access; snapshots never publish files.
+    var field_cache_directory: String
 
     def __init__(
         out self, var memtable: MemTable, var index: Optional[RunIndex]
     ):
         self.memtable = memtable^
         self.index = index^
+        self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
+        self.field_cache_directory = ""
 
 
 struct ReadLayer(Copyable, Movable):
@@ -162,7 +170,6 @@ struct ReadGeneration(Movable):
     var sq8_cosine: ArcPointer[ArtifactState[Sq8Index]]
     var pq: ArcPointer[PqArtifacts]
     var pq_cosine: ArcPointer[PqArtifacts]
-    var field_hnsw: ArcPointer[FieldArtifacts[FieldHnswIndex]]
     var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
     var field_ivf: ArcPointer[FieldIvfArtifacts]
     var _pins: ArcPointer[GenerationPinRegistry]
@@ -192,7 +199,6 @@ struct ReadGeneration(Movable):
         self.sq8_cosine = ArcPointer(ArtifactState[Sq8Index]())
         self.pq = ArcPointer(PqArtifacts())
         self.pq_cosine = ArcPointer(PqArtifacts())
-        self.field_hnsw = ArcPointer(FieldArtifacts[FieldHnswIndex]())
         self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
         self.field_ivf = ArcPointer(FieldIvfArtifacts())
         self._pins = pins^
@@ -439,6 +445,7 @@ struct ReadGenerationCache(Movable):
     var _sequence: UInt64
     var merge_delay_for_test: Float64
     var merge_failure_for_test: Bool
+    var field_cache_directory: String
 
     def __init__(out self):
         self.root = Optional[ArcPointer[ReadGeneration]]()
@@ -452,6 +459,50 @@ struct ReadGenerationCache(Movable):
         self._sequence = 0
         self.merge_delay_for_test = 0
         self.merge_failure_for_test = False
+        self.field_cache_directory = ""
+
+    def publish_field_caches_best_effort(self, catalog: FieldCatalog):
+        """Save only an already-built complete current run, under writer lock."""
+        if len(self._layers) != 1 or self.head_count() != 0:
+            return
+        ref run = self._layers[0].run[]
+        for ordinal in range(catalog.field_count()):
+            try:
+                ref field = catalog.field_at(ordinal)
+                if field.id < 2 or field.kind != 0 or field.index != 1:
+                    continue
+                var state = run.field_hnsw[].get(field.id)
+                var graph = Optional[ArcPointer[FieldHnswIndex]]()
+                # Mojo 1.0 has no try_lock method. Use its public atomic
+                # counter for a single attempt with the same owner/release
+                # protocol as BlockingScopedLock. Cache IO must not wait for
+                # a builder or query while holding the collection writer lock.
+                var owner = Int(Pointer(to=graph))
+                var expected = Int64(BlockingSpinLock.UNLOCKED)
+                if not state[].lock.counter.compare_exchange(
+                    expected, Int64(owner)
+                ):
+                    continue
+                # These owner copies cannot raise; release before any IO.
+                if state[].ready:
+                    graph = Optional(state[].ready.value().copy())
+                _ = state[].lock.unlock(owner)
+                if graph:
+                    expected = Int64(BlockingSpinLock.UNLOCKED)
+                    if not graph.value()[].query_lock.counter.compare_exchange(
+                        expected, Int64(owner)
+                    ):
+                        continue
+                    # This helper contains all fallible work and never raises.
+                    publish_field_hnsw_cache_best_effort(
+                        self.field_cache_directory,
+                        run.memtable,
+                        field,
+                        graph.value()[],
+                    )
+                    _ = graph.value()[].query_lock.unlock(owner)
+            except:
+                pass
 
     def invalidate(mut self):
         """Drop the cached root after a publication; runs stay valid."""
@@ -624,6 +675,7 @@ struct ReadGenerationCache(Movable):
         var table = memtable.clone()
         self.stats.descriptor_copies += table.slot_count()
         var run = _indexed_run(table^, self.stats)
+        run.field_cache_directory = self.field_cache_directory.copy()
         self._layers = List[ReadLayer]()
         self._layers.append(
             ReadLayer(ArcPointer(run^), ArcPointer(List[Int]()), List[Int]())

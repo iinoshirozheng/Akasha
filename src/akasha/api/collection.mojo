@@ -75,6 +75,7 @@ from akasha.storage.maintenance import (
 from akasha.storage.retired_files import RetiredFileQueue, reclaim_retired_batch
 from akasha.storage.index_cache import (
     authoritative_index_checksum,
+    metadata_cache_from_authority,
     CACHE_METADATA_KIND,
     CacheArtifact,
     load_matching_cache_artifact,
@@ -357,6 +358,7 @@ struct PersistentCollection:
             available,
             "rebuild_failed",
         )
+        collection._read_generations[].field_cache_directory = path.copy()
         collection._hnsw_mutations_since_rebuild = replayed
         if hnsw_load.base_sequence:
             collection._hnsw_base_sequence = hnsw_load.base_sequence.value()
@@ -524,6 +526,9 @@ struct PersistentCollection:
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
+            self._read_generations[].publish_field_caches_best_effort(
+                self._point_store._catalog[]
+            )
             if self._read_generations[].root:
                 released = Optional(self._read_generations[].root.take())
             self._read_generations[].reset()
@@ -2286,18 +2291,15 @@ struct PersistentCollection:
                         self._overlay_cache_base_checksum = base_checksum
             except:
                 pass
+        self._read_generations[].publish_field_caches_best_effort(
+            self._point_store._catalog[]
+        )
         try:
             var generation = self._read_generations[].generation
-            var checksum = authoritative_index_checksum(self._memtable)
-            var metadata_payload = self._metadata.encode_cache_payload()
-            var metadata_artifact = CacheArtifact(
-                CACHE_METADATA_KIND,
-                self._config.dimension,
-                generation,
-                self._last_sequence,
-                checksum,
-                metadata_payload^,
+            var metadata_artifact = metadata_cache_from_authority(
+                self._memtable, generation, self._last_sequence
             )
+            var checksum = metadata_artifact.source_checksum
             publish_cache(self._path, "metadata.cache", metadata_artifact)
             self._cache_generation = generation
             self._source_checksum = checksum

@@ -6,6 +6,7 @@ from akasha.storage.filesystem import (
 )
 from akasha.storage.index_cache import (
     CACHE_HNSW_KIND,
+    CACHE_FIELD_HNSW_KIND,
     CACHE_HNSW_OVERLAY_KIND,
     CACHE_METADATA_KIND,
     CacheArtifact,
@@ -120,7 +121,7 @@ def test_mapped_cache_retains_old_inode_after_file_replacement() raises:
 
 def test_mapped_cache_round_trips_all_kinds_and_empty_payload() raises:
     var path = String("/tmp/akasha-cache-mapped-kinds.cache")
-    for kind in [CACHE_HNSW_KIND, CACHE_METADATA_KIND, CACHE_HNSW_OVERLAY_KIND]:
+    for kind in [CACHE_HNSW_KIND, CACHE_METADATA_KIND, CACHE_HNSW_OVERLAY_KIND, CACHE_FIELD_HNSW_KIND]:
         for size in [0, 1, 4097]:
             var payload = List[UInt8](capacity=size)
             for i in range(size):
@@ -169,7 +170,7 @@ def test_mapped_and_owned_cache_validate_crc_correct_headers() raises:
         elif scenario == 1:
             bad[4] = UInt8(2)  # Unknown version.
         elif scenario == 2:
-            bad[6] = UInt8(4)  # Unknown kind.
+            bad[6] = UInt8(255)  # Unknown kind (4 is the named HNSW cache).
         elif scenario == 3:
             bad[7] = UInt8(1)  # Reserved byte.
         elif scenario == 4:

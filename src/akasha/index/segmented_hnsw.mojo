@@ -43,20 +43,30 @@ comptime _DELTA_SOURCE = -1
 
 
 def _should_scan_delta(
-    base_live: Int, physical_slots: Int, dimension: Int, m0: Int, ef: Int
+    base_live: Int, physical_slots: Int, delta_live: Int,
+    dimension: Int, m0: Int, ef: Int,
 ) -> Bool:
-    """Bound scan work by physical history, vector components and graph breadth.
+    """Bound live-vector scoring and physical history inspection separately.
 
     Retain the measured base-plus-delta work limits from the 2026-10-02
     diagnostic. Mutable-only segments use Qdrant-style
     exact scan until a complete immutable graph is published.
     Division avoids overflow even for invalid or extreme inputs.
+    Inactive slots are checked but never scored. Keep at most 1,024 live rows
+    and their component budget; retain the original 1,024-header allowance,
+    extending it only to twice the live count (at most 2,048 headers). Physical
+    history still counts against ef * M0. See the 2026-10-04 history sweep.
+    Division and subtraction avoid overflow for invalid/extreme inputs.
     """
-    if base_live == 0 and physical_slots > 0 and dimension > 0 and m0 > 0 and ef > 0:
+    if base_live == 0 and physical_slots > 0 and delta_live > 0 and delta_live <= physical_slots and dimension > 0 and m0 > 0 and ef > 0:
         return True
-    if base_live <= 0 or physical_slots <= 0 or physical_slots > 1024:
+    if base_live <= 0 or physical_slots <= 0 or delta_live <= 0:
         return False
-    if dimension <= 0 or dimension > 1572864 // physical_slots:
+    if delta_live > physical_slots or delta_live > 1024:
+        return False
+    if physical_slots > 1024 and physical_slots - delta_live > delta_live:
+        return False
+    if dimension <= 0 or dimension > 1572864 // delta_live:
         return False
     if m0 <= 0 or ef <= 0:
         return False
@@ -763,6 +773,7 @@ struct SegmentedHnsw(Movable):
         if not _should_scan_delta(
             self._sources.base_count(),
             slots,
+            delta_live,
             self.config.dimension,
             self.config.m0,
             breadth,

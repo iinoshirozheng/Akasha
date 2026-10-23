@@ -7,6 +7,46 @@
 唯一執行 checklist：[todo.md](todo.md)。完整能力與 19 個參考課題仍在
 [單機路線](../docs/plans/2026-09-07-single-node-lifecycle-zero-copy.md)。
 
+2026-10-04 最新：[Python 回傳容器參照釋放](../docs/benchmarks/2026-10-04-output-list-refs.md)
+已採用。新增24 cases：基線23 failed／1 passed，候選24 passed；595完整隔離
+Python／147正式targeted通過。原矩陣warm24/36、mixed20/36、write+flush3/9，
+recall各36/36，四個pass→fail完整保留，整體FAILED。兩個named selective profiles
+顯示約55–58%主執行緒samples在HNSW distance，輸出建構只占少量；不再增加輸出
+速度原型，接續距離計算具體成本與named更新後重開生命週期。其他普通call路徑
+尚未普查，不宣稱binding無洩漏。沒有Linux runner，唯一todo項目維持未勾選。
+
+2026-10-04 前一修復：[named input refs／None identity](../docs/research/2026-10-04-query-input-refs.md)
+已修復，28 red→green、571完整隔離Python／123正式targeted通過。本版沒有新
+performance gate；前版warm25/36、mixed27/36、write+flush3/9仍FAILED。
+接續普通Python callable refs在輸出建構／typed helpers的最小probe與實際修復，
+不宣稱其他路徑無洩漏。原性能、named更新後重開與nonresident缺口仍以todo為準。
+
+2026-10-04 前一工作包：[named scalar vectorcall 與 callback refs](../docs/benchmarks/2026-10-04-instance-capi.md)
+已採用，543 完整隔離 Python、正式95 targeted與compiled ownership probe通過。
+原完整gate warm25/36、mixed27/36、write+flush3/9仍FAILED；三個pass→fail保留。
+接續已重現的普通call/hasattr query-container retention，先用最小probe定位，再修
+實際呼叫路徑；既有mixed停滯根因仍未解，沿用原deadline＋native capture。
+沒有Linux runner，nonresident/memory-limit未驗收。其餘以todo唯一checklist為準。
+
+2026-10-04 前一 engine 工作包：已採用 [delta live／history 分別限額](../docs/benchmarks/2026-10-04-delta-live-budget.md)，
+146 targeted Mojo／506 完整 Python／C ABI／3 examples 通過；原完整效能矩陣仍 FAILED。
+這是局部查詢成本改善；M5/M6 的唯一 checklist 項目仍未勾選。其餘歷史數字按當時
+工作包解讀，現行 binary／門檻與剩餘工作以 [todo.md](todo.md) 頁首為準。
+
+接續的 [named bundle＋有界小分區掃描](../docs/benchmarks/2026-10-04-named-bounded-partitions.md)
+已完成隔離實作、230 targeted Mojo／11 crash／506 完整 Python／C ABI／3 examples
+與18 named workers；暖查詢35/36 QPS退步及三個新fixed-ef品質失敗，候選未採用。
+原矩陣54嘗試中53完成、一個未修改baseline mixed查詢超時；candidate gate仍FAILED，
+缺失baseline結果保留。正式engine不變。接續依
+[超時再現取證方案](../docs/plans/2026-10-04-query-stall-recurrence.md)優先查清阻塞位置，
+不原樣重跑此bundle／repair；全部剩餘工作仍以todo唯一checklist為準。
+
+[後續停滯診斷](../docs/research/2026-10-04-query-stall-recurrence.md)完成原 binary
+30＋24 workers、15,552 audits／54 reopens／54 leases，均未重現；原因仍未解。
+獨立 sample／LLDB lock owner 取證及四個 supervisor 控制案例通過，正式 source/binary
+未變。接續 production 失敗格 profiling 時保留原 deadline 並接入 native capture；
+不要原樣重複未重現迴圈，或把這些診斷當作新 Qdrant／完整整合驗收。
+
 ## 完成狀態與剩餘缺口
 
 #31–#38 可以結案，沒有從該範圍查到尚未完成的必做收尾。核對 Git commits、

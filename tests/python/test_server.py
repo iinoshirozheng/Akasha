@@ -191,3 +191,38 @@ def test_http_metrics_and_graceful_shutdown_release_collection_locks(tmp_path) -
     reopened = Collection(tmp_path / "live", 2)
     assert reopened.get(1).vector == [1.0, 0.0]
     reopened.close()
+def test_http_search_keeps_native_operation_off_the_event_loop(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+    import httpx
+    from akashadb import Collection
+
+    database = LocalDatabase(tmp_path)
+    collection = database.open("threaded", 2)
+    collection.upsert(1, [1.0, 0.0])
+    original = Collection.search
+    native_threads = []
+
+    def observe(self, request):
+        native_threads.append(threading.get_ident())
+        return original(self, request)
+
+    monkeypatch.setattr(Collection, "search", observe)
+
+    async def query():
+        event_loop_thread = threading.get_ident()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=create_app(database)),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/collections/threaded/search", json={
+                "metric": "dot", "mode": "exact", "k": 1, "vector": [1.0, 0.0],
+            })
+        assert response.status_code == 200
+        assert response.json() == [{"id": 1, "score": 1.0}]
+        assert len(native_threads) == 1 and native_threads[0] != event_loop_thread
+
+    try:
+        asyncio.run(query())
+    finally:
+        database.close_all()

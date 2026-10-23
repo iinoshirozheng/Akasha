@@ -1,4 +1,9 @@
-# AkashaDB 工作交接入口
+# AkashaDB 工作入口
+
+**2026-10-23 使用者暫停效能優化，改為合併分支與清理。**
+當前整合目標為 `main`；下方「下一步」與工作樹路徑是歷史紀錄，暫不執行。
+M5/M6 尚未達標，原生 Linux x86_64 驗收仍依指示暫緩。
+最後未提交原型與原主工作樹研究檔已封存，見 [暫停工作快照](docs/research/2026-10-23-paused-work-snapshot.md)。
 
 更新：2026-10-23。**整體工作尚未完成**，M5/M6 效能矩陣仍未達標。
 目前在 `feat/qdrant-alignment` 工作樹；使用者核准僅將 Qdrant 的
@@ -40,7 +45,7 @@ mixed write＋flush 皆 9／9。104 項相關測試、98 組搜尋與 24 組建�
 2026-10-13 歷史紀錄：在 `main` 的 `a710aa5` 上繼續 profiling，發現並修正 maintenance deadlock
 （`be3be53`）。前次 Git 交付的 push／merge 紀錄屬於 10/02，不能視為本次已 push。
 
-## 閱讀順序
+## 最新修復（2026-10-04）：Python 回傳容器參照釋放
 
 1. [Mapped descriptor 與 8,192 列控制](docs/research/2026-10-13-mapped-hot-descriptor.md)、
    [Mapped SIMD prefix](docs/research/2026-10-13-mapped-kernel-prefix.md)、
@@ -69,7 +74,13 @@ mixed write＋flush 皆 9／9。104 項相關測試、98 組搜尋與 24 組建�
 7. [前次 Git 交付紀錄](docs/handoff/2026-10-02-git-delivery.md)
 8. [唯一工作項目 checklist](tasks/todo.md) 與 [驗收計畫](tasks/plan.md)
 
-## 現況
+新增 24 cases：修正 fixture/assertion 後基線 23 failed／1 passed，候選全通過；
+**595 完整隔離 Python／147 正式 targeted** 通過，重複不加總。第一版失敗全部保留。
+原矩陣 warm21→24/36、mixed21→20/36、write+flush3→3/9；recall各36/36，
+四個performance pass→fail保留，**整體FAILED，M5/M6未完成**。
+Named 14,472 pairs IDs/F64 bits/stats一致、品質132/216；25/36選定格timing退步。
+[完整實作、全部失敗與凍結證據](docs/benchmarks/2026-10-04-output-list-refs.md)。正式kernel SHA-256：
+`0088e118e5723f9a30cdef9c5a99ac3b3d6503fe4c67b09afb50ba4ef76b6c1c`。
 
 Named/native vector 的遷移、原子提交、查詢、Python／Arrow、F16／BF16／I8／U8、
 Binary／MaxSim、NDJSON 已串接並驗證；retained base／delta cache 已改善更新後重開。

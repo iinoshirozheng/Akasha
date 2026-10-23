@@ -88,6 +88,7 @@ struct BoundScanner(Movable, Writable):
         )
         if self.max_bytes <= 0:
             raise Error("scanner buffer limit must be positive")
+        _ensure_open(collection[])
         var field_schema = collection[].inner.value().vector_fields()
         var point_mode = Bool(collection[].inner.value()._field_catalog())
         for column in options["columns"]:
@@ -119,6 +120,7 @@ struct BoundScanner(Movable, Writable):
         var expression = Optional[FilterExpression]()
         if not _is_python_none(options["filter"]):
             expression = Optional(_filter_expression(options["filter"]))
+        _ensure_open(collection[])
         var snapshot = collection[].inner.value().snapshot()
         self.schema_value = scanner_schema(
             self.columns, snapshot.collection_config().dimension
@@ -151,17 +153,20 @@ struct BoundScanner(Movable, Writable):
         try:
             if Bool(py=cancelled):
                 self[].token.cancel()
+            if not self[].inner:
+                raise Error("scanner is closed")
             var control = QueryControl(
                 self[].token,
                 max_candidates=self[].max_candidates,
                 deadline_ns=self[].deadline_ns,
             )
             var batch = self[].inner.value().next(control)
+            var visited = self[].inner.value().visited_slots
             if not batch:
                 return Python.dict(
                     batch=Python.none(),
                     visited_slots=PythonObject(
-                        self[].inner.value().visited_slots
+                        visited
                     ),
                 )
             var result = import_scan_batch(
@@ -171,8 +176,8 @@ struct BoundScanner(Movable, Writable):
                 self[].max_bytes,
                 control,
             )
-            result["visited_slots"] = PythonObject(
-                self[].inner.value().visited_slots
+            _set_output_item(
+                result, PythonObject("visited_slots"), PythonObject(visited)
             )
             return result
         except error:
@@ -301,7 +306,9 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var values = _float_vector(vector)
-        self[].inner.value().upsert(Int(py=id), values^)
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        self[].inner.value().upsert(native_id, values^)
         return Python.none()
 
     @staticmethod
@@ -315,7 +322,9 @@ struct BoundCollection(Movable, Writable):
         _ensure_open(self[])
         var values = _float_vector(vector)
         var mojo_fields = _document_fields(fields)
-        self[].inner.value().upsert_document(Int(py=id), values^, mojo_fields^)
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        self[].inner.value().upsert_document(native_id, values^, mojo_fields^)
         return Python.none()
 
     @staticmethod
@@ -338,6 +347,7 @@ struct BoundCollection(Movable, Writable):
                 )
             else:
                 raise Error("unknown batch mutation operation")
+        _ensure_open(self[])
         var committed = self[].inner.value().apply_batch(batch)
         return Python.dict(
             first_sequence=PythonObject(committed.first_sequence),
@@ -350,10 +360,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
-        var output = Python.list()
+        var output = List[PythonObject]()
         for field in fields:
             output.append(_vector_field_to_python(field))
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def apply_point_batch(
@@ -414,6 +424,7 @@ struct BoundCollection(Movable, Writable):
                     payload^,
                 )
             )
+        _ensure_open(self[])
         var committed = self[].inner.value().apply_point_batch(batch)
         return Python.dict(
             first_sequence=PythonObject(committed.first_sequence),
@@ -434,6 +445,7 @@ struct BoundCollection(Movable, Writable):
         var ids = from_numpy_array[DType.int64](descriptor["ids"])
         if len(ids) != rows:
             raise Error("Arrow ID buffer length mismatch")
+        _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
         var columns = descriptor["updates"]
         var positions = Dict[Int, Int]()
@@ -496,6 +508,7 @@ struct BoundCollection(Movable, Writable):
             mutations.append(
                 PointMutation(Int(ids[row]), 1, updates^, payload^)
             )
+        _ensure_open(self[])
         var committed = self[].inner.value().apply_point_batch(mutations)
         return Python.dict(
             first_sequence=PythonObject(committed.first_sequence),
@@ -534,6 +547,7 @@ struct BoundCollection(Movable, Writable):
         if search_mode != "exact" and search_mode != "approx" and search_mode != "ivf":
             raise Error("named search mode must be exact, approx or ivf")
         var ivf = _ivf_from_python(search_mode, options["ivf"])
+        _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
         var ordinal = _named_field_ordinal(fields, field_name)
         var token = CancellationToken()
@@ -555,17 +569,21 @@ struct BoundCollection(Movable, Writable):
         var expression = Optional[FilterExpression]()
         if not _is_python_none(options["filter"]):
             expression = Optional(_filter_expression(options["filter"]))
+        var count = _exact_python_int(k, "k")
+        var ef = _exact_python_int(options["ef_search"], "ef_search")
+        var rerank = _exact_python_int(options["rerank_k"], "rerank_k")
+        _ensure_open(self[])
         var results = (
             self[]
             .inner.value()
             .search_field(
                 field_name,
                 query,
-                _exact_python_int(k, "k"),
+                count,
                 expression^,
                 approximate=search_mode == "approx",
-                ef_search=_exact_python_int(options["ef_search"], "ef_search"),
-                rerank_k=_exact_python_int(options["rerank_k"], "rerank_k"),
+                ef_search=ef,
+                rerank_k=rerank,
                 ivf=ivf,
                 control=control,
             )
@@ -595,6 +613,7 @@ struct BoundCollection(Movable, Writable):
             )
         )
         control.value().checkpoint(0)
+        _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
         var queries = List[FieldQuery]()
         for item in raw:
@@ -605,16 +624,18 @@ struct BoundCollection(Movable, Writable):
         var expression = Optional[FilterExpression]()
         if not _is_python_none(options["filter"]):
             expression = Optional(_filter_expression(options["filter"]))
+        var count = _exact_python_int(options["k"], "k")
+        var fetch = _exact_python_int(options["fetch_k"], "fetch_k")
+        var rank = _exact_python_int(options["rank_constant"], "rank_constant")
+        _ensure_open(self[])
         var results = (
             self[]
             .inner.value()
             .search_fields(
                 queries,
-                _exact_python_int(options["k"], "k"),
-                fetch_k=_exact_python_int(options["fetch_k"], "fetch_k"),
-                rank_constant=_exact_python_int(
-                    options["rank_constant"], "rank_constant"
-                ),
+                count,
+                fetch_k=fetch,
+                rank_constant=rank,
                 expression=expression^,
                 control=control,
                 rerank=rerank,
@@ -629,14 +650,18 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var sparse = _sparse_vector(elements)
-        self[].inner.value().upsert_sparse(Int(py=id), sparse^)
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        self[].inner.value().upsert_sparse(native_id, sparse^)
         return Python.none()
 
     @staticmethod
     def delete(py_self: PythonObject, id: PythonObject) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
-        self[].inner.value().delete(Int(py=id))
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        self[].inner.value().delete(native_id)
         return Python.none()
 
     @staticmethod
@@ -652,7 +677,9 @@ struct BoundCollection(Movable, Writable):
     ) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
-        var report = self[].inner.value().backup_to(String(py=target))
+        var target_path = String(py=target)
+        _ensure_open(self[])
+        var report = self[].inner.value().backup_to(target_path)
         return _storage_report_to_python(report)
 
     @staticmethod
@@ -671,17 +698,17 @@ struct BoundCollection(Movable, Writable):
         if not root[].catalog:
             return Python.none()
         ref fields = root[].catalog.value()[]._fields
-        var schema = Python.list()
+        var schema = List[PythonObject]()
         for field in fields:
             schema.append(_vector_field_to_python(field))
-        var output = Python.list()
+        var output = List[PythonObject]()
         for location in root[].id_ordered_locations():
             var point = root[].run(location[0]).memtable.entry_ref_at(location[1]).to_point()
             output.append(_point_to_python(point, fields))
         return Python.dict(
             config=_collection_config_to_python(root[].config),
-            schema=schema,
-            points=output,
+            schema=Python.list(Span(schema)),
+            points=Python.list(Span(output)),
             source_sequence=PythonObject(root[].sequence),
         )
 
@@ -692,12 +719,12 @@ struct BoundCollection(Movable, Writable):
         var snapshot = self[].inner.value().snapshot()
         var documents = snapshot.documents()
         var sparse = snapshot.sparse_records()
-        var output = Python.list()
+        var output = List[PythonObject]()
         for document_index in range(len(documents)):
             var record = _document_to_python(
                 Optional(documents[document_index].clone())
             )
-            var elements = Python.list()
+            var elements = List[PythonObject]()
             for sparse_index in range(len(sparse)):
                 if sparse[sparse_index].id != documents[document_index].id:
                     continue
@@ -709,10 +736,10 @@ struct BoundCollection(Movable, Writable):
                         )
                     )
                 break
-            record["sparse"] = elements
+            _set_output_item(record, PythonObject("sparse"), Python.list(Span(elements)))
             output.append(record)
         snapshot.close()
-        return output
+        return Python.list(Span(output))
 
     @staticmethod
     def scanner(
@@ -741,6 +768,7 @@ struct BoundCollection(Movable, Writable):
             max_candidates=Int(py=options["max_candidates"]),
             deadline_ns=Int(py=options["deadline_ns"]),
         )
+        _ensure_open(self[])
         var snapshot = self[].inner.value().snapshot()
         var values = _float_vector(query)
         var metric_name = String(py=metric)
@@ -762,20 +790,22 @@ struct BoundCollection(Movable, Writable):
     def get(py_self: PythonObject, id: PythonObject) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
-        var record = self[].inner.value().get(Int(py=id))
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        var record = self[].inner.value().get(native_id)
         if not Bool(record):
             return Python.none()
-        var fields = Python.list()
+        var fields = List[PythonObject]()
         for index in range(len(record.value().fields)):
             fields.append(_field_to_python(record.value().fields[index]))
-        var vector = Python.list()
+        var vector = List[PythonObject]()
         for value in record.value().vector:
             vector.append(value)
         return Python.dict(
             id=PythonObject(record.value().id),
             sequence=PythonObject(record.value().sequence),
-            vector=vector,
-            fields=fields,
+            vector=Python.list(Span(vector)),
+            fields=Python.list(Span(fields)),
         )
 
     @staticmethod
@@ -794,7 +824,9 @@ struct BoundCollection(Movable, Writable):
             Bool(py=projection["all_fields"]),
             names^,
         )
-        var record = self[].inner.value().get_projected(Int(py=id), requested)
+        var native_id = Int(py=id)
+        _ensure_open(self[])
+        var record = self[].inner.value().get_projected(native_id, requested)
         return _document_to_python(record)
 
     @staticmethod
@@ -805,7 +837,7 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         return _apply_arrow_buffers(
-            self[].inner.value(),
+            py_self,
             descriptor,
             descriptor["ids"],
             descriptor["vectors"],
@@ -825,8 +857,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var values = _float_vector(query)
+        var count = Int(py=k)
+        _ensure_open(self[])
         return _results_to_python[columns](
-            self[].inner.value().search_dot(values, Int(py=k))
+            self[].inner.value().search_dot(values, count)
         )
 
     @staticmethod
@@ -840,8 +874,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var values = _float_vector(query)
+        var count = Int(py=k)
+        _ensure_open(self[])
         return _results_to_python[columns](
-            self[].inner.value().search_l2(values, Int(py=k))
+            self[].inner.value().search_l2(values, count)
         )
 
     @staticmethod
@@ -855,8 +891,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var values = _float_vector(query)
+        var count = Int(py=k)
+        _ensure_open(self[])
         return _results_to_python[columns](
-            self[].inner.value().search_cosine(values, Int(py=k))
+            self[].inner.value().search_cosine(values, count)
         )
 
     @staticmethod
@@ -875,18 +913,21 @@ struct BoundCollection(Movable, Writable):
         var workers = Int(py=num_workers)
         var results: List[List[SearchResult]]
         if metric_name == "dot":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
                 .search_dot_batch(vectors, count, num_workers=workers)
             )
         elif metric_name == "l2":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
                 .search_l2_batch(vectors, count, num_workers=workers)
             )
         elif metric_name == "cosine":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
@@ -919,6 +960,7 @@ struct BoundCollection(Movable, Writable):
         var workers = Int(py=num_workers)
         var results: List[List[SearchResult]]
         if metric_name == "dot":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
@@ -930,6 +972,7 @@ struct BoundCollection(Movable, Writable):
                 )
             )
         elif metric_name == "l2":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
@@ -941,6 +984,7 @@ struct BoundCollection(Movable, Writable):
                 )
             )
         elif metric_name == "cosine":
+            _ensure_open(self[])
             results = (
                 self[]
                 .inner.value()
@@ -970,19 +1014,23 @@ struct BoundCollection(Movable, Writable):
     ) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
+        # Python conversions can re-enter close(); recheck before native access.
         var metric_name = String(py=metric)
         var values = _float_vector(query)
         var count = Int(py=k)
         var ef = Int(py=ef_search)
         if metric_name == "dot":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_dot_approx(values, count, ef)
             )
         if metric_name == "l2":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_l2_approx(values, count, ef)
             )
         if metric_name == "cosine":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[].inner.value().search_cosine_approx(values, count, ef)
             )
@@ -999,8 +1047,10 @@ struct BoundCollection(Movable, Writable):
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
         var sparse = _sparse_vector(query)
+        var count = Int(py=k)
+        _ensure_open(self[])
         return _results_to_python[columns](
-            self[].inner.value().search_sparse_dot(sparse, Int(py=k))
+            self[].inner.value().search_sparse_dot(sparse, count)
         )
 
     @staticmethod
@@ -1022,18 +1072,21 @@ struct BoundCollection(Movable, Writable):
         var fetch_k = Int(py=options["fetch_k"])
         var rank_constant = Int(py=options["rank_constant"])
         if metric_name == "dot":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
                 .search_hybrid_dot(dense, sparse, k, fetch_k, rank_constant)
             )
         if metric_name == "l2":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
                 .search_hybrid_l2(dense, sparse, k, fetch_k, rank_constant)
             )
         if metric_name == "cosine":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
@@ -1052,6 +1105,7 @@ struct BoundCollection(Movable, Writable):
     ) raises -> PythonObject:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
+        # Python conversions can re-enter close(); recheck before native access.
         var metric_name = String(py=metric)
         var values = _float_vector(query)
         var k = Int(py=options["k"])
@@ -1062,18 +1116,21 @@ struct BoundCollection(Movable, Writable):
         if approximate:
             var ef = Int(py=options["ef_search"])
             if metric_name == "dot":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
                     .search_dot_approx_where(values, k, ef, expression)
                 )
             if metric_name == "l2":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
                     .search_l2_approx_where(values, k, ef, expression)
                 )
             if metric_name == "cosine":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
@@ -1081,14 +1138,17 @@ struct BoundCollection(Movable, Writable):
                 )
         else:
             if metric_name == "dot":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[].inner.value().search_dot_where(values, k, expression)
                 )
             if metric_name == "l2":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[].inner.value().search_l2_where(values, k, expression)
                 )
             if metric_name == "cosine":
+                _ensure_open(self[])
                 return _results_to_python[columns](
                     self[]
                     .inner.value()
@@ -1108,10 +1168,12 @@ struct BoundCollection(Movable, Writable):
         _ensure_open(self[])
         var sparse = _sparse_vector(query)
         var expression = _filter_expression(options["filter"])
+        var count = Int(py=options["k"])
+        _ensure_open(self[])
         return _results_to_python[columns](
             self[]
             .inner.value()
-            .search_sparse_dot_where(sparse, Int(py=options["k"]), expression)
+            .search_sparse_dot_where(sparse, count, expression)
         )
 
     @staticmethod
@@ -1134,6 +1196,7 @@ struct BoundCollection(Movable, Writable):
         var rank_constant = Int(py=options["rank_constant"])
         var expression = _filter_expression(options["filter"])
         if metric_name == "dot":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
@@ -1142,6 +1205,7 @@ struct BoundCollection(Movable, Writable):
                 )
             )
         if metric_name == "l2":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
@@ -1150,6 +1214,7 @@ struct BoundCollection(Movable, Writable):
                 )
             )
         if metric_name == "cosine":
+            _ensure_open(self[])
             return _results_to_python[columns](
                 self[]
                 .inner.value()
@@ -1328,9 +1393,8 @@ def _vector_field_to_python(field: VectorFieldSpec) raises -> PythonObject:
     )
 
 
-def _is_python_none(value: PythonObject) raises -> Bool:
-    var builtins = Python.import_module("builtins")
-    return Bool(py=builtins.type(value) == builtins.type(Python.none()))
+def _is_python_none(value: PythonObject) -> Bool:
+    return value is Python.none()
 
 
 def _exact_python_int(value: PythonObject, name: String) raises -> Int:
@@ -1542,6 +1606,17 @@ def _field_to_python(field: DocumentField) raises -> PythonObject:
 
 
 
+def _set_output_item(
+    target: PythonObject, key: PythonObject, value: PythonObject
+) raises:
+    # These are freshly built output dictionaries, with owned Python values.
+    # PyDict_SetItem borrows all three arguments; the caller keeps them alive.
+    if Python().cpython().PyDict_SetItem(
+        target._obj_ptr, key._obj_ptr, value._obj_ptr
+    ) != 0:
+        raise Python().cpython().unsafe_get_error()
+
+
 def _point_to_python(
     point: PointState, schema: List[VectorFieldSpec]
 ) raises -> PythonObject:
@@ -1558,9 +1633,9 @@ def _point_to_python(
         else:
             for spec in schema:
                 if spec.id == field.id:
-                    vectors[spec.name] = value
+                    _set_output_item(vectors, PythonObject(spec.name), value)
                     break
-    var payload = Python.list()
+    var payload = List[PythonObject]()
     for index in range(len(point.payload())):
         payload.append(_field_to_python(point.payload()[index]))
     return Python.dict(
@@ -1570,7 +1645,7 @@ def _point_to_python(
         vector=dense,
         sparse=sparse,
         vectors=vectors,
-        fields=payload,
+        fields=Python.list(Span(payload)),
     )
 
 def _document_to_python(
@@ -1578,17 +1653,17 @@ def _document_to_python(
 ) raises -> PythonObject:
     if not Bool(record):
         return Python.none()
-    var fields = Python.list()
+    var fields = List[PythonObject]()
     for index in range(len(record.value().fields)):
         fields.append(_field_to_python(record.value().fields[index]))
-    var vector = Python.list()
+    var vector = List[PythonObject]()
     for value in record.value().vector:
         vector.append(value)
     return Python.dict(
         id=PythonObject(record.value().id),
         sequence=PythonObject(record.value().sequence),
-        vector=vector,
-        fields=fields,
+        vector=Python.list(Span(vector)),
+        fields=Python.list(Span(fields)),
     )
 
 
@@ -1618,10 +1693,10 @@ def _results_to_python[
 
 
 def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
-    var segments = Python.list()
+    var segments = List[PythonObject]()
     for name in report.segment_names:
         segments.append(name)
-    var sparse = Python.list()
+    var sparse = List[PythonObject]()
     for name in report.sparse_names:
         sparse.append(name)
     return Python.dict(
@@ -1633,8 +1708,8 @@ def _storage_report_to_python(report: StorageInspection) raises -> PythonObject:
         live_points=PythonObject(report.live_points),
         valid=PythonObject(report.valid),
         config_fingerprint=PythonObject(report.config_fingerprint),
-        segment_names=segments,
-        sparse_names=sparse,
+        segment_names=Python.list(Span(segments)),
+        sparse_names=Python.list(Span(sparse)),
     )
 
 
@@ -1757,7 +1832,7 @@ def PyInit__kernel() abi("C") -> PythonObject:
 
 
 def _apply_arrow_buffers(
-    mut collection: PersistentCollection,
+    py_self: PythonObject,
     descriptor: PythonObject,
     ids_array: PythonObject,
     vectors_array: PythonObject,
@@ -1765,13 +1840,16 @@ def _apply_arrow_buffers(
     terms_array: PythonObject,
     weights_array: PythonObject,
 ) raises -> PythonObject:
-    """Immutable Python arguments keep each owner alive for its typed borrow."""
+    """Retain array owners; borrow the collection only after Python conversion."""
+    var handle = py_self.downcast_value_ptr[BoundCollection]()
+    _ensure_open(handle[])
     var row_count = Int(py=descriptor["row_count"])
     if row_count <= 0 or row_count > 65_536:
         raise Error("Arrow batch row count is invalid")
     var ids = from_numpy_array[DType.int64](ids_array)
     var vectors = from_numpy_array[DType.float32](vectors_array)
-    var dimension = collection.dimension
+    _ensure_open(handle[])
+    var dimension = handle[].inner.value().dimension
     if len(ids) != row_count or len(vectors) != row_count * dimension:
         raise Error("Arrow primitive buffer length mismatch")
 
@@ -1823,6 +1901,8 @@ def _apply_arrow_buffers(
             PointMutation(Int(ids[row]), 1, updates^, Optional(fields^))
         )
 
+    _ensure_open(handle[])
+    ref collection = handle[].inner.value()
     _ = collection.apply_point_batch(points)
     return PythonObject(row_count)
 

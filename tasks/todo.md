@@ -1,4 +1,259 @@
-# 下一輪工作包 checklist
+# 最新修復（2026-10-04）：Python 回傳容器參照釋放
+
+**2026-10-23 使用者暫停效能優化，改為合併分支與清理。**
+當前整合目標為 `main`；下方「下一步」與工作樹路徑是歷史紀錄，暫不執行。
+M5/M6 尚未達標，原生 Linux x86_64 驗收仍依指示暫緩。
+最後未提交原型與原主工作樹研究檔已封存，見 [暫停工作快照](../docs/research/2026-10-23-paused-work-snapshot.md)。
+
+新建 Python 輸出改用 local Mojo List owner＋既有 stdlib list/Span conversion；
+三處 dictionary insertion 保留借用 owners，binary bytes callable 改用既有
+vectorcall。修復 search/get/schema/export/native vector 輸出被隱藏 reference
+保留的問題，只改兩個 binding files，engine／C API／worker／格式不變。
+
+新增 24 cases：修正 fixture/assertion 後基線 23 failed／1 passed，候選全通過；
+**595 完整隔離 Python／147 正式 targeted** 通過，重複不加總。第一版失敗全部保留。
+原矩陣 warm21→24/36、mixed21→20/36、write+flush3→3/9；recall各36/36，
+四個performance pass→fail保留，**整體FAILED，M5/M6未完成**。
+Named 14,472 pairs IDs/F64 bits/stats一致、品質132/216；25/36選定格timing退步。
+[完整實作、全部失敗與凍結證據](../docs/benchmarks/2026-10-04-output-list-refs.md)。正式kernel SHA-256：
+`0088e118e5723f9a30cdef9c5a99ac3b3d6503fe4c67b09afb50ba4ef76b6c1c`。
+
+兩個named selective profiles共3,584 repeat＋134 warmup audits；HNSW distance占
+主執行緒samples約55–58%，不支持再做output-container速度原型。接續距離計算
+具體成本與named更新後重開生命週期。其他binding callable尚未普查；舊mixed
+停滯根因未解。沒有新full Mojo/crash/C/examples/HTTP/Linux/GPU/ASan/nonresident
+驗收；沒有Linux runner，不重問。以下均為各歷史工作包當時結果。
+
+# 前一修復（2026-10-04）：named輸入容器回收與None identity
+
+已修復 named query/write input container 的參照保留：相同hasattr／ndarray
+isinstance predicates改用既有vectorcall helper；None sentinel改為Python object
+identity，避免保留整個輸入與自訂type equality誤刪合法向量。只改兩個binding檔，
+engine／C API／worker未改，沒有新抽象層。
+
+新增28 cases在基線全失敗、候選全通過；**571完整隔離Python／123正式targeted**
+通過（重複不加總），包含weakref回收、dtype回呼、close、write alias隔離及reopen。
+[完整實作、失敗與凍結證據](../docs/research/2026-10-04-query-input-refs.md)。現行kernel SHA-256：
+`87717b0d2ffc31b46a9c92ed5069135fe6125977c07804c22be04a85fd082fda`。
+
+這批是正確性修復，**未跑新performance gate**；上一版完整Qdrant warm25/36、
+mixed27/36、write+flush3/9仍FAILED，不能視為本binary已驗收。M5/M6仍未完成。
+沒有新full Mojo/crash／C ABI／examples／HTTP／Linux／GPU／ASan／RSS／nonresident證據。
+其他普通Python callable的refs尚須按實際路徑查證；下一步先probe輸出建構／typed
+helpers，再回到原失敗格及named更新後重開成本。舊mixed停滯根因仍未解。
+沒有Linux runner，不重問。下方均為各歷史工作包當時結果，不取代本節。
+
+# 前一採用（2026-10-04）：named scalar vectorcall 與例外參照釋放
+
+Named scalar 型別檢查改用 CPython vectorcall 呼叫同一個 callable，保留兩次檢查、
+bool 排除與數值轉換；同時釋放 call/truth 例外的 type/value/traceback refs。
+隔離 **543 完整 Python**、正式 **95 targeted Python** 與 compiled ownership probe
+通過；後者確認 32 次普通 call 多留 32 個 refs，vectorcall 為 0。
+
+Named 14,472 paired IDs／F64 bits／stats 完全一致，real QPS 改善約4–26%；
+選定36格仍9格timing退步，84個fixed-ef低recall格保留。原54-worker Qdrant矩陣
+warm20→25/36、mixed30→27/36、write+flush3→3/9；兩版recall各36/36，三個
+mixed pass→fail完整保留，**整體FAILED，M5/M6未完成**。
+
+[完整實作、退步與凍結證據](../docs/benchmarks/2026-10-04-instance-capi.md)。現行 kernel SHA-256：
+`b3f2b57565f4b129752df07a865931863365d03c8a6950d958dc152872779a73`。
+引擎核心仍`1318457`，C API／worker未改；沒有新full Mojo/crash／C ABI／examples／
+HTTP／Linux／GPU／ASan／nonresident gate。先前mixed停滯未重現，根因仍未解。
+
+另已獨立重現普通`hasattr`每次保留一個query list reference，**尚未修復**；
+接續以最小probe與實際呼叫路徑修復此生命週期問題，再回到原失敗格及named更新後
+重開成本。沒有Linux runner，不重問；唯一M5/M6 checklist仍未勾選。
+
+# 前一診斷（2026-10-04）：停滯未重現，native 超時取證已驗證
+
+正式 engine `1318457`／kernel 未改。原 scheduling 30 次與 flush 後 scheduling 擾動
+24 次，共 15,552 query audits／54 reopens／54 retained leases 通過；未重現停滯，
+**原因仍未解**，原超時失敗沒有替換。獨立 compiled probe 完成 200 萬次巢狀鎖操作，
+不是完整 Mojo suite 或 engine 修復證據。
+
+本機 sample／LLDB 已驗證能取得 native frames、registers 與 lock owner；四個
+supervisor 控制案例通過，包括「取證期間正常退出仍保留 timeout failure」。
+[完整診斷與凍結證據](../docs/research/2026-10-04-query-stall-recurrence.md)。後續原 worker deadline 不變，接入這份取證流程，
+回到 production 失敗格的可量測成本；不原樣重複未重現迴圈或已否決 bundle。
+沒有新 Qdrant／完整整合／HTTP／Linux／GPU／ASan／nonresident gate，M5/M6 未完成。
+
+# 前一結果（2026-10-04）：bounded named bundle 未採用，baseline 查詢超時再現
+
+正式 engine `1318457`／kernel 未改。隔離候選通過 **230 targeted Mojo／11 related crash／
+506 完整 Python／C ABI/client／3 rebuilt examples**；18 個原 named lifecycle workers
+完成，28,944 ANN audits／4,824 exact checks。重開首查降低，但共同 recall 的
+36 格中 35 格 QPS 退步，三個新增 fixed-ef recall 失敗仍在，**候選未採用**。
+
+原 Qdrant 54 jobs 全部嘗試：53 完成、1 未修改 baseline 的 uniform-128/trial2 mixed
+查詢超時；只續跑剩餘 jobs，失敗樣本沒有替換。候選 warm22/36、mixed27/36、
+write+flush5/9，**整體 FAILED**。Baseline mixed 缺四格，不能把缺失算成改善。
+超時資料庫複本恢復為 sequence9336，九個對應 oracle 通過；原檔未改，停滯原因未解。
+[完整實作、測試、失敗與凍結證據](../docs/benchmarks/2026-10-04-named-bounded-partitions.md)。
+
+接續按[查詢超時取證方案](../docs/plans/2026-10-04-query-stall-recurrence.md)優先取得未修改 binary 的 native stack 與操作位置，
+再決定根因修復；不原樣重跑未採用 bundle／repair。M5/M6 唯一 checklist 仍不勾選。
+沒有新 full Mojo/crash、HTTP performance／Linux／GPU／ASan／持續 nonresident gate；
+沒有 Linux runner，不重新詢問。以下為先前工作包的歷史結果。
+
+# 前一診斷（2026-10-04）：named 小分區有界掃描
+
+正式 engine／kernel 仍為下方 `1318457`，未修改。九個原 corpus/trial native workers
+直接載入前一 bundle 的 graph bytes，完成 24,120 組 scan/graph、2,513,574 common
+F32 bits 與 14,472 原 bundle IDs／distance／widening 比對。所有 scan top-10
+符合獨立 oracle；品質仍 141/216，75 個低 recall 格與 54 次結果差異完整保留。
+
+選定 36 格的 native 分區搜尋總 mean／p95 均改善，mean 降低約 6.5–28.1%；
+不包含 wrapper／rerank／IO，不是 public QPS 或 Qdrant gate，舊 bundle 尚未採用。
+[全部證據與失敗紀錄](../docs/research/2026-10-04-named-small-partitions.md)；接續
+[小分區掃描＋完整 artifact 生命週期方案](../docs/plans/2026-10-04-named-bounded-partitions.md)，
+在最新 source 上隔離重接，不原樣重跑舊 bundle／repair。
+原正式 gate 仍 warm21/36、mixed26/36、write+flush4/9，**FAILED，M5/M6未完成**。
+沒有新完整 Mojo/Python/crash/C ABI／HTTP／Linux／nonresident 驗收；沒有 runner。
+
+# 最新採用（2026-10-04）：delta live／history 分別限額
+
+小型 delta 依 live rows 限制向量評分，另保留 physical history／ef 上限；累積替換
+歷史後不再過早切回圖搜尋。唯一 engine 改動為 segmented HNSW 的 private predicate，
+搜尋迴圈、驗證、分數、格式與 ownership 不變。146 unique targeted Mojo／506 完整
+Python／C ABI/client／3 rebuilt examples 通過；正式路徑另 9 Mojo／26 Python 與
+C/client/examples 再通過（不重複加總）。
+
+原 54-worker 矩陣 warm 21→21/36、mixed 28→26/36、write+flush 4→4/9；兩版 recall
+各 36/36，五個 performance pass→fail 全保留，**整體 FAILED，M5/M6 未完成**。
+120 次 real mixed 後段查詢改走有界 scan，所有 IDs／score bits 一致；另 6 個 CPU
+診斷 workers 的九個受影響後段群組 CPU 均降低 9–28%，不取代原效能 gate。
+[完整實作、全部樣本、退步與凍結證據](../docs/benchmarks/2026-10-04-delta-live-budget.md)。
+**現行 kernel SHA-256**：
+`eb3bebdea9ea4f9d8050d965af1625003d7aec9d841f02fbc9bf101c05f73945`。
+Worker 未改；沒有新 full Mojo/crash、HTTP performance、Linux/GPU/ASan/nonresident gate。
+接續原 real ANN／selective／maintenance 失敗格與 named 多 run／更新後重開生命週期。
+目前沒有 Linux runner；sustained nonresident／memory-limit 保持未驗收。
+
+以下記錄描述各歷史工作包，不取代本節現況。
+
+# 前一診斷：2026-10-04 Top-K admission 拆分未採用
+
+在compiled-code gate停止，沒有新效能量測。兩版各8 targeted Mojo通過，保留3項
+獨立oracle，正式路徑另3項通過；不重複加總。正式engine仍為`8ba04ce`，現行
+kernel與Qdrant性能結果保持下段；M5/M6未完成。
+[完整證據與失敗紀錄](../docs/benchmarks/2026-10-04-topk-admission.md)。
+
+# 前一採用：2026-10-04 checked visit 縮小參數
+
+單檔HNSW visit改動通過110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt
+examples；正式路徑另11 Mojo／143 Python與C/client/examples再通過，不重複加總。
+Named高維selective六個trials的QPS/p95皆改善，但仍有12/36選定timing退步。
+原Qdrant同批warm18→19/36、mixed24→27/36、write+flush3→3/9；四個performance
+pass→fail均保留。**M5/M6未完成**；唯一checklist項目不勾選，沒有新Linux runner。
+[完整驗證與全部樣本](../docs/benchmarks/2026-10-04-visit-arguments.md)。
+
+# 前一診斷：2026-10-04 traversal work
+
+正式引擎未改；5,628成對query、1,608 exact checks與18 targeted Mojo通過。
+當時量到named selective的visit占8.6–9.6%；其後已採用上段的縮小參數改動。
+沒有新效能通過主張，唯一M5/M6項目仍未勾選；
+[完整計數、profiles與限制](../docs/research/2026-10-04-traversal-work.md)。
+
+# 前一採用：native F64 四候選 rerank
+
+該工作包在 `cc15f37` 的 filtered inactive radius 修正之上採用 native
+F64 四候選 rerank；binding 保留 `b54853e` 的 callback-close 修正。當時 Python SHA-256：
+`80ddc239bc711b5b5c52acc44e9f705825cabac31b4d646503597ba1aa3e2155`。
+最新採用工作包30 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；
+正式路徑再通過3 Mojo／151 Python（不加總）。5,400 public及14,472 named paired
+queries的IDs／bits／stats一致；品質132→132/216、7/36選定timing格退步保留。
+原Qdrant同批warm18→20/36、mixed24→23/36、write+flush3→3/9，保留四個
+performance pass→fail；整體FAILED，**M5/M6未完成**。無新完整Mojo／crash／
+HTTP performance／Linux／nonresident gate；沒有Linux runner。
+[完整證據](../docs/benchmarks/2026-10-04-native-f64-four.md)。後續回到原失敗格
+HNSW搜尋與named更新生命週期；不把局部優化當作最終驗收。
+
+後續heap單向搬移候選未採用：122 targeted Mojo、54原Qdrant workers及18 named
+workers完成。該同批warm25→23/36、mixed15→14/36、write+flush3→3/9，五個
+performance pass→fail保留；named品質132→132/216、24/36選定timing退步。
+14,472 named paired IDs／bits／stats一致；五個profiles共100,416次repeat audits。
+正式`ac48cda`來源／binary未改，沒有新full integration gate。
+[完整證據](../docs/benchmarks/2026-10-04-heap-shifts.md)。接續先量測filtered admission
+的重複current-state讀取，不直接刪檢查、不原樣重跑此候選。
+
+前一兩版 widening 距離重用均未採用：各70 targeted Mojo、18 workers、14,472
+paired query bits/stats一致；fixed quality各132/216。高維selective改善約9–20%，
+第二版仍有21/36選定timing格退步；沒有新Qdrant gate，正式source/binary不變。
+[完整證據](../docs/benchmarks/2026-10-04-widening-distances.md)。M5/M6仍未完成；
+其後的高維all實驗見頁首；不原樣重跑這兩版。
+
+以下為先前 private batch cache 修復的歷史結果，候選未採用：79 targeted Mojo／388 完整 Python 通過，
+完整 named 生命週期 28,944 ANN audits／4,824 exact checks 通過，但 fixed recall
+132→129/216、三個新增品質失敗、23/36 選定暖格退步。三 corpus 首查均降低，
+高維修復 distance calls 減少63.8%，但成本與品質取捨未支持採用；正式來源未改。
+這不是 Qdrant gate；方案先前自行加上的任一 A/B 退步即否決條件已更正。
+[完整實作與證據](../docs/benchmarks/2026-10-04-batched-cache-repair.md)。
+下一步回到原 M6 失敗格及 M5 生命週期，不原樣重跑上述候選。**M5/M6 未完成**；
+最新完整 gates 與唯一未勾選項目見下方 M5/M6 checklist，沒有 Linux runner。
+
+後續 mapped F32 雙區塊探針未採用：3 metric tests／1,646,592 score-bit 比對
+通過，42 筆 kernel 微量測中，高維 Dot／Cosine 分別有 2／3 次退步；沒有 public
+query／Qdrant gate，正式來源未改。[完整樣本](../docs/benchmarks/2026-10-04-mapped-chunks.md)。
+
+以下保留歷史工作包，當時的「最新」不代表目前版本。
+
+2026-10-03 採用 named HNSW 完整單一 run 快取；flush／close 保存已 ready 的圖，重開核對
+identity／ID／向量並重綁 ordinal。忙碌 artifact／query 不阻塞 writer，稍後可重試。
+正式 Python binary SHA-256：
+`843186a731ceefaa38e6e5780a0eb13c180dcdc9525191d53f5c8ba0d89d79ba`。
+第一版 77 targeted Mojo／1 targeted crash／376 Python／C ABI／3 examples；最終鎖修正
+47 targeted Mojo／376 完整 Python／C ABI／3 examples；正式 package 再通過 125 targeted
+Python／重建 C ABI。這些階段不加總為新完整 Mojo／crash／Linux／GPU gate。
+最終三組各三次配對的 14,472 組 ID／F64 bits／stats 相同，28,944 ANN audits／4,824
+exact checks 通過，兩版各保留 84 個低 recall 格。重開首查約 87–339 ms，但首次 flush
+增加成本，選定暖查詢 24/36 格 QPS 或 p95 退步；未重跑或取代原 Qdrant gate。
+多 run／更新後重開、首次建圖及 M6 效能／memory-limit 仍未完成。沒有 Linux runner。
+[實作與全部樣本](../docs/benchmarks/2026-10-03-named-hnsw-cache.md)。
+Frozen archive SHA-256：
+`8677fec577201dbef6d184f47d6255871f2c98ccd12a46ac676d9dbe75a73356`。
+
+以下保留更早工作包的歷史紀錄；目前狀態以本文開頭與 M5/M6 checklist 為準。
+
+最新採用 native F64 dense／MaxSim 的等長 Span iterator：保留原累加次序、
+numeric validation 與 owner；省去逐座標錯誤訊息準備。僅拆 metric 迴圈的候選未採用。
+正式 Python binary SHA-256：
+`2d5e8e0910d4d81d84699e5bc023ba9824a5f9ab867b613cc6bcefcc7bcc0463`。
+31 targeted Mojo／358 完整 Python／C ABI／三個範例通過；正式 package 再通過
+7 score-bit Mojo／91 Python／C client。沒有重新跑完整 Mojo／crash／Linux／GPU。
+獨立 named 診斷的 4,824 配對樣本 ID／F64 bits／stats 相同，高維 uniform QPS
+提高約 7–13%、real 約 4–20%；首輪 128D all 退步仍保留。另三次完整 128D 曲線
+的 all 均改善，但 selective 仍有 QPS／p95 退步，不能以中位數蓋過。
+[實作、各次樣本與驗證](../docs/benchmarks/2026-10-03-native-metric-loops.md)。Frozen archive SHA-256：
+`1084d5fc6c696fc0b2cd0bce1c116ca993524b0daa47eaf38940d5969fdbbfdb`。
+**M5/M6 仍未完成**：未重跑原 Qdrant gate；named 首次重開建圖、並行與
+nonresident／memory-limit 仍待完成。使用者目前沒有原生 Linux runner。
+以下保留前一採用與獨立實驗，不將其通過格或比例合併。
+
+前一採用 named HNSW 的 immutable-run 共享：新快照重用未變動的 base，只建新 run。
+正式 Python binary SHA-256 為
+`7db8a2d6b20436c5efdc71dd92565d58c4037448c32fbd7bfbee6a81c19910a6`。
+第一版 76 targeted Mojo 通過；slot 版 22 targeted Mojo 通過；最後補上候選 heap
+容量上限，8 targeted Mojo／358 完整 Python／C ABI／三個範例通過。最終正式
+package 另通過 59 named Python／C client。不同階段不加總成完整 Mojo／crash。
+量測使用容量修正前的 slot binary `2d7506f8…`；未重跑最後容量修正的速度。
+固定 named 曲線的 1,608 exact checks／9,648 ANN audits 通過，12 組皆可達
+Recall@10 ≥ .95；保留 baseline 28／candidate 25 個低 recall 曲線格。
+全資料更新後首查 6.874／33.082／17.346 → 0.536／1.124／0.916 秒，但多數暖查詢
+仍退步，128D independent 需更高 ef。首次開啟／重開仍建圖，不能宣稱全面加速。
+[實作、完整樣本與限制](../docs/benchmarks/2026-10-03-named-run-hnsw.md)。Archive SHA-256：
+`6115ca3fc12be54c10044c6148dd1f0b453a5eaaff99105dc08ad2531fee2899`。
+容量修正與最新測試 archive SHA-256：
+`99ba7da9d2305e80fec6de02e2bd98acf036116308c763d3a35881e884eaa2bf`。
+**M5/M6 保持未完成**；未重跑原三次 Qdrant 矩陣，也未完成 nonresident／memory-limit
+與 concurrent-client parity。使用者已確認目前沒有原生 Linux runner。
+下一步處理小 run 建圖／查詢成本及首次重開的 named artifact 生命週期。
+
+以下保留本次採用前的紀錄，當時的引擎／binary 並非最新狀態。
+
+後續 delta scan 四列候選未採用：101 targeted Mojo／358 Python 通過，但 warm
+23→22/36、mixed 28→29/36，合計三個 pass→fail，受影響 ANN 收益不穩定。
+保留三項 scalar-oracle 回歸與[完整證據](../docs/benchmarks/2026-10-03-delta-scan-groups.md)；正式引擎仍為
+`a57f11a` / `b183b880…`。這是獨立實驗，不取代或合併前次通過格。M5/M6 未完成。
 
 依據：[plan.md](plan.md)。基線 `a8895c6`，engine `9b98dbc`。
 使用者於 2026-09-30 已授權完成全部剩餘工作：#54 收尾、#55–#63、compaction
@@ -1103,6 +1358,198 @@ rollback/forward recovery tests。Native F16/BF16/I8/U8、binary metrics、multi
   來源關閉、CLI、失敗不提交與發布失敗保留舊檔均通過。
   [實作與驗證](../docs/research/2026-10-02-named-logical-export.md)。
 - [ ] M5/M6 暖查詢／更新後重開／讀寫維護與 resident/non-resident 矩陣，最終整合交付。
+  最新採用回傳容器ownership修復：595完整隔離Python／147正式targeted通過；
+  原warm24/36、mixed20/36、write+flush3/9，recall各36/36，四個pass→fail保留。
+  **整體FAILED，保持未勾選**。核心engine未改；[完整證據](../docs/benchmarks/2026-10-04-output-list-refs.md)。
+  下方均為歷史工作包數字，不取代頁首現況。
+
+  最新停滯診斷：30＋24 個獨立 workers、15,552 audits／54 reopens／54 leases
+  均通過，但未重現原超時，原因未解。sample／LLDB lock owner 取證與四個控制
+  案例已驗證；正式 source/binary 不變，原失敗不替換，沒有新效能 gate。
+  [完整證據](../docs/research/2026-10-04-query-stall-recurrence.md)。
+
+  最新 named 小分區診斷：九個 native workers、24,120 pairs／2,513,574 F32 bits／
+  14,472 原 bundle result/work audits 通過；品質141/216與75低recall保留。36選定
+  native分區搜尋mean/p95均改善，不是public或Qdrant驗收；正式1318457未改。
+  [證據](../docs/research/2026-10-04-named-small-partitions.md)／[下一實作](../docs/plans/2026-10-04-named-bounded-partitions.md)。
+
+  最新採用（2026-10-04）delta live／history 分別限額：146 unique targeted Mojo／506
+  完整 Python／C ABI/client／3 rebuilt examples 通過；正式路徑另 9 Mojo／26 Python
+  與 C/client/examples 再通過，不重複加總。原矩陣 warm21→21/36、mixed28→26/36、
+  write+flush4→4/9、recall各36/36；五個pass→fail全保留。九個受影響後段診斷群組
+  CPU降低9–28%，不取代原gate。**整體FAILED，不勾選**；[完整證據](../docs/benchmarks/2026-10-04-delta-live-budget.md)。
+  以下數字屬先前工作包；named多run/update/reopen與nonresident/memory-limit仍未完成。
+
+  - 最新mixed-state診斷：4 profiles／91,392 repeat audits／268 exact checks，另
+  324格native history sweep／15,552 pairs，scan全oracle通過、105 graph低recall保留。
+  分開限制live vector／physical history的新predicate涵蓋72格，60 matched格mean／p95
+  改善；尚未實作／採用，無新Qdrant或完整整合gate，正式9bf69e0未改。
+  [證據](../docs/research/2026-10-04-mixed-query-work.md)／
+  [下一個隔離工作包](../docs/plans/2026-10-04-delta-live-budget.md)。
+  - 最新採用authority／metadata合併payload編碼；格式／CRC／durability不變。
+  108 targeted Mojo／7 related crash／506完整Python／C ABI/client／3 rebuilt examples
+  通過。原54-worker矩陣warm25→26/36、mixed19→17/36、write+flush3→3/9，recall
+  兩版各36/36，四個mixed pass→fail保留。九格write+flush QPS快6–23%，一格p95
+  退步14.45%；另18診斷workers的flush前景CPU減少14–26%，不取代原gate。
+  整體FAILED；無新full Mojo/crash／HTTP／Linux／nonresident驗收，M5/M6不勾選。
+  [全部證據、樣本與限制](../docs/benchmarks/2026-10-04-combined-cache-encoding.md)。
+  - Top-K admission候選在compiler gate停止，兩版各8 targeted Mojo通過；新增
+  3項oracle保留，正式source/binary不變。沒有新Qdrant／full integration gate。
+  [否決證據](../docs/benchmarks/2026-10-04-topk-admission.md)。
+  - 最新採用checked visit縮小可變參數，epoch／bounds／owner／bits/stats不變。
+  110 targeted Mojo／506完整Python／C ABI/client／3 rebuilt examples通過；正式
+  路徑另11 Mojo／143 Python與C/client/examples通過。Named品質132/216、84低recall
+  保留；高維selective QPS快3–7%，36選定格仍12格timing退步。原54-worker同批
+  warm18→19/36、mixed24→27/36、write+flush3→3/9，四個pass→fail全保留，整體
+  FAILED。沒有新full Mojo/crash／HTTP／Linux／nonresident驗收；
+  [完整證據](../docs/benchmarks/2026-10-04-visit-arguments.md)。
+  - 最新traversal診斷：5,628 paired IDs／bits／stats、1,608 exact oracle checks、
+  18 targeted Mojo通過；原real ANN scalar tails約6%，current reads只占0.8–1.4%。
+  兩個正式named selective profiles有2,880 repeat audits＋134 warmups，visit占
+  8.6–9.6%；下一步驗證縮小checked visit的可變參數，保留全部bounds／epoch契約。
+  Named trial-0品質44/72、28個低recall格保留；正式source/binary未改，沒有新
+  Qdrant／full integration／Linux gate。[完整證據](../docs/research/2026-10-04-traversal-work.md)。
+  - 最新heap單向搬移候選未採用：122 targeted Mojo、54原Qdrant workers與18
+  named workers完成；warm25→23/36、mixed15→14/36、write+flush3→3/9，五個
+  performance pass→fail保留。Named 14,472 paired IDs／bits／stats一致，品質
+  132→132/216、24/36選定timing退步。五個profiles有100,416次repeat audits。
+  正式source/binary不變，沒有新完整Python／Mojo／crash／Linux／nonresident gate。
+  [完整結果與限制](../docs/benchmarks/2026-10-04-heap-shifts.md)。
+  - 最新採用native F64四候選rerank第二版：30 targeted Mojo／506完整Python／
+  C ABI/client／3 rebuilt examples通過，正式路徑3 Mojo／151 Python再通過（不加總）。
+  5,400 public與14,472 named paired queries一致，品質132→132/216，保留7/36
+  選定timing退步。原54-worker Qdrant同批warm18→20/36、mixed24→23/36、
+  write+flush3→3/9、recall各36/36，四個performance pass→fail均保留；整體FAILED。
+  沒有新完整Mojo／crash／HTTP performance／Linux／nonresident gate。
+  [三份凍結證據與限制](../docs/benchmarks/2026-10-04-native-f64-four.md)。
+  - 最新兩版 widening distance reuse 各70 targeted Mojo、18 workers、14,472
+  paired query bits/stats一致，品質各132/216；高維selective改善，其他格仍退步。
+  第二版21/36選定timing退步，兩版未採用；沒有新Qdrant/full integration gate。
+  [全部樣本與限制](../docs/benchmarks/2026-10-04-widening-distances.md)。
+  - 最新逐分區／逐輪計數：9,648 query bits/stats、1,608 exact checks 一致；正式
+  named selective 也有重算，uniform-1536 平均三輪、21,803 distances。後續隔離
+  距離重用實驗見上段；本計數沒有新的速度或 Qdrant 通過主張。
+  [證據](../docs/research/2026-10-04-named-partition-work.md)。
+  Named graph bundle 隔離候選未採用：112 targeted Mojo／11 related crash／506
+  完整 Python／C ABI／3 rebuilt examples 通過；18 個原 lifecycle workers 完成。
+  首查快約43–93倍，但36/36共同 recall 暖格 QPS 退步；fixed-ef 品質132→141/216，
+  有三個新失敗，flush 成本增加。保留28,944 ANN audits／4,824 exact checks與
+  全部樣本；正式 source/binary/格式不變，沒有新Qdrant／Linux／nonresident gate。
+  同圖 bytes 對照另18 workers完成：14,472成對query的IDs／bits／stats一致，
+  品質均132/216，23/36選定格有timing退步；原型仍未採用，M5/M6不勾選。
+  下一步逐partition計數額外搜尋工作，不降低預算或重跑舊repair。
+  [同圖證據](../docs/benchmarks/2026-10-04-named-bundle-fixed-graph.md)。
+  [完整證據](../docs/benchmarks/2026-10-04-named-graph-bundle.md)。
+  相鄰 binding／Arrow／scanner 的轉換 close 缺陷已修正：另 33 個 baseline abort／
+  13 既有 passes；46 targeted／506 完整 Python 通過，採用後 118 targeted 再通過。
+  保留 captured snapshot／batch 生命週期，無 GIL／owner／core 改動；沒有新效能、
+  完整 Mojo/crash/Linux gate。M5/M6 不勾選。
+  [完整證據與限制](../docs/research/2026-10-04-binding-close.md)。
+  HTTP 直接替換 JSON parser 的相容性探針未採用：20,006 numeric bits 一致，
+  但 5 種 accepted inputs／3 種錯誤回應改變；沒有新速度或 HTTP gate 主張。
+  接續確認 M5 多 run 未改內容的 artifact 生命週期，不重跑舊 reconciliation。
+  [全部輸入與回應](../docs/research/2026-10-04-http-json-compatibility.md)。
+  已修正 search_approx／search_dense_where 轉換 callback 關閉 handle 後的 abort：
+  baseline 54 個程序失敗／18 pass，候選 72 targeted／460 完整 Python 通過，
+  採用後同 binary 72 項再驗證通過。只加轉換後 open 檢查，無 GIL／owner／engine
+  變更；未跑新效能或完整 Mojo/crash gate。相鄰 binding 後續結果見上段。
+  [修正、重現與精確範圍](../docs/research/2026-10-04-conversion-close.md)。
+  Python ANN 釋放 GIL 的隔離候選未採用：34 targeted／388 完整 Python 通過；
+  fixed warm 20→22/36、mixed 25→25/36、write+flush 4→4/9、HTTP 24→28/108，
+  整體 FAILED。HTTP 有 64/108 A/B timing 退步、6 個 pass→fail；三個 Qdrant
+  低 recall 格完整保留。錯誤 runtime 的早期 HTTP 結果另存、不當作正式 gate。
+  GIL 候選未改 production；由此重現的搜尋 abort 已以上方最小 handle 修正。
+  [完整樣本、驗證與限制](../docs/benchmarks/2026-10-04-binding-gil.md)。
+  Mapped F32 雙區塊 kernel 探針未採用：3 metric tests／1,646,592 score-bit 比對
+  通過，42 筆微量測保留；高維結果不一致，沒有新 public query／Qdrant 驗收。
+  正式 source/binary 不變。[證據](../docs/benchmarks/2026-10-04-mapped-chunks.md)。
+  每中心一次的 private batch 修復已完成隔離實作與三 corpora／三 trials，未採用：
+  79 targeted Mojo／388 完整 Python、28,944 ANN audits／4,824 exact checks 通過；
+  fixed recall 132→129/216，三個 uniform-128 independent／ef128 格新增失敗，
+  23/36 選定暖格退步。首查三 corpus 均改善，高維更新 distance calls 減少63.8%，
+  但修復仍昂貴；正式 source/binary 未改。這不是 Qdrant gate，沒有新完整 Mojo／
+  crash／C ABI／examples／Linux 驗收；全部慢樣本、失敗與原型已凍結。
+  [完整證據](../docs/benchmarks/2026-10-04-batched-cache-repair.md)。
+  Local repair 計數完成：38,256 jobs／8,210 unique centers-levels，78.54% 重複；
+  reciprocal connect 占 47.43% distance calls。只加記錄，最終 graph 與原 frozen
+  結果逐 byte 相同，12,268,032 component bits 通過，沒有新效能達標主張。其後
+  private batch 實驗結果見上段。[計數與限制](../docs/research/2026-10-04-refresh-work.md)、
+  [實作方案](../docs/plans/2026-10-04-batched-cache-repair.md)。
+  Named retained-base／delta 已完成隔離接合，未採用：跨階段 150 unique targeted
+  Mojo，空 delta 修正後 23 related Mojo／388 Python／C ABI／3 rebuilt examples
+  通過；11 crash 為前一整合階段。單次原高維 grid 首查 33.13→1.71 秒、quality
+  9→9/24 無新增失敗，但 3/4 選定暖格退步、第二次重開較慢。四個 native profiles
+  與 7,488 audits 支持 stale-base 遍歷成本仍在。missing-cache 首次失敗與修復
+  證據全保留，正式 source/binary 不變。後續 local repair 計數見上段，不擴大舊候選。[完整證據](../docs/benchmarks/2026-10-04-named-overlay.md)。
+  既有 retained-base／delta 原 source 成本探針六次完成，47,922 current-vector
+  audits／73,608,192 component bits 通過；三次更新 4.42–4.46→1.33–1.34 秒。
+  該 primitive 階段無新 named query／recall／Qdrant gate；其後隔離接合見上段，
+  原 rerank budget 不變。[證據](../docs/benchmarks/2026-10-04-named-overlay-cost.md)。
+  Private cache point-refresh 候選未採用：113 unique targeted Mojo／388 Python
+  通過；單次 uniform-1536 完整 curves 無新增 quality 失敗、暖 QPS 快 3–9%，
+  但更新後重開首查 4.90→53.58 秒。另五秒 native sample 指出修復工作成本。
+  未跑新完整矩陣／C ABI／crash／examples；正式 source/binary 不變，下一步查既有
+  retained-base／delta 的 named 適用性。[全部樣本](../docs/benchmarks/2026-10-04-cache-point-refresh.md)。
+  新核心上的 cache 生命週期比較完整完成：fixed recall 132→135/216 無新增失敗，
+  首查約快 6–7 倍，仍有 30/36 暖 timing 退步。8 個 profiles／53,312 結果 audits
+  顯示同 ef 多 10–13% 距離計算，selective 主要成本在 HNSW。候選仍未採用，
+  正式 source/binary 保持 cc15f37；下一步評估降低歷史 slot 遍歷成本。
+  [新 cohort、profiles 與全部樣本](../docs/benchmarks/2026-10-04-named-cache-final.md)。
+  已採用 filtered inactive radius 正確性修正：119 targeted Mojo／388 Python／
+  C ABI／3 rebuilt examples；採用後 3 Mojo／8 server tests／C/client/examples 通過。
+  原固定 warm 19→22/36、mixed 19→19/36、write+flush 3→3/9，recall 36/36 全通過；
+  兩個 performance pass→fail 保留，整體 FAILED。沒有新版完整 Mojo/crash/HTTP
+  performance/Linux/nonresident gate；cache reconciliation 仍未採用。
+  [正式修正與精確範圍](../docs/benchmarks/2026-10-04-live-filtered-radius.md)。
+  Named cache reconciliation 候選未採用：首查快 6–7 倍，但初版 fixed recall
+  132→129/216、28/36 timing 退步。定位 filtered inactive radius 缺陷；隔離修正
+  128 targeted Mojo／388 Python 通過，固定圖 recall 129→135/216、無 pass→fail，
+  仍有 20/36 timing 退步。初版另通過 115 targeted Mojo／11 crash／388 Python／
+  C ABI／3 examples；範圍不混算。正式 source/binary 未變，下一步獨立驗證搜尋修正。
+  [全部樣本與重現](../docs/benchmarks/2026-10-04-named-cache-reconcile.md)。
+  Paired finite validation 候選未採用：89 unique targeted Mojo／388 Python 通過，
+  public warm 23→24/36、mixed 19→21/36，仍有五個 pass→fail；write+flush 3→3/9。
+  保留三個 exponent/lane 回歸、兩版 micro、selective profiles 與所有 samples；
+  正式核心未改。[完整證據](../docs/benchmarks/2026-10-04-paired-finite-max.md)。
+  下一步處理 M5 多 run／更新後重開的 named artifact 生命週期。
+  Segment F32 整段寫入候選未採用：73 targeted Mojo／8 related crash／388 Python
+  通過，bytes 相同；micro 改善未穩定反映在 public flush。三方 warm／mixed 皆
+  19→18/36，write+flush 3→3/9，保留全部失敗；正式來源與 binary 不變。
+  [完整實驗](../docs/benchmarks/2026-10-04-segment-bulk-write.md)。
+  鎖停滯後續 100 次原 binary／100 次隔離 owner 診斷，各通過 28,800 audits、
+  100 reopens、100 leases；診斷版 20 項背景維護測試通過。原 DB 複本恢復 9 個
+  exact oracle 與序號 9424 通過；仍未重現、原因未解、未改正式鎖。下一步獨立
+  驗證高維 segment 編碼成本。[完整診斷](../docs/benchmarks/2026-10-04-baseline-lock-stall.md)。
+  Payload scratch 候選未採用：67 targeted Mojo／388 Python／9 related crash／C ABI／
+  3 examples 通過；三方 warm 19→18/36 有兩個 pass→fail，mixed 24→29/36 不抵銷。
+  原基線首輪另有 BlockingScopedLock 停滯，124.97 秒後終止；13 次診斷未重現，
+  原因仍未解，保留完整 stack／部分資料庫。正式 source/binary 不變；下一步查此停滯。
+  [候選、全部樣本與未解失敗](../docs/benchmarks/2026-10-04-payload-buffer.md)。
+  2026-10-04 現行 binary 的固定三次矩陣：warm 22/36、mixed 查詢 25/36、HTTP
+  18/108 strict parity；各自 recall 36/36、36/36、108/108 全通過。Durable write+flush
+  3/9 通過；所有 audits／18 mixed reopen／9 Arrow leases 通過，三組整體 FAILED。
+  這是獨立現況量測，不與歷史通過格合併，也不是實作 A/B；無新 nonresident gate。
+  [完整現況與 immutable 證據](../docs/benchmarks/2026-10-04-current-parity.md)。
+  2026-10-04 現行來源完整 **141 檔／1,001 Mojo、8 檔／23 crash、3 rebuilt examples**
+  與既有 C client 通過；沿用同 binary 的 388 完整 Python。保留 reader launcher
+  首次失敗與 9/9 來源模式重跑，不重複加總；沒有新 Linux／GPU／ASan gate。
+  [最新 CPU 整合證據](../docs/research/2026-10-04-cpu-integration.md)。
+  最新 Python 向量轉換重用單次操作的驗證 callable/type，逐值檢查不變；388 完整
+  Python／採用後 129 targeted Python 通過。Named 三資料集各三次完整曲線的
+  14,472 paired ID／F64 bits／stats 相同，28,944 ANN audits／4,824 exact ID checks
+  通過；兩版各 84 低 recall 格保留。36 選定格 QPS 全提高、30 格 p95 改善，6 格
+  p95 退步仍保留；不取代原 Qdrant gate，也不代表 M5/M6 完成。
+  [完整 profiles／配對／驗證](../docs/benchmarks/2026-10-03-python-vector-validation.md)。
+  已採用 HTTP search 單次 worker 排程；41 targeted Python 與 OpenAPI／結果位元
+  檢查通過。獨立三方 strict parity 14→22/108，兩格 pass→fail 仍保留，整體 FAILED；
+  不與前次 16/108 合併。[實作、profile 與全部試跑](../docs/benchmarks/2026-10-03-http-dispatch.md)。
+  原生 HTTP／並行 1/2/4 clients 的三資料集×三 trial 已完整量測：108/108 recall、
+  16/108 strict parity，整體 FAILED；24,120 query audits 與 33 targeted Python
+  tests／兩個實際 server smoke 通過。沒有新完整 engine 整合；原 binding gate 獨立保留。
+  [完整 HTTP 證據](../docs/benchmarks/2026-10-03-http-parity.md)。
+  最新 planner 隔離複核支持 uniform 選 exact／real 低 ef 選 ANN；14,472 exact 與
+  14,472 approx audits 保留 57 個低 recall pass cells，未改 production 路由，
+  不取代 Qdrant gate。[完整證據](../docs/benchmarks/2026-10-03-planner-recheck.md)。
   IVF-flat 已接通 native 五型別、三種 metric、Mojo／Python／Arrow／多欄位融合；
   3 Mojo + 25 Python 新測試與控制項測試通過，最新 Python 全套 264 passed。
   180 probe/filter/dtype/metric 量測格保留完整 recall 與原始延遲；完整 probe 與獨立
