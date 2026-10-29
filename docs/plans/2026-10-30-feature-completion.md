@@ -162,3 +162,14 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   Q02 stays in progress: sparse/multivector indexed modes, full F16/U8 source
   oracle, canonical-storage audit/migration and universal/C/REST/gRPC exposure
   remain. P01 retains this quality diagnostic alongside historical M5/M6 failures.
+- Q02d sparse execution: average recommendation now uses source-derived plain/
+  batched/final-posting search; custom best/sum follows upstream full scoring.
+  Mojo/Python/Arrow expose actual paths, including path-specific zero scores.
+  138 Rust reference cases, 6 native cases and 1094 distinct Python cases pass.
+  [Plan](2026-10-30-sparse-recommendation-source-port.md) /
+  [evidence and correction](../research/2026-10-30-sparse-recommendation-validation.md).
+  The earlier blanket sparse-zero omission was not full source parity. Sparse
+  recommendation exact/approx now share source dispatch; ordinary native nearest
+  contracts still need their complete migration;
+  configurable sparse thresholds, IDF/input/planner/service parity, multivector
+  HNSW and the existing datatype/storage/protocol gates keep Q02 open.

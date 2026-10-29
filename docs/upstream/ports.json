@@ -378,6 +378,102 @@
         "tests/mojo/test_recommendation_ann.mojo": "88f550ea2629d28f6b27a6e59adc1842b6beaf3e8031dc8909cd7eb89f3cf99d",
         "tests/python/test_recommendation_ann.py": "cff4ebe04aaa5f138007723472f859ac8cfb5f591ea100128ed089005aeda7fe"
       }
+    },
+    {
+      "id": "Q02d-sparse-recommendation-execution",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source_sha256": {
+        "lib/sparse/src/index/search_context.rs": "3c5e4d1ebd3fd41046761a90001b16e6df1a57e2ce68bd08c1b33600cdb0102a",
+        "lib/sparse/src/common/sparse_vector.rs": "369f849d59ae1f03f1c381ef6b1fcf3b74a35c5221959a2225a41d2b8d92e5ed",
+        "lib/common/common/src/top_k.rs": "15a92a3c5647af53943b96e82ec5728481b28f670738ebbf8ab3f61e1dd51b77",
+        "lib/segment/src/index/sparse_index/sparse_vector_index/read_view/search.rs": "ca20b74fe9ca63aebb6746bfe03435ee0f1fde64996b0895022d4978ca28e8d2",
+        "lib/segment/src/index/sparse_index/sparse_vector_index/vector_index_impl.rs": "ffad5c036e5fa363e92459720571aa3472de5db415e483818d3419935239dd52",
+        "lib/segment/src/types.rs": "d3e44321025fd37bd286fb57f5f146c3e59bcd60ccc7e01fa3b1464f3e40a3b1"
+      },
+      "functions": {
+        "plain_search": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn plain_search(",
+          "sha256": "7034b993e6b334e7dd38e3a373f2f34113e34f47fe1cbccfc3c352106649ebe7"
+        },
+        "advance_batch": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn advance_batch<",
+          "sha256": "a63fd84e79f6b9e271f83628e9b97a666c6ee1f8079c075266d7e63bd4933dd5"
+        },
+        "process_last_posting_list": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn process_last_posting_list<",
+          "sha256": "6ca08abf66a5dea020416a82b4108ee8af335c6a9c1bf47d90853646162fe43d"
+        },
+        "next_min_id": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn next_min_id(",
+          "sha256": "e3ce2299f3c7078ef628a8a970abc732a09609714eae6fc8219e7273f4c5fb8b"
+        },
+        "promote_longest": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub(crate) fn promote_longest_posting_lists_to_the_front(",
+          "sha256": "8f3f67df380745ccd1356c3b07f755c03fd928fa210ea0053fb7c30725894f76"
+        },
+        "search": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn search<",
+          "sha256": "1df5fefa2979bd2541ff6ea11064c89a115166fcdfa9991d0f91c73ad752e636"
+        },
+        "prune_longest": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn prune_longest_posting_list(",
+          "sha256": "07737864b03808cb461bb49e6fefdb0296f45eb2f3394daf880129955b66e89e"
+        },
+        "score_vectors": {
+          "source": "lib/sparse/src/common/sparse_vector.rs",
+          "signature": "pub fn score_vectors<T: Ord + Eq>(",
+          "sha256": "2a478aac35b64b1392c9105b24a8552b39238cac667754f5f1efdc4d6bdd53ed"
+        }
+      },
+      "topk_sha256": "e300aec6fdfdffef49235b525336330dd07c8218b5099b7cc89834c355ed663e",
+      "scaffold_sha256": "0bc6304e09cefe7f734c3c1447b1d42b0a6edb1fa4d130c3a8f99422ae78333d",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/index/sparse_search.mojo",
+        "src/akasha/query/recommendation_execution.mojo",
+        "src/akasha/index/field_sparse.mojo"
+      ],
+      "adaptations": [
+        "Retained immutable field postings and native row owners replace upstream segment storage",
+        "Batched nearest search, sorted plain seeks and final-posting dispatch preserve path-specific zero admission",
+        "No reliable suffix-max bounds: source non-pruning branch; native bounded heap and ascending public-ID ties",
+        "Native exact eligible cardinality and upstream default 5000 threshold; sparse configuration and source estimator/IDF parity remain open",
+        "Source best/sum sparse queries use full composite scoring, not HNSW ANN or an exhausted-graph fallback",
+        "Finite recommendation results, candidate/example limits and cancellation/deadlines remain native contracts",
+        "Sparse recommendation exact/approx share source dispatch because upstream ignores SearchParams; obsolete flat sparse-average selection removed; older ordinary native nearest-contract migration remains required"
+      ],
+      "fixture": "tests/fixtures/qdrant-recommendation/sparse-search.json",
+      "fixture_sha256": "97582009596f8656d64ed54f957ec1c0d7b559dd7e3c6248955f8e30b9df7275",
+      "transforms_fixture": "tests/fixtures/qdrant-recommendation/recommendation.json",
+      "transforms_fixture_sha256": "af8399dc6f0eb1f97a770db6f9ed894744f1c0c3d70860414cfc74648e32c9e0",
+      "reference_cases": 138,
+      "status": "implemented_sparse_source_paths_verified_full_q02_pending",
+      "verification": [
+        "docs/research/2026-10-30-sparse-recommendation-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/sparse_search.mojo": "e5bc2b07547b50739adc5db8899d7e02094503767c5655b5dbf437b95bb21773",
+        "src/akasha/query/recommendation_execution.mojo": "ef048c903069f37065f35cd3b8ba2097a14dadeef77b706d8301e9c9bde33fe7",
+        "src/akasha/index/field_sparse.mojo": "87848b08da63e1380d890441e4087603852f75cfcebda53280746cab8b6ee70d",
+        "src/akasha/index/sparse.mojo": "40d18e53361bc972771c8da3f35a550a7cb10730bc0351446597c5b558dab6f1",
+        "src/akasha/query/field_recommendation.mojo": "e59689202d16e323417965860652e6c2b689432e69c5bf9104386a1a92e06b36",
+        "src/akasha/index/sorted_postings.mojo": "22c4dd4f24ab65a7decc802cc2e670a0d73b8df465c35e4b7dc4d8bedfacef94",
+        "tests/mojo/test_sparse_recommendation.mojo": "d0d03380e82148fc68a28c0b60ace35efd535a3ca2e7512825611241e2151bc2",
+        "tests/python/test_sparse_recommendation.py": "f03a202847570b3b759072c094d1e095cbdf4597a304674b6b70a27011ed9785",
+        "scripts/qdrant_sparse_recommendation_reference.py": "85f2d8c97aee12254868b9daf3366f65582ec46bfa6e79f435ba1e9ed7f74f9d",
+        "src/akasha/query/recommendation_scorer.mojo": "3289f2e46966ccc5d3ee2b8fd8518dc7964af79ad91680f9ca36034f2c3c427f",
+        "tests/python/test_recommendation.py": "35e5ecaa5388fa1adcf5bf3dc5bc2d1645350d982ecd8efd69176c8680a54580"
+      }
     }
   ]
 }

@@ -28,5 +28,15 @@ Those tests are not independent datatype or complete protocol parity evidence.
 
 Empty positives are invalid for average-vector; custom strategies accept
 negative-only inputs. Nonfinite native results are rejected, including source
-sum-score overflow. Sparse nearest zeros are omitted; sparse custom-score zeros
-remain eligible. Multivector averages concatenate rows.
+sum-score overflow. The original forced-exact harness omits sparse nearest
+zeros; sparse custom-score zeros remain eligible. This harness policy does not
+prove the zero-admission behavior of all upstream sparse index paths.
+Multivector averages concatenate rows.
+
+`sparse-search.json` separately runs eight compiled, unedited sparse-search
+methods plus the source TopK implementation, using representation-only posting
+and counter shims. The source non-pruning path is selected because the native
+postings have no reliable suffix-max bounds. It covers plain/batched/final-list
+zero rules and 10000-ID boundaries, and composes original `average_bits` with
+the actual sparse-search methods for full average recommendation expectations.
+Native ties use ascending public IDs; this is not a service/IDF/planner oracle.

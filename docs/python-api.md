@@ -471,8 +471,8 @@ Dot/cosine use higher-is-better internal similarity. Custom L2 scores use
 results apply Qdrant's final Euclidean square root, so their public L2 units
 are distance, unlike Akasha's existing `search_field` squared-L2 contract.
 Scores are F32 values exported through the native Float64 result columns.
-Ties keep Akasha's ascending ID ordering. Sparse average queries omit zero
-results; sparse custom queries include zero/nonoverlap results. Missing fields,
+Ties keep Akasha's ascending ID ordering. Sparse average queries follow the
+path-specific zero rules below; sparse custom queries include zero/nonoverlap results. Missing fields,
 empty stored multivectors and excluded IDs never occupy a result slot.
 
 `recommend_field_record_batch` in `akashadb.arrow` exposes the same options and
@@ -483,7 +483,7 @@ queries in collection telemetry. `max_query_batch` bounds the total examples;
 `max_k`, `max_candidates`, cancellation and deadlines apply. Nonfinite results
 are rejected. Binary recommendation is unsupported by the upstream strategies.
 
-`mode="approx"` requires a dense field configured with HNSW. All three strategies
+For dense fields, `mode="approx"` requires configured HNSW. All three strategies
 score each visited candidate with the same prepared query used by exact search;
 best/sum do not substitute a single averaged query. `ef_search` defaults to the
 field's configured search breadth and must be positive and within its maximum.
@@ -502,8 +502,34 @@ explicit exact fallback. A full result count does not guarantee exact recall.
 The repeated-vector quality diagnostic remains open even at high ef; see the
 [ANN validation and limitation](research/2026-10-30-recommendation-ann-validation.md).
 
-Sparse/multivector indexed recommendation and universal REST/gRPC/C exposure
-remain required work. F32 scalar
+Sparse fields use the same source execution for `mode="exact"` and
+`mode="approx"`: Qdrant's sparse index does not use the `exact` search parameter.
+
+- `average_vector` searches retained postings. With a filter or same-collection
+  example exclusions and fewer than 5000 eligible vectors, it uses the plain
+  postings path; otherwise it uses batched indexed search. These are exact
+  sparse algorithms, not HNSW ANN. `ef_search` is invalid for sparse fields.
+- Batched indexed search omits zero sums. Plain postings search and the final
+  single-posting tail can include zero scores for overlapping terms, exactly
+  as in the pinned source. Empty queries and rows with no overlapping terms
+  produce no nearest results. The blanket rule "sparse nearest never returns
+  zero" does not describe all upstream execution paths.
+- `best_score` and `sum_scores` scan all eligible vectors with the actual
+  composite scorer, including zero/nonoverlap scores. This is the source's
+  intended custom-query execution, not an ANN fallback.
+
+Stats identify `recommendation_sparse_indexed`, `recommendation_sparse_plain`,
+`recommendation_sparse_empty`, or `recommendation_sparse_scored`. The first
+three use `field-postings`; custom scoring uses `field-flat`. Filter/exclusion
+visibility is retained, and owned Arrow results survive close. Native sparse
+planning currently uses exact eligible counts and the upstream default threshold;
+configurable thresholds, IDF and full source planner/service parity remain open.
+Ordinary native nearest APIs still keep their existing zero-admission contract;
+their full migration is separate pending work. Sparse recommendation has no
+alternate flat average path. See [sparse source validation](research/2026-10-30-sparse-recommendation-validation.md).
+
+Multivector HNSW recommendation and universal REST/gRPC/C exposure remain
+required work. F32 scalar
 pipelines have independent upstream fixtures. Native F16/U8 conversion and
 Akasha BF16/I8 extensions have regression coverage but not a full upstream
 cross-datatype oracle yet. Integer metric accumulation is widened to Int64.

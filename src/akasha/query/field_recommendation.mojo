@@ -2,7 +2,7 @@
 
 Lookup/exclusions: collection/recommendations.rs at
 74f3e85b9473c62560006c043e13737ce6b48412 (Apache-2.0).
-Exact and dense HNSW execution share one prepared recommendation scorer.
+Exact and indexed execution share one prepared recommendation scorer.
 """
 
 from akasha.document.vector_schema import VectorFieldSpec
@@ -14,7 +14,7 @@ from akasha.query.filter_ast import FilterExpression
 from akasha.query.recommendation import validate_recommendation
 from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_input
 from akasha.query.recommendation_scorer import PreparedRecommendation
-from akasha.query.recommendation_execution import search_recommendation_exact, search_recommendation_approx
+from akasha.query.recommendation_execution import search_recommendation_exact, search_recommendation_approx, search_recommendation_sparse
 from akasha.storage.read_generation import ReadGeneration
 from std.memory import ArcPointer
 
@@ -100,6 +100,11 @@ def recommend_generation_field(
     var positive = _resolve_examples(positives, source, source_name, field, same, excluded, control)
     var negative = _resolve_examples(negatives, source, source_name, field, same, excluded, control)
     var query = ArcPointer(PreparedRecommendation(field, strategy, positive, negative))
+    if field.kind == 1:
+        if ef_search != -1:
+            raise Error("ef_search is only valid for dense HNSW recommendation")
+        # Qdrant's sparse VectorIndex ignores SearchParams (including exact).
+        return search_recommendation_sparse(view, query[], k, expression, excluded, control)
     if approximate:
         return search_recommendation_approx(view, query, k, expression, excluded, ef_search, control)
     if ef_search != -1:

@@ -64,6 +64,18 @@ ported from v1.19.0. See
 [traversal provenance](benchmarks/mojo/qdrant_search_reference.md).
 Full recommendation recall, datatype/storage and protocol parity remain open.
 
+Sparse recommendation execution in `src/akasha/index/sparse_search.mojo` and
+`query/recommendation_execution.mojo` adapts the same v1.19.0 revision's
+`lib/sparse/src/index/search_context.rs` and
+`lib/segment/src/index/sparse_index/sparse_vector_index/read_view/search.rs`.
+Plain seeks reuse Akasha's ordered-posting helper; batched and final-posting
+execution preserve the source's distinct zero-score rules. Native postings lack
+reliable suffix maxima, so the source non-pruning branch applies. Native bounded
+Top-K keeps ascending public-ID ties and admitted nonfinite recommendation scores
+are rejected. The independent Rust scaffold compiles unedited search methods,
+`score_vectors` and `lib/common/common/src/top_k.rs`; full server/IDF/planner and
+older native nearest-contract migration remain unaccepted.
+
 Qdrant distributes this source under the Apache License, Version 2.0; a copy of
 the upstream license is included at [Qdrant license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
 No root NOTICE file is present at this pinned revision.

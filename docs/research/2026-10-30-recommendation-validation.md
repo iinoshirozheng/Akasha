@@ -6,6 +6,9 @@ in progress. This evidence covers the exact query path, not ANN/protocol parity.
 Subsequent dense ANN integration is recorded separately in
 [ANN validation](2026-10-30-recommendation-ann-validation.md); the pending list
 below describes the state at this exact-query commit.
+The later [sparse source port](2026-10-30-sparse-recommendation-validation.md)
+also establishes path-specific zero admission. This exact harness's sparse-zero
+omission is not proof that all upstream sparse query plans omit zero scores.
 
 ## Behavior and executable path
 

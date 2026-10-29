@@ -91,8 +91,11 @@ become an accepted quality result. The complete-graph source-score oracle tests
 isolate scoring and traversal integration; they do not tune production parameters.
 Next required work includes:
 
-- Sparse/multivector indexed recommendation and complete independent graph/
-  service behavior checks, with actual path/fallback reporting.
+- Sparse source execution is now implemented, including plain/batched/final-list
+  zero semantics; see [Q02d evidence](../research/2026-10-30-sparse-recommendation-validation.md).
+  Complete sparse configuration/IDF/input/planner parity and older native nearest
+  contract migration remain. Multivector HNSW and complete independent graph/
+  service behavior checks still require actual path/fallback reporting.
 
 - Independent F16/U8 query conversion and scoring fixtures, including large
   dimension/integer overflow and SIMD/scalar differences.

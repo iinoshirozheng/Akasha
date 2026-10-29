@@ -1,8 +1,9 @@
 """Immutable per-field postings with native F32 weights and F32 accumulation.
 
 Unlike the mutable legacy SparseIndex, this root-owned index needs no duplicate
-owned records or delete bookkeeping. Rows retain present empty vectors for identity; only nonzero scores are
-eligible for search results, matching Qdrant sparse search.
+owned records or delete bookkeeping. Rows retain present empty vectors and zero
+weights for identity. Native nearest and source-backed recommendation execution
+apply their own result-admission rules over these same postings.
 """
 
 from akasha.index.field_artifacts import FieldRow
@@ -11,9 +12,27 @@ from akasha.query.control import QueryControl
 
 
 @fieldwise_init
-struct _FieldPosting(TrivialRegisterPassable):
+struct _FieldPosting(TrivialRegisterPassable, Comparable):
     var row: Int
     var weight: Float32
+
+    def __eq__(self, other: Self) -> Bool:
+        return self.row == other.row
+
+    def __ne__(self, other: Self) -> Bool:
+        return self.row != other.row
+
+    def __lt__(self, other: Self) -> Bool:
+        return self.row < other.row
+
+    def __le__(self, other: Self) -> Bool:
+        return self.row <= other.row
+
+    def __gt__(self, other: Self) -> Bool:
+        return self.row > other.row
+
+    def __ge__(self, other: Self) -> Bool:
+        return self.row >= other.row
 
 
 struct FieldSparseIndex(Movable):

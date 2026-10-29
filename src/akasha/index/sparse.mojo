@@ -5,9 +5,10 @@ from std.memory import bitcast
 
 
 def sparse_score_is_eligible(score: Float32) -> Bool:
-    """Qdrant sparse admission above TopK's initial f32::MIN threshold.
+    """Qdrant sparse advance_batch admission above initial f32::MIN.
 
     Reject zero, NaN and negative overflow; positive overflow remains eligible.
+    Source plain_search and the final-posting path have different zero rules.
     """
     return score != 0 and score > bitcast[DType.float32](UInt32(0xFF7FFFFF))
 

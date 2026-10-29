@@ -1,4 +1,4 @@
-"""Exact and HNSW execution over one prepared recommendation and read root.
+"""Exact, HNSW and sparse execution over a prepared recommendation/read root.
 
 Custom point scoring follows Qdrant QueryScorer/FilteredScorer at
 74f3e85b9473c62560006c043e13737ce6b48412, Apache-2.0. Traversal remains the
@@ -11,9 +11,11 @@ from akasha.index.hnsw_core import HnswSearchAdmission, search_scored_allowed_wi
 from akasha.index.hnsw_query_scorer import HnswQueryScorer
 from akasha.index.hnsw_scratch import HnswSearchScratch
 from akasha.index.hnsw_storage import HnswGraphAccess
+from akasha.index.sparse_search import search_sparse_postings
 from akasha.query.control import QueryControl
+from akasha.query.evaluator import matches_expression
 from akasha.query.field_ann import _field_graph
-from akasha.query.field_search import FieldSearchExecution, field_exact_stats, gather_field_rows
+from akasha.query.field_search import FieldSearchExecution, FieldSearchResult, field_exact_stats, gather_field_rows, _sparse_artifact
 from akasha.query.filter_ast import FilterExpression
 from akasha.query.planner import QueryPlanner
 from akasha.query.recommendation_scorer import PreparedRecommendation
@@ -54,8 +56,6 @@ def search_recommendation_exact(
                 continue
             var score = query.score(stored, control)
             stats.distance_evaluations += query.similarity_count()
-            if not query.eligible(score):
-                continue
             topk.offer(entry.id, Float64(score))
             stats.base_visited += 1
     if control:
@@ -226,3 +226,46 @@ def search_recommendation_approx(
     stats.retained_candidates = len(results)
     stats.storage_name = String("field-hnsw-", config.scalar_name())
     return FieldSearchExecution(results^, stats^, "recommendation_hnsw")
+
+
+def search_recommendation_sparse(
+    view: ReadGeneration, query: PreparedRecommendation, k: Int,
+    expression: Optional[FilterExpression], excluded: Dict[Int, Bool],
+    control: Optional[QueryControl],
+) raises -> FieldSearchExecution:
+    """Qdrant sparse search_query: nearest index versus custom full scoring."""
+    if query.strategy != "average_vector":
+        var execution = search_recommendation_exact(view, query, k, expression, excluded, control)
+        execution.reason = "recommendation_sparse_scored"
+        return execution^
+    var stats = field_exact_stats(query.field)
+    stats.backend_name = "qdrant-recommendation-f32"
+    stats.storage_name = "field-postings"
+    if len(query.positive[0].sparse_values()) == 0:
+        return FieldSearchExecution([], stats^, "recommendation_sparse_empty")
+    var owner = _sparse_artifact(view, query.field, control)
+    var allowed = List[Bool](length=len(owner[].rows), fill=False)
+    var matched = 0
+    for row in range(len(owner[].rows)):
+        if control:
+            control.value().checkpoint(row)
+        var location = owner[].rows[row]
+        if location.id in excluded:
+            continue
+        ref entry = view.run(location.layer).memtable.entry_ref_at(location.ordinal)
+        if expression and not matches_expression(entry.fields(), expression.value()):
+            continue
+        allowed[row] = True
+        matched += 1
+    # Source default; exact native cardinality replaces its estimate. Configurable
+    # sparse thresholds and IDF remain separate full-protocol/schema work.
+    var plain = (Bool(expression) or len(excluded) > 0) and matched < 5_000
+    var outcome = search_sparse_postings(owner, query.positive[0].sparse_values(), allowed, k, plain, control)
+    var results = List[FieldSearchResult](capacity=len(outcome.results))
+    for item in outcome.results:
+        results.append(FieldSearchResult(item.id, Float64(item.score)))
+    stats.distance_evaluations = outcome.evaluated
+    stats.base_visited = outcome.evaluated
+    stats.filtered_rejections = outcome.rejected
+    stats.retained_candidates = len(results)
+    return FieldSearchExecution(results^, stats^, "recommendation_sparse_plain" if plain else "recommendation_sparse_indexed")

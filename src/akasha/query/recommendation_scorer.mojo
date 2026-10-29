@@ -6,7 +6,6 @@ Based on CustomQueryScorer and RecoQuery at Qdrant revision
 
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
-from akasha.index.sparse import sparse_score_is_eligible
 from akasha.query.control import QueryControl
 from akasha.query.recommendation import RecommendationScores, average_recommendation
 from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_similarity
@@ -60,9 +59,6 @@ struct PreparedRecommendation(Movable):
         if not isfinite(score):
             raise Error("recommendation score must be finite")
         return score
-
-    def eligible(self, score: Float32) -> Bool:
-        return self.field.kind != 1 or self.strategy != "average_vector" or sparse_score_is_eligible(score)
 
     def public_score(self, score: Float32) -> Float32:
         if self.strategy == "average_vector" and self.field.metric == 1:

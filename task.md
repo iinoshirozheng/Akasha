@@ -25,6 +25,12 @@
 - Q02c dense HNSW 推薦已使用真正的 composite scorer 遍歷，並接上 Mojo／Python／Arrow。
   [ANN 驗證與召回限制](docs/research/2026-10-30-recommendation-ann-validation.md)。
   重複向量的召回缺口保留；sparse／multivector 索引推薦、型別／儲存及協定驗收仍待完成。
+- Q02d 稀疏推薦已接上來源的 plain／批次索引路徑，自訂 best/sum 採來源的完整計分。
+  138 組上游對照、6 項原生與 1094 項不同 Python 案例通過。
+  [零分規則更正與驗證](docs/research/2026-10-30-sparse-recommendation-validation.md)。
+  稀疏推薦 exact／approx 已統一依來源分派；舊 native nearest 契約的完整遷移、
+  稀疏設定／IDF、multivector HNSW、
+  型別／儲存與協定工作仍未完成。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。

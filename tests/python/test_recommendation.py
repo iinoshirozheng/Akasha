@@ -11,6 +11,7 @@ from akashadb import (CancellationToken, Collection, PayloadField, PointMutation
 from akashadb.arrow import recommend_field_record_batch
 
 FIXTURE = json.loads((Path(__file__).parents[1] / "fixtures/qdrant-recommendation/recommendation.json").read_text())
+SPARSE_SEARCH = json.loads((Path(__file__).parents[1] / "fixtures/qdrant-recommendation/sparse-search.json").read_text())["cases"]
 
 
 def f32(bits):
@@ -41,9 +42,17 @@ def test_recommendations_match_rust_pipeline(tmp_path, sample):
                 db.recommend_field("v", **kwargs)
             return
         hits = db.recommend_field("v", **kwargs)
-        assert [hit.id for hit in hits] == [row[0] for row in sample["expected"]]
+        expected = sample["expected"]
+        if sample["kind"] == "sparse" and sample["strategy"] == "average_vector":
+            # Compose the original transform with actual source sparse search;
+            # the original numeric-only harness omitted zero in its scaffold.
+            source_index = FIXTURE["cases"].index(sample)
+            mode = "plain" if sample["positive_ids"] or sample["negative_ids"] else "indexed"
+            searched = next(case for case in SPARSE_SEARCH if case["name"] == f"pipeline_{source_index}" and case["mode"] == mode)
+            expected = [[row+1, score] for row, score in searched["expected"]]
+        assert [hit.id for hit in hits] == [row[0] for row in expected]
         # Portable scalar Rust/LLVM may differ by a few ULPs in normalization.
-        assert [hit.score for hit in hits] == pytest.approx([f32(row[1]) for row in sample["expected"]], abs=2e-6, rel=2e-6)
+        assert [hit.score for hit in hits] == pytest.approx([f32(row[1]) for row in expected], abs=2e-6, rel=2e-6)
         assert db.last_search_stats().backend_name == "qdrant-recommendation-f32"
         arrow = recommend_field_record_batch(db, "v", **kwargs)
         assert arrow.to_pydict() == {"id": [hit.id for hit in hits], "score": [hit.score for hit in hits]}
