@@ -26,6 +26,7 @@ from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from std.collections import Dict
 from akasha.index.flat import SearchResult
 from akasha.api.scanner import ReadScanner
+from akasha.api.snapshot import ReadSnapshot
 from bindings.arrow_export import ArrowColumn, scanner_schema, import_scan_batch
 from akasha.storage.operations import (
     inspect_storage,
@@ -532,7 +533,8 @@ struct BoundCollection(Movable, Writable):
 
     @staticmethod
     def search_field[
-        columns: Bool = False
+        columns: Bool = False,
+        by_id: Bool = False,
     ](
         py_self: PythonObject,
         name: PythonObject,
@@ -565,20 +567,47 @@ struct BoundCollection(Movable, Writable):
             )
         )
         control.value().checkpoint(0)
-        var query = vector_from_python(raw, fields[ordinal])
+        var query = Optional[VectorValue]()
+        var point_id = 0
+        comptime if by_id:
+            point_id = _exact_python_int(raw, "point ID")
+        else:
+            query = Optional(vector_from_python(raw, fields[ordinal]))
         var expression = Optional[FilterExpression]()
         if not _is_python_none(options["filter"]):
             expression = Optional(_filter_expression(options["filter"]))
         var count = _exact_python_int(k, "k")
         var ef = _exact_python_int(options["ef_search"], "ef_search")
         var rerank = _exact_python_int(options["rerank_k"], "rerank_k")
+        comptime if by_id:
+            var lookup_field = Optional[String]()
+            var raw_lookup_field = options.get("lookup_field", Python.none())
+            if not _is_python_none(raw_lookup_field):
+                lookup_field = Optional(_exact_python_string(raw_lookup_field, "lookup field"))
+            var raw_lookup = options.get("lookup_from", Python.none())
+            _ensure_open(self[])
+            var lookup = Optional[ReadSnapshot]()
+            if not _is_python_none(raw_lookup):
+                var source = raw_lookup.downcast_value_ptr[BoundCollection]()
+                _ensure_open(source[])
+                # Explicit self lookup must use the search's single root.
+                if Int(source) != Int(self):
+                    lookup = Optional(source[].inner.value().snapshot())
+            _ensure_open(self[])
+            var results = self[].inner.value().search_field_by_id(
+                field_name, point_id, count, lookup=lookup,
+                lookup_field=lookup_field, expression=expression^,
+                approximate=search_mode == "approx", ef_search=ef,
+                rerank_k=rerank, ivf=ivf, control=control,
+            )
+            return _field_results_to_python[columns](results)
         _ensure_open(self[])
         var results = (
             self[]
             .inner.value()
             .search_field(
                 field_name,
-                query,
+                query.value(),
                 count,
                 expression^,
                 approximate=search_mode == "approx",
@@ -1771,6 +1800,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.search_field[True]](
                 "search_field_columns"
             )
+            .def_method[BoundCollection.search_field[False, True]]("search_field_by_id")
+            .def_method[BoundCollection.search_field[True, True]]("search_field_by_id_columns")
             .def_method[BoundCollection.upsert_sparse]("upsert_sparse")
             .def_method[BoundCollection.delete]("delete")
             .def_method[BoundCollection.flush]("flush")

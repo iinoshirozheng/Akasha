@@ -103,6 +103,7 @@ def search_generation_field_ivf(
     nprobe: Int,
     iterations: Int,
     control: Optional[QueryControl] = None,
+    excluded_ids: Optional[Dict[Int, Bool]] = None,
 ) raises -> FieldSearchExecution:
     if k <= 0:
         raise Error("k must be positive")
@@ -148,6 +149,9 @@ def search_generation_field_ivf(
                 control.value().checkpoint(stats.base_visited)
             stats.base_visited += 1
             ref location = index[].rows[row]
+            if excluded_ids and location.id in excluded_ids.value():
+                stats.filtered_rejections += 1
+                continue
             ref entry = view.run(location.layer).memtable.entry_ref_at(
                 location.ordinal
             )

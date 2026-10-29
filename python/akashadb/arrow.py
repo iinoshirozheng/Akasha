@@ -134,6 +134,27 @@ def search_field_record_batch(
     ], names=["id", "score"])
 
 
+def search_field_by_id_record_batch(
+    collection: Collection, name: str, id: int, k: int, *,
+    lookup_from: Collection | None = None, lookup_field: str | None = None,
+    filter: Mapping[str, Any] | None = None,
+    mode: str = "exact", ef_search: int | None = None, rerank_k: int = 0,
+    ivf: IvfOptions | None = None,
+    cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
+) -> Any:
+    """Search using a stored point's vector into owned Arrow result columns."""
+    import pyarrow as pa
+    columns = collection._search_field_raw(
+        name, id, k, _by_id=True, lookup_from=lookup_from, lookup_field=lookup_field,
+        filter=filter, mode=mode, ef_search=ef_search, rerank_k=rerank_k,
+        ivf=ivf, columns=True, cancellation=cancellation, timeout_ns=timeout_ns,
+    )
+    return pa.record_batch([
+        pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+        pa.array(columns["scores"], type=pa.float64(), from_pandas=False),
+    ], names=["id", "score"])
+
+
 def search_fields_record_batch(
     collection: Collection, queries: list["FieldQuery"], k: int, *,
     fetch_k: int = 100, rank_constant: int = 2,

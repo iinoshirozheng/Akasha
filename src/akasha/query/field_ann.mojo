@@ -122,6 +122,7 @@ def search_generation_field_approx(
     ef_search: Int,
     rerank_k: Int,
     control: Optional[QueryControl] = None,
+    excluded_ids: Optional[Dict[Int, Bool]] = None,
 ) raises -> FieldSearchExecution:
     if k <= 0:
         raise Error("k must be positive")
@@ -146,14 +147,20 @@ def search_generation_field_approx(
     var rows = gather_field_rows(view, field.id, control)
     var total = len(rows)
     var eligible_count = total
-    if expression:
+    if expression or excluded_ids:
         eligible_count = 0
         for layer in range(view.layer_count()):
             ref table = view.run(layer).memtable
-            for ordinal in view.filtered_ordinals(layer, expression.value()):
+            var ordinals = view.filtered_ordinals(
+                layer, expression.value()
+            ) if expression else view.visible_ordinals(layer)
+            for ordinal in ordinals:
                 if control:
                     control.value().checkpoint(eligible_count)
-                if table.entry_ref_at(ordinal).field_ordinal(field.id) >= 0:
+                ref entry = table.entry_ref_at(ordinal)
+                if excluded_ids and entry.id in excluded_ids.value():
+                    continue
+                if entry.field_ordinal(field.id) >= 0:
                     eligible_count += 1
     if eligible_count == 0:
         var empty_stats = field_exact_stats(field)
@@ -161,11 +168,11 @@ def search_generation_field_approx(
         return FieldSearchExecution([], empty_stats^, "field_empty")
     var plan = QueryPlanner.plan_dense(
         total, eligible_count, k, ef, config.max_ef_search,
-        Bool(expression), True, True,
+        Bool(expression) or Bool(excluded_ids), True, True,
     )
     if not plan.use_hnsw:
         var exact = search_generation_field_reported(
-            view, field, query, k, expression, control
+            view, field, query, k, expression, control, excluded_ids
         )
         exact.reason = "field_" + plan.reason
         exact.stats.fallback_reason = exact.reason.copy()
@@ -184,13 +191,17 @@ def search_generation_field_approx(
         var graph = _field_graph(view.run(layer), field, control)
         var run_matched = len(graph[].rows)
         var allowed = Optional[HnswSearchAdmission]()
-        if expression:
+        if expression or excluded_ids:
             var flags = List[Bool](length=len(graph[].rows), fill=False)
             run_matched = 0
-            var ordinals = view.filtered_ordinals(layer, expression.value())
+            var ordinals = view.filtered_ordinals(
+                layer, expression.value()
+            ) if expression else view.visible_ordinals(layer)
             ref table = view.run(layer).memtable
             for ordinal in ordinals:
                 ref entry = table.entry_ref_at(ordinal)
+                if excluded_ids and entry.id in excluded_ids.value():
+                    continue
                 if entry.field_ordinal(field.id) < 0:
                     continue
                 var row = graph[].lookup.ordinal_for(entry.id)
@@ -268,7 +279,7 @@ def search_generation_field_approx(
     var target = min(k, matched)
     if len(candidates) < target:
         var fallback = search_generation_field_reported(
-            view, field, query, k, expression, control
+            view, field, query, k, expression, control, excluded_ids
         )
         fallback.reason = "field_ann_exhausted"
         fallback.stats.fallback_reason = "field_ann_exhausted"

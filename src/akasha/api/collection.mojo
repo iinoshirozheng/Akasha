@@ -406,6 +406,31 @@ struct PersistentCollection:
             self._last_dense_plan_reason = execution.reason.copy()
         return execution.take_results()
 
+    def search_field_by_id(
+        mut self,
+        name: String,
+        id: Int,
+        k: Int,
+        *,
+        lookup: Optional[ReadSnapshot] = None,
+        lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.snapshot().search_field_by_id_reported(
+            name, id, k, lookup=lookup, lookup_field=lookup_field,
+            expression=expression^, approximate=approximate,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+        )
+        with BlockingScopedLock(self._writer_lock[]):
+            self._last_search_stats = copy_search_stats(execution.stats)
+            self._last_dense_plan_reason = execution.reason.copy()
+        return execution.take_results()
+
     def search_fields(
         mut self,
         queries: List[FieldQuery],

@@ -140,6 +140,7 @@ def search_generation_field_reported(
     k: Int,
     expression: Optional[FilterExpression],
     control: Optional[QueryControl] = None,
+    excluded_ids: Optional[Dict[Int, Bool]] = None,
 ) raises -> FieldSearchExecution:
     """Rank visible native owners across immutable runs with one bounded heap.
     """
@@ -155,7 +156,7 @@ def search_generation_field_reported(
     if view.visible_count == 0:
         return FieldSearchExecution([], stats^, "field_exact")
     if field.kind == 1:
-        return _search_sparse_field(view, field, query, k, expression, control)
+        return _search_sparse_field(view, field, query, k, expression, control, excluded_ids)
     var topk = BoundedTopK[DType.float64](
         min(k, view.visible_count),
         smaller_is_better=field.metric == 1
@@ -173,6 +174,9 @@ def search_generation_field_reported(
                 control.value().checkpoint(scanned)
             scanned += 1
             ref entry = table.entry_ref_at(ordinal)
+            if excluded_ids and entry.id in excluded_ids.value():
+                stats.filtered_rejections += 1
+                continue
             var field_ordinal = entry.field_ordinal(field.id)
             if field_ordinal < 0:
                 continue
@@ -236,6 +240,7 @@ def _search_sparse_field(
     k: Int,
     expression: Optional[FilterExpression],
     control: Optional[QueryControl],
+    excluded_ids: Optional[Dict[Int, Bool]],
 ) raises -> FieldSearchExecution:
     var owner = _sparse_artifact(view, field, control)
     ref index = owner[]
@@ -255,6 +260,9 @@ def _search_sparse_field(
         if not sparse_score_is_eligible(scores[row]):
             continue
         ref location = index.rows[row]
+        if excluded_ids and location.id in excluded_ids.value():
+            stats.filtered_rejections += 1
+            continue
         ref entry = view.run(location.layer).memtable.entry_ref_at(
             location.ordinal
         )

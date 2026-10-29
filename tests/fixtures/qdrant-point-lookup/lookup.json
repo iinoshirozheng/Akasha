@@ -1,0 +1,472 @@
+{
+  "upstream": "https://github.com/qdrant/qdrant",
+  "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+  "sources": [
+    {
+      "path": "lib/collection/src/common/fetch_vectors.rs",
+      "sha256": "b0fe781c0fdaccdacde392fde308b00006e69c635e4a599252a9697e4b36fcb6"
+    },
+    {
+      "path": "lib/collection/src/operations/universal_query/collection_query.rs",
+      "sha256": "157a346aee2aa864121b2e896e36c41436069188a978f4623045250167c2c8a4"
+    },
+    {
+      "path": "lib/collection/src/common/retrieve_request_trait.rs",
+      "sha256": "2f2caabe48d495b2f498a26838355923654a0bafaa8b9e46bd504a8ef74e3cbc"
+    }
+  ],
+  "functions": [
+    "ReferencedVectors::get",
+    "ReferencedVectors::resolve_reference",
+    "VectorInputInternal::as_id",
+    "VectorQuery::get_referenced_ids",
+    "get_lookup_collection",
+    "get_lookup_vector_name",
+    "get_referenced_point_ids_on_collection"
+  ],
+  "extracted_sha256": "f9ca6f4e6de9a58f19212d3f2222cc43f215cbb9dbe259970decf09d0a3ff69d",
+  "scaffold_sha256": "350dc900fa4194244ffe2e75a5f5656c865364c6394d305ace027d48eb0f7449",
+  "adapter": "Verbatim functions; HashMap, numeric IDs, dense vector/record types and nearest-only flat_iter; canonicalized excluded-ID set",
+  "cases": [
+    {
+      "lookup_collection": null,
+      "lookup_field": null,
+      "id": 1,
+      "resolved": [
+        1.0,
+        2.0
+      ],
+      "excluded": [
+        1
+      ]
+    },
+    {
+      "lookup_collection": null,
+      "lookup_field": null,
+      "id": 2,
+      "resolved": [
+        -1.0,
+        3.0
+      ],
+      "excluded": [
+        2
+      ]
+    },
+    {
+      "lookup_collection": null,
+      "lookup_field": null,
+      "id": 3,
+      "resolved": null,
+      "excluded": [
+        3
+      ]
+    },
+    {
+      "lookup_collection": null,
+      "lookup_field": null,
+      "id": 99,
+      "resolved": null,
+      "excluded": [
+        99
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": null,
+      "id": 1,
+      "resolved": [
+        1.0,
+        2.0
+      ],
+      "excluded": [
+        1
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": null,
+      "id": 2,
+      "resolved": [
+        -1.0,
+        3.0
+      ],
+      "excluded": [
+        2
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": null,
+      "id": 3,
+      "resolved": null,
+      "excluded": [
+        3
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": null,
+      "id": 99,
+      "resolved": null,
+      "excluded": [
+        99
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "v",
+      "id": 1,
+      "resolved": [
+        1.0,
+        2.0
+      ],
+      "excluded": [
+        1
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "v",
+      "id": 2,
+      "resolved": [
+        -1.0,
+        3.0
+      ],
+      "excluded": [
+        2
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "v",
+      "id": 3,
+      "resolved": null,
+      "excluded": [
+        3
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "v",
+      "id": 99,
+      "resolved": null,
+      "excluded": [
+        99
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "alternate",
+      "id": 1,
+      "resolved": [
+        2.0,
+        1.0
+      ],
+      "excluded": [
+        1
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "alternate",
+      "id": 2,
+      "resolved": null,
+      "excluded": [
+        2
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "alternate",
+      "id": 3,
+      "resolved": null,
+      "excluded": [
+        3
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "alternate",
+      "id": 99,
+      "resolved": null,
+      "excluded": [
+        99
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "missing",
+      "id": 1,
+      "resolved": null,
+      "excluded": [
+        1
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "missing",
+      "id": 2,
+      "resolved": null,
+      "excluded": [
+        2
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "missing",
+      "id": 3,
+      "resolved": null,
+      "excluded": [
+        3
+      ]
+    },
+    {
+      "lookup_collection": "target",
+      "lookup_field": "missing",
+      "id": 99,
+      "resolved": null,
+      "excluded": [
+        99
+      ]
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": null,
+      "id": 1,
+      "resolved": [
+        9.0,
+        8.0
+      ],
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": null,
+      "id": 2,
+      "resolved": [
+        4.0,
+        5.0
+      ],
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": null,
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": null,
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "v",
+      "id": 1,
+      "resolved": [
+        9.0,
+        8.0
+      ],
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "v",
+      "id": 2,
+      "resolved": [
+        4.0,
+        5.0
+      ],
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "v",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "v",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "alternate",
+      "id": 1,
+      "resolved": [
+        8.0,
+        9.0
+      ],
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "alternate",
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "alternate",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "alternate",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "missing",
+      "id": 1,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "missing",
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "missing",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "other",
+      "lookup_field": "missing",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": null,
+      "id": 1,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": null,
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": null,
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": null,
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "v",
+      "id": 1,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "v",
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "v",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "v",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "alternate",
+      "id": 1,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "alternate",
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "alternate",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "alternate",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "missing",
+      "id": 1,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "missing",
+      "id": 2,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "missing",
+      "id": 3,
+      "resolved": null,
+      "excluded": []
+    },
+    {
+      "lookup_collection": "missing",
+      "lookup_field": "missing",
+      "id": 99,
+      "resolved": null,
+      "excluded": []
+    }
+  ]
+}

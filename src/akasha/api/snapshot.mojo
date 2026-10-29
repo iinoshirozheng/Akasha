@@ -7,6 +7,7 @@ from akasha.query.field_search import (
 )
 from akasha.query.field_ann import search_generation_field_approx
 from akasha.query.field_ivf import search_generation_field_ivf
+from akasha.query.field_lookup import search_generation_field_by_id
 from akasha.index.field_ivf import IvfOptions
 from akasha.query.field_fusion import FieldQuery, search_generation_fields
 from akasha.compute.simd import (
@@ -218,6 +219,51 @@ struct ReadSnapshot(Movable):
         return search_generation_field_reported(
             root[], catalog.field_at(ordinal), query, k, expression, control
         )
+
+    def search_field_by_id_reported(
+        self,
+        name: String,
+        id: Int,
+        k: Int,
+        *,
+        lookup: Optional[ReadSnapshot] = None,
+        lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        var source = lookup.value()._acquire() if lookup else root.copy()
+        return search_generation_field_by_id(
+            root[], source[], name, id, k, expression,
+            lookup_field=lookup_field, approximate=approximate,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+        )
+
+    def search_field_by_id(
+        self,
+        name: String,
+        id: Int,
+        k: Int,
+        *,
+        lookup: Optional[ReadSnapshot] = None,
+        lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        approximate: Bool = False,
+        ef_search: Int = -1,
+        rerank_k: Int = 0,
+        ivf: Optional[IvfOptions] = None,
+        control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.search_field_by_id_reported(
+            name, id, k, lookup=lookup, lookup_field=lookup_field,
+            expression=expression^, approximate=approximate,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+        )
+        return execution.take_results()
 
     def search_fields_reported(
         self,

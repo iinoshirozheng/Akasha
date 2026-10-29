@@ -23,6 +23,18 @@ The reference harness compiles both original functions without modifying them;
 its container/type shims and output tie canonicalization are recorded with the
 fixtures in `tests/fixtures/qdrant-rrf/`.
 
+Stored-point queries in `src/akasha/query/field_lookup.mojo` adapt reference
+resolution and same-collection exclusions from Qdrant's
+`lib/collection/src/common/fetch_vectors.rs` and
+`lib/collection/src/operations/universal_query/collection_query.rs` at that same
+commit. The native dense/sparse/HNSW/IVF retrieval paths accept the resulting
+exclusion set before selecting candidates. The reference harness also extracts
+`VectorQuery::get_referenced_ids` from
+`lib/collection/src/common/retrieve_request_trait.rs`. Akasha uses retained
+native vector owners, collection directory identity and its existing typed
+query/scoring contract; protocol/status and storage-preprocessing compatibility
+remain separate work.
+
 Qdrant distributes this source under the Apache License, Version 2.0; a copy of
 the upstream license is included at [Qdrant license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
 No root NOTICE file is present at this pinned revision.

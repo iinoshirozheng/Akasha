@@ -18,6 +18,7 @@ CASES = [
     "fields_vector", "fields_late", "fields_weights", "fields_weight_scalar", "arrow_early", "arrow_payload",
     "point_arrow_early", "point_arrow_payload", "scanner_options",
     "scanner_columns", "scanner_cancel", "scanner_export",
+    "point_query_options", "point_query_lookup", "point_query_source_close",
 ]
 CASES += [f"{route}_{metric}" for route in (
     "exact_vector", "exact_count", "batch_query", "batch_where", "hybrid", "hybrid_where"
@@ -41,12 +42,15 @@ def _exercise_close(path, case):
     native = collection._kernel
     closed = False
     scanner = None
+    lookup_collection = None
 
     def close():
         nonlocal closed
         closed = True
         if case in ("scanner_cancel", "scanner_export"):
             scanner.close()
+        elif case == "point_query_source_close":
+            lookup_collection.close()
         else:
             collection.close()
 
@@ -88,6 +92,12 @@ def _exercise_close(path, case):
             close()
             return 1
 
+    class ClosingGetDict(dict):
+        def get(self, key, default=None):
+            if key == "lookup_from":
+                close()
+            return super().get(key, default)
+
     expression = dict(kind="condition", name="x", operator="eq", type="int", value=1)
     sparse = [dict(term_id=1, weight=1.)]
     options = dict(k=1, fetch_k=1, rank_constant=60, filter=expression)
@@ -125,6 +135,14 @@ def _exercise_close(path, case):
         operation = lambda: native.search_controlled("dot", [1., 2.], 1, ClosingDict(controlled_options, "deadline_ns"))
     elif case == "controlled_snapshot":
         operation = lambda: native.search_controlled("dot", ClosingList([1., 2.]), 1, controlled_options)
+    elif case.startswith("point_query_"):
+        opts = dict(field_options, lookup_field=None, lookup_from=None)
+        if case == "point_query_source_close":
+            lookup_collection = Collection(path / "lookup", 2, vectors=fields)
+            lookup_collection.apply_point_batch([PointMutation.upsert(1, vectors={"v": [1., 2.]})])
+            opts["lookup_from"] = lookup_collection._kernel
+        opts = ClosingDict(opts, "rerank_k") if case == "point_query_options" else ClosingGetDict(opts)
+        operation = lambda: native.search_field_by_id("v", 1, 1, opts)
     elif case.startswith("field_"):
         opts = ClosingDict(field_options, "mode" if case == "field_options" else "rerank_k") if case != "field_vector" else field_options
         vector = ClosingList([1., 2.]) if case == "field_vector" else [1., 2.]
@@ -200,6 +218,8 @@ def _exercise_close(path, case):
         else:
             assert result[0]["id"] == 1
     finally:
+        if lookup_collection is not None:
+            lookup_collection.close()
         if scanner is not None:
             scanner.close()
         if case == "scanner_export":

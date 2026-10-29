@@ -125,8 +125,16 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   [Plan](2026-10-30-weighted-rrf-source-port.md) /
   [evidence](../research/2026-10-30-weighted-rrf-validation.md).
   Q01 remains in progress; universal REST/gRPC and C ABI exposure are still pending.
-- Next: Q02 query by ID and recommendation strategies. Source read:
-  `collection/recommendations.rs` (average vector, lookup and example exclusion)
-  and `segment/vector_storage/query/reco_query.rs` (best score and sum scores).
-  Implement all three strategies with source fixtures and native read-view
-  semantics; do not reduce recommendations to only vector averaging.
+- Q02a: native stored-point lookup and pre-Top-K exclusion implemented for
+  matching native kind/scalar/dimension, exposed on snapshot/collection/Python/Arrow.
+  52 unedited Rust reference cases, 18 native cases and 410 distinct Python cases
+  passed, including HNSW/IVF, shadowed roots, selective exact fallback, source
+  snapshots across close/reopen/symlinks and callback-close boundaries.
+  [Plan](2026-10-30-point-query-source-port.md) /
+  [evidence](../research/2026-10-30-point-query-validation.md).
+- Next: [Q02b all recommendation strategies](2026-10-30-recommendation-source-port.md).
+  Source read: `collection/recommendations.rs` (average vector/lookup/exclusion)
+  and `segment/vector_storage/query/reco_query.rs` (best score/sum scores).
+  Q02 remains open for all three strategies, mixed raw/ID examples, cross-datatype
+  conversion, Qdrant stored-vector preprocessing, custom ANN scorers and complete
+  protocol exposure. Q02a's typed point lookup does not prove those requirements.

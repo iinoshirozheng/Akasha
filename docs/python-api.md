@@ -284,6 +284,44 @@ Cancellation, deadlines and candidate limits apply as for named search.
 rows and native rerank counts. Arrow search and `FieldQuery(..., mode="ivf",
 ivf=...)` accept the same options.
 
+`search_field_by_id(name, id, k, ...)` queries a named field using a vector
+already stored in a point. Lookup and search use one captured read root, and the
+source point ID is excluded **before** Top-K / HNSW admission / IVF scoring.
+Excluding the source does not consume a result slot. HNSW can still traverse an
+excluded vertex. Payload filters constrain results, not source-vector lookup.
+The method accepts the same exact/approx/IVF controls, filters, deadlines and
+candidate limits as `search_field`.
+
+```python
+hits = collection.search_field_by_id("text", 42, 10)
+hits = collection.search_field_by_id(
+    "text", 42, 10, lookup_from=examples, lookup_field="reference",
+)
+```
+
+`lookup_from` is another open `Collection`; omission or explicit self lookup
+uses the searched collection's single root. `lookup_field` defaults to the
+searched field's name. With a different collection, coincident IDs remain
+eligible in the searched collection. Its source view is captured independently;
+this does not create a cross-collection transaction. Native `ReadSnapshot` and
+`PersistentCollection` expose `search_field_by_id(..., lookup=source_snapshot)`.
+Explicit native snapshots can retain older source values across mutation/close.
+Same-collection identity across reopen is checked using canonical directory paths.
+
+Lookup supports all existing native vector kinds and scalar types under the
+current typed-query contract: source kind, dimension and scalar must match the
+target field. Missing/deleted points, missing vector fields and incompatible
+types are errors. Empty sparse source vectors return no hits; empty multivector
+queries are rejected. Query values remain native owners and are never passed
+through Python lists. Stored values retain Akasha's existing raw-vector semantics;
+Qdrant storage preprocessing and cross-datatype conversion require their separate
+compatibility work. Reference selection/exclusion is source-ported; this API
+does not claim complete Qdrant Query API compatibility.
+
+`akashadb.arrow.search_field_by_id_record_batch` accepts the same options and
+returns owned Int64 ID / Float64 score columns that survive collection close.
+See [source reference cases](../tests/fixtures/qdrant-point-lookup/README.md).
+
 `search_fields([FieldQuery(name, vector, mode="exact", ...), ...], k,
 fetch_k=100, rank_constant=2, filter=...)` fuses rankings from one captured read
 root. Each branch retrieves at most `fetch_k` results using that field's metric

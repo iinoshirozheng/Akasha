@@ -265,13 +265,38 @@ class Collection:
                                      cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
 
+    def search_field_by_id(
+        self, name: str, id: int, k: int, *,
+        lookup_from: "Collection | None" = None, lookup_field: str | None = None,
+        filter: Mapping[str, Any] | None = None, mode: str = "exact",
+        ef_search: int | None = None, rerank_k: int = 0,
+        ivf: IvfOptions | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        """Search with a stored vector; exclude its ID only for same-collection lookup."""
+        raw = self._search_field_raw(
+            name, id, k, _by_id=True, lookup_from=lookup_from, lookup_field=lookup_field,
+            filter=filter, mode=mode, ef_search=ef_search, rerank_k=rerank_k,
+            ivf=ivf, cancellation=cancellation, timeout_ns=timeout_ns,
+        )
+        return [SearchResult(**item) for item in raw]
+
     def _search_field_raw(
         self, name: str, vector: Any, k: int, *,
         filter: Mapping[str, Any] | None = None, mode: str = "exact",
         ef_search: int | None = None, rerank_k: int = 0, columns: bool = False,
         ivf: IvfOptions | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+        _by_id: bool = False, lookup_from: "Collection | None" = None,
+        lookup_field: str | None = None,
     ) -> Any:
+        if _by_id:
+            if type(vector) is not int:
+                raise ValidationError("point ID must be an integer")
+            if lookup_from is not None and not isinstance(lookup_from, Collection):
+                raise ValidationError("lookup_from must be an open Collection")
+            if lookup_field is not None and (type(lookup_field) is not str or not lookup_field):
+                raise ValidationError("lookup_field must be a nonempty field name")
         if type(k) is not int or not 0 < k <= self.limits.max_k:
             raise ValidationError("named search k exceeds resource limit")
         if mode not in ("exact", "approx", "ivf"):
@@ -287,12 +312,15 @@ class Collection:
         if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
             raise ValidationError("query timeout must be a positive integer")
         deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        method = "search_field_by_id" if _by_id else "search_field"
         return self._call(
-            "search_field_columns" if columns else "search_field", name,
+            method + "_columns" if columns else method, name,
             _vector_value(vector), k,
             {"filter": None if filter is None else dict(filter), "mode": mode,
              "ef_search": -1 if ef_search is None else ef_search, "rerank_k": rerank_k,
              "ivf": (ivf or IvfOptions()).to_kernel() if mode == "ivf" else None,
+             "lookup_from": None if lookup_from is None else lookup_from._kernel,
+             "lookup_field": lookup_field,
              "cancelled": bool(cancellation and cancellation.cancelled),
              "deadline_ns": deadline, "max_candidates": self.limits.max_candidates},
         )
