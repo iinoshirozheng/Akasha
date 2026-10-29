@@ -754,7 +754,84 @@ unreachable nodes; Python serializes repeated subtree objects as distinct tree
 occurrences and rejects ancestor cycles.
 
 This is a native universal-query slice, not full Qdrant REST/gRPC compatibility.
-Order-by, formulas, sampling, feedback, batch/projections, full datatype/storage
+Order-by, complete formulas, sampling, feedback, batch/projections, full datatype/storage
 parity, and multivector HNSW remain in the feature ledger. The existing graph
 quality/performance failures remain open. See the
 [query validation record](research/2026-10-30-universal-query-validation.md).
+
+## Numeric formulas over prefetched candidates
+
+`Formula` is a data-only expression wrapper. Parsing, planning, numeric evaluation,
+payload access, condition checks and Top-K execute in Mojo:
+
+```python
+from akashadb import Formula, QueryRequest
+from akashadb.arrow import query_record_batch
+
+request = QueryRequest(
+    "formula",
+    prefetch=(QueryRequest("nearest", "text", target=query_vector, limit=100),),
+    formula=Formula(
+        {"sum": ["$score", {"mult": [0.2, "importance"]}]},
+        defaults={"importance": 0},
+    ),
+    limit=10,
+)
+hits = collection.query(request)
+batch = query_record_batch(collection, request)
+```
+
+The supported Qdrant numeric expression shapes are:
+
+- A number is an F32 constant, promoted to F64 for evaluation. A string selects
+  `$score` (the first prefetch), `$score[n]`, or a flat native payload field.
+- `{"sum": [a, b, ...]}` and `{"mult": [a, b, ...]}` evaluate in source order.
+  Empty sum is zero; empty multiplication is one.
+- `{"div": {"left": a, "right": b, "by_zero_default": 0}}` supports an optional
+  F32 division-by-zero default. `{"pow": {"base": a, "exponent": b}}` computes powers.
+- Unary `neg`, `abs`, `sqrt`, `exp`, `ln`, and `log10` take one expression.
+- `lin_decay`, `exp_decay`, and `gauss_decay` take a dictionary containing `x`,
+  optional `target` (zero), `scale` (one), and `midpoint` (0.5). Scale must be
+  positive. Linear midpoint permits [0, 1]; other decays require (0, 1).
+- `{"condition": <Akasha filter>}` produces one or zero, using the documented
+  native `condition/all/any/not` filter shape. This wrapper is not the Qdrant
+  REST condition representation.
+
+Multiplication returns positive zero immediately on a zero operand; division
+with a zero numerator does not evaluate its denominator. Unvisited missing
+variables and invalid arithmetic therefore do not fail the query. Other math
+errors fail the entire request, including errors in candidates that would not
+survive the final limit or threshold. Intermediate sums/products use F64; the
+final score must fit finite F32 and is widened to the public Float64 result.
+No intermediate nonfinite check is added to sums/products/negation/absolute
+value/decays; division and the other math operators follow source checks.
+
+Missing prefetch scores use a numeric default for that score variable, otherwise
+zero; a nonnumeric score default also means zero. Missing payload values require
+a default. A present nonnumeric payload value raises even if a numeric default
+exists. Defaults retain native Int64/Float64 precision and may also be string or
+bool; bool is not numeric. Duplicate score-default aliases such as `$score` and
+`$score[0]` are rejected rather than depending on map iteration order.
+
+Formula nodes require at least one prefetch, and can themselves be nested
+prefetches. Candidates are the visible deduplicated union of child results;
+`$score[n]` still refers to each ordered child separately. An empty union yields
+no results without evaluating the expression. Ancestor filters apply before
+leaf Top-K, as for other query nodes. Results sort by descending score then
+ascending native integer ID; threshold and root offset use normal query rules.
+All stages use the same target read generation, including payload evaluation.
+
+`max_query_batch` also bounds the combined count of query nodes, formula nodes
+and formula defaults. Each formula additionally permits at most 1024 expression
+nodes, 1024 defaults and depth 64. Each condition retains the 256-node/16-depth
+filter bounds; the binding checks these before recursive construction, including
+cycles. Formula stages charge their input row count against the shared
+`max_candidates` budget; structural limits bound work per candidate. Native
+cancellation/deadline checks occur within recursive expression evaluation.
+
+Full JSON-path parsing/traversal, quoted/nested/array values, datetime operations,
+geo-distance, rich defaults and Qdrant protocol exposure remain open. This layer
+uses flat native field names; dots, brackets, quotes and backslashes are rejected
+instead of being silently interpreted as path literals. Score indexes are
+nonnegative native Int values. It does not claim full Qdrant variable grammar.
+See the [formula source validation](research/2026-10-30-formula-validation.md).

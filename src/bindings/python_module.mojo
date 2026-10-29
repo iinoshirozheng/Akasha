@@ -1,4 +1,5 @@
 from akasha.query.query_plan import QueryNode, plan_query
+from akasha.query.formula import Formula, FormulaNode
 from akasha.query.field_recommendation import RecommendationExample
 from akasha.query.field_discovery import ContextPair
 from akasha import (
@@ -560,6 +561,7 @@ struct BoundCollection(Movable, Writable):
         var owners = Python.list()
         var owner_indices = Dict[Int, Int]()
         var examples = 0
+        var resources = size
         for i in range(size):
             control.value().checkpoint(i)
             var raw = raw_nodes[i]
@@ -621,6 +623,10 @@ struct BoundCollection(Movable, Writable):
                 for j in range(len(raw_weights)):
                     values.append(Float32(py=raw_weights[j]))
                 weights = Optional(values^)
+            var formula = Optional[Formula]()
+            if not _is_python_none(raw["formula"]):
+                formula = Optional(_formula_from_python(raw["formula"], max_nodes - resources))
+                resources += len(formula.value().nodes) + len(formula.value().defaults)
             nodes.append(QueryNode(kind, name, target=target^, positive=positive^,
                 negative=negative^, strategy=_exact_python_string(raw["strategy"], "query strategy"),
                 children=children^, limit=_exact_python_int(raw["limit"], "query limit"),
@@ -628,7 +634,8 @@ struct BoundCollection(Movable, Writable):
                 filter=expression^, approximate=Bool(py=raw["approximate"]),
                 ef_search=_exact_python_int(raw["ef_search"], "ef_search"),
                 lookup_index=lookup_index, lookup_field=lookup_field, mmr=mmr,
-                rank_constant=_exact_python_int(raw["rank_constant"], "rank constant"), weights=weights))
+                rank_constant=_exact_python_int(raw["rank_constant"], "rank constant"), weights=weights,
+                formula=formula^))
         _ = plan_query(nodes, max_nodes, max_k, max_examples)
         # All Python conversions finish before acquiring any read root. A
         # callback may close either target or lookup: recheck both here.
@@ -1827,7 +1834,122 @@ def _document_fields(value: PythonObject) raises -> List[DocumentField]:
     return result^
 
 
+def _formula_number_from_python(value: PythonObject) raises -> Float32:
+    var builtins = Python.import_module("builtins")
+    var kind = builtins.type(value)
+    if not Bool(py=kind == builtins.float) and not Bool(py=kind == builtins.int):
+        raise Error("formula numeric parameter must be a number")
+    return Float32(py=value)
+
+
+def _formula_expression_from_python(
+    value: PythonObject, mut nodes: List[FormulaNode], depth: Int,
+    mut count: Int, limit: Int,
+) raises -> Int:
+    if depth > 64 or count >= limit:
+        raise Error("formula expression resource limit exceeded")
+    count += 1
+    var builtins = Python.import_module("builtins")
+    var value_type = builtins.type(value)
+    if Bool(py=value_type == builtins.str):
+        nodes.append(FormulaNode("variable", key=String(py=value)))
+    elif Bool(py=value_type == builtins.int) or Bool(py=value_type == builtins.float):
+        nodes.append(FormulaNode("constant", value=Float32(py=value)))
+    elif Bool(py=value_type == builtins.dict) and len(value) == 1:
+        var kind = _exact_python_string(builtins.next(builtins.iter(value)), "formula operator")
+        var arg = value[kind]
+        var children = List[Int]()
+        var condition = Optional[FilterExpression]()
+        var fallback = Optional[Float32]()
+        var midpoint = Float32(0.5)
+        var scale = Float32(1)
+        if kind == "condition":
+            condition = Optional(_filter_expression(arg))
+        elif kind == "sum" or kind == "mult":
+            if not Bool(py=builtins.type(arg) == builtins.list) and not Bool(py=builtins.type(arg) == builtins.tuple):
+                raise Error("formula sum/mult requires a list")
+            if len(arg) > limit - count:
+                raise Error("formula expression resource limit exceeded")
+            for i in range(len(arg)):
+                children.append(_formula_expression_from_python(arg[i], nodes, depth + 1, count, limit))
+        elif kind == "div" or kind == "pow" or kind == "lin_decay" or kind == "exp_decay" or kind == "gauss_decay":
+            if not Bool(py=builtins.type(arg) == builtins.dict):
+                raise Error("formula operator parameters must be a dictionary")
+            var allowed = Python.list()
+            if kind == "div" or kind == "pow":
+                var left = "left" if kind == "div" else "base"
+                var right = "right" if kind == "div" else "exponent"
+                allowed.append(left)
+                allowed.append(right)
+                children.append(_formula_expression_from_python(arg[left], nodes, depth + 1, count, limit))
+                children.append(_formula_expression_from_python(arg[right], nodes, depth + 1, count, limit))
+                if kind == "div":
+                    allowed.append("by_zero_default")
+                    if Bool(py=arg.__contains__("by_zero_default")):
+                        fallback = Optional(_formula_number_from_python(arg["by_zero_default"]))
+            else:
+                allowed.append("x")
+                allowed.append("target")
+                allowed.append("midpoint")
+                allowed.append("scale")
+                children.append(_formula_expression_from_python(arg["x"], nodes, depth + 1, count, limit))
+                if Bool(py=arg.__contains__("target")):
+                    children.append(_formula_expression_from_python(arg["target"], nodes, depth + 1, count, limit))
+                midpoint = _formula_number_from_python(arg.get("midpoint", PythonObject(0.5)))
+                scale = _formula_number_from_python(arg.get("scale", PythonObject(1)))
+            for key in arg:
+                if not Bool(py=allowed.__contains__(key)):
+                    raise Error("unknown formula operator parameter")
+        elif kind == "neg" or kind == "abs" or kind == "sqrt" or kind == "exp" or kind == "ln" or kind == "log10":
+            children.append(_formula_expression_from_python(arg, nodes, depth + 1, count, limit))
+        else:
+            raise Error("unsupported formula operator")
+        nodes.append(FormulaNode(kind, children^, condition=condition^,
+            by_zero_default=fallback, midpoint=midpoint, scale=scale))
+    else:
+        raise Error("formula expression must be a number, variable or one operator")
+    return len(nodes) - 1
+
+
+def _formula_from_python(value: PythonObject, limit: Int) raises -> Formula:
+    var builtins = Python.import_module("builtins")
+    var raw_defaults = value["defaults"]
+    if not Bool(py=builtins.type(raw_defaults) == builtins.dict):
+        raise Error("formula defaults must be a dictionary")
+    if len(raw_defaults) > 1024 or len(raw_defaults) >= limit:
+        raise Error("formula default resource limit exceeded")
+    var nodes = List[FormulaNode]()
+    var count = 0
+    _ = _formula_expression_from_python(value["expression"], nodes, 0, count, min(1024, limit - len(raw_defaults)))
+    var defaults = List[DocumentField]()
+    for key in raw_defaults:
+        var name = _exact_python_string(key, "formula default name")
+        var raw = raw_defaults[key]
+        var kind = builtins.type(raw)
+        var item: PayloadValue
+        if Bool(py=kind == builtins.str):
+            item = PayloadValue.string(String(py=raw))
+        elif Bool(py=kind == builtins.bool):
+            item = PayloadValue.boolean(Bool(py=raw))
+        elif Bool(py=kind == builtins.int):
+            item = PayloadValue.integer(Int64(py=raw))
+        elif Bool(py=kind == builtins.float):
+            item = PayloadValue.floating(Float64(py=raw))
+        else:
+            raise Error("formula default must be a flat scalar value")
+        defaults.append(DocumentField(name, item^))
+    return Formula(nodes^, defaults^)
+
+
 def _filter_expression(value: PythonObject) raises -> FilterExpression:
+    var count = 0
+    return _bounded_filter_expression(value, 0, count)
+
+
+def _bounded_filter_expression(value: PythonObject, depth: Int, mut count: Int) raises -> FilterExpression:
+    if depth > FilterExpression.MAX_DEPTH or count >= FilterExpression.MAX_NODES:
+        raise Error("filter expression resource limit exceeded")
+    count += 1
     var kind = String(py=value["kind"])
     if kind == "condition":
         var operator_name = String(py=value["operator"])
@@ -1852,12 +1974,12 @@ def _filter_expression(value: PythonObject) raises -> FilterExpression:
         )
         return FilterExpression.condition(condition^)
     if kind == "not":
-        var child = _filter_expression(value["child"])
+        var child = _bounded_filter_expression(value["child"], depth + 1, count)
         return FilterExpression.negate(child^)
     if kind == "all" or kind == "any":
         var children = List[FilterExpression]()
         for item in value["children"]:
-            children.append(_filter_expression(item))
+            children.append(_bounded_filter_expression(item, depth + 1, count))
         if kind == "all":
             return FilterExpression.all(children^)
         return FilterExpression.any(children^)

@@ -1,4 +1,5 @@
-from akasha import CollectionConfig, PersistentCollection, RecommendationExample, ReadSnapshot, FilterExpression
+from akasha import CollectionConfig, PersistentCollection, RecommendationExample, ReadSnapshot, FilterExpression, Formula, FormulaNode, DocumentField, PayloadValue
+from akasha.query.control import CancellationToken, QueryControl
 from akasha.document.vector_value import VectorValue
 from akasha.query.query_plan import QueryNode, plan_query
 from akasha.query.mmr import MmrOptions
@@ -110,6 +111,34 @@ def test_query_retains_snapshot_and_external_lookup_after_close() raises:
     lookups[0].close()
     with assert_raises():
         _ = view.query(nodes, lookups)
+    view.close()
+    Python.import_module("shutil").rmtree(path)
+
+
+def test_formula_uses_retained_payload_and_native_cancellation() raises:
+    var path = String(py=Python.import_module("tempfile").mkdtemp(prefix="akasha-formula-roots-"))
+    var db = PersistentCollection.open(path, 1, maintenance_library_path="")
+    db.upsert_document(1, [1], [DocumentField("weight", PayloadValue.integer(3))])
+    db.upsert_document(2, [2], [DocumentField("weight", PayloadValue.integer(5))])
+    var view = db.snapshot()
+    db.upsert_document(1, [1], [DocumentField("weight", PayloadValue.string("wrong"))])
+    db.delete(2)
+    db.close()
+    var nodes: List[QueryNode] = [QueryNode("scroll"),
+        QueryNode("formula", children=[0], formula=Optional(Formula([
+            FormulaNode("variable", key="weight"), FormulaNode("constant", value=2),
+            FormulaNode("mult", [0, 1])])))]
+    var hits = view.query(nodes, [])
+    assert_equal(len(hits), 2)
+    assert_equal(hits[0].id, 2)
+    assert_equal(hits[0].score, Float64(10))
+    assert_equal(hits[1].score, Float64(6))
+    var token = CancellationToken()
+    var control = Optional(QueryControl(token, max_candidates=4))
+    _ = view.query(nodes, [], control=control)
+    token.cancel()
+    with assert_raises():
+        _ = view.query(nodes, [], control=control)
     view.close()
     Python.import_module("shutil").rmtree(path)
 

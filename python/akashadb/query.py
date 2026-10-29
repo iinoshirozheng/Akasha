@@ -1,7 +1,7 @@
 """Universal query requests; planning and scoring execute in the Mojo kernel."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Sequence
 
 from .exceptions import ValidationError
@@ -12,6 +12,19 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
+class Formula:
+    """Qdrant numeric expression, evaluated in Mojo over prefetched points.
+
+    Numbers are F32 constants; strings select ``$score[n]`` or flat payload
+    fields. Operators use Qdrant's expression shape. ``condition`` wraps an
+    Akasha filter. Defaults accept flat string/int/float/bool values.
+    """
+
+    expression: Any
+    defaults: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class QueryRequest:
     """A query node with ordered prefetches. Only the root accepts an offset.
 
@@ -19,7 +32,7 @@ class QueryRequest:
     positive/negative sequences. No-vector ``scroll`` orders points by ID.
     """
 
-    kind: Literal["nearest", "recommend", "discover", "context", "rrf", "dbsf", "scroll"] = "scroll"
+    kind: Literal["nearest", "recommend", "discover", "context", "rrf", "dbsf", "scroll", "formula"] = "scroll"
     using: str = ""
     target: Any = None
     positive: Sequence[Any] = ()
@@ -37,6 +50,7 @@ class QueryRequest:
     mmr: MmrOptions | None = None
     rank_constant: int = 2
     weights: Sequence[float] | None = None
+    formula: Formula | None = None
 
 
 def serialize_query(request: QueryRequest, max_nodes: int, max_examples: int) -> list[dict[str, Any]]:
@@ -58,6 +72,8 @@ def serialize_query(request: QueryRequest, max_nodes: int, max_examples: int) ->
             raise ValidationError("query mode must be exact or approx")
         if node.mmr is not None and not isinstance(node.mmr, MmrOptions):
             raise ValidationError("mmr must be MmrOptions")
+        if node.formula is not None and not isinstance(node.formula, Formula):
+            raise ValidationError("formula must be Formula")
         if not all(isinstance(v, (list, tuple)) for v in (node.prefetch, node.positive, node.negative)):
             raise ValidationError("prefetch and query examples must be lists or tuples")
         examples += (node.target is not None) + len(node.positive) + len(node.negative)
@@ -81,6 +97,8 @@ def serialize_query(request: QueryRequest, max_nodes: int, max_examples: int) ->
             "mmr": None if node.mmr is None else node.mmr.to_kernel(),
             "rank_constant": node.rank_constant,
             "weights": None if node.weights is None else list(node.weights),
+            "formula": None if node.formula is None else {
+                "expression": node.formula.expression, "defaults": dict(node.formula.defaults)},
         })
         return len(nodes) - 1
 

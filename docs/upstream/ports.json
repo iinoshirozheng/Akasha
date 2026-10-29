@@ -893,6 +893,105 @@
         "tests/mojo/test_universal_query.mojo": "3e40b8e95c7a54acb0194ca461c59c03f7a428fa45868c66251cbf4038e10d8d",
         "tests/python/test_universal_query.py": "e25c88e6ca5f2b267bb887d1306ce1ffd895c4bcac3d63b5db514b291b1c58f1"
       }
+    },
+    {
+      "id": "Q04b-numeric-formula",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs": "4522958fb70b69e4d3172735afd286afaf8bad042d3050245ff307d8700e4f42",
+        "lib/segment/src/index/query_optimization/rescore_formula/parsed_formula.rs": "a9044e924bcc875b4e5b4d37963edee83ff0f1f46e3cdd4ea29e6c9fabefa3b1",
+        "lib/shard/src/query/formula.rs": "f3f24e50fc831a1ca0581caf19c91ca905687846d803fbd85f0b069183f2bf48",
+        "lib/segment/src/segment/read_view/formula_rescore.rs": "f9c3498db5bd2ebc90ab9642feef67cb8880bc5c594f727289b7151af512b7e7",
+        "lib/collection/src/shards/local_shard/formula_rescore.rs": "64e52e99fb694bf39fb4eaca7d86a7907db9d89cde28499ccc80485c9661a864",
+        "lib/api/src/rest/schema.rs": "c79d738c2a6e530a11876a14d40ff91a37e8b60802f265d784927e26054dbcbe"
+      },
+      "oracle_units": {
+        "pub fn score(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "c7db160a3981d1ff20d686ed15d232a6a65779ccabc7e413a0676b932675b756"
+        },
+        "fn eval_expression(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "1b403ab39e2adc979b485b47304279b51622a15001fe2bc4ff9710ceb43c7117"
+        },
+        "fn get_payload_value(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "e85e11c9dbd7bf1cf2df452d69684a8cd8a841e60024ce4124d24017ffde140b"
+        },
+        "fn get_parsed_payload_value<": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "565dd2c07a61827b59f43a189483aecc0ae61839f263d8e0297e85079b0176a6"
+        },
+        "fn exp_decay(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "6c5d957884ab35123fe437f78ccaa7e27025b9558682b75fc4921e7ca20d28cc"
+        },
+        "fn gauss_decay(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "691699a311cdead6148d315c2e6205c1a19016c35aedfb7569f1eb0622b83257"
+        },
+        "fn linear_decay(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs",
+          "sha256": "7c183e5b5f84b936e163d26a147a1b5255ad4532664f7f0b3def64dd249c3187"
+        },
+        "pub fn decay_params_to_lambda(": {
+          "source": "lib/segment/src/index/query_optimization/rescore_formula/parsed_formula.rs",
+          "sha256": "9b9ce592cfeb229ec6488f2d558ee8947764ff4f3f7396b3487ebb88143a8bbf"
+        }
+      },
+      "scaffold_sha256": "ab3ca17bfbd598b64ca0638af9d69287438b7df08fde33fb0149fc2f5277fe6a",
+      "oracle_rustc_flags": [
+        "--edition=2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "debug-assertions=no"
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/query/formula.mojo",
+        "src/akasha/query/query_plan.mojo",
+        "src/akasha/query/universal.mojo",
+        "src/akasha/__init__.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/query.py",
+        "python/akashadb/__init__.py"
+      ],
+      "adaptations": [
+        "Bounded native postorder expression arena; F32 constants promoted to ordered F64 evaluation and final finite F32 score",
+        "Source multiplication/division short circuits, operation-specific nonfinite checks, defaults, conditions and lin/exp/gauss decay",
+        "Ordered per-prefetch maps, last-wins duplicate source scores, visible-head candidate union on retained target generation",
+        "Native ascending-ID ties, flat payload/filter contracts, bounded parser/planner/candidate work and recursive cancellation/deadlines",
+        "Python only serializes Formula/QueryRequest; native parser converts before capturing read roots and rechecks owner lifetime; Arrow shares execution",
+        "Release Rust oracle extracts eight unchanged functions; container/value/boolean-checker adapters do not exercise geo/date stubs or full server",
+        "Full JsonPath grammar including quoted/Unicode rules, nested/array/null, date/geo, rich defaults and protocol remain pending; native score indexes fit Int",
+        "Native duplicate normalized score-default aliases rejected; existing finite native vector/graph/storage constraints retained",
+        "No persistence or GPU changes; overall Q04/full product and prior quality/performance gates remain open"
+      ],
+      "fixture": "tests/fixtures/qdrant-formula/formula.json",
+      "fixture_sha256": "1ed24552cafb1d0a5b3e0b0d16a837fcbb1d922b179c8f938c6274a3f3405b94",
+      "reference_formula_cases": 309,
+      "reference_errors": 57,
+      "status": "implemented_numeric_flat_formula_verified_full_q04_pending",
+      "verification": [
+        "docs/research/2026-10-30-formula-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/formula.mojo": "fbebb373f45fd5d55c7a62c1db20283fc05d38f3a6308c559ec1537c5766b606",
+        "src/akasha/query/query_plan.mojo": "f174c2a6b419d44ebd72346a76b213bd80c04ada71c13757449c975615867d67",
+        "src/akasha/query/universal.mojo": "97e33ed3d4eae58634699e2431ec126257e3e0b01b4f77aa8a36d6f408357a19",
+        "src/akasha/__init__.mojo": "ab4b107fe2f3356e10a1e25334e12b4c25d7f09fb3a17cfdf28bce8560d7e329",
+        "src/bindings/python_module.mojo": "4c41891d9b7fd804a9cfbd0c846d9efe296b64f05c367fe64ccd4a77f37bbf7d",
+        "python/akashadb/query.py": "ace9acc918d4eafb82d6ef997afc3ebdf9f48afccf29985530d583df30c4f7df",
+        "python/akashadb/__init__.py": "4f45f1a5a196aaaa659af04c6e27e0ed6f6f425f43feaea99aa589f8c0cba248",
+        "scripts/qdrant_formula_reference.py": "4e2ed8d1637020c809179dfd8fb7bebaed353c82d2ad2efbece32859353f744b",
+        "tests/mojo/test_formula.mojo": "e929479b634be8353ea40bdc8f90502060cef06d999aeea52fe5356e8b7696f4",
+        "tests/mojo/test_universal_query.mojo": "a5dddbadf1b357b4578b46c2044b515c045162f6ff9799cdc5b0c5f5c7a5d754",
+        "tests/python/test_formula_query.py": "09eb7da3f955b66e6189ba3fc4425dcfdd7e6f0db543b0b586fa36a7bad2006b"
+      }
     }
   ]
 }

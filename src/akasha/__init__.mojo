@@ -1,4 +1,5 @@
 from akasha.query.query_plan import QueryNode
+from akasha.query.formula import Formula, FormulaNode
 from .api import (
     BatchMutation,
     BatchWriteResult,

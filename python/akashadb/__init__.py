@@ -1,6 +1,6 @@
 """Python adapter for the AkashaDB Mojo kernel."""
 
-from .query import QueryRequest
+from .query import Formula, QueryRequest
 from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField
 from .database import CancellationToken, Collection, LocalDatabase
 from .arrow import (
@@ -77,6 +77,7 @@ __all__ = [
     "ResourceLimits",
     "SearchRequest",
     "QueryRequest",
+    "Formula",
     "SearchResult",
     "SearchStats",
     "SparseElement",

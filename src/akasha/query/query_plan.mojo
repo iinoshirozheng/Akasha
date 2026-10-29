@@ -5,6 +5,7 @@ Source: shard/src/query/planned_query.rs and collection_query.rs, revision
 """
 from akasha.query.field_examples import RecommendationExample
 from akasha.query.filter_ast import FilterExpression
+from akasha.query.formula import Formula
 from akasha.query.fusion import validate_rrf_weights
 from akasha.query.mmr import MmrOptions
 from akasha.query.recommendation import validate_recommendation
@@ -30,6 +31,7 @@ struct QueryNode(Movable):
     var mmr: Optional[MmrOptions]
     var rank_constant: Int
     var weights: Optional[List[Float32]]
+    var formula: Optional[Formula]
 
     def __init__(
         out self, kind: String, using: String = "", *,
@@ -42,6 +44,7 @@ struct QueryNode(Movable):
         ef_search: Int = -1, lookup_index: Int = -1,
         lookup_field: Optional[String] = None, mmr: Optional[MmrOptions] = None,
         rank_constant: Int = 2, weights: Optional[List[Float32]] = None,
+        var formula: Optional[Formula] = None,
     ):
         self.kind = kind
         self.using = using
@@ -61,6 +64,7 @@ struct QueryNode(Movable):
         self.mmr = mmr.copy()
         self.rank_constant = rank_constant
         self.weights = weights.copy()
+        self.formula = formula^
 
 
 @fieldwise_init
@@ -83,6 +87,7 @@ def plan_query(
     var parents = List[Int](length=len(nodes), fill=-1)
     var steps = List[QueryStep]()
     var examples = 0
+    var resources = len(nodes)
     for i in range(len(nodes)):
         ref node = nodes[i]
         if node.limit <= 0 or node.offset < 0 or node.limit > max_k or node.offset > max_k - node.limit:
@@ -115,18 +120,28 @@ def plan_query(
                 raise Error("discover query requires a target")
             if node.kind == "context" and (node.target or len(node.positive) == 0):
                 raise Error("context query requires pairs and no target")
-        elif node.kind == "rrf" or node.kind == "dbsf" or node.kind == "scroll":
+        elif node.kind == "rrf" or node.kind == "dbsf" or node.kind == "scroll" or node.kind == "formula":
             if count != 0 or node.using != "" or node.approximate or node.ef_search != -1 or node.lookup_index != -1 or node.lookup_field:
                 raise Error("non-vector query cannot specify vector or lookup options")
             if node.kind == "scroll":
                 if len(node.children) or node.threshold:
                     raise Error("a query is required for prefetch or score_threshold")
             elif len(node.children) == 0:
-                raise Error("cannot apply Fusion without prefetches")
+                raise Error("cannot apply fusion or formula without prefetches")
         else:
             raise Error("unsupported universal query kind")
         if node.mmr and node.kind != "nearest":
             raise Error("MMR requires a nearest query")
+        if node.kind == "formula":
+            if not node.formula:
+                raise Error("formula query requires an expression")
+            node.formula.value().validate()
+            var count = len(node.formula.value().nodes) + len(node.formula.value().defaults)
+            if count > max_nodes - resources:
+                raise Error("query formula resource limit exceeded")
+            resources += count
+        elif node.formula:
+            raise Error("formula expression requires a formula query")
         if node.weights and node.kind != "rrf":
             raise Error("weights require RRF query")
         if node.kind == "rrf":

@@ -155,3 +155,20 @@ The Rust planner oracle compiles the complete unchanged planner and validation
 bodies with opaque vector/filter/transport type adapters. It does not execute a
 Qdrant server or prove shard merging, scoring or protocol compatibility.
 See `tests/fixtures/qdrant-query-plan/README.md` and `docs/upstream/ports.json`.
+
+### Numeric score formulas
+
+`query/formula.mojo`, the formula branches of `query/query_plan.mojo` and
+`query/universal.mojo`, and the bound expression conversion adapt Qdrant
+`segment/index/query_optimization/rescore_formula/{formula_scorer,parsed_formula}.rs`,
+`segment/segment/read_view/formula_rescore.rs`, `shard/query/formula.rs`,
+local-shard formula rescoring and REST expression schemas at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+
+Native bounded arenas, flat payload values, retained read roots, resource limits
+and stable ID ties replace allocation/transport/storage plumbing. Numerical
+evaluation and decay follow the source. The Rust release oracle compiles eight
+unchanged upstream function bodies; date/geo adapters are deliberately unusable
+and unexercised. Full JSON-path/date/geo/rich-payload and protocol behavior remain
+open. See `tests/fixtures/qdrant-formula/README.md`,
+`docs/research/2026-10-30-formula-validation.md` and `docs/upstream/ports.json`.

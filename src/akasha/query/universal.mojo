@@ -54,7 +54,7 @@ def _prepare_nodes(
         if control:
             control.value().checkpoint(0)
         var item = _PreparedNode(None, None, None, None, None)
-        if node.kind == "rrf" or node.kind == "dbsf" or node.kind == "scroll":
+        if node.kind == "rrf" or node.kind == "dbsf" or node.kind == "scroll" or node.kind == "formula":
             prepared.append(item^)
             continue
         if not view.catalog:
@@ -229,6 +229,40 @@ def _fuse(node: QueryNode, results: List[List[FieldSearchResult]], limit: Int, c
     return top.sorted_entries()
 
 
+def _formula_rescore(
+    view: ReadGeneration, node: QueryNode, results: List[List[FieldSearchResult]],
+    limit: Int, control: Optional[QueryControl],
+) raises -> FieldSearchExecution:
+    # Source segment/read_view/formula_rescore.rs: ordered score maps and a
+    # deduplicated visible-head union. A duplicate within a source is last-wins.
+    var scores = List[Dict[Int, Float32]]()
+    var candidates = Dict[Int, Tuple[Int, Int]]()
+    var visited = 0
+    for child in node.children:
+        var source = Dict[Int, Float32]()
+        for hit in results[child]:
+            if control:
+                control.value().checkpoint(visited)
+            visited += 1
+            var location = view.find(hit.id)
+            if location[0] < 0:
+                continue
+            candidates[hit.id] = location
+            source[hit.id] = Float32(hit.score)
+        scores.append(source^)
+    var top = BoundedTopK[DType.float64](max(1, min(limit, len(candidates))), smaller_is_better=False)
+    for id in candidates:
+        if control:
+            control.value().checkpoint(0)
+        var location = candidates[id]
+        ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
+        var score = node.formula.value().score(id, entry.fields(), scores, control)
+        top.offer(id, Float64(score))
+    var stats = HnswSearchStats()
+    stats.reranked_candidates = len(candidates)
+    return FieldSearchExecution(top.sorted_entries(), stats^, "query_formula")
+
+
 def query_generation(
     view: ReadGeneration, lookups: List[ArcPointer[ReadGeneration]], nodes: List[QueryNode], *,
     control: Optional[QueryControl] = None, max_nodes: Int = 1024,
@@ -248,7 +282,7 @@ def query_generation(
         ref step = steps[i]
         var local_control = _remaining(control, used)
         var charge = view.visible_count
-        if node.kind == "rrf" or node.kind == "dbsf" or (step.apply_mmr and i != root):
+        if node.kind == "rrf" or node.kind == "dbsf" or node.kind == "formula" or (step.apply_mmr and i != root):
             charge = 0
             for child in node.children:
                 if len(results[child]) > Int.MAX - charge:
@@ -262,6 +296,8 @@ def query_generation(
         var execution = FieldSearchExecution([], HnswSearchStats(), "query_stage")
         if node.kind == "rrf" or node.kind == "dbsf":
             execution.results = _fuse(node, results, step.limit, local_control)
+        elif node.kind == "formula":
+            execution = _formula_rescore(view, node, results, step.limit, local_control)
         elif step.apply_mmr and i != root:
             # Nested MMR preserves source order and original source scores.
             for child in node.children:

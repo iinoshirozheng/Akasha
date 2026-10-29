@@ -226,3 +226,19 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   projections, full cursor/order/group/facet/matrix and protocol work. Datatype/
   storage, source graph planner and complete nonfinite behavior remain under
   Q02/Q06. Existing recall/performance failures and native Linux deferral remain.
+
+- **Q04b numeric formulas implemented and verified.** The source F32/F64
+  evaluator, short circuits, defaults, conditions and three decay functions now
+  rescore ordered prefetch score maps over the visible candidate union. Native,
+  Python and Arrow share this path and retained target root. Formula/default
+  nodes share the plan's structural budget; native recursive evaluation checks
+  cancellation/deadlines. Filter binding recursion is bounded before allocation.
+  A release Rust oracle compiles eight unedited source functions: 309 cases,
+  57 expected errors. Nine relevant native tests and full Python
+  **2461 passed / 1 optional skip**, including 346 new formula cases.
+  [Plan](2026-10-30-formula-source-port.md) and
+  [validation](../research/2026-10-30-formula-validation.md).
+  Full JsonPath grammar/typed values, date/geo/rich defaults remain with D01/D03;
+  this is not full formula or REST/gRPC parity. Q04 sampling/feedback and all
+  remaining master-ledger deliverables, quality/performance failures and native
+  Linux deferral remain open. Continue functionality before any optimization.
