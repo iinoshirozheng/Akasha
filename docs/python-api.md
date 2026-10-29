@@ -784,7 +784,9 @@ batch = query_record_batch(collection, request)
 The supported Qdrant numeric expression shapes are:
 
 - A number is an F32 constant, promoted to F64 for evaluation. A string selects
-  `$score` (the first prefetch), `$score[n]`, or a flat native payload field.
+  `$score` (the first prefetch), `$score[n]`, or a payload field through Qdrant's
+  JSON-path grammar. Quoted paths select literal flat names containing dots,
+  spaces or other punctuation; nested/array value traversal remains pending.
 - `{"sum": [a, b, ...]}` and `{"mult": [a, b, ...]}` evaluate in source order.
   Empty sum is zero; empty multiplication is one.
 - `{"div": {"left": a, "right": b, "by_zero_default": 0}}` supports an optional
@@ -829,9 +831,31 @@ cycles. Formula stages charge their input row count against the shared
 `max_candidates` budget; structural limits bound work per candidate. Native
 cancellation/deadline checks occur within recursive expression evaluation.
 
-Full JSON-path parsing/traversal, quoted/nested/array values, datetime operations,
-geo-distance, rich defaults and Qdrant protocol exposure remain open. This layer
-uses flat native field names; dots, brackets, quotes and backslashes are rejected
-instead of being silently interpreted as path literals. Score indexes are
-nonnegative native Int values. It does not claim full Qdrant variable grammar.
+JSON-path parsing and formula variable grammar now follow the pinned Qdrant
+source, including Unicode 17 alphanumeric raw keys, `_`/`-`, quoted literal keys,
+UInt64 indexes and `[]` wildcard syntax. Full input consumption is required.
+Qdrant's quoted keys do not accept backslashes or quote escapes; this is not a
+general JSON-string parser. For example, the expression `'"a.b"'` reads a flat
+field named `a.b`; the expression `"a.b"` parses as a nested path and is rejected
+until rich payload traversal is implemented. Non-alphanumeric keys such as
+spaces or Emoji require quotes. `$"score"[0001]` and `$score[1]` are equivalent.
+All UInt64 score indexes are accepted; absent slots use normal default/zero
+semantics without converting an out-of-range index to a signed machine integer.
+
+Defaults use the same parsed variable identity: `"name"` and `'"name"'` normalize
+to the same key and cannot both appear. Default keys describe paths, so they are
+not subject to the persisted document-field-name restrictions; quoted empty or
+NUL-containing keys may have a default even though those document keys cannot
+currently be stored. Native callers use `FormulaDefault(name, PayloadValue...)`
+instead of `DocumentField` for defaults. The provisional literal-name parser and
+its signed-index limit have been removed.
+
+The shared native `JsonPath` type also provides canonical display, prefix and
+wildcard operations and pattern compatibility for subsequent data operations.
+Paths are bounded to 65,536 input bytes and 1024 parts. These are native resource
+limits, not a claim that Qdrant has identical limits.
+Nested/array/null value traversal, datetime operations, geo-distance, rich
+defaults and Qdrant protocol exposure remain open.
 See the [formula source validation](research/2026-10-30-formula-validation.md).
+The [JSON-path validation](research/2026-10-30-json-path-validation.md) records
+the subsequent grammar and Unicode source checks.

@@ -242,3 +242,19 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   this is not full formula or REST/gRPC parity. Q04 sampling/feedback and all
   remaining master-ledger deliverables, quality/performance failures and native
   Linux deferral remain open. Continue functionality before any optimization.
+
+- **D01a/Q04c shared JSON paths implemented and verified.** Ports source grammar,
+  canonical display, prefix/wildcard/pattern operations and formula variable
+  parsing. Rust 1.97.1 Unicode 17 source data generates native classification;
+  the host classifier is exhaustively checked before the unchanged nom parser
+  generates expected results. Quoted flat keys, Unicode raw keys and full UInt64
+  score indexes now work through formula Mojo/Python/Arrow; parsed native
+  `FormulaDefault` removes the unrelated persisted-field-name restrictions.
+  548 source inputs, 81 operation pairs, exhaustive Unicode, eight native tests,
+  1029 targeted Python tests and full Python **3034 passed / 1 optional skip**.
+  [Plan](2026-10-30-json-path-source-port.md) /
+  [validation](../research/2026-10-30-json-path-validation.md).
+  D01 rich objects/arrays/null, actual traversal/mutation, versioned codecs and
+  migration/recovery remain next data-layer work. D03 and Q04 date/geo/rich
+  formula values and every other ledger requirement stay open. This grammar
+  slice does not satisfy rich persistent data or authorize optimization.

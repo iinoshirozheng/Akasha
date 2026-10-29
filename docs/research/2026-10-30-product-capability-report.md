@@ -75,6 +75,11 @@ Q04b 數值公式已接上 Mojo／Python／Arrow，包含來源短路求值、�
 Python 測試已驗證；完整 JSON-path、日期、地理與 rich defaults 仍未完成，
 不能列為完整公式相容。見[公式驗證](2026-10-30-formula-validation.md)。
 
+D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 分類，
+公式可讀取加引號的字面欄位、Unicode 名稱並接受完整 UInt64 分數索引。
+這不代表物件／陣列／null 已可持久化；巢狀值讀寫及遷移仍待完成。
+見[路徑驗證](2026-10-30-json-path-validation.md)。
+
 探索／context 已接上 Mojo／Python／Arrow 的 exact、稀疏完整計分與 dense 兩階段
 HNSW，含同 collection ID 排除、外部 lookup 與 snapshot。來源對照也修正了
 `-0.0` 加總起始值導致的排名差異；完整 batch／協定、型別／儲存與來源 planner

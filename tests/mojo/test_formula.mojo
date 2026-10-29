@@ -1,4 +1,5 @@
-from akasha.query.formula import Formula, FormulaNode, formula_variable
+from akasha.query.formula import Formula, FormulaDefault, FormulaNode
+from akasha.document.json_path import FormulaVariable
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
 from akasha.query.filter_ast import FilterExpression
@@ -30,8 +31,8 @@ def test_formula_payload_defaults_and_f32_constants() raises:
         FormulaNode("variable", key="$score[1]"),
         FormulaNode("variable", key="weight"),
         FormulaNode("sum", [0, 1]),
-    ], [DocumentField("$score[1]", PayloadValue.floating(1.25)),
-        DocumentField("weight", PayloadValue.floating(2.5))])
+    ], [FormulaDefault("$score[1]", PayloadValue.floating(1.25)),
+        FormulaDefault("weight", PayloadValue.floating(2.5))])
     assert_equal(formula.score(1, [], []), Float32(3.75))
     var fields: List[DocumentField] = [DocumentField("weight", PayloadValue.string("wrong"))]
     with assert_raises():
@@ -47,12 +48,12 @@ def test_formula_payload_defaults_and_f32_constants() raises:
 def test_formula_decay_and_reserved_variable_validation() raises:
     var formula = Formula([FormulaNode("constant", value=2), FormulaNode("gauss_decay", [0], scale=2)])
     assert_equal(formula.score(0, [], []), Float32(0.5))
-    assert_equal(formula_variable("$score")[0], 0)
-    assert_equal(formula_variable("$score[12]")[0], 12)
+    assert_equal(FormulaVariable.parse("$score").score_index.value(), UInt64(0))
+    assert_equal(FormulaVariable.parse("$score[12]").score_index.value(), UInt64(12))
     with assert_raises():
-        _ = formula_variable("$score[]")
+        _ = FormulaVariable.parse("$score[]")
     with assert_raises():
-        _ = formula_variable("$score[1][2]")
+        _ = FormulaVariable.parse("$score[1][2]")
     with assert_raises():
         _ = Formula([FormulaNode("constant"), FormulaNode("constant")])
 
@@ -119,7 +120,11 @@ def test_formula_matches_unedited_qdrant_scorer() raises:
         var sample = cases[i]
         var nodes = List[FormulaNode]()
         _ = _fixture_expression(sample["expression"], nodes)
-        var formula = Formula(nodes^, _fixture_fields(sample["defaults"]))
+        var raw_defaults = _fixture_fields(sample["defaults"])
+        var defaults = List[FormulaDefault]()
+        for j in range(len(raw_defaults)):
+            defaults.append(FormulaDefault(raw_defaults[j].name, raw_defaults[j].value.clone()))
+        var formula = Formula(nodes^, defaults^)
         var fields = _fixture_fields(sample["payload"])
         var scores = List[Dict[Int, Float32]]()
         for j in range(len(sample["scores"])):

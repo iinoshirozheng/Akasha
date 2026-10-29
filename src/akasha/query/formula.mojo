@@ -6,6 +6,7 @@ Native bounded arena ownership replaces recursive expression allocation.
 """
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
+from akasha.document.json_path import FormulaVariable
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
 from akasha.query.filter_ast import FilterExpression
@@ -33,35 +34,11 @@ def decay_lambda(kind: String, midpoint: Float32, scale: Float32) raises -> Floa
     raise Error("unknown formula decay kind")
 
 
-def formula_variable(value: String) raises -> Tuple[Int, String]:
-    if value == "$score":
-        return (0, "")
-    if value.startswith("$score[") and value.endswith("]"):
-        var index = 0
-        if value.byte_length() == 8:
-            raise Error("invalid formula score variable")
-        for i in range(7, value.byte_length() - 1):
-            var digit = Int(value.as_bytes()[i]) - 48
-            if digit < 0 or digit > 9 or index > (Int.MAX - digit) // 10:
-                raise Error("invalid formula score variable")
-            index = index * 10 + digit
-        return (index, "")
-    if value == "" or value.startswith("$"):
-        raise Error("invalid formula variable")
-    # Do not silently interpret JSON paths as literal native field names.
-    # Rich path traversal is a separate data-model/source port in D01/D03.
-    for part in value.codepoint_slices():
-        if part == "." or part == "[" or part == "]" or part == "\"" or part == "\\":
-            raise Error("formula JSON paths require the rich payload implementation")
-    return (-1, value.copy())
-
-
 struct FormulaNode(Movable):
     var kind: String
     var children: List[Int]
     var value: Float64
-    var key: String
-    var score_index: Int
+    var variable: Optional[FormulaVariable]
     var condition: Optional[FilterExpression]
     var by_zero_default: Optional[Float64]
     var lambda_value: Float64
@@ -75,46 +52,48 @@ struct FormulaNode(Movable):
         self.kind = kind.copy()
         self.children = children^
         self.value = Float64(value)
-        self.key = key.copy()
-        self.score_index = -1
+        self.variable = None
         self.condition = condition^
         self.by_zero_default = None
         self.lambda_value = 0
         if kind == "variable":
-            var parsed = formula_variable(key)
-            self.score_index = parsed[0]
-            self.key = parsed[1].copy()
+            var parsed = FormulaVariable.parse(key)
+            if parsed.path and len(parsed.path.value().rest) > 0:
+                raise Error("formula nested/array values require the rich payload implementation")
+            self.variable = Optional(parsed^)
         if by_zero_default:
             self.by_zero_default = Optional(Float64(by_zero_default.value()))
         if kind == "lin_decay" or kind == "exp_decay" or kind == "gauss_decay":
             self.lambda_value = decay_lambda(kind, midpoint, scale)
 
 
+struct FormulaDefault(Movable):
+    var variable: FormulaVariable
+    var value: PayloadValue
+
+    def __init__(out self, name: String, var value: PayloadValue) raises:
+        self.variable = FormulaVariable.parse(name)
+        self.value = value^
+
+
 struct Formula(Movable):
     var nodes: List[FormulaNode]
-    var defaults: List[DocumentField]
-    var default_indices: List[Int]
-    var default_keys: List[String]
+    var defaults: List[FormulaDefault]
 
-    def __init__(out self, var nodes: List[FormulaNode], var defaults: List[DocumentField] = []) raises:
+    def __init__(out self, var nodes: List[FormulaNode], var defaults: List[FormulaDefault] = []) raises:
         self.nodes = nodes^
         self.defaults = defaults^
-        self.default_indices = List[Int]()
-        self.default_keys = List[String]()
-        if len(self.defaults) > 1024:
-            raise Error("formula default resource limit exceeded")
-        for i in range(len(self.defaults)):
-            var variable = formula_variable(self.defaults[i].name)
-            for j in range(i):
-                if self.default_indices[j] == variable[0] and self.default_keys[j] == variable[1]:
-                    raise Error("duplicate formula default variable")
-            self.default_indices.append(variable[0])
-            self.default_keys.append(variable[1].copy())
         self.validate()
 
     def validate(self) raises:
         if len(self.nodes) == 0 or len(self.nodes) > 1024:
             raise Error("formula expression resource limit exceeded")
+        if len(self.defaults) > 1024:
+            raise Error("formula default resource limit exceeded")
+        for i in range(len(self.defaults)):
+            for j in range(i):
+                if self.defaults[i].variable.same(self.defaults[j].variable):
+                    raise Error("duplicate formula default variable")
         var parents = List[Int](length=len(self.nodes), fill=-1)
         var depths = List[Int]()
         for i in range(len(self.nodes)):
@@ -128,6 +107,10 @@ struct Formula(Movable):
                     raise Error("formula constant must be finite")
                 if kind == "condition" and not node.condition:
                     raise Error("formula condition is missing")
+                if kind == "variable" and not node.variable:
+                    raise Error("formula variable is missing")
+                if kind == "variable" and node.variable.value().path and len(node.variable.value().path.value().rest) > 0:
+                    raise Error("formula nested/array values require the rich payload implementation")
             elif kind == "sum" or kind == "mult":
                 pass
             elif kind == "div" or kind == "pow":
@@ -171,23 +154,25 @@ struct Formula(Movable):
     def _variable(
         self, node: FormulaNode, id: Int, fields: List[DocumentField], scores: List[Dict[Int, Float32]],
     ) raises -> Float64:
-        if node.score_index >= 0:
-            if node.score_index < len(scores) and id in scores[node.score_index]:
-                return Float64(scores[node.score_index][id])
+        ref variable = node.variable.value()
+        if variable.score_index:
+            var index = variable.score_index.value()
+            if index < UInt64(len(scores)) and id in scores[Int(index)]:
+                return Float64(scores[Int(index)][id])
         else:
             for i in range(len(fields)):
-                if fields[i].name == node.key:
+                if fields[i].name == variable.path.value().first_key:
                     return _formula_number(fields[i].value)
         for i in range(len(self.defaults)):
-            if self.default_indices[i] != node.score_index or self.default_keys[i] != node.key:
+            if not self.defaults[i].variable.same(variable):
                 continue
             ref value = self.defaults[i].value
-            if node.score_index >= 0 and not (value.is_integer() or value.is_floating()):
+            if variable.score_index and not (value.is_integer() or value.is_floating()):
                 return 0
             return _formula_number(value)
-        if node.score_index >= 0:
+        if variable.score_index:
             return 0
-        raise Error("formula payload variable is missing and has no default: " + node.key)
+        raise Error("formula payload variable is missing and has no default: " + variable.path.value().display())
 
     @no_inline
     def _evaluate(

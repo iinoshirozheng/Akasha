@@ -3,6 +3,12 @@
 Date: 2026-10-30. Mojo 1.0.0 (ed45d567), macOS ARM64.
 Qdrant revision `74f3e85b9473c62560006c043e13737ce6b48412`, Apache-2.0.
 
+Subsequent Q04c/D01a work replaces this slice's provisional variable grammar
+and signed-index restriction with a shared source-backed JSON-path parser,
+UInt64 score indexes and `FormulaDefault`. See the
+[JSON-path validation](2026-10-30-json-path-validation.md). The results below
+remain the historical Q04b evidence; nested/date/geo value work is still open.
+
 ## Source and implementation
 
 `query/formula.mojo` ports numeric evaluation, payload/score defaults and decay

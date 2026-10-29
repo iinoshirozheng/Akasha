@@ -172,3 +172,20 @@ unchanged upstream function bodies; date/geo adapters are deliberately unusable
 and unexercised. Full JSON-path/date/geo/rich-payload and protocol behavior remain
 open. See `tests/fixtures/qdrant-formula/README.md`,
 `docs/research/2026-10-30-formula-validation.md` and `docs/upstream/ports.json`.
+
+### JSON paths and Unicode identifiers
+
+`document/json_path.mojo` and formula variable/default integration port Qdrant
+`lib/segment/src/json_path/{parse,mod}.rs` and
+`index/query_optimization/rescore_formula/parsed_formula.rs` at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0). Native bounded cursors
+replace nom combinators; quoted/raw key grammar, UInt64 indexes, canonical
+display and path operations follow the source.
+
+`document/unicode_alphanumeric.mojo` contains generated ranges derived from the
+Rust project's Unicode 17.0.0 Alphabetic/N data and character classifier in
+Rust 1.97.1, licensed MIT OR Apache-2.0. The MIT license is retained at
+`docs/upstream/licenses/rust-MIT.txt`. Source URLs and hashes, generator, oracle
+and native artifact hashes are recorded in `docs/upstream/ports.json` and the
+JSON-path fixture. There is no runtime Rust/nom/Python classification dependency.
+The reference-only Cargo dependency graph is pinned in the fixture's Cargo.lock.

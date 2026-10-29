@@ -1,5 +1,5 @@
 from akasha.query.query_plan import QueryNode, plan_query
-from akasha.query.formula import Formula, FormulaNode
+from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.query.field_recommendation import RecommendationExample
 from akasha.query.field_discovery import ContextPair
 from akasha import (
@@ -1921,7 +1921,7 @@ def _formula_from_python(value: PythonObject, limit: Int) raises -> Formula:
     var nodes = List[FormulaNode]()
     var count = 0
     _ = _formula_expression_from_python(value["expression"], nodes, 0, count, min(1024, limit - len(raw_defaults)))
-    var defaults = List[DocumentField]()
+    var defaults = List[FormulaDefault]()
     for key in raw_defaults:
         var name = _exact_python_string(key, "formula default name")
         var raw = raw_defaults[key]
@@ -1937,7 +1937,7 @@ def _formula_from_python(value: PythonObject, limit: Int) raises -> Formula:
             item = PayloadValue.floating(Float64(py=raw))
         else:
             raise Error("formula default must be a flat scalar value")
-        defaults.append(DocumentField(name, item^))
+        defaults.append(FormulaDefault(name, item^))
     return Formula(nodes^, defaults^)
 
 
