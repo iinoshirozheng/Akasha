@@ -1,0 +1,85 @@
+{
+  "sources": [
+    {
+      "name": "qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "version": "v1.19.0",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "name": "qdrant-edge-0.8.0",
+      "revision": "21db2f3ff95d50de3a2b88a741312c056fd1762d",
+      "version": "21db2f3ff",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "name": "lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "version": "v12.0.0-beta.2-4-gad2ee27f0",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "6f4030a4f059f5618cf00375afd8f5d18fe48e0fc2be1c2e98b2c32c90c44938"
+        }
+      ]
+    },
+    {
+      "name": "lancedb",
+      "revision": "2fbf6d62113face594782e0030909740069a4313",
+      "version": "python-v0.35.0-beta.3-186-g2fbf6d62",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "rocksdb",
+      "revision": "6dbb6f30e604e0047db29f06fe1c28c348074c98",
+      "version": "v9.11.1-919-g6dbb6f30e",
+      "licenses": [
+        {
+          "path": "LICENSE.Apache",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "LICENSE.leveldb",
+          "sha256": "b568f1f37a5a1d37a3e981e7c8b7fc4856ca33b2ca0a45bc8e847aaaf7afe485"
+        }
+      ]
+    },
+    {
+      "name": "raft-rs",
+      "revision": "ad13f3d90780f53aea2488c6a4b76c0d334bf136",
+      "version": "v0.7.0-29-gad13f3d",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "b07ae3da5c432331d0584e674cd77552cb001134c247786f2668e7917316aa7c"
+        }
+      ]
+    },
+    {
+      "name": "pgvector",
+      "revision": "e48241b4dcc045b18902914f668d03d1d399dfbe",
+      "version": "v0.8.6-56-ge48241b",
+      "licenses": [
+        {
+          "path": "LICENSE",
+          "sha256": "6bba9ebeb73e27477463b05e5ef1bf303bccbddb3db9bbc95905d351604d6a87"
+        }
+      ]
+    }
+  ]
+}

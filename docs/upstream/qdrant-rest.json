@@ -1,0 +1,560 @@
+{
+  "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+  "contract": "reference/qdrant/docs/redoc/v1.19.x/openapi.json",
+  "sha256": "fdeae0035a6fc2afe6b881be9ec01ed0da08f670592aff823039331772782342",
+  "note": "Inventory baseline only. Every operation requires client-level behavior verification. Newer upstream features remain in the master ledger.",
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/",
+      "operation_id": "root",
+      "summary": "Returns information about the running Qdrant instance",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/aliases",
+      "operation_id": "get_collections_aliases",
+      "summary": "List collections aliases",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/cluster",
+      "operation_id": "cluster_status",
+      "summary": "Get cluster status info",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/cluster/peer/{peer_id}",
+      "operation_id": "remove_peer",
+      "summary": "Remove peer from the cluster",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/cluster/recover",
+      "operation_id": "recover_current_peer",
+      "summary": "Tries to recover current peer Raft state.",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/cluster/telemetry",
+      "operation_id": "cluster_telemetry",
+      "summary": "Collect cluster telemetry data",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections",
+      "operation_id": "get_collections",
+      "summary": "List collections",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/aliases",
+      "operation_id": "update_aliases",
+      "summary": "Update aliases of the collections",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/collections/{collection_name}",
+      "operation_id": "delete_collection",
+      "summary": "Delete collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}",
+      "operation_id": "get_collection",
+      "summary": "Collection info",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/collections/{collection_name}",
+      "operation_id": "update_collection",
+      "summary": "Update collection parameters",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}",
+      "operation_id": "create_collection",
+      "summary": "Create collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/aliases",
+      "operation_id": "get_collection_aliases",
+      "summary": "List aliases for collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/cluster",
+      "operation_id": "collection_cluster_info",
+      "summary": "Collection cluster info",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/cluster",
+      "operation_id": "update_collection_cluster",
+      "summary": "Update collection cluster setup",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/exists",
+      "operation_id": "collection_exists",
+      "summary": "Check the existence of a collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/facet",
+      "operation_id": "facet",
+      "summary": "Facet a payload key with a given filter.",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/index",
+      "operation_id": "create_field_index",
+      "summary": "Create index for field in collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/collections/{collection_name}/index/{field_name}",
+      "operation_id": "delete_field_index",
+      "summary": "Delete index for field in collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/optimizations",
+      "operation_id": "get_optimizations",
+      "summary": "Get optimization progress",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points",
+      "operation_id": "get_points",
+      "summary": "Get points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/points",
+      "operation_id": "upsert_points",
+      "summary": "Upsert points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/batch",
+      "operation_id": "batch_update",
+      "summary": "Batch update points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/count",
+      "operation_id": "count_points",
+      "summary": "Count points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/delete",
+      "operation_id": "delete_points",
+      "summary": "Delete points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/payload",
+      "operation_id": "set_payload",
+      "summary": "Set payload",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/points/payload",
+      "operation_id": "overwrite_payload",
+      "summary": "Overwrite payload",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/payload/clear",
+      "operation_id": "clear_payload",
+      "summary": "Clear payload",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/payload/delete",
+      "operation_id": "delete_payload",
+      "summary": "Delete payload",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/query",
+      "operation_id": "query_points",
+      "summary": "Query points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/query/batch",
+      "operation_id": "query_batch_points",
+      "summary": "Query points in batch",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/query/groups",
+      "operation_id": "query_points_groups",
+      "summary": "Query points, grouped by a given payload field",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/scroll",
+      "operation_id": "scroll_points",
+      "summary": "Scroll points",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/search/matrix/offsets",
+      "operation_id": "search_matrix_offsets",
+      "summary": "Search points matrix distance offsets",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/search/matrix/pairs",
+      "operation_id": "search_matrix_pairs",
+      "summary": "Search points matrix distance pairs",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/points/vectors",
+      "operation_id": "update_vectors",
+      "summary": "Update vectors",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/points/vectors/delete",
+      "operation_id": "delete_vectors",
+      "summary": "Delete vectors",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/points/{id}",
+      "operation_id": "get_point",
+      "summary": "Get point",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/shards",
+      "operation_id": "list_shard_keys",
+      "summary": "List shard keys",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/shards",
+      "operation_id": "create_shard_key",
+      "summary": "Create shard key",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/shards/delete",
+      "operation_id": "delete_shard_key",
+      "summary": "Delete shard key",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshot",
+      "operation_id": "stream_shard_snapshot",
+      "summary": "Download shard snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots",
+      "operation_id": "list_shard_snapshots",
+      "summary": "List shards snapshots for a collection",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots",
+      "operation_id": "create_shard_snapshot",
+      "summary": "Create shard snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots/recover",
+      "operation_id": "recover_shard_from_snapshot",
+      "summary": "Recover from a snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots/upload",
+      "operation_id": "recover_shard_from_uploaded_snapshot",
+      "summary": "Recover shard from an uploaded snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots/{snapshot_name}",
+      "operation_id": "delete_shard_snapshot",
+      "summary": "Delete shard snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/shards/{shard_id}/snapshots/{snapshot_name}",
+      "operation_id": "get_shard_snapshot",
+      "summary": "Download collection snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/snapshots",
+      "operation_id": "list_snapshots",
+      "summary": "List collection snapshots",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/snapshots",
+      "operation_id": "create_snapshot",
+      "summary": "Create collection snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/snapshots/recover",
+      "operation_id": "recover_from_snapshot",
+      "summary": "Recover from a snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/collections/{collection_name}/snapshots/upload",
+      "operation_id": "recover_from_uploaded_snapshot",
+      "summary": "Recover from an uploaded snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/collections/{collection_name}/snapshots/{snapshot_name}",
+      "operation_id": "delete_snapshot",
+      "summary": "Delete collection snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/collections/{collection_name}/snapshots/{snapshot_name}",
+      "operation_id": "get_snapshot",
+      "summary": "Download collection snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/collections/{collection_name}/vectors/{vector_name}",
+      "operation_id": "delete_vector_name",
+      "summary": "Delete named vector",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/collections/{collection_name}/vectors/{vector_name}",
+      "operation_id": "create_vector_name",
+      "summary": "Create named vector",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "operation_id": "healthz",
+      "summary": "Kubernetes healthz endpoint",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/issues",
+      "operation_id": "clear_issues",
+      "summary": "Clear issues",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/issues",
+      "operation_id": "get_issues",
+      "summary": "Get issues",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/livez",
+      "operation_id": "livez",
+      "summary": "Kubernetes livez endpoint",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/metrics",
+      "operation_id": "metrics",
+      "summary": "Collect Prometheus metrics data",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/quotas",
+      "operation_id": "get_quotas",
+      "summary": "Get global quotas",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "PUT",
+      "path": "/quotas",
+      "operation_id": "update_quotas",
+      "summary": "Set global quotas",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/readyz",
+      "operation_id": "readyz",
+      "summary": "Kubernetes readyz endpoint",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/snapshots",
+      "operation_id": "list_full_snapshots",
+      "summary": "List of storage snapshots",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "POST",
+      "path": "/snapshots",
+      "operation_id": "create_full_snapshot",
+      "summary": "Create storage snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/snapshots/{snapshot_name}",
+      "operation_id": "delete_full_snapshot",
+      "summary": "Delete storage snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/snapshots/{snapshot_name}",
+      "operation_id": "get_full_snapshot",
+      "summary": "Download storage snapshot",
+      "status": "compatibility_unverified",
+      "evidence": []
+    },
+    {
+      "method": "GET",
+      "path": "/telemetry",
+      "operation_id": "telemetry",
+      "summary": "Collect telemetry data",
+      "status": "compatibility_unverified",
+      "evidence": []
+    }
+  ]
+}

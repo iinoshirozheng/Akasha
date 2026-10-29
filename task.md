@@ -1,5 +1,17 @@
 # AkashaDB 工作入口
 
+**2026-10-30 使用者啟動完整功能實作：先功能，全部完成後再優化。**
+本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
+演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
+
+- [功能差異報告](docs/research/2026-10-30-product-capability-report.md)
+- [完整任務清單與驗收](docs/plans/2026-10-30-feature-completion.md)
+- [第一批：Qdrant DBSF 移植](docs/plans/2026-10-30-dbsf-source-port.md)
+- 現在：建立 source/API inventory 與來源／授權證據，接著實作 DBSF 原生查詢及 Python/Arrow。
+- M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
+
+以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。
+
 **2026-10-23 使用者暫停效能優化，改為合併分支與清理。**
 目前僅保留本機 `main` 分支與主工作樹；下方「下一步」與舊路徑是歷史紀錄，暫不執行。
 M5/M6 尚未達標，原生 Linux x86_64 驗收仍依指示暫緩。
