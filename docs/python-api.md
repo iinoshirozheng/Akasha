@@ -435,3 +435,64 @@ weights; existing Segment v4 remains readable with its original validation.
 Default collection opens also perform the catalog migration, so supply any named
 fields on that first open. See the
 [field envelope contract](formats/field-envelopes-format.md) for upgrade behavior.
+
+
+## Recommendation queries
+
+`Collection.recommend_field(name, positive, negative=None, k=10, *,
+strategy="average_vector", mode="exact", lookup_from=None, lookup_field=None,
+filter=None, cancellation=None, timeout_ns=None)` executes all three Qdrant
+recommendation strategies in Mojo. Each example is an integer point ID or a raw
+vector matching the target field's kind/dimension; IDs resolve from the selected
+lookup collection and field. Raw numeric inputs become F32 query values before
+preprocessing and conversion to the target datatype. Source IDs are excluded
+before Top-K only when lookup identifies the target collection. Both positive
+and negative IDs are excluded; repeated examples still contribute repeatedly.
+
+```python
+hits = db.recommend_field(
+    "image", positive=[42, [0.2, 0.8, 0.1]], negative=[19],
+    k=10, strategy="best_score",
+)
+```
+
+- `average_vector` requires a positive example. Dense/sparse values are averaged
+  in F32, then combined as `positive + positive - negative` when negatives exist.
+  Sparse terms use a sorted union with zero for missing values. Multivector
+  inputs concatenate positive rows and append negated negative rows.
+- `best_score` chooses the largest similarity in each set; a tie chooses the
+  negative set. The selected score passes through Qdrant's signed scaled fast
+  sigmoid. Positive-only and negative-only requests are valid.
+- `sum_scores` separately accumulates all positive and all negative similarities
+  in F32 and subtracts the totals. Positive-only and negative-only are valid.
+
+Dot/cosine use higher-is-better internal similarity. Custom L2 scores use
+**negative squared distance** before the best/sum reduction. Only average-vector
+results apply Qdrant's final Euclidean square root, so their public L2 units
+are distance, unlike Akasha's existing `search_field` squared-L2 contract.
+Scores are F32 values exported through the native Float64 result columns.
+Ties keep Akasha's ascending ID ordering. Sparse average queries omit zero
+results; sparse custom queries include zero/nonoverlap results. Missing fields,
+empty stored multivectors and excluded IDs never occupy a result slot.
+
+`recommend_field_record_batch` in `akashadb.arrow` exposes the same options and
+returns owned `id: int64` and `score: float64` columns. Native `ReadSnapshot` and
+`PersistentCollection` expose `recommend_field` using `RecommendationExample.point`
+and `.raw`; a native lookup snapshot can outlive its source writer. Stats report
+`recommendation_exact` and `qdrant-recommendation-f32`. Recommendations count as
+queries in collection telemetry. `max_query_batch` bounds the total examples;
+`max_k`, `max_candidates`, cancellation and deadlines apply. Nonfinite results
+are rejected. Binary recommendation is unsupported by the upstream strategies.
+
+This is an exact-query implementation. Other modes fail explicitly; custom ANN
+scorers and universal REST/gRPC/C exposure remain required work. F32 scalar
+pipelines have independent upstream fixtures. Native F16/U8 conversion and
+Akasha BF16/I8 extensions have regression coverage but not a full upstream
+cross-datatype oracle yet. Integer metric accumulation is widened to Int64.
+Akasha retains raw typed authority: recommendation reconstructs cosine's stored
+representation from those native values. For low-precision fields, this cannot
+recover the original pre-ingestion F32 input; full canonical storage alignment
+requires the separate Q02/Q06 audit/migration. No existing stored values change.
+
+Source and verification: [recommendation port](plans/2026-10-30-recommendation-source-port.md)
+and [validation](research/2026-10-30-recommendation-validation.md).

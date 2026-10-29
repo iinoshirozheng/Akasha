@@ -181,7 +181,7 @@ class Collection:
     ) -> None:
         self._operations += 1
         self._total_duration_ns += duration_ns
-        if method.startswith(("search", "get")):
+        if method.startswith(("search", "get", "recommend")):
             self._queries += 1
         if status == "ok" and method.startswith(("upsert", "delete", "apply")):
             self._writes += 1
@@ -264,6 +264,56 @@ class Collection:
                                      ef_search=ef_search, rerank_k=rerank_k, ivf=ivf,
                                      cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
+
+    def recommend_field(
+        self, name: str, positive: list[Any], negative: list[Any] | None = None,
+        k: int = 10, *, strategy: str = "average_vector", mode: str = "exact",
+        lookup_from: "Collection | None" = None, lookup_field: str | None = None,
+        filter: Mapping[str, Any] | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        """Recommend from raw vectors and/or IDs using Qdrant's F32 scoring rules."""
+        raw = self._recommend_field_raw(
+            name, positive, negative, k, strategy=strategy, mode=mode,
+            lookup_from=lookup_from, lookup_field=lookup_field, filter=filter,
+            cancellation=cancellation, timeout_ns=timeout_ns,
+        )
+        return [SearchResult(**item) for item in raw]
+
+    def _recommend_field_raw(
+        self, name: str, positive: list[Any], negative: list[Any] | None = None,
+        k: int = 10, *, strategy: str = "average_vector", mode: str = "exact",
+        lookup_from: "Collection | None" = None, lookup_field: str | None = None,
+        filter: Mapping[str, Any] | None = None, columns: bool = False,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> Any:
+        if not isinstance(positive, (list, tuple)) or (negative is not None and not isinstance(negative, (list, tuple))):
+            raise ValidationError("recommendation examples must be lists")
+        negative = [] if negative is None else negative
+        if len(positive) + len(negative) > self.limits.max_query_batch:
+            raise ValidationError("recommendation example resource limit exceeded")
+        if type(k) is not int or not 0 < k <= self.limits.max_k:
+            raise ValidationError("recommendation k exceeds resource limit")
+        if strategy not in ("average_vector", "best_score", "sum_scores"):
+            raise ValidationError("unknown recommendation strategy")
+        if mode != "exact":
+            raise ValidationError("recommendation currently supports exact mode only")
+        if lookup_from is not None and not isinstance(lookup_from, Collection):
+            raise ValidationError("lookup_from must be an open Collection")
+        if lookup_field is not None and (type(lookup_field) is not str or not lookup_field):
+            raise ValidationError("lookup_field must be a nonempty field name")
+        if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+            raise ValidationError("query timeout must be a positive integer")
+        deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        return self._call(
+            "recommend_field_columns" if columns else "recommend_field", name,
+            [_vector_value(item) for item in positive], [_vector_value(item) for item in negative], k,
+            {"strategy": strategy, "mode": mode, "max_examples": self.limits.max_query_batch,
+             "lookup_from": None if lookup_from is None else lookup_from._kernel,
+             "lookup_field": lookup_field, "filter": None if filter is None else dict(filter),
+             "cancelled": bool(cancellation and cancellation.cancelled),
+             "deadline_ns": deadline, "max_candidates": self.limits.max_candidates},
+        )
 
     def search_field_by_id(
         self, name: str, id: int, k: int, *,

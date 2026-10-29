@@ -38,7 +38,7 @@ components do not satisfy the unimplemented public behavior.
 | Q03 | Discovery/context and MMR | Qdrant query scorers | Context semantics, diversity, tie/limit/budget cases, public APIs |
 | Q04 | Nested prefetch, query plan, sampling, score formula/boosting/feedback | Qdrant universal query | Multi-stage plan, cancellation, filters, independent source fixtures |
 | Q05 | Scroll, count, ordering, grouping, facet, search matrix | Qdrant read/query paths | Stable cursor/ties, projections, concurrent changes, API oracle |
-| Q06 | Full metric/datatype/quantization matrix | Qdrant spaces/quantization, Lance index | Manhattan and current documented modes, native and persistence fixtures; keep Akasha extras |
+| Q06 | Full metric/datatype/quantization matrix | Qdrant spaces/quantization, Lance index | Manhattan, Turbo16/Turbo8/Turbo4 and other current documented modes, native and persistence fixtures; keep Akasha extras |
 | D01 | Rich payload values, nested objects/arrays/null | Qdrant payload + Lance Arrow schema | Versioned codecs, migration, typed traversal, Unicode/depth/size limits, corrupt/torn recovery |
 | D02 | UUID/numeric IDs and key/value type semantics | Qdrant types + DB types | No ID collision/loss; native/indexed/HTTP/backup/reopen equality |
 | D03 | Nested/array/geo/datetime/UUID filtering and indexing | Qdrant condition checker/field indexes | Direct vs indexed oracle, null/missing, per-array-element semantics |
@@ -132,9 +132,23 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   snapshots across close/reopen/symlinks and callback-close boundaries.
   [Plan](2026-10-30-point-query-source-port.md) /
   [evidence](../research/2026-10-30-point-query-validation.md).
-- Next: [Q02b all recommendation strategies](2026-10-30-recommendation-source-port.md).
+- Q02b work: [all recommendation strategies](2026-10-30-recommendation-source-port.md).
   Source read: `collection/recommendations.rs` (average vector/lookup/exclusion)
   and `segment/vector_storage/query/reco_query.rs` (best score/sum scores).
-  Q02 remains open for all three strategies, mixed raw/ID examples, cross-datatype
-  conversion, Qdrant stored-vector preprocessing, custom ANN scorers and complete
-  protocol exposure. Q02a's typed point lookup does not prove those requirements.
+  Q02a typed point lookup alone did not prove recommendation or preprocessing
+  requirements. The exact implementation below adds that path; remaining
+  datatype, storage, ANN and protocol gates still keep Q02 open.
+
+- Q02b exact: implemented all three strategies in Mojo with raw/ID/mixed examples,
+  source-field preprocessing and pre-Top-K exclusions. Native snapshot/collection,
+  Python and Arrow expose the exact query. Independent portable Rust oracle:
+  336 F32 queries and 24 reductions from 14 verbatim functions.
+  [Evidence and remaining gates](../research/2026-10-30-recommendation-validation.md).
+  Q02 remains in progress: custom ANN scorer integration, complete F16/U8 source
+  oracle and low-precision canonical-storage audit/migration, universal query and
+  protocol exposure are required next. BF16/I8 are native extensions, not proven
+  Qdrant datatype compatibility. No performance gate was run.
+- F00/Q06: current official vector documentation includes Turbo16/Turbo8 beyond
+  the pinned v1.19.0 source. Keep these explicit in Q06 and pin/compare the newer
+  upstream source when implementing them; do not count the older pin as full parity.
+  Source: <https://qdrant.tech/documentation/manage-data/vectors/> (checked 2026-10-30).

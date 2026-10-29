@@ -1,3 +1,4 @@
+from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
 from akasha.document.point_state import PointState
 from akasha.document.vector_value import VectorValue
 from akasha.query.field_search import (
@@ -219,6 +220,36 @@ struct ReadSnapshot(Movable):
         return search_generation_field_reported(
             root[], catalog.field_at(ordinal), query, k, expression, control
         )
+
+    def recommend_field_reported(
+        self, name: String, positives: List[RecommendationExample],
+        negatives: List[RecommendationExample], k: Int, *,
+        strategy: String = "average_vector", lookup: Optional[ReadSnapshot] = None,
+        lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        max_examples: Int = 1024, control: Optional[QueryControl] = None,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        var source = lookup.value()._acquire() if lookup else root.copy()
+        return recommend_generation_field(
+            root[], source[], name, positives, negatives, k, strategy, expression,
+            lookup_field=lookup_field, max_examples=max_examples, control=control,
+        )
+
+    def recommend_field(
+        self, name: String, positives: List[RecommendationExample],
+        negatives: List[RecommendationExample], k: Int, *,
+        strategy: String = "average_vector", lookup: Optional[ReadSnapshot] = None,
+        lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        max_examples: Int = 1024, control: Optional[QueryControl] = None,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.recommend_field_reported(
+            name, positives, negatives, k, strategy=strategy, lookup=lookup,
+            lookup_field=lookup_field, expression=expression^,
+            max_examples=max_examples, control=control,
+        )
+        return execution.take_results()
 
     def search_field_by_id_reported(
         self,

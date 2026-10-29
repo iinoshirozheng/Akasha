@@ -16,9 +16,12 @@
 - Q02a 查詢既有點 ID、來源 collection／欄位 lookup 與候選前 ID 排除已接上
   Mojo／Python／Arrow；52 組上游參考、18 項原生與 410 項不同 Python 案例通過。
   [驗證紀錄](docs/research/2026-10-30-point-query-validation.md)。目前沿用原生同型別查詢契約。
-- 下一步：[Q02b 三種推薦策略](docs/plans/2026-10-30-recommendation-source-port.md)：
-  average_vector／best_score／sum_scores、混合 ID／向量、跨型別與 Qdrant 前處理、
-  自訂 ANN scorer。Q02 與完整協定相容仍未完成。
+- 目前工作：[Q02b 三種推薦策略](docs/plans/2026-10-30-recommendation-source-port.md)。
+  Q02 與完整協定相容仍未完成。
+- Q02b 三種推薦的 exact 路徑已接上 Mojo／Python／Arrow；包含混合 ID／向量、
+  lookup／排除、篩選與來源前處理。336 組 F32 上游查詢與 24 組 reducer fixture 已建立。
+  [驗證與限制](docs/research/2026-10-30-recommendation-validation.md)。接續完成自訂 ANN scorer、
+  完整 F16/U8 oracle、低精度 canonical storage 審核與協定暴露；Q02 尚未完成。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。

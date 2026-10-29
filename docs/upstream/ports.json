@@ -161,6 +161,143 @@
         "tests/python/test_binding_conversion_close.py": "2492a606cfd94e9ea54141405c0035b67b720ccac395f2f585e9b96c69ff01d0",
         "scripts/qdrant_point_lookup_reference.py": "8e789a6580b8f76f05279459e170a886f780c751ee60461ab370e30a177ab474"
       }
+    },
+    {
+      "id": "Q02b-exact-recommendation",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/collection/src/recommendations.rs": "9911ee6023e9ba715e834dce425df6e45e39e851cbd0a0a7994ce7a1d65e1920",
+        "lib/sparse/src/common/sparse_vector.rs": "369f849d59ae1f03f1c381ef6b1fcf3b74a35c5221959a2225a41d2b8d92e5ed",
+        "lib/common/common/src/math.rs": "7eda541f4fc90e7fcdfa35022d341fbe0bc10ed40a5634778e14bf1ccb051f23",
+        "lib/segment/src/spaces/simple.rs": "af75786a0c05f47a88651b4660bb99d724b343892342ebc5d03038a3f937ed79",
+        "lib/segment/src/spaces/tools.rs": "f94f7d9942ab0458fa9c90bd53c24b551b7172f8e9772745d168410c2fae65ae",
+        "lib/segment/src/vector_storage/query_scorer/mod.rs": "0a7817fa5df5c9765b1b2a5dc753cbf54e9036ab640cb6ce0ddb93f07a888d34",
+        "lib/segment/src/vector_storage/query/reco_query.rs": "1457b5c7aa5a42b439453f4c12f08eb831f5184c18167de7b93992f6b75a2dfe"
+      },
+      "functions": {
+        "avg_vectors": {
+          "source": "lib/collection/src/recommendations.rs",
+          "signature": "fn avg_vectors<'a>(",
+          "sha256": "3a92374aca0df12649b623e816ed845b9b1bcea39f0a2c6197ab78056bde3f1c"
+        },
+        "merge": {
+          "source": "lib/collection/src/recommendations.rs",
+          "signature": "fn merge_positive_and_negative_avg(",
+          "sha256": "672c27efb420529a166cfdad6bc98189f3e1f6a99b6ec585ca07521ab245cb08"
+        },
+        "average": {
+          "source": "lib/collection/src/recommendations.rs",
+          "signature": "pub fn avg_vector_for_recommendation<'a>(",
+          "sha256": "3663bb917f1269006385f3f0b5f108b17b70cc138ca8fac8dedc073c0cad3d0c"
+        },
+        "combine": {
+          "source": "lib/sparse/src/common/sparse_vector.rs",
+          "signature": "pub fn combine_aggregate(",
+          "sha256": "1c50ea5b248bd0a5a274be9c8a7a9c178b5e4f78e9c0e29a4e378621f8c317f8"
+        },
+        "sparse_score": {
+          "source": "lib/sparse/src/common/sparse_vector.rs",
+          "signature": "pub fn score_vectors<T: Ord + Eq>(",
+          "sha256": "2a478aac35b64b1392c9105b24a8552b39238cac667754f5f1efdc4d6bdd53ed"
+        },
+        "fast_sigmoid": {
+          "source": "lib/common/common/src/math.rs",
+          "signature": "pub fn fast_sigmoid(",
+          "sha256": "cf413d7e2e8cd41491c27cf5719efabcbb8105a2803221485880db96945a9d37"
+        },
+        "scaled_fast_sigmoid": {
+          "source": "lib/common/common/src/math.rs",
+          "signature": "pub fn scaled_fast_sigmoid(",
+          "sha256": "842a34c948eaf7eac9f6bf45f1347712f8e69068c23bc4a858b915c75b43755e"
+        },
+        "dot": {
+          "source": "lib/segment/src/spaces/simple.rs",
+          "signature": "pub fn dot_similarity(",
+          "sha256": "9a43e21942fb2daba735fbdf8f7c52a77066d88ac0ad21cd6c77bf7c557fc6ba"
+        },
+        "euclid": {
+          "source": "lib/segment/src/spaces/simple.rs",
+          "signature": "pub fn euclid_similarity(",
+          "sha256": "f996622980bd6457d904bbb1a0028a2cca1def94b4b944bc77135a3a6ffa29cd"
+        },
+        "cosine": {
+          "source": "lib/segment/src/spaces/simple.rs",
+          "signature": "pub fn cosine_preprocess(",
+          "sha256": "e212934a859d4ea53db3d133faf7ca8374cae19f67f8f111335809ed55a78723"
+        },
+        "normalized": {
+          "source": "lib/segment/src/spaces/tools.rs",
+          "signature": "pub fn is_length_zero_or_normalized(",
+          "sha256": "6dbf25a34c42993d88a261d823582b4132a416fa8901070d6d1e3ca8462abd35"
+        },
+        "maxsim": {
+          "source": "lib/segment/src/vector_storage/query_scorer/mod.rs",
+          "signature": "pub fn score_max_similarity<",
+          "sha256": "ccee751286d2f7697bdc3e4bac1c85fccf19df10a019b81e51ef419b8325881b"
+        },
+        "RecoBestScoreQuery": {
+          "source": "lib/segment/src/vector_storage/query/reco_query.rs",
+          "signature": "RecoBestScoreQuery::score_by",
+          "sha256": "32984a52232cb4604d106a8e2c90f3ec3b307025d942f9fb4879622746a67505"
+        },
+        "RecoSumScoresQuery": {
+          "source": "lib/segment/src/vector_storage/query/reco_query.rs",
+          "signature": "RecoSumScoresQuery::score_by",
+          "sha256": "06be6374b076214e415a6261852d37a57aeab332f518beb028a90f933df01b53"
+        }
+      },
+      "inspected_integration_sources": {
+        "lib/segment/src/data_types/primitive.rs": "730fa7e318dc3b4fa55e7189edc1578f4c840c47dc2d9b1039f3a0c2a992980b",
+        "lib/segment/src/spaces/metric_f16/simple_cosine.rs": "9af9189e9b5923ef74b9d8f3a4df867164a4d5bbd5a505d2a3608c4131058531",
+        "lib/segment/src/spaces/metric_f16/simple_dot.rs": "c5fc76e70552ad65722d66bb81afe7284a258fa2551ea929c22c6fb056aec332",
+        "lib/segment/src/spaces/metric_f16/simple_euclid.rs": "b6d6a97973ea31123c37256bd1f19d30d7ef60774357e778f2a89f49885825c9",
+        "lib/segment/src/spaces/metric_uint/simple_cosine.rs": "df241e556dffb5ae1059183ee707cf4305a5e505cda7ca305311134848825be7",
+        "lib/segment/src/spaces/metric_uint/simple_dot.rs": "784a7e93c33ccffec8a76ba26da7e3698a88d63e9299d9d6697d8f4b44b69f49",
+        "lib/segment/src/spaces/metric_uint/simple_euclid.rs": "41f69b11793c01dc0e7310fdf29c9467f20997e909ec85ba59d5dcfda229360f",
+        "lib/segment/src/vector_storage/query_scorer/custom_query_scorer.rs": "4393316448362586735c72065556ffc46a07653e8522aaad1e600915a8c8161b",
+        "lib/segment/src/vector_storage/query_scorer/multi_custom_query_scorer.rs": "2cd3ca66bc4f98212667fa115b1fd2ebe2e5639b57b8037bcc81ec8f056de36a",
+        "lib/segment/src/vector_storage/query_scorer/sparse_custom_query_scorer.rs": "b201fe244713b380aa2ca9b8d5084d9921962b79c98d8ec2c6da35299c9b21f9",
+        "lib/shard/src/query/query_enum.rs": "871bc222ed9ac1094242f28dff7f151a73b6daee6e1997a7227d86391b4ec680"
+      },
+      "scaffold_sha256": "d9ddc14d32215c665ff594a4860481c754e9acbe6600d65267fd42aeffd18f34",
+      "adapter": "F32 containers and storage-free query plumbing; verbatim transforms/reducers/scalar metrics/sparse merge/MaxSim; ascending ID ties; no ANN or datatype conversion oracle",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/query/recommendation.mojo",
+        "src/akasha/query/recommendation_metrics.mojo",
+        "src/akasha/query/field_recommendation.mojo"
+      ],
+      "adaptations": [
+        "Owned Mojo F32 queries and captured read roots replace service storage and vector containers",
+        "F32 scalar preprocessing/metrics; custom L2 scores use negative squared distance; only average-vector scores apply Euclid postprocessing",
+        "Native raw authority is preprocessed on query; cannot reconstruct pre-ingestion F32 values for low-precision stored inputs",
+        "BF16/I8 are Akasha extensions; integer metric accumulation widened to Int64",
+        "Finite-result validation, positive k, query limits, cancellation and ascending ID ties",
+        "Exact execution only; custom ANN, complete datatype/storage and C/REST/gRPC acceptance remain open"
+      ],
+      "fixture": "tests/fixtures/qdrant-recommendation/recommendation.json",
+      "fixture_sha256": "af8399dc6f0eb1f97a770db6f9ed894744f1c0c3d70860414cfc74648e32c9e0",
+      "status": "verified_exact_f32_core_python_arrow_with_documented_native_dtype_adaptations",
+      "verification": [
+        "docs/research/2026-10-30-recommendation-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/recommendation.mojo": "5e3adafabd2a953d99d42f1a13ccd13ca2e3158edb4b2cf27da7f3d584051ae8",
+        "src/akasha/query/recommendation_metrics.mojo": "5348df9deb384466a3445d383c3c27d6d03a780201d07b309719753c71caf1ab",
+        "src/akasha/query/field_recommendation.mojo": "57a5be8edf0ab9cd3aad7c9d34942a6ad7f386e86c5bdd0868be86d6eb916e66",
+        "src/akasha/api/snapshot.mojo": "0195a229923073136199360e6bca5d535bcb0507123065f2a25b37d87c51bbc0",
+        "src/akasha/api/collection.mojo": "01d8e4b55462024695df2e82832c415e8b8333a28ac8294f0e25bde185fac76b",
+        "src/akasha/__init__.mojo": "7c24a995c56d050279668cdcac3fbe29daca665e85fc859ad9a17f307e2b1dd0",
+        "src/bindings/python_module.mojo": "04aec8c88de776262f81580f8be74fe04c80038b2fa80f2fc786061e5d78efe6",
+        "python/akashadb/database.py": "c9cb186cfb03bcec7db97370e0737ce8be6991c549c24768028b083e149dabca",
+        "python/akashadb/arrow.py": "445755446224205f1b6b2cc648929f50f4c342d260e6b5059d00771391db0bde",
+        "tests/mojo/test_recommendation.mojo": "94de3474407cac3ea484e5a9b9d780cab1dd5acec740e33a7d335c87865ef1fb",
+        "tests/python/test_recommendation.py": "01ec48e748e6334ded34238835bd04be440076ee5147d49418bd37a822bde0bf",
+        "scripts/qdrant_recommendation_reference.py": "1ba50ccc7a3b26fd05eba3ac7f2469166e5964021a52cb0b7c2fa6af1e1a96f3"
+      }
     }
   ]
 }

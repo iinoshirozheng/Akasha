@@ -53,3 +53,5 @@ from .document.vector_schema import (
 from .document.vector_value import VectorValue
 from .query.field_fusion import FieldQuery
 from .index.field_ivf import IvfOptions
+
+from akasha.query.field_recommendation import RecommendationExample

@@ -35,6 +35,20 @@ native vector owners, collection directory identity and its existing typed
 query/scoring contract; protocol/status and storage-preprocessing compatibility
 remain separate work.
 
+Recommendation transforms, metrics and execution in
+`src/akasha/query/recommendation.mojo`, `recommendation_metrics.mojo` and
+`field_recommendation.mojo` translate the same revision's
+`lib/collection/src/recommendations.rs`,
+`lib/segment/src/vector_storage/query/reco_query.rs`,
+`lib/common/common/src/math.rs`, `lib/sparse/src/common/sparse_vector.rs`,
+and the segment's `spaces`, `data_types/primitive.rs`, and `query_scorer`
+implementations. The port uses owned Mojo vectors, retained read generations,
+bounded Top-K and finite-result validation. F32 scalar reference functions,
+sparse merges and MaxSim are compiled unedited for differential tests.
+BF16/I8 are Akasha extensions, integer metric accumulators are widened, and
+raw native cosine storage is preprocessed when preparing recommendation values.
+This exact-query port does not claim full server, datatype, storage or ANN parity.
+
 Qdrant distributes this source under the Apache License, Version 2.0; a copy of
 the upstream license is included at [Qdrant license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
 No root NOTICE file is present at this pinned revision.

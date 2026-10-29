@@ -2,7 +2,8 @@
 
 Continue the [full feature plan](2026-10-30-feature-completion.md) after the
 [stored-point lookup prerequisite](2026-10-30-point-query-source-port.md).
-This is required remaining work, not functionality already implemented.
+The exact F32 query path is now implemented; full Q02 acceptance remains open.
+See the progress and pending gates below.
 
 ## Sources already inspected
 
@@ -69,3 +70,29 @@ Qdrant `74f3e85b9473c62560006c043e13737ce6b48412`:
 
 No performance profiling, tuning or benchmark acceptance until all functional
 rows in the master plan are verified.
+
+
+## Current progress and required continuation
+
+The three transforms/reducers and portable exact scorer are implemented, with
+native snapshot/collection, Python and Arrow APIs. Fixtures compile 14 verbatim
+Rust functions and cover 336 F32 query pipelines plus 24 score reductions.
+Native tests also compare transform/reducer bits. The query supports mixed
+raw/ID input, source-field metrics, filters, exclusions and retained roots.
+See [validation evidence](../research/2026-10-30-recommendation-validation.md).
+
+The next required implementation remains custom ANN scorers. Port the upstream
+`CustomQueryScorer` integration into graph traversal using the actual composite
+score and original source exclusions; do not approximate best/sum with a single
+averaged nearest query. Preserve the exact scorer as the correctness oracle and
+report actual execution paths. Also finish:
+
+- Independent F16/U8 query conversion and scoring fixtures, including large
+  dimension/integer overflow and SIMD/scalar differences.
+- Canonical cosine storage/source lookup alignment: raw native low-precision
+  authority cannot reconstruct a pre-ingestion F32 value. Audit public durable
+  format changes and migrate rather than pretending query-time normalization
+  proves whole-storage parity. BF16/I8 remain explicit Akasha extensions.
+- All recommendation variants in universal queries/prefetch and C/REST/gRPC.
+- Full source-server behavior/error/limit validation; exact fixtures are not
+  whole-service equivalence. Keep Q02 and the complete master goal open.

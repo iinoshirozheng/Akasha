@@ -1,3 +1,4 @@
+from akasha.query.field_recommendation import RecommendationExample
 from akasha import (
     BatchMutation,
     CollectionConfig,
@@ -530,6 +531,61 @@ struct BoundCollection(Movable, Writable):
             return Python.none()
         var schema = self[].inner.value().vector_fields()
         return _point_to_python(point.value(), schema)
+
+    @staticmethod
+    def recommend_field[columns: Bool = False](
+        py_self: PythonObject, name: PythonObject, positive: PythonObject,
+        negative: PythonObject, k: PythonObject, options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var field_name = _exact_python_string(name, "field name")
+        var strategy = _exact_python_string(options["strategy"], "recommendation strategy")
+        if _exact_python_string(options["mode"], "recommendation mode") != "exact":
+            raise Error("recommendation currently supports exact mode only")
+        var count = _exact_python_int(k, "k")
+        var limit = _exact_python_int(options["max_examples"], "max_examples")
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = Optional(QueryControl(
+            token, max_candidates=_exact_python_int(options["max_candidates"], "max_candidates"),
+            deadline_ns=_exact_python_int(options["deadline_ns"], "deadline_ns"),
+        ))
+        control.value().checkpoint(0)
+        _ensure_open(self[])
+        var fields = self[].inner.value().vector_fields()
+        var ordinal = _named_field_ordinal(fields, field_name)
+        var query_field = fields[ordinal].copy()
+        query_field.scalar = 0
+        var pos_count = len(positive)
+        var neg_count = len(negative)
+        if limit <= 0 or pos_count > limit or neg_count > limit - pos_count:
+            raise Error("recommendation example resource limit exceeded")
+        var positives = _recommendation_examples_from_python(positive, query_field)
+        var negatives = _recommendation_examples_from_python(negative, query_field)
+        var expression = Optional[FilterExpression]()
+        if not _is_python_none(options["filter"]):
+            expression = Optional(_filter_expression(options["filter"]))
+        var lookup_field = Optional[String]()
+        var raw_lookup_field = options["lookup_field"]
+        if not _is_python_none(raw_lookup_field):
+            lookup_field = Optional(_exact_python_string(raw_lookup_field, "lookup field"))
+        var raw_lookup = options["lookup_from"]
+        _ensure_open(self[])
+        var lookup = Optional[ReadSnapshot]()
+        if not _is_python_none(raw_lookup):
+            var source = raw_lookup.downcast_value_ptr[BoundCollection]()
+            _ensure_open(source[])
+            if Int(source) != Int(self):
+                lookup = Optional(source[].inner.value().snapshot())
+        _ensure_open(self[])
+        var results = self[].inner.value().recommend_field(
+            field_name, positives, negatives, count, strategy=strategy,
+            lookup=lookup, lookup_field=lookup_field, expression=expression^,
+            max_examples=limit, control=control,
+        )
+        return _field_results_to_python[columns](results)
 
     @staticmethod
     def search_field[
@@ -1433,6 +1489,18 @@ def _is_python_none(value: PythonObject) -> Bool:
     return value is Python.none()
 
 
+def _recommendation_examples_from_python(raw: PythonObject, field: VectorFieldSpec) raises -> List[RecommendationExample]:
+    var result = List[RecommendationExample]()
+    var builtins = Python.import_module("builtins")
+    for i in range(len(raw)):
+        var item = raw[i]
+        if Bool(py=builtins.type(item) == builtins.int):
+            result.append(RecommendationExample.point(_exact_python_int(item, "point ID")))
+        else:
+            result.append(RecommendationExample.raw(vector_from_python(item, field)))
+    return result^
+
+
 def _exact_python_int(value: PythonObject, name: String) raises -> Int:
     var builtins = Python.import_module("builtins")
     if not Bool(py=builtins.type(value) == builtins.int):
@@ -1796,6 +1864,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.search_fields[True]](
                 "search_fields_columns"
             )
+            .def_method[BoundCollection.recommend_field[False]]("recommend_field")
+            .def_method[BoundCollection.recommend_field[True]]("recommend_field_columns")
             .def_method[BoundCollection.search_field[False]]("search_field")
             .def_method[BoundCollection.search_field[True]](
                 "search_field_columns"

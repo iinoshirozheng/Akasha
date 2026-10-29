@@ -134,6 +134,26 @@ def search_field_record_batch(
     ], names=["id", "score"])
 
 
+def recommend_field_record_batch(
+    collection: Collection, name: str, positive: list[Any], negative: list[Any] | None = None,
+    k: int = 10, *, strategy: str = "average_vector", mode: str = "exact",
+    lookup_from: Collection | None = None, lookup_field: str | None = None,
+    filter: Mapping[str, Any] | None = None,
+    cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
+) -> Any:
+    """Recommend into owned Int64 IDs and Float64 columns of F32 scores."""
+    import pyarrow as pa
+    columns = collection._recommend_field_raw(
+        name, positive, negative, k, strategy=strategy, mode=mode,
+        lookup_from=lookup_from, lookup_field=lookup_field, filter=filter,
+        cancellation=cancellation, timeout_ns=timeout_ns, columns=True,
+    )
+    return pa.record_batch([
+        pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+        pa.array(columns["scores"], type=pa.float64(), from_pandas=False),
+    ], names=["id", "score"])
+
+
 def search_field_by_id_record_batch(
     collection: Collection, name: str, id: int, k: int, *,
     lookup_from: Collection | None = None, lookup_field: str | None = None,
