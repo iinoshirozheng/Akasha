@@ -227,6 +227,7 @@ struct ReadSnapshot(Movable):
         fetch_k: Int = 100,
         rank_constant: Int = 2,
         fusion: String = "rrf",
+        weights: Optional[List[Float32]] = None,
         var expression: Optional[FilterExpression] = None,
         control: Optional[QueryControl] = None,
         rerank: Optional[FieldQuery] = None,
@@ -234,7 +235,7 @@ struct ReadSnapshot(Movable):
         var root = self._acquire()
         return search_generation_fields(
             root[], queries, k, fetch_k, rank_constant, expression, control, rerank,
-            fusion,
+            fusion, weights,
         )
 
     def search_fields(
@@ -245,6 +246,7 @@ struct ReadSnapshot(Movable):
         fetch_k: Int = 100,
         rank_constant: Int = 2,
         fusion: String = "rrf",
+        weights: Optional[List[Float32]] = None,
         var expression: Optional[FilterExpression] = None,
         control: Optional[QueryControl] = None,
         rerank: Optional[FieldQuery] = None,
@@ -255,6 +257,7 @@ struct ReadSnapshot(Movable):
             fetch_k=fetch_k,
             rank_constant=rank_constant,
             fusion=fusion,
+            weights=weights,
             expression=expression^,
             control=control,
             rerank=rerank,

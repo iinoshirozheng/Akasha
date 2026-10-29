@@ -18,7 +18,7 @@ from akasha.query.field_search import (
     search_generation_field_reported,
 )
 from akasha.query.filter_ast import FilterExpression
-from akasha.query.fusion import rrf_position_score
+from akasha.query.fusion import rrf_position_score, validate_rrf_weights
 from akasha.query.score_fusion import distribution_normalize
 from akasha.storage.read_generation import ReadGeneration
 from std.math import isfinite
@@ -60,9 +60,13 @@ def search_generation_fields(
     control: Optional[QueryControl],
     rerank: Optional[FieldQuery] = None,
     fusion: String = "rrf",
+    weights: Optional[List[Float32]] = None,
 ) raises -> FieldSearchExecution:
     if fusion != "rrf" and fusion != "dbsf":
         raise Error("field fusion must be rrf or dbsf")
+    if weights and fusion != "rrf":
+        raise Error("weights require RRF fusion")
+    validate_rrf_weights(weights, len(queries))
     if k <= 0 or fetch_k < k or rank_constant <= 0 or len(queries) == 0:
         raise Error(
             "field fusion requires positive k, rank constant and branches, with"
@@ -101,6 +105,7 @@ def search_generation_fields(
     stats.scalar_name = "f32"
     stats.metric_name = fusion
     for branch in range(len(queries)):
+        var weight = weights.value()[branch] if weights else Float32(1)
         if control:
             control.value().checkpoint(0)
         ref query = queries[branch]
@@ -159,7 +164,7 @@ def search_generation_fields(
             var contribution = (
                 normalized[rank]
                 if fusion == "dbsf"
-                else rrf_position_score(rank, rank_constant)
+                else rrf_position_score(rank, rank_constant, weight)
             )
             var score = scores.get(id, Float32(0)) + contribution
             if not isfinite(score):

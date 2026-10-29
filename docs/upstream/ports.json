@@ -45,6 +45,54 @@
         "tests/mojo/test_field_dbsf.mojo": "7db009024009af87162240f89941b28f878798cc1e2e80d4ed67f5b90c9e30c4",
         "tests/python/test_score_fusion.py": "3ee4107ecb6a9700adcb191a2160d5a93a61e0c2773dfa41c7480152c26ea499"
       }
+    },
+    {
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source": "lib/segment/src/common/reciprocal_rank_fusion.rs",
+      "source_sha256": "d28f976545043b1203f25136dc65c6aff09218ce7512fbcac344cd2ffe440557",
+      "extracted_sha256": "31799b15892ce0f789064f65755adaf81d84ad799bea6501f17ff42577b8d1ff",
+      "scaffold_sha256": "341f05da2a5ce26e642a3a558e22dbb93149e820ca186799113e414a143b492c",
+      "adapter": "Verbatim functions; std HashMap, Either iterator, nonnegative-score OrderedFloat, i64 IDs, score-only point/error shims; output ties canonicalized by ID",
+      "id": "Q01b-weighted-rrf",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "functions": [
+        "position_score",
+        "rrf_scoring"
+      ],
+      "targets": [
+        "src/akasha/query/fusion.mojo",
+        "src/akasha/query/field_fusion.mojo"
+      ],
+      "adaptations": [
+        "Mojo score containers and existing top-k selection",
+        "Akasha stable ascending ID ties",
+        "Finite weight and fused-score validation",
+        "Public weights option is RRF-only",
+        "Akasha positive rank-constant contract preserved"
+      ],
+      "fixture": "tests/fixtures/qdrant-rrf/weighted.json",
+      "fixture_sha256": "48ed29568e435be37cb28827a82d51d7ea95a0aa26db911176abdc89e6dd5962",
+      "status": "verified_core_python_arrow",
+      "verification": [
+        "docs/research/2026-10-30-weighted-rrf-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/fusion.mojo": "508e90e8e9e442d9a01c8a0e8789afffee606200a44d36ea037a2206e564e60e",
+        "src/akasha/query/field_fusion.mojo": "8d9023af5fa7c30c32cd4f6c5bb86fc1c35da5a9356802984ae0eee58c97963b",
+        "src/akasha/api/snapshot.mojo": "833c88b61632d19e07a009ed7c5814ca5ec659181f05e013170d097e3aacf09c",
+        "src/akasha/api/collection.mojo": "b7dcee578c539f0646f548a44ee91e67788575363df3b2ecf28669dddb752d96",
+        "src/bindings/python_module.mojo": "21a2719dd7d35bb6034e6b523777ed69be86539d46c0d789338216f444da5157",
+        "python/akashadb/database.py": "bb43901b5bf271cc132ef92741f96a8724b07e3872376b5d685b00c568e1031b",
+        "python/akashadb/arrow.py": "af4faf30567ed87ef974922c859eb193f0f19b901e2a1207f0ec5e7bb0dd3bad",
+        "tests/mojo/test_weighted_rrf.mojo": "ff25bad985750f539be153b2af0863f5091ee631d13446e68f69010d91fc5556",
+        "tests/mojo/test_field_weighted_rrf.mojo": "8a2157f77e61b258eb1e6a1742f04d3e60b500e53ae13c74274e993bf40afe94",
+        "tests/python/test_weighted_rrf.py": "bea6f1e1f565509116a257e46a7a0ff7c5d25c8f828e83161188962b83b4213d",
+        "tests/python/test_binding_conversion_close.py": "8597b01b16d6340f873cae50a009fcfd5890353d38bcb2a817d969bae3dd082d",
+        "scripts/qdrant_rrf_reference.py": "abf29be076a397a591789e087750875ce17ae6ea0a9fc56bc394f15a25bcdc9d"
+      }
     }
   ]
 }

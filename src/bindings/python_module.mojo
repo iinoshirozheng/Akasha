@@ -628,6 +628,10 @@ struct BoundCollection(Movable, Writable):
         var fetch = _exact_python_int(options["fetch_k"], "fetch_k")
         var rank = _exact_python_int(options["rank_constant"], "rank_constant")
         var fusion = String(py=options.get("fusion", "rrf"))
+        var weights = Optional[List[Float32]]()
+        var raw_weights = options.get("weights", Python.none())
+        if not _is_python_none(raw_weights):
+            weights = Optional(_float_vector(raw_weights))
         _ensure_open(self[])
         var results = (
             self[]
@@ -638,6 +642,7 @@ struct BoundCollection(Movable, Writable):
                 fetch_k=fetch,
                 rank_constant=rank,
                 fusion=fusion,
+                weights=weights,
                 expression=expression^,
                 control=control,
                 rerank=rerank,

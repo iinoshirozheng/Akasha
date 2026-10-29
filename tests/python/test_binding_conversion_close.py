@@ -15,7 +15,7 @@ CASES = [
     "sparse_upsert", "delete", "get", "projection", "backup",
     "sparse_query", "sparse_where", "controlled_options", "controlled_snapshot",
     "field_options", "field_vector", "field_late", "fields_options",
-    "fields_vector", "fields_late", "arrow_early", "arrow_payload",
+    "fields_vector", "fields_late", "fields_weights", "fields_weight_scalar", "arrow_early", "arrow_payload",
     "point_arrow_early", "point_arrow_payload", "scanner_options",
     "scanner_columns", "scanner_cancel", "scanner_export",
 ]
@@ -76,6 +76,10 @@ def _exercise_close(path, case):
             close()
             return False
 
+        def __float__(self):
+            close()
+            return 1.0
+
         def __str__(self):
             close()
             return str(path / "backup")
@@ -125,6 +129,9 @@ def _exercise_close(path, case):
         opts = ClosingDict(field_options, "mode" if case == "field_options" else "rerank_k") if case != "field_vector" else field_options
         vector = ClosingList([1., 2.]) if case == "field_vector" else [1., 2.]
         operation = lambda: native.search_field("v", vector, 1, opts)
+    elif case in ("fields_weights", "fields_weight_scalar"):
+        weights = ClosingList([1.0]) if case == "fields_weights" else [ClosingScalar()]
+        operation = lambda: native.search_fields([query], dict(fusion_options, weights=weights))
     elif case.startswith("fields_"):
         opts = ClosingDict(fusion_options, "cancelled" if case == "fields_options" else "fetch_k") if case != "fields_vector" else fusion_options
         queries = ClosingList([query]) if case == "fields_vector" else [query]

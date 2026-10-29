@@ -15,6 +15,14 @@ in `src/akasha/query/field_fusion.mojo` adapt Qdrant's
 uses typed score lists, and adds finite-range validation. Original behavior is
 checked through an extracted Rust reference with representation-only shims.
 
+Weighted RRF in `src/akasha/query/fusion.mojo` and its field-fusion integration
+adapt `position_score` and `rrf_scoring` in
+`lib/segment/src/common/reciprocal_rank_fusion.rs` at the same commit. Adaptations
+include Mojo containers, finite-range validation and ascending point-ID ties.
+The reference harness compiles both original functions without modifying them;
+its container/type shims and output tie canonicalization are recorded with the
+fixtures in `tests/fixtures/qdrant-rrf/`.
+
 Qdrant distributes this source under the Apache License, Version 2.0; a copy of
 the upstream license is included at [Qdrant license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
 No root NOTICE file is present at this pinned revision.

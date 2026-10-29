@@ -10,7 +10,11 @@
 - 已固定 7 份來源與 69 個 Qdrant REST 待驗收操作。DBSF 已移植並接上 Mojo／Python／Arrow；
   114 組上游 fixture、15 項原生案例與 254 項 Python 案例通過。
   [驗證紀錄](docs/research/2026-10-30-dbsf-validation.md)。
-- 下一步：Q01b weighted RRF，依上游 position_score／rrf_scoring 移植，再補後續查詢功能。
+- Q01b weighted RRF 已依上游 position_score／rrf_scoring 移植並接上 Mojo／Python／Arrow；
+  300 組位置計分、50 組融合參考案例，19 項原生與 315 項不同 Python 案例通過。
+  [驗證紀錄](docs/research/2026-10-30-weighted-rrf-validation.md)。Q01 的完整協定暴露仍待完成。
+- 下一步：Q02 查詢既有點 ID、average_vector／best_score／sum_scores 三種推薦策略，
+  依上游來源移植並驗證 lookup 與範例點排除規則。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。

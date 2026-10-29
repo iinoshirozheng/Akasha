@@ -294,6 +294,30 @@ Filters apply to every branch before its Top-K. The aggregate candidate limit
 counts the captured visible point count once per branch. `search_fields_record_batch`
 offers the same options and directly exports owned Int64/Float64 columns.
 
+Pass `weights=[3.0, 1.0, ...]` to set an RRF weight for each branch in query
+order. The list must match the branch count; `None` means all weights are 1.
+Qdrant's F32 contribution is `1 / ((rank + 1) / weight + rank_constant - 1)`
+for positive weights. This adjusts the rank before taking its reciprocal;
+it is not multiplication of the unweighted score. Zero and negative weights
+contribute zero but retain their returned IDs, including in final rerank
+candidate selection. All branches still run and count against resource limits.
+Weights must be finite after F32 conversion. Nonfinite fused results are rejected,
+including overflow caused by very large positive weights at `rank_constant=1`.
+`weights` is supported only with `fusion="rrf"`; DBSF rejects an explicit list.
+Arrow accepts the same `weights` keyword. The unchanged legacy hybrid search
+entry points use equal weights; use named `FieldQuery` branches for weighted fusion.
+
+```python
+hits = collection.search_fields(
+    [FieldQuery("text", text_vector), FieldQuery("image", image_vector)],
+    10,
+    fetch_k=100,
+    weights=[3.0, 1.0],
+)
+```
+
+Source and bit-exact fixtures: [weighted RRF port](../tests/fixtures/qdrant-rrf/README.md).
+
 Pass `fusion="dbsf"` to use Qdrant distribution-based score fusion instead of
 the default `fusion="rrf"`. DBSF converts each branch's returned scores to F32,
 normalizes them with sample variance and `mean +/- 3 * standard_deviation`, then

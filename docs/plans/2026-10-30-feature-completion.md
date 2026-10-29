@@ -117,6 +117,16 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 - Q01a: implemented and verified for core/Python/Arrow. Upstream Rust fixtures:
   114 rankings / 3,706 scores; 15 native cases across 5 modules and 254 Python
   cases pass. [Evidence](../research/2026-10-30-dbsf-validation.md).
-- Next: Q01b weighted RRF from upstream `position_score`/`rrf_scoring`, including
-  source fixtures, length validation, zero-weight retained points, and API/Arrow.
-  Q01 remains in progress; universal REST/gRPC exposure is still pending.
+- Q01b: weighted RRF implemented and verified for core/Python/Arrow. Both upstream
+  functions compiled verbatim for 300 position / 50 fusion reference cases;
+  19 native cases and 315 distinct Python cases passed, including length/finite
+  validation, zero-weight retained points, filters, rerank, ANN/IVF, reopen,
+  snapshots and conversion-close boundaries.
+  [Plan](2026-10-30-weighted-rrf-source-port.md) /
+  [evidence](../research/2026-10-30-weighted-rrf-validation.md).
+  Q01 remains in progress; universal REST/gRPC and C ABI exposure are still pending.
+- Next: Q02 query by ID and recommendation strategies. Source read:
+  `collection/recommendations.rs` (average vector, lookup and example exclusion)
+  and `segment/vector_storage/query/reco_query.rs` (best score and sum scores).
+  Implement all three strategies with source fixtures and native read-view
+  semantics; do not reduce recommendations to only vector averaging.

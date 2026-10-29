@@ -301,23 +301,30 @@ class Collection:
         self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
         rank_constant: int = 2, filter: Mapping[str, Any] | None = None,
         fusion: str = "rrf",
+        weights: list[float] | None = None,
         rerank: FieldQuery | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
     ) -> list[SearchResult]:
         raw = self._search_fields_raw(queries, k, fetch_k=fetch_k, rank_constant=rank_constant,
-                                      filter=filter, fusion=fusion, rerank=rerank, cancellation=cancellation, timeout_ns=timeout_ns)
+                                      filter=filter, fusion=fusion, weights=weights, rerank=rerank, cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
 
     def _search_fields_raw(
         self, queries: list[FieldQuery], k: int, *, fetch_k: int = 100,
         rank_constant: int = 2, filter: Mapping[str, Any] | None = None,
         fusion: str = "rrf",
+        weights: list[float] | None = None,
         rerank: FieldQuery | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
         columns: bool = False,
     ) -> Any:
         if type(fusion) is not str or fusion not in {"rrf", "dbsf"}:
             raise ValidationError("field fusion must be rrf or dbsf")
+        if weights is not None:
+            if fusion != "rrf":
+                raise ValidationError("weights require RRF fusion")
+            if not isinstance(weights, list) or len(weights) != len(queries):
+                raise ValidationError("RRF weights must be a list matching the number of branches")
         if type(k) is not int or not 0 < k <= self.limits.max_k:
             raise ValidationError("named fusion k exceeds resource limit")
         if type(fetch_k) is not int or not k <= fetch_k <= self.limits.max_k:
@@ -337,7 +344,7 @@ class Collection:
             "search_fields_columns" if columns else "search_fields",
             [query.to_kernel() for query in queries],
             {"k": k, "fetch_k": fetch_k, "rank_constant": rank_constant,
-             "fusion": fusion,
+             "fusion": fusion, "weights": weights,
              "rerank": None if rerank is None else rerank.to_kernel(),
              "filter": None if filter is None else dict(filter),
              "cancelled": bool(cancellation and cancellation.cancelled),

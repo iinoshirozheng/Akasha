@@ -138,6 +138,7 @@ def search_fields_record_batch(
     collection: Collection, queries: list["FieldQuery"], k: int, *,
     fetch_k: int = 100, rank_constant: int = 2,
     fusion: str = "rrf",
+    weights: list[float] | None = None,
     filter: Mapping[str, Any] | None = None,
     rerank: "FieldQuery | None" = None,
     cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
@@ -145,7 +146,7 @@ def search_fields_record_batch(
     """Fuse field rankings from one read view into owned Float64 Arrow scores."""
     import pyarrow as pa
     columns = collection._search_fields_raw(
-        queries, k, fetch_k=fetch_k, rank_constant=rank_constant, fusion=fusion, filter=filter, rerank=rerank,
+        queries, k, fetch_k=fetch_k, rank_constant=rank_constant, fusion=fusion, weights=weights, filter=filter, rerank=rerank,
         cancellation=cancellation, timeout_ns=timeout_ns, columns=True,
     )
     return pa.record_batch([
