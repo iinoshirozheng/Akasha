@@ -1,4 +1,4 @@
-"""Field-specific retrieval and deterministic F32 RRF on one captured root."""
+"""Field retrieval and deterministic F32 RRF/DBSF on one captured root."""
 
 from akasha.compute.topk import BoundedTopK
 from akasha.compute.field_metrics import (
@@ -19,7 +19,9 @@ from akasha.query.field_search import (
 )
 from akasha.query.filter_ast import FilterExpression
 from akasha.query.fusion import rrf_position_score
+from akasha.query.score_fusion import distribution_normalize
 from akasha.storage.read_generation import ReadGeneration
+from std.math import isfinite
 
 
 struct FieldQuery(Movable):
@@ -57,7 +59,10 @@ def search_generation_fields(
     expression: Optional[FilterExpression],
     control: Optional[QueryControl],
     rerank: Optional[FieldQuery] = None,
+    fusion: String = "rrf",
 ) raises -> FieldSearchExecution:
+    if fusion != "rrf" and fusion != "dbsf":
+        raise Error("field fusion must be rrf or dbsf")
     if k <= 0 or fetch_k < k or rank_constant <= 0 or len(queries) == 0:
         raise Error(
             "field fusion requires positive k, rank constant and branches, with"
@@ -94,7 +99,7 @@ def search_generation_fields(
     stats.backend_name = "native-f32"
     stats.storage_name = "field-fusion"
     stats.scalar_name = "f32"
-    stats.metric_name = "rrf"
+    stats.metric_name = fusion
     for branch in range(len(queries)):
         if control:
             control.value().checkpoint(0)
@@ -143,10 +148,23 @@ def search_generation_fields(
                 view, field, query.query, fetch_k, expression, control
             )
         ref ranked = execution.results
+        var normalized = List[Float32]()
+        if fusion == "dbsf":
+            var raw_scores = List[Float32](capacity=len(ranked))
+            for hit in ranked:
+                raw_scores.append(Float32(hit.score))
+            normalized = distribution_normalize(raw_scores)
         for rank in range(len(ranked)):
             var id = ranked[rank].id
-            var contribution = rrf_position_score(rank, rank_constant)
-            scores[id] = scores.get(id, Float32(0)) + contribution
+            var contribution = (
+                normalized[rank]
+                if fusion == "dbsf"
+                else rrf_position_score(rank, rank_constant)
+            )
+            var score = scores.get(id, Float32(0)) + contribution
+            if not isfinite(score):
+                raise Error("field fusion exceeds finite Float32 range")
+            scores[id] = score
         stats.requested_ef = max(
             stats.requested_ef, execution.stats.requested_ef
         )

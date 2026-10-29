@@ -111,6 +111,12 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 - 2026-10-30: report and full work ledger created. Read clean source pins, installed
   compiler and live query/SDK paths. No performance experiment resumed.
-- F00: in progress; source/API inventory and license/provenance artifacts being added.
-- Q01a: next; upstream DBSF has empty/single/constant cases and sample variance with
-  three-standard-deviation normalization. Preserve upstream F32 operation order.
+- F00: in progress. `docs/upstream/source-lock.json` records 7 clean source pins;
+  `qdrant-rest.json` records 69 pinned REST operations, all explicitly compatibility
+  unverified. Protobuf/Lance/SQL/UI inventories and older attribution audit remain.
+- Q01a: implemented and verified for core/Python/Arrow. Upstream Rust fixtures:
+  114 rankings / 3,706 scores; 15 native cases across 5 modules and 254 Python
+  cases pass. [Evidence](../research/2026-10-30-dbsf-validation.md).
+- Next: Q01b weighted RRF from upstream `position_score`/`rrf_scoring`, including
+  source fixtures, length validation, zero-weight retained points, and API/Arrow.
+  Q01 remains in progress; universal REST/gRPC exposure is still pending.

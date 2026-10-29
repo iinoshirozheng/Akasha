@@ -1,0 +1,50 @@
+{
+  "ports": [
+    {
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source": "lib/segment/src/common/score_fusion.rs",
+      "source_sha256": "c33a0685920f9f18787cd19eeecf07c95b13567661913caaffbb1adaa28c89fd",
+      "extracted_sha256": "dd379537ced401812360a6b006c34ca18c3d0c4aca4f70f4d7cd4045a41dc100",
+      "scaffold_sha256": "6684a5eab8ba06665ce81607da9957a2833b12122e868edf068c97b3d2b00e8d",
+      "adapter": "ScoredPoint contains only score; ScoreType aliases f32; functions extracted verbatim",
+      "id": "Q01a-dbsf",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "functions": [
+        "norm",
+        "welfords_mean_variance",
+        "distr_norm"
+      ],
+      "targets": [
+        "src/akasha/query/score_fusion.mojo",
+        "src/akasha/query/field_fusion.mojo"
+      ],
+      "adaptations": [
+        "Mojo typed score lists in place of ScoredPoint",
+        "Nonfinite input/result rejection",
+        "Native F64 branch results convert to F32 for fusion",
+        "Akasha stable ascending ID ties"
+      ],
+      "fixture": "tests/fixtures/qdrant-dbsf/normalization.json",
+      "fixture_sha256": "7dd80fc5922ab2b06d03d0d1c98745bf6efda8238270ad009c1c16c370dd492f",
+      "status": "verified_core_python_arrow",
+      "verification": [
+        "docs/research/2026-10-30-dbsf-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/score_fusion.mojo": "4320f5de675366c0fd37d8e67e2e7fcf00b710a814eb52c680da3879a8b72fdc",
+        "src/akasha/query/field_fusion.mojo": "0e3ded1ac8a8fba43fc90e6e69c1a583f313954e023738e6a64feeb7519baac9",
+        "src/akasha/api/snapshot.mojo": "70a7a615627419b886ce763b036adfa72a02959847f07919f001347e160ad570",
+        "src/akasha/api/collection.mojo": "5542a7708f72f3c38a3dd76732cfeb285e270dd55a65ca7f34b61928bc95f8cb",
+        "src/bindings/python_module.mojo": "4a878c409923f2c189d0183dbd81ec73deeca5132d836d9c6896cf60987f4be8",
+        "python/akashadb/database.py": "56799b9bccb46a13a653cb899d2ceeb29cf11726f7ff404266ff21c1faef4346",
+        "python/akashadb/arrow.py": "16e9a9bf97082d3b5479e414970e7f05baf5fa511a134a63c30f39702eb81e5f",
+        "tests/mojo/test_score_fusion.mojo": "edfb57b644e7175272713139d2b8f3a95b13f6ffcda58c5b73a3e514f4b2d942",
+        "tests/mojo/test_field_dbsf.mojo": "7db009024009af87162240f89941b28f878798cc1e2e80d4ed67f5b90c9e30c4",
+        "tests/python/test_score_fusion.py": "3ee4107ecb6a9700adcb191a2160d5a93a61e0c2773dfa41c7480152c26ea499"
+      }
+    }
+  ]
+}

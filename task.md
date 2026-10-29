@@ -7,7 +7,10 @@
 - [功能差異報告](docs/research/2026-10-30-product-capability-report.md)
 - [完整任務清單與驗收](docs/plans/2026-10-30-feature-completion.md)
 - [第一批：Qdrant DBSF 移植](docs/plans/2026-10-30-dbsf-source-port.md)
-- 現在：建立 source/API inventory 與來源／授權證據，接著實作 DBSF 原生查詢及 Python/Arrow。
+- 已固定 7 份來源與 69 個 Qdrant REST 待驗收操作。DBSF 已移植並接上 Mojo／Python／Arrow；
+  114 組上游 fixture、15 項原生案例與 254 項 Python 案例通過。
+  [驗證紀錄](docs/research/2026-10-30-dbsf-validation.md)。
+- 下一步：Q01b weighted RRF，依上游 position_score／rrf_scoring 移植，再補後續查詢功能。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。

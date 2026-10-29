@@ -627,6 +627,7 @@ struct BoundCollection(Movable, Writable):
         var count = _exact_python_int(options["k"], "k")
         var fetch = _exact_python_int(options["fetch_k"], "fetch_k")
         var rank = _exact_python_int(options["rank_constant"], "rank_constant")
+        var fusion = String(py=options.get("fusion", "rrf"))
         _ensure_open(self[])
         var results = (
             self[]
@@ -636,6 +637,7 @@ struct BoundCollection(Movable, Writable):
                 count,
                 fetch_k=fetch,
                 rank_constant=rank,
+                fusion=fusion,
                 expression=expression^,
                 control=control,
                 rerank=rerank,

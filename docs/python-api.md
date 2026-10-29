@@ -294,6 +294,34 @@ Filters apply to every branch before its Top-K. The aggregate candidate limit
 counts the captured visible point count once per branch. `search_fields_record_batch`
 offers the same options and directly exports owned Int64/Float64 columns.
 
+Pass `fusion="dbsf"` to use Qdrant distribution-based score fusion instead of
+the default `fusion="rrf"`. DBSF converts each branch's returned scores to F32,
+normalizes them with sample variance and `mean +/- 3 * standard_deviation`, then
+sums contributions for matching IDs in branch order. Empty branches contribute
+nothing; singleton and constant branches contribute 0.5 per result. Scores are
+not clamped to [0, 1]. Nonfinite inputs or normalization/aggregation overflow
+raise a validation error. This is a finite-range adaptation of the upstream port.
+
+DBSF uses the branch's returned score units directly, as Qdrant's score-fusion
+function does. It does not invert L2/Hamming/Jaccard distances; callers should
+choose similarity-scored branches when larger values should contribute more.
+Fused scores sort descending with ascending point-ID ties. `rank_constant` is
+still validated as a positive integer but only affects RRF. `fetch_k`, filters,
+candidate budgets, cancellation and optional final-field reranking apply to both
+modes. `search_fields_record_batch(..., fusion="dbsf")` exposes the same native
+path; HTTP's existing default-vector search route does not yet expose this API.
+
+```python
+hits = collection.search_fields(
+    [FieldQuery("text", text_vector), FieldQuery("image", image_vector)],
+    10,
+    fetch_k=100,
+    fusion="dbsf",
+)
+```
+
+Source and native fixtures: [DBSF port](../tests/fixtures/qdrant-dbsf/README.md).
+
 Pass `rerank=FieldQuery("tokens", query_matrix)` to score a bounded candidate set
 with another field. Each first-stage branch retrieves `fetch_k` hits, RRF selects
 at most `fetch_k` unique IDs, and the final exact field query returns the best k
