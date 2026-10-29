@@ -26,7 +26,7 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
-| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索／MMR、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
+| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索／context、nested prefetch MMR、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
 | 文件 | 平面 string/int/float/bool、部分更新、整筆取代 | nested JSON、陣列、null、日期／UUID／geo、完整 payload 操作 |
 | 搜尋／過濾 | 布林條件、純量索引、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、排序／分組／通用聚合 |
@@ -63,6 +63,9 @@ Dense HNSW 推薦的實作、對照及品質限制見
 posting 路徑，不能概括為一律排除。一般 nearest／預設欄位／融合重排亦已接到同一核心；
 新增小數與溢位對照揭露並修正了乘加融合改變 F32 結果的問題。
 見[共用稀疏驗證](2026-10-30-sparse-nearest-validation.md)。
+Nearest MMR 已接上原生、Python 與 Arrow；來源選擇、方向性 MaxSim 與保留原分數
+已有對照。探索／context、nested prefetch 與完整協定仍待完成，見
+[MMR 驗證](2026-10-30-mmr-validation.md)。
 
 ## 固定來源與授權
 

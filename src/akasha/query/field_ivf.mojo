@@ -93,6 +93,12 @@ def _ivf_artifact(
             raise error^
 
 
+def validate_ivf_field_options(field: VectorFieldSpec, options: IvfOptions) raises:
+    options.validate()
+    if field.kind != 0:
+        raise Error("IVF requires a dense vector field")
+
+
 def search_generation_field_ivf(
     view: ReadGeneration,
     field: VectorFieldSpec,
@@ -107,9 +113,7 @@ def search_generation_field_ivf(
 ) raises -> FieldSearchExecution:
     if k <= 0:
         raise Error("k must be positive")
-    IvfOptions(nlist, nprobe, iterations).validate()
-    if field.kind != 0:
-        raise Error("IVF requires a dense vector field")
+    validate_ivf_field_options(field, IvfOptions(nlist, nprobe, iterations))
     validate_field_query(query, field)
     if expression:
         expression.value().validate()

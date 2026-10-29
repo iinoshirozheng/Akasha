@@ -40,6 +40,7 @@ from akasha.index.hnsw_stats import HnswSearchStats, copy_search_stats
 from akasha.query.control import QueryControl
 from akasha.query.field_fusion import FieldQuery
 from akasha.index.field_ivf import IvfOptions
+from akasha.query.mmr import MmrOptions
 from akasha.index.hnsw_core import HnswEligibility, HnswIdOrdinalLookup
 from akasha.index.segmented_hnsw import SegmentedHnsw
 from akasha.index.metadata import MetadataIndex
@@ -389,6 +390,7 @@ struct PersistentCollection:
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> List[FieldSearchResult]:
         var execution = self.snapshot().search_field_reported(
@@ -399,7 +401,7 @@ struct PersistentCollection:
             approximate=approximate,
             ef_search=ef_search,
             rerank_k=rerank_k,
-            ivf=ivf,
+            ivf=ivf, mmr=mmr,
             control=control,
         )
         with BlockingScopedLock(self._writer_lock[]):
@@ -440,12 +442,13 @@ struct PersistentCollection:
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> List[FieldSearchResult]:
         var execution = self.snapshot().search_field_by_id_reported(
             name, id, k, lookup=lookup, lookup_field=lookup_field,
             expression=expression^, approximate=approximate,
-            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr, control=control,
         )
         with BlockingScopedLock(self._writer_lock[]):
             self._last_search_stats = copy_search_stats(execution.stats)

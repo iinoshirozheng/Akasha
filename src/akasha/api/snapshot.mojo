@@ -7,8 +7,8 @@ from akasha.query.field_search import (
     FieldSearchExecution,
     search_generation_field_reported,
 )
-from akasha.query.field_ann import search_generation_field_approx
-from akasha.query.field_ivf import search_generation_field_ivf
+from akasha.query.field_nearest import search_generation_nearest
+from akasha.query.mmr import MmrOptions
 from akasha.query.field_lookup import search_generation_field_by_id
 from akasha.index.field_ivf import IvfOptions
 from akasha.query.field_fusion import FieldQuery, search_generation_fields
@@ -161,6 +161,7 @@ struct ReadSnapshot(Movable):
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> List[FieldSearchResult]:
         var execution = self.search_field_reported(
@@ -171,7 +172,7 @@ struct ReadSnapshot(Movable):
             approximate=approximate,
             ef_search=ef_search,
             rerank_k=rerank_k,
-            ivf=ivf,
+            ivf=ivf, mmr=mmr,
             control=control,
         )
         return execution.take_results()
@@ -187,6 +188,7 @@ struct ReadSnapshot(Movable):
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> FieldSearchExecution:
         var root = self._acquire()
@@ -196,30 +198,10 @@ struct ReadSnapshot(Movable):
         var ordinal = catalog.named_ordinal(name)
         if ordinal < 0:
             raise Error("unknown named vector field")
-        if ivf:
-            if approximate or ef_search != -1 or rerank_k != 0:
-                raise Error("IVF cannot be combined with HNSW options")
-            return search_generation_field_ivf(
-                root[], catalog.field_at(ordinal), query, k, expression,
-                ivf.value().nlist, ivf.value().nprobe, ivf.value().iterations, control,
-            )
-        if approximate:
-            return search_generation_field_approx(
-                root[],
-                catalog.field_at(ordinal),
-                query,
-                k,
-                expression,
-                ef_search,
-                rerank_k,
-                control,
-            )
-        if ef_search != -1 or rerank_k != 0:
-            raise Error(
-                "ef_search and rerank_k require approximate field search"
-            )
-        return search_generation_field_reported(
-            root[], catalog.field_at(ordinal), query, k, expression, control
+        return search_generation_nearest(
+            root[], catalog.field_at(ordinal), query, k, expression,
+            approximate=approximate, ef_search=ef_search, rerank_k=rerank_k,
+            ivf=ivf, mmr=mmr, control=control,
         )
 
     def recommend_field_reported(
@@ -269,6 +251,7 @@ struct ReadSnapshot(Movable):
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> FieldSearchExecution:
         var root = self._acquire()
@@ -276,7 +259,7 @@ struct ReadSnapshot(Movable):
         return search_generation_field_by_id(
             root[], source[], name, id, k, expression,
             lookup_field=lookup_field, approximate=approximate,
-            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr, control=control,
         )
 
     def search_field_by_id(
@@ -292,12 +275,13 @@ struct ReadSnapshot(Movable):
         ef_search: Int = -1,
         rerank_k: Int = 0,
         ivf: Optional[IvfOptions] = None,
+        mmr: Optional[MmrOptions] = None,
         control: Optional[QueryControl] = None,
     ) raises -> List[FieldSearchResult]:
         var execution = self.search_field_by_id_reported(
             name, id, k, lookup=lookup, lookup_field=lookup_field,
             expression=expression^, approximate=approximate,
-            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, control=control,
+            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr, control=control,
         )
         return execution.take_results()
 

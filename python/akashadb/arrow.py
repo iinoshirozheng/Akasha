@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .vectors import FieldQuery, IvfOptions
+from .vectors import FieldQuery, IvfOptions, MmrOptions
 from .database import CancellationToken, Collection
 from .exceptions import ValidationError, map_kernel_error
 from .models import BatchWriteResult, PayloadField, SearchRequest, SearchResult
@@ -120,13 +120,13 @@ def search_field_record_batch(
     collection: Collection, name: str, vector: Any, k: int,
     *, filter: Mapping[str, Any] | None = None,
     mode: str = "exact", ef_search: int | None = None, rerank_k: int = 0,
-    ivf: IvfOptions | None = None,
+    ivf: IvfOptions | None = None, mmr: MmrOptions | None = None,
     cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
 ) -> Any:
     """Search one named field into owned Int64 IDs and Float64 scores."""
     import pyarrow as pa
     columns = collection._search_field_raw(name, vector, k, filter=filter, mode=mode,
-                                           ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, columns=True,
+                                           ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr, columns=True,
                                            cancellation=cancellation, timeout_ns=timeout_ns)
     return pa.record_batch([
         pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
@@ -160,7 +160,7 @@ def search_field_by_id_record_batch(
     lookup_from: Collection | None = None, lookup_field: str | None = None,
     filter: Mapping[str, Any] | None = None,
     mode: str = "exact", ef_search: int | None = None, rerank_k: int = 0,
-    ivf: IvfOptions | None = None,
+    ivf: IvfOptions | None = None, mmr: MmrOptions | None = None,
     cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
 ) -> Any:
     """Search using a stored point's vector into owned Arrow result columns."""
@@ -168,7 +168,7 @@ def search_field_by_id_record_batch(
     columns = collection._search_field_raw(
         name, id, k, _by_id=True, lookup_from=lookup_from, lookup_field=lookup_field,
         filter=filter, mode=mode, ef_search=ef_search, rerank_k=rerank_k,
-        ivf=ivf, columns=True, cancellation=cancellation, timeout_ns=timeout_ns,
+        ivf=ivf, mmr=mmr, columns=True, cancellation=cancellation, timeout_ns=timeout_ns,
     )
     return pa.record_batch([
         pa.array(columns["ids"], type=pa.int64(), from_pandas=False),

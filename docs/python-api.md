@@ -450,6 +450,47 @@ fields on that first open. See the
 [field envelope contract](formats/field-envelopes-format.md) for upgrade behavior.
 
 
+## MMR diversity selection
+
+Named nearest search accepts optional native MMR selection:
+
+```python
+from akashadb import MmrOptions
+
+hits = db.search_field(
+    "image", query, 10,
+    mmr=MmrOptions(diversity=0.5, candidates_limit=100),
+)
+```
+
+`search_field_by_id`, `search_field_record_batch`, and
+`search_field_by_id_record_batch` accept the same `mmr` option. Candidate retrieval
+can use exact, HNSW or IVF, with their existing field/mode restrictions. Filters
+and same-collection source-ID exclusions apply before candidate selection. Lookup,
+retrieval and MMR retain their read roots through the operation.
+
+`diversity` defaults to 0.5; 0 favors relevance and 1 favors diversity. The source
+always chooses the most relevant first candidate. `candidates_limit=None` uses
+`k`, explicit values range from 0 to 16384, and Python also enforces
+`ResourceLimits.max_k`. Zero candidates returns no results; fewer candidates than
+`k` returns fewer results. Native named search retains its positive-k contract.
+When HNSW `rerank_k` is set, it must cover the effective candidate limit.
+
+MMR follows Qdrant's F32 selection and volatile dense/sparse/MaxSim scoring. Ties
+choose the last entry in the source insertion/swap-removal order. Returned scores
+are the **original native candidate scores**, not MMR selection scores; result
+order therefore need not be sorted by score. Native L2 candidate scores remain
+squared distances. Binary MMR is rejected. Native BF16/I8 and low-precision fields
+are accepted through the existing typed boundary, but full Qdrant datatype and
+canonical-storage equivalence remains an open gate.
+
+`max_candidates` additionally bounds the conservative visible-row count plus
+MMR relevance scores and newly computed ordered pair scores. Cancellation and
+deadlines are checked between candidates/pair evaluations and during selection.
+Stats report `field_mmr`, `qdrant-mmr-f32`, candidate counts and aggregate distance
+evaluations. MMR outputs own their result buffers, including Arrow after close.
+Nested prefetch/fusion MMR and Qdrant-compatible REST/gRPC are not exposed yet.
+
 ## Recommendation queries
 
 `Collection.recommend_field(name, positive, negative=None, k=10, *,

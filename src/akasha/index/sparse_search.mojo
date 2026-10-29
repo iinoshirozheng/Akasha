@@ -10,7 +10,8 @@ non-pruning path applies. Native bounded Top-K retains ascending public-ID ties.
 from akasha.compute.topk import BoundedTopK, TopKEntry
 from akasha.index.field_sparse import FieldSparseIndex, _FieldPosting
 from akasha.index.sorted_postings import _lower_bound
-from akasha.index.sparse_values import SparseElement, validate_sparse, sparse_product
+from akasha.index.sparse_values import SparseElement, validate_sparse
+from akasha.compute.f32 import rounded_f32_product
 from akasha.query.control import QueryControl
 from std.math import isfinite
 from std.memory import ArcPointer, bitcast
@@ -98,7 +99,7 @@ def search_sparse_postings(
                 ref postings = index.postings[cursor.term]
                 var position = _lower_bound(postings, _FieldPosting(row, 0))
                 if position < len(postings) and postings[position].row == row:
-                    score += sparse_product(postings[position].weight, cursor.weight)
+                    score += rounded_f32_product(postings[position].weight, cursor.weight)
                     overlaps = True
             if overlaps:
                 evaluated += 1
@@ -124,7 +125,7 @@ def search_sparse_postings(
                     if control:
                         control.value().checkpoint(operations)
                     operations += 1
-                    scores[posting.row - start] += sparse_product(posting.weight, cursor.weight)
+                    scores[posting.row - start] += rounded_f32_product(posting.weight, cursor.weight)
                     touched[posting.row - start] = True
                     cursor.position += 1
             for offset in range(len(scores)):

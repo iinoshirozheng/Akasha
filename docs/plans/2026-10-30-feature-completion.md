@@ -184,3 +184,15 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   [evidence](../research/2026-10-30-sparse-nearest-validation.md).
   Full sparse settings/IDF/planner, multivector, datatype/storage and protocol
   acceptance still keep Q02 open. No performance gate resumed.
+
+- Q03a MMR: [source-port plan](2026-10-30-mmr-source-port.md) implemented in
+  native named/ID nearest search and Python/Arrow. The source selection keeps
+  original candidate scores, last-wins insertion/swap-removal ties and directional
+  MaxSim. 192 reduction and 112 vector oracle cases pass; fractional cosine
+  fixtures exposed compiler contraction in shared portable scoring, corrected
+  with an explicit product-rounding boundary. 26 native cases, 1743 distinct
+  Python cases (1 optional Qdrant Edge skip), Python build and C ABI checks pass;
+  the final validation correction separately passed 50 MMR and 521 index cases;
+  [evidence](../research/2026-10-30-mmr-validation.md).
+  Discovery/context, nested prefetch/fusion MMR, full datatype/storage and
+  protocol gates keep Q03 and the full plan open.

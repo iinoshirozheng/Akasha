@@ -1,6 +1,7 @@
 """Field schemas and atomic point requests for native vector authority."""
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any, Literal
 
 from .models import CollectionConfig, PayloadField, SparseElement
@@ -80,6 +81,24 @@ class IvfOptions:
 
     def to_kernel(self) -> dict[str, int]:
         return {"nlist": self.nlist, "nprobe": self.nprobe, "iterations": self.iterations}
+
+
+@dataclass(frozen=True, slots=True)
+class MmrOptions:
+    """Source-derived diversity selection; returned scores stay unchanged."""
+
+    diversity: float = 0.5
+    candidates_limit: int | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.diversity) not in (int, float) or not isfinite(self.diversity) or not 0 <= self.diversity <= 1:
+            raise ValueError("MMR diversity must be finite and between 0 and 1")
+        if self.candidates_limit is not None and (type(self.candidates_limit) is not int or not 0 <= self.candidates_limit <= 16384):
+            raise ValueError("MMR candidates_limit must be between 0 and 16384")
+
+    def to_kernel(self) -> dict[str, int | float]:
+        return {"diversity": self.diversity,
+                "candidates_limit": -1 if self.candidates_limit is None else self.candidates_limit}
 
 
 @dataclass(frozen=True, slots=True)

@@ -96,3 +96,17 @@ generator's `--nearest` mode retains the original methods and TopK and adds
 fractional rounding, overflow and threshold cases. The Mojo sparse product
 boundary preserves the source's separately rounded Float32 multiplication.
 See `docs/research/2026-10-30-sparse-nearest-validation.md` and `docs/upstream/ports.json`.
+
+### MMR diversity selection
+
+`src/akasha/query/mmr.mojo` and `field_mmr.mojo` adapt
+`lib/shard/src/query/mmr/mod.rs::maximal_marginal_relevance` and
+`lazy_matrix.rs` at Qdrant `74f3e85b9473c62560006c043e13737ce6b48412`
+(Apache-2.0). The public options follow the pinned REST schema and universal
+query conversion. The native ordered-cell dictionary replaces the allocation
+shape of the source matrix, preserving directional scores and selection order.
+The Rust oracle compiles the original selection function and existing portable
+Qdrant metrics with recorded container/plumbing adapters. Source-equivalent F32
+product rounding is shared by sparse, recommendation and MMR paths through
+`compute/f32.mojo`. Full service/SIMD/datatype equivalence remains open.
+See `docs/research/2026-10-30-mmr-validation.md` and `docs/upstream/ports.json`.

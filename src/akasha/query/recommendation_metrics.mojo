@@ -6,7 +6,7 @@ internal similarity, never public Euclidean distance. Native raw authority is
 not mutated. BF16/I8 are Akasha extensions to Qdrant's F32/F16/U8 types.
 """
 
-from akasha.index.sparse_values import sparse_product
+from akasha.compute.f32 import rounded_f32_product
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from std.math import inf, sqrt
@@ -57,7 +57,7 @@ def prepare_recommendation_vector(value: VectorValue, field: VectorFieldSpec) ra
             var start = row * dimension
             var length = Float32(0)
             for i in range(dimension):
-                length += values[start + i] * values[start + i]
+                length += rounded_f32_product(values[start + i], values[start + i])
             # spaces/tools.rs::is_length_zero_or_normalized
             if length < Float32(1.1920928955078125e-7) or abs(length - Float32(1)) <= Float32(1e-6):
                 continue
@@ -101,9 +101,9 @@ def _row_similarity(
             cnorm += bi * bi
         elif field.metric == 1:
             var difference = a - b
-            total += difference * difference
+            total += rounded_f32_product(difference, difference)
         else:
-            total += a * b
+            total += rounded_f32_product(a, b)
     if field.scalar >= 3:
         total = Float32(integer_total)
         if field.metric == 2:
@@ -126,7 +126,7 @@ def recommendation_similarity(query: VectorValue, candidate: VectorValue, field:
             elif left[i].term_id > right[j].term_id:
                 j += 1
             else:
-                total += sparse_product(left[i].weight, right[j].weight)
+                total += rounded_f32_product(left[i].weight, right[j].weight)
                 i += 1
                 j += 1
         return total

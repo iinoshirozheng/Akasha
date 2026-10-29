@@ -37,6 +37,11 @@
   含 168 個新增 Python 案例，1 個選配 Qdrant Edge 案例跳過。
   [共用稀疏驗證](docs/research/2026-10-30-sparse-nearest-validation.md)。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
+- Q03a MMR 多樣性選擇已接上命名／ID nearest 的 Mojo、Python、Arrow；
+  192 組選擇與 112 組向量來源案例、26 項原生、1743 項不同 Python 案例通過；
+  1 項選配 Qdrant Edge 跳過。最後參數修正另通過 50 項 MMR 與 521 項查詢回歸。
+  [MMR 驗證與範圍](docs/research/2026-10-30-mmr-validation.md)。
+  探索／context、nested prefetch 與完整協定等缺口仍保留。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。
 

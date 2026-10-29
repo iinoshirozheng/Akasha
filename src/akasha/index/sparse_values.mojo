@@ -3,16 +3,6 @@
 from std.math import isfinite
 
 
-@no_inline
-def sparse_product(left: Float32, right: Float32) -> Float32:
-    """Round the product before addition, as Qdrant's Rust sparse loops do.
-
-    Mojo 1.0 defaults to contract=fast, even across source statements. This
-    call boundary prevents FMA from changing cancellation and overflow results.
-    """
-    return left * right
-
-
 struct SparseElement(TrivialRegisterPassable, Writable):
     var term_id: Int
     var weight: Float32

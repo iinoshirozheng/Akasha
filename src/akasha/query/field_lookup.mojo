@@ -9,9 +9,9 @@ See THIRD_PARTY_NOTICES.md and docs/upstream/ports.json.
 from akasha.document.point_state import PointField
 from akasha.index.field_ivf import IvfOptions
 from akasha.query.control import QueryControl
-from akasha.query.field_ann import search_generation_field_approx
-from akasha.query.field_ivf import search_generation_field_ivf
-from akasha.query.field_search import FieldSearchExecution, search_generation_field_reported
+from akasha.query.field_nearest import search_generation_nearest
+from akasha.query.mmr import MmrOptions
+from akasha.query.field_search import FieldSearchExecution
 from akasha.query.filter_ast import FilterExpression
 from akasha.storage.read_generation import ReadGeneration
 from std.os.path import realpath
@@ -57,6 +57,7 @@ def search_generation_field_by_id(
     ef_search: Int = -1,
     rerank_k: Int = 0,
     ivf: Optional[IvfOptions] = None,
+    mmr: Optional[MmrOptions] = None,
     control: Optional[QueryControl] = None,
 ) raises -> FieldSearchExecution:
     if control:
@@ -77,21 +78,8 @@ def search_generation_field_by_id(
         ids[id] = True
         excluded = Optional(ids^)
     ref field = catalog.field_at(ordinal)
-    if ivf:
-        if approximate or ef_search != -1 or rerank_k != 0:
-            raise Error("IVF cannot be combined with HNSW options")
-        return search_generation_field_ivf(
-            view, field, query.value(), k, expression,
-            ivf.value().nlist, ivf.value().nprobe, ivf.value().iterations,
-            control, excluded,
-        )
-    if approximate:
-        return search_generation_field_approx(
-            view, field, query.value(), k, expression, ef_search, rerank_k,
-            control, excluded,
-        )
-    if ef_search != -1 or rerank_k != 0:
-        raise Error("ef_search and rerank_k require approximate field search")
-    return search_generation_field_reported(
-        view, field, query.value(), k, expression, control, excluded,
+    return search_generation_nearest(
+        view, field, query.value(), k, expression, approximate=approximate,
+        ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr,
+        control=control, excluded_ids=excluded,
     )

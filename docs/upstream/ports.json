@@ -585,6 +585,100 @@
         "tests/mojo/test_named_sparse.mojo": "150b50510684eebeb6bb16b0e45c57cad810f379854ad66fa01b48e653e8a5e2",
         "tests/python/test_sparse_nearest.py": "1545e463a46e617538a43c633e34c19a3eabb6075603b08c20ef30e4aab9b591"
       }
+    },
+    {
+      "id": "Q03a-mmr",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source_sha256": {
+        "lib/shard/src/query/mmr/mod.rs": "ecbb1cb62cb4badf7f2957c90629a541225b4543651270ca6b7f068bc5379b02",
+        "lib/shard/src/query/mmr/lazy_matrix.rs": "8f03f5ba575679bfdb1d73c5a32469d57f4e22e96e31f2d1925f0680ac0124a5",
+        "lib/shard/src/query/mmr/tests.rs": "bd32ff2415a8432a72ecc39e2a2e8d5cfdac290f5c332a5f025a7333a3afa6a6",
+        "lib/shard/src/query/planned_query.rs": "504fa8da9de257b66c40c2143c112660aa4645b2ce5dbd967ca95e88eda076b4",
+        "lib/api/src/rest/schema.rs": "c79d738c2a6e530a11876a14d40ff91a37e8b60802f265d784927e26054dbcbe",
+        "lib/collection/src/operations/universal_query/collection_query.rs": "157a346aee2aa864121b2e896e36c41436069188a978f4623045250167c2c8a4",
+        "lib/collection/src/collection/mmr.rs": "13c4ee8b2a571cffc80455d483a67e725e59719efe9240df7f5ff10e7c5b4a70",
+        "lib/collection/src/recommendations.rs": "9911ee6023e9ba715e834dce425df6e45e39e851cbd0a0a7994ce7a1d65e1920",
+        "lib/sparse/src/common/sparse_vector.rs": "369f849d59ae1f03f1c381ef6b1fcf3b74a35c5221959a2225a41d2b8d92e5ed",
+        "lib/common/common/src/math.rs": "7eda541f4fc90e7fcdfa35022d341fbe0bc10ed40a5634778e14bf1ccb051f23",
+        "lib/segment/src/spaces/simple.rs": "af75786a0c05f47a88651b4660bb99d724b343892342ebc5d03038a3f937ed79",
+        "lib/segment/src/spaces/tools.rs": "f94f7d9942ab0458fa9c90bd53c24b551b7172f8e9772745d168410c2fae65ae",
+        "lib/segment/src/vector_storage/query_scorer/mod.rs": "0a7817fa5df5c9765b1b2a5dc753cbf54e9036ab640cb6ce0ddb93f07a888d34",
+        "lib/segment/src/vector_storage/query/reco_query.rs": "1457b5c7aa5a42b439453f4c12f08eb831f5184c18167de7b93992f6b75a2dfe"
+      },
+      "functions": {
+        "maximal_marginal_relevance": {
+          "source": "lib/shard/src/query/mmr/mod.rs",
+          "signature": "fn maximal_marginal_relevance(",
+          "sha256": "11da683c48e571a73670eaa546f42b054b43977184d1494da42f927e8974d4b0"
+        }
+      },
+      "scaffold_sha256": "27f2e62d10cdfc406e755afa33f8596fcd0549da1fe767eb5f5f412a16fb813e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/query/mmr.mojo",
+        "src/akasha/query/field_mmr.mojo",
+        "src/akasha/query/field_nearest.mojo",
+        "src/akasha/query/field_lookup.mojo",
+        "src/akasha/query/recommendation_metrics.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/compute/f32.mojo",
+        "src/akasha/compute/field_metrics.mojo",
+        "src/akasha/index/sparse_values.mojo",
+        "src/akasha/index/sparse_search.mojo",
+        "src/akasha/__init__.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/vectors.py",
+        "python/akashadb/database.py",
+        "python/akashadb/arrow.py",
+        "python/akashadb/__init__.py",
+        "src/akasha/query/field_ann.mojo",
+        "src/akasha/query/field_ivf.mojo"
+      ],
+      "adaptations": [
+        "Native nearest candidate retrieval retains existing type/score/tie contracts; MMR returns original native scores without sorting again",
+        "Lazy directional cell dictionary preserves source order; no symmetric MaxSim cache",
+        "IndexSet insertion/swap removal and OrderedFloat NaN/equal signed-zero semantics; separate F32 product rounding",
+        "F32 volatile scoring reuses pinned portable metric/normalization/sparse/MaxSim ports; no full server/SIMD/low-precision canonical-storage oracle",
+        "Python/Arrow raw and point-ID nearest exposure; full universal/nested prefetch/protocol integration remains pending",
+        "Native positive-k contract retained; explicit zero candidate limit returns empty; cooperative cancellation and total scoring-work budget",
+        "Zero candidate limit preserves shared HNSW/IVF validation without constructing an index"
+      ],
+      "fixture": "tests/fixtures/qdrant-mmr/mmr.json",
+      "fixture_sha256": "b7bdf628c8c627ffd669058a16bc0f5d5711d58fcefbfb5e2ba766f90121acea",
+      "reference_reductions": 192,
+      "reference_vector_cases": 112,
+      "status": "implemented_native_nearest_mmr_verified_full_q03_pending",
+      "verification": [
+        "docs/research/2026-10-30-mmr-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/mmr.mojo": "464df4c02e8a288455216886fb3b452825b5c89ac9b56995481b53b9af774866",
+        "src/akasha/query/field_mmr.mojo": "2dec9849fde41f3498870de0b54e1c2f527a6270d39a57cfb067cdb316c8b8c7",
+        "src/akasha/query/field_nearest.mojo": "cf892d16c4680b29a1d502b8dffd633bb2e9d9fefacb398697cb53c9ea5c7736",
+        "src/akasha/query/field_lookup.mojo": "ccf5766c489dc39796e9565455af37d5e79411e9b51276eebdd5405ca0721eda",
+        "src/akasha/query/recommendation_metrics.mojo": "348a277b04b594ea16dc7bb8a9fa15f7e528e176d94af571b523d36ede6b9c47",
+        "src/akasha/api/snapshot.mojo": "8aeaa0d9d0bfd7dac6856ef88041a520c4fdd4b724543a5089e0e7c7c3e9b955",
+        "src/akasha/api/collection.mojo": "9e22410066b295a77f39f926f359fef9a3e7c9b25db2dd98dddcd99f7dac315a",
+        "src/akasha/compute/f32.mojo": "6f10967616ef26c1d1a69bd1af037da1ed69b763b71500d9dd48fdff5a450047",
+        "src/akasha/compute/field_metrics.mojo": "1b98ad1126bd2aa7d07c5f49c6750a5a92e53764e7ecaf33f55955d55b456997",
+        "src/akasha/index/sparse_values.mojo": "5042c36e8c347871e15a1b63764e5e031bc4244c16499b4f22b1a7b7e5d129ac",
+        "src/akasha/index/sparse_search.mojo": "8c40a6bc4ba2cefb01458c4f2c03511a1c167f9dfd7a88eeb4076b69ed0aa25e",
+        "src/akasha/__init__.mojo": "298f7b2a412d09bcd8c6a82a7efdc686405376d93ea7ca9cb12411acda726fd7",
+        "src/bindings/python_module.mojo": "26d7466243ea67e83292f02c5bb0ace702a831e2bd5309080ee208d52ad325de",
+        "python/akashadb/vectors.py": "584364ba692679bf84178862d61333bb9a5ebbabe061fba73401663d102eaca6",
+        "python/akashadb/database.py": "6a99b840a98768f9edd3cc4fe4deb6661bcc3fe35f57444146b6074004863577",
+        "python/akashadb/arrow.py": "6a8c0a20b8bca4db55516292ca90a1ab14a7c11a7737a9dba883c6c2e5b698f9",
+        "python/akashadb/__init__.py": "93ed6e7f81b531e594cd1c085bbd0a2141839d5bfc3f51e61e1c6b5cdb173750",
+        "scripts/qdrant_mmr_reference.py": "0334db3e10d4497a9e5a46dd4ee4e62c4f32e720a613fdc7159e0d1bff1b6946",
+        "tests/mojo/test_mmr.mojo": "60cbd4142894a6f436aa6bf2aac9b54a33e11eea991c338e8985651cb693ffa6",
+        "tests/python/test_mmr.py": "d581820a8567f08f3b06d5708a503b97c3f2c4fa737157bb2b413a5ce6c065a7",
+        "src/akasha/query/field_ann.mojo": "f0ae9a6f54675e1a6629a7fe030a8383aedc3b8b41dde5e092b29fb4496f0bc2",
+        "src/akasha/query/field_ivf.mojo": "4465a400ead61d961bee709ad43f921eb2673779b1ee968a190da5a11d9405f7"
+      }
     }
   ]
 }

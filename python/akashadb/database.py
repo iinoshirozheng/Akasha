@@ -5,7 +5,7 @@ from threading import Event
 from time import monotonic_ns, perf_counter_ns
 from typing import Any, Mapping, Protocol
 
-from .vectors import FieldQuery, IvfOptions, Point, PointMutation, VectorField, _vector_value
+from .vectors import FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField, _vector_value
 from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_error
 from .models import (
     BatchMutation,
@@ -257,11 +257,11 @@ class Collection:
         self, name: str, vector: Any, k: int, *,
         filter: Mapping[str, Any] | None = None, mode: str = "exact",
         ef_search: int | None = None, rerank_k: int = 0,
-        ivf: IvfOptions | None = None,
+        ivf: IvfOptions | None = None, mmr: MmrOptions | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
     ) -> list[SearchResult]:
         raw = self._search_field_raw(name, vector, k, filter=filter, mode=mode,
-                                     ef_search=ef_search, rerank_k=rerank_k, ivf=ivf,
+                                     ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr,
                                      cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
 
@@ -325,14 +325,14 @@ class Collection:
         lookup_from: "Collection | None" = None, lookup_field: str | None = None,
         filter: Mapping[str, Any] | None = None, mode: str = "exact",
         ef_search: int | None = None, rerank_k: int = 0,
-        ivf: IvfOptions | None = None,
+        ivf: IvfOptions | None = None, mmr: MmrOptions | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
     ) -> list[SearchResult]:
         """Search with a stored vector; exclude its ID only for same-collection lookup."""
         raw = self._search_field_raw(
             name, id, k, _by_id=True, lookup_from=lookup_from, lookup_field=lookup_field,
             filter=filter, mode=mode, ef_search=ef_search, rerank_k=rerank_k,
-            ivf=ivf, cancellation=cancellation, timeout_ns=timeout_ns,
+            ivf=ivf, mmr=mmr, cancellation=cancellation, timeout_ns=timeout_ns,
         )
         return [SearchResult(**item) for item in raw]
 
@@ -340,7 +340,7 @@ class Collection:
         self, name: str, vector: Any, k: int, *,
         filter: Mapping[str, Any] | None = None, mode: str = "exact",
         ef_search: int | None = None, rerank_k: int = 0, columns: bool = False,
-        ivf: IvfOptions | None = None,
+        ivf: IvfOptions | None = None, mmr: MmrOptions | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
         _by_id: bool = False, lookup_from: "Collection | None" = None,
         lookup_field: str | None = None,
@@ -364,6 +364,10 @@ class Collection:
             raise ValidationError("ef_search and rerank_k require approximate field search")
         if ivf is not None and (mode != "ivf" or not isinstance(ivf, IvfOptions)):
             raise ValidationError("IvfOptions require ivf mode")
+        if mmr is not None and not isinstance(mmr, MmrOptions):
+            raise ValidationError("mmr must be MmrOptions")
+        if mmr is not None and mmr.candidates_limit is not None and mmr.candidates_limit > self.limits.max_k:
+            raise ValidationError("MMR candidates_limit exceeds query k resource limit")
         if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
             raise ValidationError("query timeout must be a positive integer")
         deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
@@ -374,6 +378,7 @@ class Collection:
             {"filter": None if filter is None else dict(filter), "mode": mode,
              "ef_search": -1 if ef_search is None else ef_search, "rerank_k": rerank_k,
              "ivf": (ivf or IvfOptions()).to_kernel() if mode == "ivf" else None,
+             "mmr": None if mmr is None else mmr.to_kernel(),
              "lookup_from": None if lookup_from is None else lookup_from._kernel,
              "lookup_field": lookup_field,
              "cancelled": bool(cancellation and cancellation.cancelled),

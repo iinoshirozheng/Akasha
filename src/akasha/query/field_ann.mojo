@@ -113,6 +113,28 @@ def _field_graph(
             raise error^
 
 
+def validate_approx_field_options(
+    field: VectorFieldSpec, k: Int, ef_search: Int, rerank_k: Int,
+) raises -> Tuple[Int, Int]:
+    """Validate index options without building/scanning, including empty MMR."""
+    if field.kind == 1:
+        if ef_search != -1 or rerank_k != 0:
+            raise Error("ef_search and rerank_k require dense HNSW")
+        return (0, 0)
+    if field.kind != 0 or field.index != 1 or not field.hnsw:
+        raise Error("approximate field search requires configured dense HNSW")
+    ref config = field.hnsw.value()
+    var ef = config.default_ef_search if ef_search == -1 else ef_search
+    if ef <= 0 or ef > config.max_ef_search:
+        raise Error("field HNSW ef exceeds configured bounds")
+    if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
+        raise Error("field rerank count must be zero or at least k")
+    var budget = max(k, ef) if rerank_k == 0 else rerank_k
+    if budget > config.max_ef_search:
+        raise Error("field rerank count exceeds configured HNSW maximum")
+    return (ef, budget)
+
+
 def search_generation_field_approx(
     view: ReadGeneration,
     field: VectorFieldSpec,
@@ -129,21 +151,12 @@ def search_generation_field_approx(
     validate_field_query(query, field)
     if expression:
         expression.value().validate()
+    var bounds = validate_approx_field_options(field, k, ef_search, rerank_k)
     if field.kind == 1:
-        if ef_search != -1 or rerank_k != 0:
-            raise Error("ef_search and rerank_k require dense HNSW")
         return search_generation_field_reported(view, field, query, k, expression, control, excluded_ids)
-    if field.kind != 0 or field.index != 1 or not field.hnsw:
-        raise Error("approximate field search requires configured dense HNSW")
     ref config = field.hnsw.value()
-    var ef = config.default_ef_search if ef_search == -1 else ef_search
-    if ef <= 0 or ef > config.max_ef_search:
-        raise Error("field HNSW ef exceeds configured bounds")
-    if rerank_k < 0 or (rerank_k > 0 and rerank_k < k):
-        raise Error("field rerank count must be zero or at least k")
-    var budget = max(k, ef) if rerank_k == 0 else rerank_k
-    if budget > config.max_ef_search:
-        raise Error("field rerank count exceeds configured HNSW maximum")
+    var ef = bounds[0]
+    var budget = bounds[1]
     if control:
         control.value().checkpoint(0)
         control.value().validate_candidate_count(view.visible_count)

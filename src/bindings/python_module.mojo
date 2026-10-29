@@ -17,6 +17,7 @@ from akasha import (
 )
 from akasha.query.field_fusion import FieldQuery
 from akasha.index.field_ivf import IvfOptions
+from akasha.query.mmr import MmrOptions
 from akasha.query.field_search import FieldSearchResult
 from akasha.index.sparse import validate_sparse
 from akasha.document.point_state import PointMutation, FieldUpdate, PointState
@@ -607,6 +608,11 @@ struct BoundCollection(Movable, Writable):
         if search_mode != "exact" and search_mode != "approx" and search_mode != "ivf":
             raise Error("named search mode must be exact, approx or ivf")
         var ivf = _ivf_from_python(search_mode, options["ivf"])
+        var mmr = Optional[MmrOptions]()
+        var raw_mmr = options.get("mmr", Python.none())
+        if not _is_python_none(raw_mmr):
+            mmr = Optional(MmrOptions(Float32(py=raw_mmr["diversity"]),
+                _exact_python_int(raw_mmr["candidates_limit"], "MMR candidates_limit")))
         _ensure_open(self[])
         var fields = self[].inner.value().vector_fields()
         var ordinal = _named_field_ordinal(fields, field_name)
@@ -656,7 +662,7 @@ struct BoundCollection(Movable, Writable):
                 field_name, point_id, count, lookup=lookup,
                 lookup_field=lookup_field, expression=expression^,
                 approximate=search_mode == "approx", ef_search=ef,
-                rerank_k=rerank, ivf=ivf, control=control,
+                rerank_k=rerank, ivf=ivf, mmr=mmr, control=control,
             )
             return _field_results_to_python[columns](results)
         _ensure_open(self[])
@@ -671,7 +677,7 @@ struct BoundCollection(Movable, Writable):
                 approximate=search_mode == "approx",
                 ef_search=ef,
                 rerank_k=rerank,
-                ivf=ivf,
+                ivf=ivf, mmr=mmr,
                 control=control,
             )
         )
