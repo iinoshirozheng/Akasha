@@ -26,7 +26,7 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
-| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 推薦策略 | 完整 Query API、其他 metric、推薦 ANN／探索／MMR、完整跨型別與儲存前處理對照等；所有邊界尚未暴露完整核心 |
+| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略 | 完整 Query API、其他 metric、sparse／multivector 索引推薦、探索／MMR、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
 | 文件 | 平面 string/int/float/bool、部分更新、整筆取代 | nested JSON、陣列、null、日期／UUID／geo、完整 payload 操作 |
 | 搜尋／過濾 | 布林條件、純量索引、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、排序／分組／通用聚合 |
@@ -55,6 +55,10 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
   聚合或可組合／跨 collection 交易。不能用 WAL 與批次原子性宣稱完整 SQL ACID。
 
 不計算無分母的完成百分比。細項以可驗收的任務與來源清單追蹤。
+
+Dense HNSW 推薦的實作、對照及品質限制見
+[推薦 ANN 驗證](2026-10-30-recommendation-ann-validation.md)。能執行這個路徑
+不等於完整 Qdrant Query API、整體品質或效能達標。
 
 ## 固定來源與授權
 

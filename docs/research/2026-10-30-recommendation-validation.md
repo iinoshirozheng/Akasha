@@ -3,6 +3,9 @@
 Date: 2026-10-30. Implementation starts at `600cb2e`; Mojo
 `1.0.0 (ed45d567)`, macOS ARM64. The full feature-completion goal and Q02 remain
 in progress. This evidence covers the exact query path, not ANN/protocol parity.
+Subsequent dense ANN integration is recorded separately in
+[ANN validation](2026-10-30-recommendation-ann-validation.md); the pending list
+below describes the state at this exact-query commit.
 
 ## Behavior and executable path
 

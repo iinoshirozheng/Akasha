@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from hnsw_search_helpers import greedy_descent, search_layer
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
@@ -74,12 +75,10 @@ def test_upper_seeds_reach_another_base_component_without_rescoring() raises:
     var allowed = HnswSearchAdmission()
     var baseline_scratch = HnswSearchScratch()
     var baseline_stats = HnswSearchStats()
-    var baseline = search_entry(
-        graph, metric, query, UInt32(0), 1, 0, allowed,
+    var baseline = search_entry(graph, MetricPointScorer(metric, query.copy()), UInt32(0), 1, 0, allowed,
         baseline_scratch, baseline_stats,
     )
-    var baseline_result = search_level(
-        graph, metric, query, baseline, 0, 2, allowed,
+    var baseline_result = search_level(graph, MetricPointScorer(metric, query.copy()), baseline, 0, 2, allowed,
         baseline_scratch, baseline_stats,
     )
     assert_equal(len(baseline_result), 1)
@@ -87,8 +86,7 @@ def test_upper_seeds_reach_another_base_component_without_rescoring() raises:
 
     var scratch = HnswSearchScratch()
     var stats = HnswSearchStats()
-    var entry = search_entry[collect_seeds=True](
-        graph, metric, query, UInt32(0), 1, 0, allowed, scratch, stats,
+    var entry = search_entry[collect_seeds=True](graph, MetricPointScorer(metric, query.copy()), UInt32(0), 1, 0, allowed, scratch, stats,
         seed_ef=2,
     )
     var seeds = scratch.results.take_sorted_best()
@@ -97,8 +95,7 @@ def test_upper_seeds_reach_another_base_component_without_rescoring() raises:
     assert_equal(len(seeds), 2)
     _assert_item(seeds, 0, 1, 1, 1.0)
     _assert_item(seeds, 1, 2, 2, 4.0)
-    var results = search_level(
-        graph, metric, query, entry, 0, 2, allowed, scratch, stats,
+    var results = search_level(graph, MetricPointScorer(metric, query.copy()), entry, 0, 2, allowed, scratch, stats,
         seeds=seeds,
     )
     _assert_item(results, 0, 4, 4, 0.0)
@@ -119,8 +116,7 @@ def test_upper_seed_collection_filters_and_handles_level_zero() raises:
     var allowed = HnswSearchAdmission([True, False, True])
     var scratch = HnswSearchScratch()
     var stats = HnswSearchStats()
-    _ = search_entry[collect_seeds=True](
-        graph, metric, query, UInt32(0), 1, 0, allowed, scratch, stats,
+    _ = search_entry[collect_seeds=True](graph, MetricPointScorer(metric, query.copy()), UInt32(0), 1, 0, allowed, scratch, stats,
         seed_ef=2,
     )
     var seeds = scratch.results.take_sorted_best()
@@ -130,8 +126,7 @@ def test_upper_seed_collection_filters_and_handles_level_zero() raises:
     assert_equal(stats.distance_evaluations, 2)
     assert_equal(stats.filtered_rejections, 1)
     scratch._force_epoch_for_test(UInt32.MAX)
-    _ = search_entry[collect_seeds=True](
-        graph, metric, query, UInt32(2), 0, 0, allowed, scratch, stats,
+    _ = search_entry[collect_seeds=True](graph, MetricPointScorer(metric, query.copy()), UInt32(2), 0, 0, allowed, scratch, stats,
         seed_ef=2,
     )
     seeds = scratch.results.take_sorted_best()
@@ -153,17 +148,17 @@ def test_base_seeds_reject_invalid_inputs_before_changing_scratch() raises:
     var entry = HnswHeapItem(UInt32(0), 0, 1.0)
     var invalid: List[HnswHeapItem] = [HnswHeapItem(UInt32(2), 2, 0.0)]
     with assert_raises():
-        _ = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+        _ = search_level(graph, MetricPointScorer(metric, query.copy()), entry, 0, 2, allowed, scratch, stats, seeds=invalid)
     invalid[0] = HnswHeapItem(UInt32(1), 1, 4.0)
     with assert_raises():
-        _ = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+        _ = search_level(graph, MetricPointScorer(metric, query.copy()), entry, 0, 2, allowed, scratch, stats, seeds=invalid)
     invalid = [entry, entry]
     with assert_raises():
-        _ = search_level(graph, metric, query, entry, 0, 1, allowed, scratch, stats, seeds=invalid)
+        _ = search_level(graph, MetricPointScorer(metric, query.copy()), entry, 0, 1, allowed, scratch, stats, seeds=invalid)
     assert_equal(scratch.epoch, UInt32(0))
     assert_equal(stats.base_visited, 0)
     # Repeated initial slots are visited once when the list is within ef.
-    var result = search_level(graph, metric, query, entry, 0, 2, allowed, scratch, stats, seeds=invalid)
+    var result = search_level(graph, MetricPointScorer(metric, query.copy()), entry, 0, 2, allowed, scratch, stats, seeds=invalid)
     assert_equal(len(result), 1)
     assert_equal(stats.base_visited, 1)
     assert_equal(stats.distance_evaluations, 0)

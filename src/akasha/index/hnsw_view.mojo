@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.query.control import QueryControl
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
@@ -34,7 +35,7 @@ from akasha.index.hnsw_core import (
     HnswResultAdmission,
     HnswSearchAdmission,
     search_allowed_with_widening_core,
-    search_prepared_allowed_with_widening_core,
+    search_scored_allowed_with_widening_core,
 )
 from akasha.index.hnsw_entries import HnswEntry, HnswEntryPoints, decode_entries
 from akasha.index.hnsw_search import search_entry, search_level
@@ -976,17 +977,16 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             return List[SearchResult]()
 
         var current = selected_entry.value()
+        var scorer = MetricPointScorer(self._metric, prepared^)
         var admission = HnswSearchAdmission()
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var entry = search_entry[backend_tag=backend_tag, collect_seeds=True](
-            self, self._metric, prepared, current.slot, current.level,
+        var entry = search_entry[backend_tag=backend_tag, collect_seeds=True](self, scorer, current.slot, current.level,
             0, admission, scratch, stats,
             control=control, seed_ef=effective_ef,
         )
         var seeds = scratch.results.take_unordered()
-        var candidates = search_level[backend_tag=backend_tag](
-            self, self._metric, prepared, entry, 0, effective_ef,
+        var candidates = search_level[backend_tag=backend_tag](self, scorer, entry, 0, effective_ef,
             admission, scratch, stats,
             control=control, seeds=seeds,
         )
@@ -1171,12 +1171,9 @@ struct HnswGraphView(HnswGraphAccess, Movable):
             raise Error("HNSW widening maximum exceeds collection maximum")
         var scratch = self._scratch^
         self._scratch = HnswSearchScratch()
-        var outcome = search_prepared_allowed_with_widening_core[
+        var outcome = search_scored_allowed_with_widening_core[
             backend_tag=backend_tag
-        ](
-            self,
-            self._metric,
-            prepared,
+        ](self, MetricPointScorer(self._metric, prepared.copy()),
             k,
             initial_ef,
             max_ef,

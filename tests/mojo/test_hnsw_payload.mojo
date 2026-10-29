@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.index.hnsw_entries import HnswEntry
 from akasha.common.config import CollectionConfig
 from akasha.document.record import DocumentField
@@ -62,12 +63,12 @@ def test_payload_graph_recovers_filtered_connectivity_and_round_trips() raises:
     var stats = HnswSearchStats()
     var primary: List[HnswEntry] = [HnswEntry(UInt32(0), 0)]
     var extra = List[HnswEntry]()
-    var before = search(index.graph, index.metric, prepared, primary, extra, 1, 24, allowed, scratch, stats)
+    var before = search(index.graph, MetricPointScorer(index.metric, prepared.copy()), primary, extra, 1, 24, allowed, scratch, stats)
     assert_equal(before[0].id, 0)
     attach_payload_graphs(index, metadata)
     assert_true(index.maximum_neighbor_count(0) > config.m0)
     stats = HnswSearchStats()
-    var after = search(index.graph, index.metric, prepared, index.entries.primary, extra, 1, 24, allowed, scratch, stats)
+    var after = search(index.graph, MetricPointScorer(index.metric, prepared.copy()), index.entries.primary, extra, 1, 24, allowed, scratch, stats)
     assert_equal(after[0].id, 21)
     var bytes = encode_hnsw_snapshot(index, UInt64(9))
     var owned = decode_hnsw_snapshot_owned(bytes.copy(), config, UInt64(9))
@@ -77,7 +78,7 @@ def test_payload_graph_recovers_filtered_connectivity_and_round_trips() raises:
     write_file_sync(path, bytes)
     var mapped = open_hnsw_snapshot_view(path, config, UInt64(9))
     stats = HnswSearchStats()
-    var reopened = search(mapped, index.metric, prepared, mapped.entries.primary, extra, 1, 24, allowed, scratch, stats)
+    var reopened = search(mapped, MetricPointScorer(index.metric, prepared.copy()), mapped.entries.primary, extra, 1, 24, allowed, scratch, stats)
     assert_equal(reopened[0].id, 21)
 
 

@@ -1,4 +1,5 @@
 from akasha.index.hnsw_entries import HnswEntry
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.common.config import CollectionConfig, MetricKind
 from akasha.index.hnsw import HnswIndex
 from akasha.index.hnsw_core import HnswSearchAdmission
@@ -40,8 +41,7 @@ def test_rejected_neighbor_is_not_scored() raises:
     var stats = HnswSearchStats()
     var result = search_level(
         index.graph,
-        index.metric,
-        query,
+        MetricPointScorer(index.metric, query^),
         HnswHeapItem(UInt32(0), 100, 9.0),
         0,
         3,
@@ -65,9 +65,10 @@ def test_filtering_precedes_batch_limit() raises:
     var points: List[UInt32] = [UInt32(1), UInt32(2), UInt32(0)]
     var stats = HnswSearchStats()
     var scored = List[HnswHeapItem](capacity=3)
+    var scorer = MetricPointScorer(index.metric, query^)
     var address = Int(scored.unsafe_ptr())
     score_points(
-        index.graph, index.metric, query, points, 1, allowed, stats, scored
+        index.graph, scorer, points, 1, allowed, stats, scored
     )
     assert_equal(len(scored), 1)
     assert_equal(scored[0].id, 102)
@@ -78,7 +79,7 @@ def test_filtering_precedes_batch_limit() raises:
     points.clear()
     points.append(UInt32(1))
     score_points(
-        index.graph, index.metric, query, points, 0, allowed, stats, scored
+        index.graph, scorer, points, 0, allowed, stats, scored
     )
     assert_equal(len(points), 0)
     assert_equal(len(scored), 0)
@@ -86,7 +87,7 @@ def test_filtering_precedes_batch_limit() raises:
     points.append(UInt32(0))
     points.append(UInt32(2))
     score_points(
-        index.graph, index.metric, query, points, 0, allowed, stats, scored
+        index.graph, scorer, points, 0, allowed, stats, scored
     )
     assert_equal(len(scored), 2)
     assert_equal(Int(scored.unsafe_ptr()), address)

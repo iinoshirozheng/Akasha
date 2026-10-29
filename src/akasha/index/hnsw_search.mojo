@@ -14,7 +14,7 @@ actual calls. They deliberately do not claim production counter equivalence.
 """
 
 from akasha.query.control import QueryControl
-from akasha.compute.metric import MetricDispatcher
+from akasha.index.hnsw_query_scorer import HnswQueryScorer
 from akasha.index.hnsw_admission import HnswResultAdmission
 from akasha.index.hnsw_entries import HnswEntry
 from akasha.index.hnsw_heap import HnswHeapItem, _is_better
@@ -24,17 +24,15 @@ from akasha.index.hnsw_storage import HnswGraphAccess
 
 
 def _validate_search_boundary[
-    GraphType: HnswGraphAccess
+    GraphType: HnswGraphAccess, ScorerType: HnswQueryScorer
 ](
     graph: GraphType,
-    dispatcher: MetricDispatcher,
-    query: List[Float32],
+    scorer: ScorerType,
     entry: UInt32,
     level: Int,
 ) raises:
     """Validate all caller-owned state before scratch or stats are mutated."""
     graph.validate_search_ready()
-    dispatcher.require_supported_backend()
     if graph.slot_count() <= 0:
         raise Error("cannot search an empty HNSW graph")
     if (
@@ -43,11 +41,7 @@ def _validate_search_boundary[
         or graph.graph_m0() <= 0
     ):
         raise Error("HNSW graph configuration is invalid")
-    if dispatcher.dimension() != graph.graph_dimension():
-        raise Error("metric dispatcher dimension does not match HNSW graph")
-    # This validates finite values and the prepared-cosine unit-norm contract
-    # without performing (or falsely counting) a graph distance evaluation.
-    dispatcher._validate_prepared_values(query)
+    scorer.validate(graph)
     if UInt64(entry) >= UInt64(graph.slot_count()):
         raise Error("HNSW entry slot out of bounds")
     if level < 0 or level > graph.level(entry):
@@ -89,11 +83,10 @@ def choose_entry[
 
 
 def score_points[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, backend_tag: Int = -1
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, ScorerType: HnswQueryScorer, backend_tag: Int = -1
 ](
     graph: GraphType,
-    dispatcher: MetricDispatcher,
-    prepared: List[Float32],
+    scorer: ScorerType,
     mut points: List[UInt32],
     limit: Int,
     allowed: AdmissionType,
@@ -127,9 +120,7 @@ def score_points[
             var slots = SIMD[DType.uint32, 4](0)
             comptime for lane in range(4):
                 slots[lane] = points[offset + lane]
-            var distances = graph._distance_to_four_f32[backend_tag](
-                dispatcher, prepared, slots
-            )
+            var distances = scorer.distance_four[backend_tag](graph, slots, control)
             comptime for lane in range(4):
                 stats.distance_evaluations += 1
                 result.append(
@@ -138,7 +129,7 @@ def score_points[
             offset += 4
     for i in range(offset, count):
         var slot = points[i]
-        var distance = _distance[backend_tag](graph, dispatcher, prepared, slot)
+        var distance = scorer.distance[backend_tag](graph, slot, control)
         stats.distance_evaluations += 1
         result.append(HnswHeapItem(slot, graph.id_at(slot), distance))
 
@@ -155,11 +146,10 @@ def _process_candidate(
 
 
 def search_level[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, backend_tag: Int = -1
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, ScorerType: HnswQueryScorer, backend_tag: Int = -1
 ](
     graph: GraphType,
-    dispatcher: MetricDispatcher,
-    prepared: List[Float32],
+    scorer: ScorerType,
     entry: HnswHeapItem,
     level: Int,
     ef: Int,
@@ -173,7 +163,7 @@ def search_level[
         raise Error(
             "HNSW search requires positive ef and nonnegative level"
         )
-    _validate_search_boundary(graph, dispatcher, prepared, entry.slot, level)
+    _validate_search_boundary(graph, scorer, entry.slot, level)
     allowed.validate(graph.slot_count())
     if not graph.is_current(entry.slot) or not allowed._allows_item(entry.slot, graph.id_at(entry.slot)):
         raise Error("HNSW layer entry must be eligible")
@@ -216,7 +206,7 @@ def search_level[
             if scratch.visited_epochs[Int(neighbor)] != scratch.epoch:
                 points.append(neighbor)
         score_points[backend_tag=backend_tag](
-            graph, dispatcher, prepared, points, limit, allowed, stats, scored,
+            graph, scorer, points, limit, allowed, stats, scored,
             control=control,
         )
         for item in scored:
@@ -227,11 +217,10 @@ def search_level[
 
 
 def search[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, backend_tag: Int = -1
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, ScorerType: HnswQueryScorer, backend_tag: Int = -1
 ](
     graph: GraphType,
-    dispatcher: MetricDispatcher,
-    prepared: List[Float32],
+    scorer: ScorerType,
     primary: List[HnswEntry],
     extra: List[HnswEntry],
     k: Int,
@@ -247,22 +236,21 @@ def search[
     if k == 0:
         return List[HnswHeapItem]()
     graph.validate_search_ready()
-    dispatcher.validate_prepared_vector(prepared)
+    scorer.validate(graph)
     allowed.validate(graph.slot_count())
     var entry = choose_entry(graph, primary, extra, allowed)
     if not entry:
         return List[HnswHeapItem]()
     var breadth = min(max(ef, k), graph.slot_count())
     var current_item = search_entry[backend_tag=backend_tag, collect_seeds=True](
-        graph, dispatcher, prepared, entry.value().slot, entry.value().level,
+        graph, scorer, entry.value().slot, entry.value().level,
         0, allowed, scratch, stats,
         control=control, seed_ef=breadth,
     )
     var seeds = scratch.results.take_unordered()
     var results = search_level[backend_tag=backend_tag](
         graph,
-        dispatcher,
-        prepared,
+        scorer,
         current_item,
         0,
         breadth,
@@ -277,20 +265,11 @@ def search[
     return results^
 
 
-def _distance[backend_tag: Int, GraphType: HnswGraphAccess](
-    graph: GraphType, dispatcher: MetricDispatcher, prepared: List[Float32], slot: UInt32
-) raises -> Float32:
-    comptime if backend_tag < 0:
-        return graph.distance_to_slot(dispatcher, prepared, slot)
-    else:
-        return graph._distance_to_slot_backend[backend_tag](dispatcher, prepared, slot)
-
-
 def search_entry[
-    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission,
+    GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission, ScorerType: HnswQueryScorer,
     backend_tag: Int = -1, collect_seeds: Bool = False,
 ](
-    graph: GraphType, dispatcher: MetricDispatcher, prepared: List[Float32],
+    graph: GraphType, scorer: ScorerType,
     entry: UInt32, highest: Int, lowest: Int, allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
     mut stats: HnswSearchStats,
@@ -306,7 +285,7 @@ def search_entry[
     """
     if control:
         control.value().checkpoint(0)
-    _validate_search_boundary(graph, dispatcher, prepared, entry, highest)
+    _validate_search_boundary(graph, scorer, entry, highest)
     if lowest < 0 or lowest > highest:
         raise Error("HNSW descent level range is invalid")
     allowed.validate(graph.slot_count())
@@ -323,7 +302,7 @@ def search_entry[
         current_item = HnswHeapItem(
             current,
             graph.id_at(current),
-            _distance[backend_tag](graph, dispatcher, prepared, current),
+            scorer.distance[backend_tag](graph, current, control),
         )
         stats.distance_evaluations += 1
         stats.upper_visited += 1
@@ -342,8 +321,7 @@ def search_entry[
                 points.append(neighbor)
             score_points[backend_tag=backend_tag](
                 graph,
-                dispatcher,
-                prepared,
+                scorer,
                 points,
                 graph.graph_m(),
                 allowed,
@@ -368,7 +346,7 @@ def search_entry[
         current_item = HnswHeapItem(
             current,
             graph.id_at(current),
-            _distance[backend_tag](graph, dispatcher, prepared, current),
+            scorer.distance[backend_tag](graph, current, control),
         )
         stats.distance_evaluations += 1
     comptime if collect_seeds:

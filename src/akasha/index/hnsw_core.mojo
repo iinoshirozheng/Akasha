@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import HnswQueryScorer, MetricPointScorer
 from akasha.query.control import QueryControl
 from akasha.index.hnsw_admission import HnswResultAdmission
 from akasha.index.hnsw_entries import HnswEntryPoints
@@ -710,12 +711,11 @@ def search_allowed_with_widening_core[
         raise Error("HNSW eligible count cannot be negative")
     allowed.validate(graph.slot_count())
     var prepared = dispatcher.prepare_query(query)
-    var outcome = search_prepared_allowed_with_widening_core[
+    var outcome = search_scored_allowed_with_widening_core[
         backend_tag=backend_tag
     ](
         graph,
-        dispatcher,
-        prepared,
+        MetricPointScorer(dispatcher, prepared^),
         k,
         initial_ef,
         max_ef,
@@ -732,14 +732,14 @@ def search_allowed_with_widening_core[
     return outcome^
 
 
-def search_prepared_allowed_with_widening_core[
+def search_scored_allowed_with_widening_core[
     GraphType: HnswGraphAccess,
     AdmissionType: HnswResultAdmission,
+    ScorerType: HnswQueryScorer,
     backend_tag: Int = -1,
 ](
     graph: GraphType,
-    dispatcher: MetricDispatcher,
-    prepared: List[Float32],
+    scorer: ScorerType,
     k: Int,
     initial_ef: Int,
     max_ef: Int,
@@ -762,9 +762,7 @@ def search_prepared_allowed_with_widening_core[
     if control:
         control.value().checkpoint(0)
     graph.validate_search_ready()
-    dispatcher.require_supported_backend()
-    if dispatcher.dimension() != graph.graph_dimension():
-        raise Error("metric dispatcher dimension does not match HNSW graph")
+    scorer.validate(graph)
     if k <= 0:
         raise Error("HNSW search k must be positive")
     if initial_ef <= 0 or max_ef <= 0 or initial_ef > max_ef:
@@ -772,14 +770,13 @@ def search_prepared_allowed_with_widening_core[
     if eligible_count < 0:
         raise Error("HNSW eligible count cannot be negative")
     allowed.validate(graph.slot_count())
-    dispatcher.validate_prepared_vector(prepared)
 
     var stats = HnswSearchStats()
     stats.requested_ef = initial_ef
     stats.effective_ef = initial_ef
-    stats.backend_name = dispatcher.backend_name()
-    stats.metric_name = dispatcher.metric_name()
-    stats.scalar_name = dispatcher.scalar_name()
+    stats.backend_name = scorer.backend_name()
+    stats.metric_name = scorer.metric_name()
+    stats.scalar_name = scorer.scalar_name()
     stats.storage_name = storage_name
 
     var target_count = min(k, min(eligible_count, graph.slot_count()))
@@ -799,7 +796,7 @@ def search_prepared_allowed_with_widening_core[
         var current = selected_entry.value()
         upper_descents = current.level
         var entry = search_entry[backend_tag=backend_tag, collect_seeds=True](
-            graph, dispatcher, prepared, current.slot, upper_descents, 0, allowed, scratch, stats,
+            graph, scorer, current.slot, upper_descents, 0, allowed, scratch, stats,
             control=control, seed_ef=current_ef,
         )
         var seeds = scratch.results.take_unordered()
@@ -816,13 +813,13 @@ def search_prepared_allowed_with_widening_core[
             stats.storage_name = upper_stats.storage_name.copy()
             var limit = current_ef if return_search_breadth else target_count
             var candidates = search_level[backend_tag=backend_tag](
-                graph, dispatcher, prepared, entry, 0, current_ef, allowed, scratch, stats,
+                graph, scorer, entry, 0, current_ef, allowed, scratch, stats,
                 control=control, seeds=seeds,
             )
             results = List[SearchResult](capacity=min(limit, len(candidates)))
             for ordinal in range(min(limit, len(candidates))):
                 var candidate = candidates[ordinal]
-                results.append(SearchResult(candidate.id, dispatcher.public_score(candidate.distance)))
+                results.append(SearchResult(candidate.id, scorer.public_score(candidate.distance)))
             stats.retained_candidates = len(results)
             if len(results) >= target_count or current_ef >= effective_ceiling:
                 break
@@ -841,13 +838,7 @@ def search_prepared_allowed_with_widening_core[
             var id = graph.id_at(slot)
             if not graph.is_current(slot) or not allowed._allows_item(slot, id):
                 continue
-            var distance: Float32
-            comptime if backend_tag < 0:
-                distance = graph.distance_to_slot(dispatcher, prepared, slot)
-            else:
-                distance = graph._distance_to_slot_backend[backend_tag](
-                    dispatcher, prepared, slot
-                )
+            var distance = scorer.distance[backend_tag](graph, slot, control)
             retained.offer(HnswHeapItem(slot, id, distance), target_count)
         var exact = retained.take_sorted_best()
         results = List[SearchResult](capacity=len(exact))
@@ -855,7 +846,7 @@ def search_prepared_allowed_with_widening_core[
             results.append(
                 SearchResult(
                     candidate.id,
-                    dispatcher.public_score(candidate.distance),
+                    scorer.public_score(candidate.distance),
                 )
             )
         stats.fallback_reason = "filtered_ann_exhausted"

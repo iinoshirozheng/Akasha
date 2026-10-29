@@ -20,8 +20,11 @@
   Q02 與完整協定相容仍未完成。
 - Q02b 三種推薦的 exact 路徑已接上 Mojo／Python／Arrow；包含混合 ID／向量、
   lookup／排除、篩選與來源前處理。336 組 F32 上游查詢與 24 組 reducer fixture 已建立。
-  [驗證與限制](docs/research/2026-10-30-recommendation-validation.md)。接續完成自訂 ANN scorer、
+  [驗證與限制](docs/research/2026-10-30-recommendation-validation.md)。接續完成各索引的 ANN scorer、
   完整 F16/U8 oracle、低精度 canonical storage 審核與協定暴露；Q02 尚未完成。
+- Q02c dense HNSW 推薦已使用真正的 composite scorer 遍歷，並接上 Mojo／Python／Arrow。
+  [ANN 驗證與召回限制](docs/research/2026-10-30-recommendation-ann-validation.md)。
+  重複向量的召回缺口保留；sparse／multivector 索引推薦、型別／儲存及協定驗收仍待完成。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。

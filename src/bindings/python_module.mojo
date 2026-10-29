@@ -541,8 +541,10 @@ struct BoundCollection(Movable, Writable):
         _ensure_open(self[])
         var field_name = _exact_python_string(name, "field name")
         var strategy = _exact_python_string(options["strategy"], "recommendation strategy")
-        if _exact_python_string(options["mode"], "recommendation mode") != "exact":
-            raise Error("recommendation currently supports exact mode only")
+        var mode = _exact_python_string(options["mode"], "recommendation mode")
+        if mode != "exact" and mode != "approx":
+            raise Error("recommendation mode must be exact or approx")
+        var ef = _exact_python_int(options.get("ef_search", PythonObject(-1)), "ef_search")
         var count = _exact_python_int(k, "k")
         var limit = _exact_python_int(options["max_examples"], "max_examples")
         var token = CancellationToken()
@@ -583,7 +585,7 @@ struct BoundCollection(Movable, Writable):
         var results = self[].inner.value().recommend_field(
             field_name, positives, negatives, count, strategy=strategy,
             lookup=lookup, lookup_field=lookup_field, expression=expression^,
-            max_examples=limit, control=control,
+            max_examples=limit, control=control, approximate=mode == "approx", ef_search=ef,
         )
         return _field_results_to_python[columns](results)
 

@@ -144,11 +144,21 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   Python and Arrow expose the exact query. Independent portable Rust oracle:
   336 F32 queries and 24 reductions from 14 verbatim functions.
   [Evidence and remaining gates](../research/2026-10-30-recommendation-validation.md).
-  Q02 remains in progress: custom ANN scorer integration, complete F16/U8 source
+  At this exact-query stage, custom ANN scorer integration, complete F16/U8 source
   oracle and low-precision canonical-storage audit/migration, universal query and
-  protocol exposure are required next. BF16/I8 are native extensions, not proven
+  protocol exposure were required next (see Q02c progress below). BF16/I8 are native extensions, not proven
   Qdrant datatype compatibility. No performance gate was run.
 - F00/Q06: current official vector documentation includes Turbo16/Turbo8 beyond
   the pinned v1.19.0 source. Keep these explicit in Q06 and pin/compare the newer
   upstream source when implementing them; do not count the older pin as full parity.
   Source: <https://qdrant.tech/documentation/manage-data/vectors/> (checked 2026-10-30).
+- Q02c dense ANN: all three recommendation strategies now score graph candidates
+  through the shared HNSW query-scorer boundary. Exact and indexed paths reuse
+  the prepared transforms/reducers. Native/Python/Arrow expose the actual path
+  and planner fallback reasons. The default-graph repeated-vector recall
+  diagnostic remains open; complete-graph source-score integration tests do not
+  establish a quality/performance gate or change production parameters.
+  [Evidence](../research/2026-10-30-recommendation-ann-validation.md).
+  Q02 stays in progress: sparse/multivector indexed modes, full F16/U8 source
+  oracle, canonical-storage audit/migration and universal/C/REST/gRPC exposure
+  remain. P01 retains this quality diagnostic alongside historical M5/M6 failures.

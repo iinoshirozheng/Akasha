@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.query.control import QueryControl
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
@@ -27,7 +28,7 @@ from akasha.index.hnsw_core import (
     connect_with_heuristic,
     _next_widened_ef,
     search_allowed_with_widening_core,
-    search_prepared_allowed_with_widening_core,
+    search_scored_allowed_with_widening_core,
     select_neighbors_heuristic,
     validate_bidirectional_links,
 )
@@ -559,20 +560,19 @@ struct HnswIndex:
             return
 
         var new_slot = self.graph._append_unpublished(id, prepared, new_level)
+        var scorer = MetricPointScorer(self.metric, prepared^)
         var local_build = _copy_build_stats(self.build_stats)
         var construction_stats = HnswSearchStats()
         try:
             var admission = HnswSearchAdmission()
-            var current = search_entry[backend_tag=backend_tag](
-                self.graph, self.metric, prepared, construction_entry.value().slot,
+            var current = search_entry[backend_tag=backend_tag](self.graph, scorer, construction_entry.value().slot,
                 construction_entry.value().level,
                 min(new_level, construction_entry.value().level), admission,
                 self._construction_scratch, construction_stats,
             )
             var shared_level = min(new_level, construction_entry.value().level)
             while shared_level >= 0:
-                var candidates = search_level[backend_tag=backend_tag](
-                    self.graph, self.metric, prepared, current, shared_level,
+                var candidates = search_level[backend_tag=backend_tag](self.graph, scorer, current, shared_level,
                     self._identity_config.ef_construction, admission,
                     self._construction_scratch, construction_stats,
                 )
@@ -821,12 +821,9 @@ struct HnswIndex:
             raise Error("cannot search an invalid HNSW index")
         if max_ef > self._identity_config.max_ef_search:
             raise Error("HNSW widening maximum exceeds collection maximum")
-        var outcome = search_prepared_allowed_with_widening_core[
+        var outcome = search_scored_allowed_with_widening_core[
             backend_tag=backend_tag
-        ](
-            self.graph,
-            self.metric,
-            prepared,
+        ](self.graph, MetricPointScorer(self.metric, prepared.copy()),
             k,
             initial_ef,
             max_ef,
@@ -1214,14 +1211,13 @@ struct HnswIndex:
             return List[SearchResult]()
 
         var chosen = selected_entry.value()
-        var entry_item = search_entry[backend_tag=backend_tag, collect_seeds=True](
-            self.graph, self.metric, prepared, chosen.slot, chosen.level,
+        var scorer = MetricPointScorer(self.metric, prepared^)
+        var entry_item = search_entry[backend_tag=backend_tag, collect_seeds=True](self.graph, scorer, chosen.slot, chosen.level,
             0, allowed, self.scratch, stats,
             control=control, seed_ef=effective_ef,
         )
         var seeds = self.scratch.results.take_unordered()
-        var candidates = search_level[backend_tag=backend_tag](
-            self.graph, self.metric, prepared, entry_item, 0,
+        var candidates = search_level[backend_tag=backend_tag](self.graph, scorer, entry_item, 0,
             effective_ef, allowed, self.scratch, stats,
             control=control, seeds=seeds,
         )

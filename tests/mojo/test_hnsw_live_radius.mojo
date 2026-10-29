@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.index.hnsw_entries import HnswEntry
 from akasha.index.hnsw_search import search
 from akasha.common.config import MetricKind, ScalarKind
@@ -88,8 +89,7 @@ def _assert_all_true_equivalence[tag: Int](entry_inactive: Bool, replaced: Bool)
     var plain_stats = HnswSearchStats()
     var primary: List[HnswEntry] = [HnswEntry(UInt32(0), 0)]
     var extra: List[HnswEntry] = [HnswEntry(UInt32(3), 0)]
-    var plain_result = search[backend_tag=tag](
-        graph, metric, query, primary, extra, 1, 1, plain, scratch, plain_stats
+    var plain_result = search[backend_tag=tag](graph, MetricPointScorer(metric, query.copy()), primary, extra, 1, 1, plain, scratch, plain_stats
     )
     assert_equal(len(plain_result), 1)
     var expected_slot = 3 if entry_inactive else 0
@@ -97,8 +97,7 @@ def _assert_all_true_equivalence[tag: Int](entry_inactive: Bool, replaced: Bool)
     var expected_distance = Float32(0.25 if entry_inactive else 9.0)
     _assert_item(plain_result, 0, expected_slot, expected_id, expected_distance)
     var full_stats = HnswSearchStats()
-    var full_result = search[backend_tag=tag](
-        graph, metric, query, primary, extra, 1, 1, full, scratch, full_stats
+    var full_result = search[backend_tag=tag](graph, MetricPointScorer(metric, query.copy()), primary, extra, 1, 1, full, scratch, full_stats
     )
     assert_equal(len(full_result), 1)
     _assert_item(full_result, 0, expected_slot, expected_id, expected_distance)

@@ -414,11 +414,13 @@ struct PersistentCollection:
         lookup_field: Optional[String] = None,
         var expression: Optional[FilterExpression] = None,
         max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
     ) raises -> List[FieldSearchResult]:
         var execution = self.snapshot().recommend_field_reported(
             name, positives, negatives, k, strategy=strategy, lookup=lookup,
             lookup_field=lookup_field, expression=expression^,
             max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
         )
         with BlockingScopedLock(self._writer_lock[]):
             self._last_search_stats = copy_search_stats(execution.stats)

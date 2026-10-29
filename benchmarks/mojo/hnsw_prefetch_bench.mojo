@@ -1,7 +1,8 @@
-from akasha.index.hnsw_search import search_entry, search_level
 """Isolated immutable mapped-base prefetch experiment, no production changes."""
 
 from akasha import PersistentCollection
+from akasha.index.hnsw_search import search_entry, search_level
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     HnswSearchAdmission,
@@ -86,6 +87,20 @@ struct Prefetched[origin: Origin, lines: Int](HnswGraphAccess):
                     )
         return count
 
+    def _distance_to_four_f32[tag: Int](
+        self, dispatcher: MetricDispatcher, query: List[Float32],
+        slots: SIMD[DType.uint32, 4],
+    ) raises -> SIMD[DType.float32, 4]:
+        return self.graph[]._distance_to_four_f32[tag](dispatcher, query, slots)
+
+    def neighbor_range(self, slot: UInt32, level: Int) raises -> Tuple[Int, Int]:
+        # Preserve this experiment's prefetch hook with offset-based traversal.
+        _ = self.neighbor_count(slot, level)
+        return self.graph[].neighbor_range(slot, level)
+
+    def neighbor_at_offset(self, offset: Int) raises -> UInt32:
+        return self.graph[].neighbor_at_offset(offset)
+
     def neighbor_at(
         self, slot: UInt32, level: Int, index: Int
     ) raises -> UInt32:
@@ -104,12 +119,13 @@ def run[
     var view = Prefetched[origin_of(graph), lines](Pointer(to=graph))
     var stats = HnswSearchStats()
     var admission = HnswSearchAdmission()
+    var scorer = MetricPointScorer(metric, query.copy())
     var current = search_entry[backend_tag=tag](
-        view, metric, query, graph._entry_slot.value(), graph._entry_level, 0,
+        view, scorer, graph._entry_slot.value(), graph._entry_level, 0,
         admission, scratch, stats
     )
     return search_level[backend_tag=tag](
-        view, metric, query, current, 0, ef, admission, scratch, stats
+        view, scorer, current, 0, ef, admission, scratch, stats
     )
 
 

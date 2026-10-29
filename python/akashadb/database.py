@@ -268,13 +268,14 @@ class Collection:
     def recommend_field(
         self, name: str, positive: list[Any], negative: list[Any] | None = None,
         k: int = 10, *, strategy: str = "average_vector", mode: str = "exact",
+        ef_search: int | None = None,
         lookup_from: "Collection | None" = None, lookup_field: str | None = None,
         filter: Mapping[str, Any] | None = None,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
     ) -> list[SearchResult]:
         """Recommend from raw vectors and/or IDs using Qdrant's F32 scoring rules."""
         raw = self._recommend_field_raw(
-            name, positive, negative, k, strategy=strategy, mode=mode,
+            name, positive, negative, k, strategy=strategy, mode=mode, ef_search=ef_search,
             lookup_from=lookup_from, lookup_field=lookup_field, filter=filter,
             cancellation=cancellation, timeout_ns=timeout_ns,
         )
@@ -283,6 +284,7 @@ class Collection:
     def _recommend_field_raw(
         self, name: str, positive: list[Any], negative: list[Any] | None = None,
         k: int = 10, *, strategy: str = "average_vector", mode: str = "exact",
+        ef_search: int | None = None,
         lookup_from: "Collection | None" = None, lookup_field: str | None = None,
         filter: Mapping[str, Any] | None = None, columns: bool = False,
         cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
@@ -296,8 +298,10 @@ class Collection:
             raise ValidationError("recommendation k exceeds resource limit")
         if strategy not in ("average_vector", "best_score", "sum_scores"):
             raise ValidationError("unknown recommendation strategy")
-        if mode != "exact":
-            raise ValidationError("recommendation currently supports exact mode only")
+        if mode not in ("exact", "approx"):
+            raise ValidationError("recommendation mode must be exact or approx")
+        if ef_search is not None and (type(ef_search) is not int or ef_search <= 0 or mode != "approx"):
+            raise ValidationError("ef_search must be positive and requires approximate recommendation")
         if lookup_from is not None and not isinstance(lookup_from, Collection):
             raise ValidationError("lookup_from must be an open Collection")
         if lookup_field is not None and (type(lookup_field) is not str or not lookup_field):
@@ -308,7 +312,8 @@ class Collection:
         return self._call(
             "recommend_field_columns" if columns else "recommend_field", name,
             [_vector_value(item) for item in positive], [_vector_value(item) for item in negative], k,
-            {"strategy": strategy, "mode": mode, "max_examples": self.limits.max_query_batch,
+            {"strategy": strategy, "mode": mode, "ef_search": -1 if ef_search is None else ef_search,
+             "max_examples": self.limits.max_query_batch,
              "lookup_from": None if lookup_from is None else lookup_from._kernel,
              "lookup_field": lookup_field, "filter": None if filter is None else dict(filter),
              "cancelled": bool(cancellation and cancellation.cancelled),

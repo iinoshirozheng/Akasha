@@ -1,8 +1,9 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.common.config import MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_core import (
     HnswSearchAdmission,
-    search_prepared_allowed_with_widening_core,
+    search_scored_allowed_with_widening_core,
 )
 from hnsw_search_helpers import greedy_descent, search_layer
 from akasha.index.hnsw_entries import HnswEntryPoints, HnswEntry
@@ -59,13 +60,13 @@ def test_widening_core_validates_prepared_query_before_scratch() raises:
     ]:
         var query: List[Float32] = [value]
         with assert_raises():
-            _ = search_prepared_allowed_with_widening_core(
-                graph, metric, query, 1, 1, 1, 1, False, False,
+            _ = search_scored_allowed_with_widening_core(
+                graph, MetricPointScorer(metric, query.copy()), 1, 1, 1, 1, False, False,
                 entries, "owned", admission, scratch,
             )
         assert_equal(scratch.epoch, UInt32(0))
-    var outcome = search_prepared_allowed_with_widening_core(
-        graph, metric, [1.0], 1, 1, 1, 1, False, False,
+    var outcome = search_scored_allowed_with_widening_core(
+        graph, MetricPointScorer(metric, [1.0]), 1, 1, 1, 1, False, False,
         entries, "owned", admission, scratch,
     )
     # The valid query starts an upper-level search and a base-level search.

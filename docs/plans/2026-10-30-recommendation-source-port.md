@@ -2,7 +2,7 @@
 
 Continue the [full feature plan](2026-10-30-feature-completion.md) after the
 [stored-point lookup prerequisite](2026-10-30-point-query-source-port.md).
-The exact F32 query path is now implemented; full Q02 acceptance remains open.
+The exact F32 and dense HNSW query paths are now implemented; full Q02 acceptance remains open.
 See the progress and pending gates below.
 
 ## Sources already inspected
@@ -81,11 +81,18 @@ Native tests also compare transform/reducer bits. The query supports mixed
 raw/ID input, source-field metrics, filters, exclusions and retained roots.
 See [validation evidence](../research/2026-10-30-recommendation-validation.md).
 
-The next required implementation remains custom ANN scorers. Port the upstream
-`CustomQueryScorer` integration into graph traversal using the actual composite
-score and original source exclusions; do not approximate best/sum with a single
-averaged nearest query. Preserve the exact scorer as the correctness oracle and
-report actual execution paths. Also finish:
+Dense custom ANN scorers now follow upstream `CustomQueryScorer` through the
+shared graph traversal using the actual composite score and source exclusions.
+Exact and ANN share prepared scoring; ordinary nearest search retains its
+existing kernels through the scorer boundary. See
+[ANN evidence](../research/2026-10-30-recommendation-ann-validation.md).
+The repeated-vector graph reachability/recall diagnostic stays open and does not
+become an accepted quality result. The complete-graph source-score oracle tests
+isolate scoring and traversal integration; they do not tune production parameters.
+Next required work includes:
+
+- Sparse/multivector indexed recommendation and complete independent graph/
+  service behavior checks, with actual path/fallback reporting.
 
 - Independent F16/U8 query conversion and scoring fixtures, including large
   dimension/integer overflow and SIMD/scalar differences.

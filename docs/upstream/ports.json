@@ -298,6 +298,86 @@
         "tests/python/test_recommendation.py": "01ec48e748e6334ded34238835bd04be440076ee5147d49418bd37a822bde0bf",
         "scripts/qdrant_recommendation_reference.py": "1ba50ccc7a3b26fd05eba3ac7f2469166e5964021a52cb0b7c2fa6af1e1a96f3"
       }
+    },
+    {
+      "id": "Q02c-dense-recommendation-ann",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source_sha256": {
+        "lib/segment/src/vector_storage/query_scorer/custom_query_scorer.rs": "4393316448362586735c72065556ffc46a07653e8522aaad1e600915a8c8161b",
+        "lib/segment/src/vector_storage/query/reco_query.rs": "1457b5c7aa5a42b439453f4c12f08eb831f5184c18167de7b93992f6b75a2dfe",
+        "lib/segment/src/index/hnsw_index/point_scorer.rs": "7272ebaf00c0c3fb4c193a808193d6e20694f28660087b873da638a98ab56ea4",
+        "lib/segment/src/index/hnsw_index/graph_layers.rs": "9276d05d66a3d5d22da48816fe463fef337821080f177d13ca5dae8160f367be"
+      },
+      "functions": [
+        "CustomQueryScorer::new",
+        "CustomQueryScorer::score",
+        "CustomQueryScorer::score_stored",
+        "FilteredScorer::score_points",
+        "FilteredScorer::score_point",
+        "GraphLayers::search_on_level",
+        "GraphLayers::search_entry"
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/index/hnsw_query_scorer.mojo",
+        "src/akasha/query/recommendation_scorer.mojo",
+        "src/akasha/query/recommendation_execution.mojo",
+        "src/akasha/query/field_recommendation.mojo"
+      ],
+      "adaptations": [
+        "Shared query-scorer trait replaces dispatcher/prepared arguments in existing HNSW traversal; ordinary scalar/four-row kernels retained",
+        "Composite source scoring uses authoritative native field values through retained read-run/graph/query owners",
+        "Higher-is-better similarities negated for the distance heap; public average-L2 conversion after run merge",
+        "Existing native visibility, exclusion/filter admission, per-run locks and explicit planner fallbacks",
+        "Traversal retains Qdrant Edge 21db2f3ff95d50de3a2b88a741312c056fd1762d lineage and documented upper-layer seed reuse",
+        "132 complete-graph source-score integration cases do not establish default-graph recall; duplicate-vector quality failure preserved",
+        "Sparse/multivector indexed recommendation, full datatype/storage/service parity remain open"
+      ],
+      "fixture": "tests/fixtures/qdrant-recommendation/recommendation.json",
+      "fixture_sha256": "af8399dc6f0eb1f97a770db6f9ed894744f1c0c3d70860414cfc74648e32c9e0",
+      "source_scoring_cases": 132,
+      "traversal_reference": {
+        "cases": 98,
+        "revision": "21db2f3ff95d50de3a2b88a741312c056fd1762d",
+        "upstream_sha256": "9276d05d66a3d5d22da48816fe463fef337821080f177d13ca5dae8160f367be",
+        "methods_sha256": "3f34b70bf60b92c91c8b5e5a6270c9ed8aed8ce30b8af7eb9f3e701e73efe4d1",
+        "scope": "Production single-entry descent/beam primitives on distinct-score fixtures; excludes multi-entry query seed reuse, Edge binary, graph build, timing and production acceptance"
+      },
+      "open_quality_diagnostic": "tests/fixtures/qdrant-recommendation/ann-duplicate-diagnostic.json",
+      "status": "implemented_dense_ann_scoring_verified_quality_datatype_storage_protocol_gates_open",
+      "verification": [
+        "docs/research/2026-10-30-recommendation-ann-validation.md"
+      ],
+      "verified_file_sha256": {
+        "benchmarks/mojo/hnsw_prefetch_bench.mojo": "cc7bbab10d2969dedf6ed8b4abd0b0e4b181f52c248c05c541f883585aa358e1",
+        "benchmarks/mojo/qdrant_search_reference.mojo": "3e8ea23ca3005b50166ca292fb27ccb90f583d726554f566f476449df2b8637c",
+        "benchmarks/mojo/test_qdrant_search_reference.mojo": "8ece78aa25de8631f58ab845436e2047dfe303d39728d98391a3bd40158721d7",
+        "python/akashadb/arrow.py": "e87e96d16ca38034f0a3c020c07a36c348186283145d85f30a34f38624f9f440",
+        "python/akashadb/database.py": "8d62c9eabeff97f0ef71f1331795dce64c7cecd657452da7de455173ffea2451",
+        "src/akasha/api/collection.mojo": "d7ba3402658637490ee9cf232aaab5f57a35a1ad64917f0ea794eec03f8da5a9",
+        "src/akasha/api/snapshot.mojo": "7edcd73775983a004490d919fedcf1cb0fd010bdbe01151cb6cbf84698caed5f",
+        "src/akasha/index/hnsw.mojo": "768803185866be818079ae714ce5a01e8d44fa8e215202da9534d2461d575297",
+        "src/akasha/index/hnsw_core.mojo": "b5cc3c53962da1d3c7513debe6de13f14a00e4717fac686a296384f8112501be",
+        "src/akasha/index/hnsw_query_scorer.mojo": "bec03067524ba1788b6d848c2c7d8aaf4d82afad27992e216c5419f041ac6390",
+        "src/akasha/index/hnsw_search.mojo": "ac80685d9106f3a19874a8739f5d119eb932c60869381b65d012ded502a6b967",
+        "src/akasha/index/hnsw_view.mojo": "5cea64a68cfd90ef996a6fe3b16f97dd90ec17b0b75d127fa615a945c1f8ad53",
+        "src/akasha/query/field_recommendation.mojo": "3c20221c495c9f3fb240ba3732f66c3e867fd2c37618dda35c4f77d89e1d6e4e",
+        "src/akasha/query/recommendation_execution.mojo": "a224639025605985c07f90d478b39247dd951a5072fdeb894755ceefe1943f2b",
+        "src/akasha/query/recommendation_scorer.mojo": "a946135f3300bb8d663785dcf907c42778b2dfa02dbb456e619ccd51e746d558",
+        "src/bindings/python_module.mojo": "48ee6b4eba800d8afb4a0d46f113b178ab461ffc876757171fc7f99c7010f752",
+        "tests/fixtures/qdrant-recommendation/ann-duplicate-diagnostic.json": "e964378bb240ee5060daceee4d91247be1dbc05f153b82c182c8b158cd264f34",
+        "tests/mojo/hnsw_search_helpers.mojo": "c38b2f81137a3956d2d71ba15efd111ac932691b74bf36d61a9a6c4936036000",
+        "tests/mojo/test_hnsw_four_distance.mojo": "d2281714e931fa338949f312fbdf6095e56007041fa85bd520ea3dc6547768e7",
+        "tests/mojo/test_hnsw_live_radius.mojo": "5622aca86e3d50b5cabad06d638ed30773539c6332a924087fb0bd663af16584",
+        "tests/mojo/test_hnsw_payload.mojo": "04e241c5b87212ddeff5fc5b1fbd2688dc98bb0f186a3044ff339329a477e86d",
+        "tests/mojo/test_hnsw_query_boundaries.mojo": "33b9280a33d28d4653576b34e204491a786ebe8236c64370ae9885e9552b5a53",
+        "tests/mojo/test_hnsw_search_layer.mojo": "198801e3bfce9f45f6f7c14334915993ffdcee094d559ab713fb806502744391",
+        "tests/mojo/test_recommendation_ann.mojo": "88f550ea2629d28f6b27a6e59adc1842b6beaf3e8031dc8909cd7eb89f3cf99d",
+        "tests/python/test_recommendation_ann.py": "cff4ebe04aaa5f138007723472f859ac8cfb5f591ea100128ed089005aeda7fe"
+      }
     }
   ]
 }

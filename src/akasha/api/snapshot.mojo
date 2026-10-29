@@ -228,12 +228,14 @@ struct ReadSnapshot(Movable):
         lookup_field: Optional[String] = None,
         var expression: Optional[FilterExpression] = None,
         max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
     ) raises -> FieldSearchExecution:
         var root = self._acquire()
         var source = lookup.value()._acquire() if lookup else root.copy()
         return recommend_generation_field(
             root[], source[], name, positives, negatives, k, strategy, expression,
             lookup_field=lookup_field, max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
         )
 
     def recommend_field(
@@ -243,11 +245,13 @@ struct ReadSnapshot(Movable):
         lookup_field: Optional[String] = None,
         var expression: Optional[FilterExpression] = None,
         max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
     ) raises -> List[FieldSearchResult]:
         var execution = self.recommend_field_reported(
             name, positives, negatives, k, strategy=strategy, lookup=lookup,
             lookup_field=lookup_field, expression=expression^,
             max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
         )
         return execution.take_results()
 

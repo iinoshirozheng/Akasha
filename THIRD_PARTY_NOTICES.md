@@ -49,6 +49,21 @@ BF16/I8 are Akasha extensions, integer metric accumulators are widened, and
 raw native cosine storage is preprocessed when preparing recommendation values.
 This exact-query port does not claim full server, datatype, storage or ANN parity.
 
+Dense recommendation ANN integration in `recommendation_scorer.mojo`,
+`recommendation_execution.mojo` and `index/hnsw_query_scorer.mojo` follows the
+same revision's `vector_storage/query_scorer/custom_query_scorer.rs`,
+`index/hnsw_index/point_scorer.rs` and `graph_layers.rs`: a prepared composite
+query scores stored candidates during traversal, independently of graph topology.
+Akasha adapts higher-is-better similarities to its lower-is-better heap, retains
+native run owners and visibility/exclusion masks, and reports planner fallbacks.
+Ordinary nearest queries keep their scalar/four-row metric kernels through this
+shared boundary. The existing traversal derives from Qdrant Edge commit
+`21db2f3ff95d50de3a2b88a741312c056fd1762d`, with separately documented bounded
+upper-layer seed reuse; this change does not claim that whole traversal is newly
+ported from v1.19.0. See
+[traversal provenance](benchmarks/mojo/qdrant_search_reference.md).
+Full recommendation recall, datatype/storage and protocol parity remain open.
+
 Qdrant distributes this source under the Apache License, Version 2.0; a copy of
 the upstream license is included at [Qdrant license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
 No root NOTICE file is present at this pinned revision.

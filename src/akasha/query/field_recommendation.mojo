@@ -2,21 +2,21 @@
 
 Lookup/exclusions: collection/recommendations.rs at
 74f3e85b9473c62560006c043e13737ce6b48412 (Apache-2.0).
-Exact execution is the correctness baseline for subsequent custom ANN scorers.
+Exact and dense HNSW execution share one prepared recommendation scorer.
 """
 
-from akasha.compute.topk import BoundedTopK
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
-from akasha.index.sparse import sparse_score_is_eligible
 from akasha.query.control import QueryControl
 from akasha.query.field_lookup import resolve_point_field, same_collection_roots
-from akasha.query.field_search import FieldSearchExecution, field_exact_stats
+from akasha.query.field_search import FieldSearchExecution
 from akasha.query.filter_ast import FilterExpression
-from akasha.query.recommendation import RecommendationScores, average_recommendation, validate_recommendation
-from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_input, recommendation_similarity
+from akasha.query.recommendation import validate_recommendation
+from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_input
+from akasha.query.recommendation_scorer import PreparedRecommendation
+from akasha.query.recommendation_execution import search_recommendation_exact, search_recommendation_approx
 from akasha.storage.read_generation import ReadGeneration
-from std.math import isfinite, sqrt
+from std.memory import ArcPointer
 
 
 @fieldwise_init
@@ -73,6 +73,7 @@ def recommend_generation_field(
     k: Int, strategy: String, expression: Optional[FilterExpression], *,
     lookup_field: Optional[String] = None, max_examples: Int = 1024,
     control: Optional[QueryControl] = None,
+    approximate: Bool = False, ef_search: Int = -1,
 ) raises -> FieldSearchExecution:
     validate_recommendation(strategy, len(positives), len(negatives))
     if k <= 0:
@@ -98,78 +99,9 @@ def recommend_generation_field(
     var excluded = Dict[Int, Bool]()
     var positive = _resolve_examples(positives, source, source_name, field, same, excluded, control)
     var negative = _resolve_examples(negatives, source, source_name, field, same, excluded, control)
-    var prepared_positive = List[VectorValue]()
-    var prepared_negative = List[VectorValue]()
-    if strategy == "average_vector":
-        var average = average_recommendation(positive, negative)
-        prepared_positive.append(prepare_recommendation_vector(average, field))
-    else:
-        for example_index in range(len(positive)):
-            ref example = positive[example_index]
-            prepared_positive.append(prepare_recommendation_vector(example, field))
-        for example_index in range(len(negative)):
-            ref example = negative[example_index]
-            prepared_negative.append(prepare_recommendation_vector(example, field))
-    var stats = field_exact_stats(field)
-    stats.backend_name = "qdrant-recommendation-f32"
-    if control:
-        control.value().checkpoint(0)
-    if view.visible_count == 0:
-        return FieldSearchExecution([], stats^, "recommendation_exact")
-    var topk = BoundedTopK[DType.float64](min(k, view.visible_count), smaller_is_better=False)
-    var scanned = 0
-    for layer in range(view.layer_count()):
-        var ordinals = view.filtered_ordinals(layer, expression.value()) if expression else view.visible_ordinals(layer)
-        ref table = view.run(layer).memtable
-        for slot in ordinals:
-            if control:
-                control.value().checkpoint(scanned)
-            scanned += 1
-            ref entry = table.entry_ref_at(slot)
-            if entry.id in excluded:
-                stats.filtered_rejections += 1
-                continue
-            var field_ordinal = entry.field_ordinal(field.id)
-            if field_ordinal < 0:
-                continue
-            ref stored = entry.vector_at(field_ordinal).value()
-            if field.kind == 2 and stored.row_count() == 0:
-                continue
-            var candidate = prepare_recommendation_vector(stored, field)
-            var score: Float32
-            if strategy == "average_vector":
-                score = recommendation_similarity(prepared_positive[0], candidate, field)
-                stats.distance_evaluations += 1
-                if not isfinite(score):
-                    raise Error("recommendation score must be finite")
-                # Sparse nearest search omits zeros; custom scores do not.
-                if field.kind == 1 and not sparse_score_is_eligible(score):
-                    continue
-            else:
-                var reducer = RecommendationScores(strategy == "best_score")
-                for example_index in range(len(prepared_positive)):
-                    ref example = prepared_positive[example_index]
-                    if control:
-                        control.value().checkpoint(0)
-                    reducer.add(recommendation_similarity(example, candidate, field), False)
-                    stats.distance_evaluations += 1
-                for example_index in range(len(prepared_negative)):
-                    ref example = prepared_negative[example_index]
-                    if control:
-                        control.value().checkpoint(0)
-                    reducer.add(recommendation_similarity(example, candidate, field), True)
-                    stats.distance_evaluations += 1
-                score = reducer.finish()
-            if not isfinite(score):
-                raise Error("recommendation score must be finite")
-            topk.offer(entry.id, Float64(score))
-            stats.base_visited += 1
-    if control:
-        control.value().checkpoint(0)
-    var results = topk.sorted_entries()
-    # Only the nearest-vector strategy applies Euclid public postprocessing.
-    if strategy == "average_vector" and field.metric == 1:
-        for i in range(len(results)):
-            results[i].score = Float64(sqrt(abs(Float32(results[i].score))))
-    stats.retained_candidates = len(results)
-    return FieldSearchExecution(results^, stats^, "recommendation_exact")
+    var query = ArcPointer(PreparedRecommendation(field, strategy, positive, negative))
+    if approximate:
+        return search_recommendation_approx(view, query, k, expression, excluded, ef_search, control)
+    if ef_search != -1:
+        raise Error("ef_search requires approximate recommendation")
+    return search_recommendation_exact(view, query[], k, expression, excluded, control)

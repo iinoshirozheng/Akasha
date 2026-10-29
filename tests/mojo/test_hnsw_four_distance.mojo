@@ -1,3 +1,4 @@
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.common.config import CollectionConfig, MetricKind, ScalarKind
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw import HnswIndex
@@ -58,8 +59,7 @@ def check[tag: Int, Graph: HnswGraphAccess](graph: Graph, metric: MetricDispatch
                     rejected += 1
             var count = len(expected) if limit == 0 else min(limit, len(expected))
             var stats = HnswSearchStats()
-            score_points[backend_tag=tag](
-                graph, metric, query, points, limit, allowed, stats, scored
+            score_points[backend_tag=tag](graph, MetricPointScorer(metric, query.copy()), points, limit, allowed, stats, scored
             )
             assert_equal(len(scored), count)
             assert_equal(len(points), count)

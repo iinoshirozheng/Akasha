@@ -440,7 +440,7 @@ fields on that first open. See the
 ## Recommendation queries
 
 `Collection.recommend_field(name, positive, negative=None, k=10, *,
-strategy="average_vector", mode="exact", lookup_from=None, lookup_field=None,
+strategy="average_vector", mode="exact", ef_search=None, lookup_from=None, lookup_field=None,
 filter=None, cancellation=None, timeout_ns=None)` executes all three Qdrant
 recommendation strategies in Mojo. Each example is an integer point ID or a raw
 vector matching the target field's kind/dimension; IDs resolve from the selected
@@ -478,14 +478,32 @@ empty stored multivectors and excluded IDs never occupy a result slot.
 `recommend_field_record_batch` in `akashadb.arrow` exposes the same options and
 returns owned `id: int64` and `score: float64` columns. Native `ReadSnapshot` and
 `PersistentCollection` expose `recommend_field` using `RecommendationExample.point`
-and `.raw`; a native lookup snapshot can outlive its source writer. Stats report
-`recommendation_exact` and `qdrant-recommendation-f32`. Recommendations count as
+and `.raw`; a native lookup snapshot can outlive its source writer. Recommendations count as
 queries in collection telemetry. `max_query_batch` bounds the total examples;
 `max_k`, `max_candidates`, cancellation and deadlines apply. Nonfinite results
 are rejected. Binary recommendation is unsupported by the upstream strategies.
 
-This is an exact-query implementation. Other modes fail explicitly; custom ANN
-scorers and universal REST/gRPC/C exposure remain required work. F32 scalar
+`mode="approx"` requires a dense field configured with HNSW. All three strategies
+score each visited candidate with the same prepared query used by exact search;
+best/sum do not substitute a single averaged query. `ef_search` defaults to the
+field's configured search breadth and must be positive and within its maximum.
+It is invalid in exact mode. Native APIs use `approximate=True, ef_search=...`.
+Filtering, same-collection source exclusion and shadowed-row visibility apply
+before candidates enter graph traversal. Candidates use the native stored field
+values even when the graph uses another scalar representation.
+
+Stats identify `recommendation_hnsw`, `recommendation_exact`, or a documented
+planner fallback (`recommendation_small_collection`, `recommendation_selectivity`,
+`recommendation_ann_exhausted`). An empty eligible set reports
+`recommendation_empty`; the backend is `qdrant-recommendation-f32`. Custom-score
+distance counts include each positive/negative example similarity. A small or
+selective dataset uses exact search; insufficient graph results also trigger an
+explicit exact fallback. A full result count does not guarantee exact recall.
+The repeated-vector quality diagnostic remains open even at high ef; see the
+[ANN validation and limitation](research/2026-10-30-recommendation-ann-validation.md).
+
+Sparse/multivector indexed recommendation and universal REST/gRPC/C exposure
+remain required work. F32 scalar
 pipelines have independent upstream fixtures. Native F16/U8 conversion and
 Akasha BF16/I8 extensions have regression coverage but not a full upstream
 cross-datatype oracle yet. Integer metric accumulation is widened to Int64.
@@ -495,4 +513,4 @@ recover the original pre-ingestion F32 input; full canonical storage alignment
 requires the separate Q02/Q06 audit/migration. No existing stored values change.
 
 Source and verification: [recommendation port](plans/2026-10-30-recommendation-source-port.md)
-and [validation](research/2026-10-30-recommendation-validation.md).
+and [exact validation](research/2026-10-30-recommendation-validation.md).

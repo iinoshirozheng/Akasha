@@ -3,6 +3,7 @@
 Query seed reuse is tested separately; this facade preserves the upstream
 single-entry comparison used for construction. See qdrant_search_reference.md.
 """
+from akasha.index.hnsw_query_scorer import MetricPointScorer
 from akasha.query.control import QueryControl
 from akasha.compute.metric import MetricDispatcher
 from akasha.index.hnsw_admission import HnswResultAdmission
@@ -40,16 +41,12 @@ def search[
     var entry = choose_entry(graph, primary, extra, allowed)
     if not entry:
         return List[HnswHeapItem]()
-    var current_item = search_entry[backend_tag=backend_tag](
-        graph, dispatcher, prepared, entry.value().slot, entry.value().level,
+    var current_item = search_entry[backend_tag=backend_tag](graph, MetricPointScorer(dispatcher, prepared.copy()), entry.value().slot, entry.value().level,
         0, allowed, scratch, stats,
         control=control,
     )
     var breadth = ef if ef >= k else k
-    var results = search_level[backend_tag=backend_tag](
-        graph,
-        dispatcher,
-        prepared,
+    var results = search_level[backend_tag=backend_tag](graph, MetricPointScorer(dispatcher, prepared.copy()),
         current_item,
         0,
         breadth,
