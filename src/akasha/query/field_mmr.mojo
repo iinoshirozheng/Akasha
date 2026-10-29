@@ -57,8 +57,11 @@ struct MmrMatrix(MmrSimilarity, Movable):
 def rerank_generation_mmr(
     view: ReadGeneration, field: VectorFieldSpec, query: VectorValue,
     var execution: FieldSearchExecution, k: Int, diversity: Float32,
-    control: Optional[QueryControl] = None,
+    control: Optional[QueryControl] = None, *, prior_work: Int = -1,
 ) raises -> FieldSearchExecution:
+    var work = view.visible_count if prior_work == -1 else prior_work
+    if work < 0:
+        raise Error("MMR prior work must be nonnegative")
     var candidates = List[FieldSearchResult]()
     var vectors = List[VectorValue]()
     var seen = Dict[Int, Bool]()
@@ -90,8 +93,8 @@ def rerank_generation_mmr(
         results = candidates^
     else:
         if control:
-            control.value().validate_candidate_count(view.visible_count + len(candidates))
-        var matrix = MmrMatrix(vectors^, field, control, view.visible_count + len(candidates))
+            control.value().validate_candidate_count(work + len(candidates))
+        var matrix = MmrMatrix(vectors^, field, control, work + len(candidates))
         var prepared = prepare_recommendation_vector(query, matrix.field)
         var relevance = List[Float32]()
         for i in range(len(candidates)):

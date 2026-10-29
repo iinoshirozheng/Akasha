@@ -1,3 +1,5 @@
+from akasha.query.query_plan import QueryNode
+from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
 from akasha.query.field_discovery import ContextPair, discover_generation_field
 from akasha.document.point_state import PointState
@@ -204,6 +206,27 @@ struct ReadSnapshot(Movable):
             approximate=approximate, ef_search=ef_search, rerank_k=rerank_k,
             ivf=ivf, mmr=mmr, control=control,
         )
+
+    def query_reported(
+        self, nodes: List[QueryNode], lookups: List[ReadSnapshot], *,
+        control: Optional[QueryControl] = None, max_nodes: Int = 1024,
+        max_k: Int = 10_000, max_examples: Int = 1024,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        var sources = List[ArcPointer[ReadGeneration]]()
+        for i in range(len(lookups)):
+            sources.append(lookups[i]._acquire())
+        return query_generation(root[], sources, nodes, control=control,
+            max_nodes=max_nodes, max_k=max_k, max_examples=max_examples)
+
+    def query(
+        self, nodes: List[QueryNode], lookups: List[ReadSnapshot], *,
+        control: Optional[QueryControl] = None, max_nodes: Int = 1024,
+        max_k: Int = 10_000, max_examples: Int = 1024,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.query_reported(nodes, lookups, control=control,
+            max_nodes=max_nodes, max_k=max_k, max_examples=max_examples)
+        return execution.take_results()
 
     def discover_field_reported(
         self, name: String, target: Optional[RecommendationExample],

@@ -181,7 +181,7 @@ class Collection:
     ) -> None:
         self._operations += 1
         self._total_duration_ns += duration_ns
-        if method.startswith(("search", "get", "recommend", "discover")):
+        if method.startswith(("search", "get", "recommend", "discover", "query")):
             self._queries += 1
         if status == "ok" and method.startswith(("upsert", "delete", "apply")):
             self._writes += 1
@@ -264,6 +264,34 @@ class Collection:
                                      ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr,
                                      cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
+
+    def query(
+        self, request: "QueryRequest", *, cancellation: "CancellationToken | None" = None,
+        timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        """Execute an ordered query tree on one captured native read view."""
+        return [SearchResult(**item) for item in self._query_raw(
+            request, cancellation=cancellation, timeout_ns=timeout_ns)]
+
+    def _query_raw(
+        self, request: "QueryRequest", *, columns: bool = False,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> Any:
+        from .query import serialize_query
+        if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+            raise ValidationError("query timeout must be a positive integer")
+        deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        nodes = serialize_query(request, self.limits.max_query_batch, self.limits.max_query_batch)
+        for node in nodes:
+            lookup = node["lookup_from"]
+            if lookup is not None and not isinstance(lookup, Collection):
+                raise ValidationError("lookup_from must be an open Collection")
+            node["lookup_from"] = None if lookup is None else lookup._kernel
+        return self._call("query_columns" if columns else "query", nodes, {
+            "max_nodes": self.limits.max_query_batch, "max_examples": self.limits.max_query_batch,
+            "max_k": self.limits.max_k, "max_candidates": self.limits.max_candidates,
+            "deadline_ns": deadline, "cancelled": bool(cancellation and cancellation.cancelled),
+        })
 
     def discover_field(
         self, name: str, target: Any = None, context: list[ContextPair] | None = None,

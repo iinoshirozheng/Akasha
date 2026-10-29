@@ -1,3 +1,4 @@
+from akasha.query.query_plan import QueryNode
 from .api import (
     BatchMutation,
     BatchWriteResult,

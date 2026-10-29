@@ -51,6 +51,13 @@
   接續 Q04 universal／nested prefetch 與 Q03 完整整合；batch／offset／projection、
   multivector HNSW、datatype／storage、完整協定及其餘產品功能仍列為未完成。
 
+- Q04a 通用查詢樹已接上 Mojo／Python／Arrow：nested prefetch、候選聯集重排、
+  來源 filter／全域 ID 排除、融合、root／nested／leaf MMR、offset 與 ID 順序查詢。
+  103 組上游 planner 案例、14 項原生及完整 Python 2115 項通過，1 項選配跳過；
+  含 110 項新增 Python 案例。[驗證與限制](docs/research/2026-10-30-universal-query-validation.md)。
+  Q04 公式／抽樣／feedback、Q05 完整讀取操作、rich payload 與其餘產品功能仍待完成；
+  所有功能完成前不恢復效能調校。
+
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。
 
 **2026-10-23 使用者暫停效能優化，改為合併分支與清理。**

@@ -1,3 +1,4 @@
+from akasha.query.query_plan import QueryNode, plan_query
 from akasha.query.field_recommendation import RecommendationExample
 from akasha.query.field_discovery import ContextPair
 from akasha import (
@@ -533,6 +534,113 @@ struct BoundCollection(Movable, Writable):
             return Python.none()
         var schema = self[].inner.value().vector_fields()
         return _point_to_python(point.value(), schema)
+
+    @staticmethod
+    def query[columns: Bool = False](
+        py_self: PythonObject, raw_nodes: PythonObject, options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var max_nodes = _exact_python_int(options["max_nodes"], "max_nodes")
+        var max_examples = _exact_python_int(options["max_examples"], "max_examples")
+        var max_k = _exact_python_int(options["max_k"], "max_k")
+        var size = len(raw_nodes)
+        if size <= 0 or size > max_nodes:
+            raise Error("query node resource limit exceeded")
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = Optional(QueryControl(token,
+            max_candidates=_exact_python_int(options["max_candidates"], "max_candidates"),
+            deadline_ns=_exact_python_int(options["deadline_ns"], "deadline_ns")))
+        control.value().checkpoint(0)
+        _ensure_open(self[])
+        var fields = self[].inner.value().vector_fields()
+        var nodes = List[QueryNode]()
+        var owners = Python.list()
+        var owner_indices = Dict[Int, Int]()
+        var examples = 0
+        for i in range(size):
+            control.value().checkpoint(i)
+            var raw = raw_nodes[i]
+            var kind = _exact_python_string(raw["kind"], "query kind")
+            var name = _exact_python_string(raw["using"], "query field")
+            var lookup_index = -1
+            var owner = raw["lookup_from"]
+            if not _is_python_none(owner):
+                var source = owner.downcast_value_ptr[BoundCollection]()
+                if Int(source) != Int(self):
+                    var identity = Int(source)
+                    if identity not in owner_indices:
+                        owner_indices[identity] = len(owners)
+                        owners.append(owner)
+                    lookup_index = owner_indices[identity]
+            var field = fields[0].copy()
+            if kind == "nearest" or kind == "recommend" or kind == "discover" or kind == "context":
+                if name != "":
+                    field = fields[_named_field_ordinal(fields, name)].copy()
+            field.scalar = 0
+            var target = Optional[RecommendationExample]()
+            var raw_target = raw["target"]
+            var pos = raw["positive"]
+            var neg = raw["negative"]
+            var count = Int(not _is_python_none(raw_target)) + len(pos) + len(neg)
+            if count > max_examples - examples:
+                raise Error("query example resource limit exceeded")
+            examples += count
+            if not _is_python_none(raw_target):
+                target = Optional(_query_example_from_python(raw_target, field))
+            var positive = _recommendation_examples_from_python(pos, field)
+            var negative = _recommendation_examples_from_python(neg, field)
+            var children = List[Int]()
+            var raw_children = raw["children"]
+            if len(raw_children) > size:
+                raise Error("query child resource limit exceeded")
+            for j in range(len(raw_children)):
+                children.append(_exact_python_int(raw_children[j], "prefetch index"))
+            var expression = Optional[FilterExpression]()
+            if not _is_python_none(raw["filter"]):
+                expression = Optional(_filter_expression(raw["filter"]))
+            var threshold = Optional[Float32]()
+            if not _is_python_none(raw["threshold"]):
+                threshold = Optional(Float32(py=raw["threshold"]))
+            var lookup_field = Optional[String]()
+            if not _is_python_none(raw["lookup_field"]):
+                lookup_field = Optional(_exact_python_string(raw["lookup_field"], "lookup field"))
+            var mmr = Optional[MmrOptions]()
+            var raw_mmr = raw["mmr"]
+            if not _is_python_none(raw_mmr):
+                mmr = Optional(MmrOptions(Float32(py=raw_mmr["diversity"]),
+                    _exact_python_int(raw_mmr["candidates_limit"], "MMR candidate limit")))
+            var weights = Optional[List[Float32]]()
+            if not _is_python_none(raw["weights"]):
+                var values = List[Float32]()
+                var raw_weights = raw["weights"]
+                if len(raw_weights) > size:
+                    raise Error("query weight resource limit exceeded")
+                for j in range(len(raw_weights)):
+                    values.append(Float32(py=raw_weights[j]))
+                weights = Optional(values^)
+            nodes.append(QueryNode(kind, name, target=target^, positive=positive^,
+                negative=negative^, strategy=_exact_python_string(raw["strategy"], "query strategy"),
+                children=children^, limit=_exact_python_int(raw["limit"], "query limit"),
+                offset=_exact_python_int(raw["offset"], "query offset"), threshold=threshold,
+                filter=expression^, approximate=Bool(py=raw["approximate"]),
+                ef_search=_exact_python_int(raw["ef_search"], "ef_search"),
+                lookup_index=lookup_index, lookup_field=lookup_field, mmr=mmr,
+                rank_constant=_exact_python_int(raw["rank_constant"], "rank constant"), weights=weights))
+        _ = plan_query(nodes, max_nodes, max_k, max_examples)
+        # All Python conversions finish before acquiring any read root. A
+        # callback may close either target or lookup: recheck both here.
+        _ensure_open(self[])
+        var lookups = List[ReadSnapshot]()
+        for i in range(len(owners)):
+            var source = owners[i].downcast_value_ptr[BoundCollection]()
+            _ensure_open(source[])
+            lookups.append(source[].inner.value().snapshot())
+        var results = self[].inner.value().query(nodes, lookups, control=control,
+            max_nodes=max_nodes, max_k=max_k, max_examples=max_examples)
+        return _field_results_to_python[columns](results)
 
     @staticmethod
     def discover_field[columns: Bool = False](
@@ -1948,6 +2056,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.recommend_field[False]]("recommend_field")
             .def_method[BoundCollection.recommend_field[True]]("recommend_field_columns")
             .def_method[BoundCollection.discover_field[False]]("discover_field")
+            .def_method[BoundCollection.query[False]]("query")
+            .def_method[BoundCollection.query[True]]("query_columns")
             .def_method[BoundCollection.discover_field[True]]("discover_field_columns")
             .def_method[BoundCollection.search_field[False]]("search_field")
             .def_method[BoundCollection.search_field[True]](

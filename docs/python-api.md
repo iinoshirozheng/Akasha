@@ -660,3 +660,101 @@ requires the separate Q02/Q06 audit/migration. No existing stored values change.
 
 Source and verification: [recommendation port](plans/2026-10-30-recommendation-source-port.md)
 and [exact validation](research/2026-10-30-recommendation-validation.md).
+
+
+## Universal query trees and nested prefetch
+
+`Collection.query(QueryRequest(...))` runs all branches on one captured native
+read root. The Mojo planner resolves every point-ID example before retrieval,
+propagates ancestor filters, and evaluates ordered prefetches before rescoring.
+Python only serializes the tree and passes retained lookup owners.
+
+```python
+from akashadb import QueryRequest, MmrOptions
+from akashadb.arrow import query_record_batch
+
+branches = (
+    QueryRequest("nearest", "image", target=image_embedding, limit=40),
+    QueryRequest("nearest", "text", target=text_embedding, limit=40),
+)
+fused = QueryRequest("rrf", prefetch=branches, limit=10, rank_constant=2)
+hits = collection.query(fused)
+batch = query_record_batch(collection, fused)
+
+# Restrict nearest rescoring to the union of the prefetch IDs.
+reranked = QueryRequest(
+    "nearest", "text", target=text_embedding, prefetch=branches,
+    limit=10, mmr=MmrOptions(diversity=0.5, candidates_limit=30),
+)
+hits = collection.query(reranked)
+```
+
+Supported `kind` values are `nearest`, `recommend`, `discover`, `context`,
+`rrf`, `dbsf`, and `scroll`. `using=""` selects the default dense field.
+Nearest uses `target`; recommendation uses `positive`, `negative`, and
+`strategy` (`average_vector`, `best_score`, `sum_scores`). Discovery has a
+`target` plus parallel `positive`/`negative` context sequences; context-only
+omits `target` and requires at least one pair. Examples are raw vectors or
+integer point IDs. `lookup_from` and `lookup_field` apply independently at each
+node. A lookup field may be `""` for the source's default dense vector.
+
+All IDs referenced on the target collection are excluded from **every** branch,
+including siblings. External source IDs are not excluded from target results.
+Explicit `lookup_from=collection` uses the target root. External lookup owners
+are retained once per request, after conversions finish; this is not an atomic
+cross-collection snapshot or transaction. Native `ReadSnapshot.query` can retain
+explicit older target and source roots across updates and collection close.
+
+Each node has its own `limit` (positive), `filter`, and `score_threshold`.
+Only the root accepts `offset`; its retrieval limit is `limit + offset`.
+Child limits are not automatically expanded. Parent filters run before child
+Top-K selection. Nearest/recommendation/discovery with prefetch rescore the
+**union** of candidate IDs, not an intersection or a fresh collection-wide
+search. An empty union stays empty. Dense HNSW uses `mode="approx"` and optional
+`ef_search`; sparse execution uses the existing source-derived sparse dispatcher.
+Multivector queries support exact scoring. Binary queries and IVF are not yet
+part of this universal API; their existing field APIs remain available.
+
+`rrf` accepts `rank_constant` and optional ordered `weights`. Qdrant weights
+compress/stretch ranks: `1 / ((position + 1) / weight + k - 1)` for zero-based
+positions. Nonpositive weights contribute zero while retaining their points.
+`dbsf` applies the existing source-derived distribution normalization. These
+paths retain native finite-score validation and stable ascending-ID ties;
+Qdrant's fusion tie ordering is not specified. Scores are source F32 values
+returned in Float64 result columns. Nearest/average-recommendation L2 returns
+Euclidean distance, unlike the older native `search_l2` squared-distance API.
+
+The pinned Qdrant MMR stage rules are preserved:
+
+- Root MMR first retrieves/rescores nearest candidates, applies its threshold,
+  selects the original request `limit`, then applies `offset`. Thus a nonzero
+  offset can leave fewer than `limit` results.
+- Nested MMR with children directly selects from their ordered results,
+  preserving the first occurrence's score. Its `candidates_limit` and threshold
+  do not prune that intermediate input.
+- A leaf prefetch carrying MMR returns nearest `candidates_limit` candidates;
+  it does not itself run MMR selection. The default candidate count is that
+  node's original `limit`, excluding the root offset.
+- MMR keeps its selection order and original scores. Equal relevance uses
+  the source's last-candidate tie rule, including at maximum diversity.
+
+`QueryRequest()` performs ID-ordered no-vector retrieval, returning `SearchResult`
+values with score zero. This is a bounded query, not a complete scroll-cursor or
+payload-projection API. `query_record_batch` returns owned `id: int64` and
+`score: float64` arrays that survive collection close.
+
+`max_query_batch` bounds both tree nodes and the total number of vector/ID
+examples. Maximum prefetch depth is 64. Every `limit + offset` and MMR candidate
+count must fit `max_k`. One `max_candidates` budget covers the entire plan:
+vector/scroll nodes charge the visible row count, fusion/nested MMR charge their
+input lengths, and MMR relevance/matrix scoring consumes additional work.
+Cancellation and deadlines are checked during native preparation and execution.
+Native arena input rejects shared children, cycles, forward links, and
+unreachable nodes; Python serializes repeated subtree objects as distinct tree
+occurrences and rejects ancestor cycles.
+
+This is a native universal-query slice, not full Qdrant REST/gRPC compatibility.
+Order-by, formulas, sampling, feedback, batch/projections, full datatype/storage
+parity, and multivector HNSW remain in the feature ledger. The existing graph
+quality/performance failures remain open. See the
+[query validation record](research/2026-10-30-universal-query-validation.md).

@@ -27,11 +27,11 @@ def same_collection_roots(left: ReadGeneration, right: ReadGeneration) raises ->
     return realpath(left._pins[]._directory) == realpath(right._pins[]._directory)
 
 
-def resolve_point_field(view: ReadGeneration, name: String, id: Int) raises -> PointField:
+def resolve_point_field(view: ReadGeneration, name: String, id: Int, *, allow_default: Bool = False) raises -> PointField:
     """Resolve an ID to an immutable native owner, never a Python vector copy."""
     if not view.catalog:
         raise Error("named lookup requires a field-aware collection")
-    var ordinal = view.catalog.value()[].named_ordinal(name)
+    var ordinal = 0 if allow_default and name == "" else view.catalog.value()[].named_ordinal(name)
     if ordinal < 0:
         raise Error("unknown named lookup field")
     var location = view.find(id)

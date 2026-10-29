@@ -28,15 +28,15 @@ struct RecommendationExample(Movable):
 def resolve_query_example(
     example: RecommendationExample, source: ReadGeneration,
     name: String, field: VectorFieldSpec, same: Bool,
-    mut excluded: Dict[Int, Bool],
+    mut excluded: Dict[Int, Bool], *, allow_default: Bool = False,
 ) raises -> VectorValue:
     var value: VectorValue
     if example.id:
         if example.vector:
             raise Error("query example must contain either ID or vector")
-        var point = resolve_point_field(source, name, example.id.value())
+        var point = resolve_point_field(source, name, example.id.value(), allow_default=allow_default)
         ref catalog = source.catalog.value()[]
-        ref source_field = catalog.field_at(catalog.named_ordinal(name))
+        ref source_field = catalog.field_at(0 if allow_default and name == "" else catalog.named_ordinal(name))
         # Qdrant retrieves already preprocessed stored vectors. Akasha keeps
         # raw native authority, so reconstruct that representation here.
         value = prepare_recommendation_vector(point.value(), source_field)

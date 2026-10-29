@@ -136,3 +136,22 @@ container/filter/normal-entry fallback stubs are documented adapters. It is
 not a full server, graph construction/traversal, SIMD or datatype/storage oracle.
 See `tests/fixtures/qdrant-discovery/README.md`,
 `docs/research/2026-10-30-discovery-validation.md` and `docs/upstream/ports.json`.
+
+
+### Universal query planning and nested prefetch
+
+`query/query_plan.mojo` and `query/universal.mojo` adapt Qdrant's
+`lib/shard/src/query/planned_query.rs`, `validation.rs`,
+`lib/collection/src/shards/local_shard/query.rs`,
+`lib/collection/src/operations/universal_query/collection_query.rs`, and
+`lib/collection/src/collection/query.rs` at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+The native postorder arena replaces recursive ownership while retaining ordered
+sources, inherited filters, global local-ID exclusion, candidate unions, limits,
+offsets and root/nested/leaf MMR stage distinctions. Native resource limits,
+fixed read roots, finite-score checks and ascending-ID fusion ties remain.
+
+The Rust planner oracle compiles the complete unchanged planner and validation
+bodies with opaque vector/filter/transport type adapters. It does not execute a
+Qdrant server or prove shard merging, scoring or protocol compatibility.
+See `tests/fixtures/qdrant-query-plan/README.md` and `docs/upstream/ports.json`.

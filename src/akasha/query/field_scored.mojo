@@ -27,6 +27,7 @@ def search_scored_field_exact[QueryType: PreparedFieldQuery](
     view: ReadGeneration, field: VectorFieldSpec, query: QueryType, k: Int,
     expression: Optional[FilterExpression], excluded: Dict[Int, Bool],
     control: Optional[QueryControl],
+    required_ids: Optional[Dict[Int, Bool]] = None,
 ) raises -> FieldSearchExecution:
     var stats = field_exact_stats(field)
     stats.backend_name = String("qdrant-", query.query_name(), "-f32")
@@ -44,7 +45,7 @@ def search_scored_field_exact[QueryType: PreparedFieldQuery](
                 control.value().checkpoint(scanned)
             scanned += 1
             ref entry = table.entry_ref_at(slot)
-            if entry.id in excluded:
+            if entry.id in excluded or (required_ids and entry.id not in required_ids.value()):
                 stats.filtered_rejections += 1
                 continue
             var field_ordinal = entry.field_ordinal(field.id)
@@ -116,20 +117,27 @@ struct FieldPointScorer[QueryType: PreparedFieldQuery](HnswQueryScorer, Movable)
         return field_exact_stats(self.field).scalar_name.copy()
 
 
-def search_scored_field_approx[QueryType: PreparedFieldQuery](
-    view: ReadGeneration, field: VectorFieldSpec, query: ArcPointer[QueryType], k: Int,
-    expression: Optional[FilterExpression], excluded: Dict[Int, Bool],
-    ef_search: Int, control: Optional[QueryControl],
-    entry_query: Optional[ArcPointer[QueryType]] = None,
-) raises -> FieldSearchExecution:
-    if control:
-        control.value().checkpoint(0)
+def validate_scored_field_options(field: VectorFieldSpec, k: Int, ef_search: Int) raises -> Int:
     if field.kind != 0 or field.index != 1 or not field.hnsw:
         raise Error("approximate custom query requires configured dense HNSW")
     ref config = field.hnsw.value()
     var ef = config.default_ef_search if ef_search == -1 else ef_search
     if ef <= 0 or ef > config.max_ef_search or k > config.max_ef_search:
         raise Error("custom query HNSW ef or k exceeds configured bounds")
+    return ef
+
+
+def search_scored_field_approx[QueryType: PreparedFieldQuery](
+    view: ReadGeneration, field: VectorFieldSpec, query: ArcPointer[QueryType], k: Int,
+    expression: Optional[FilterExpression], excluded: Dict[Int, Bool],
+    ef_search: Int, control: Optional[QueryControl],
+    entry_query: Optional[ArcPointer[QueryType]] = None,
+    required_ids: Optional[Dict[Int, Bool]] = None,
+) raises -> FieldSearchExecution:
+    if control:
+        control.value().checkpoint(0)
+    var ef = validate_scored_field_options(field, k, ef_search)
+    ref config = field.hnsw.value()
     var rows = gather_field_rows(view, field.id, control)
     var eligible_count = 0
     for layer in range(view.layer_count()):
@@ -139,7 +147,7 @@ def search_scored_field_approx[QueryType: PreparedFieldQuery](
                 control.value().checkpoint(scan_index)
             var ordinal = ordinals[scan_index]
             ref entry = view.run(layer).memtable.entry_ref_at(ordinal)
-            if entry.id not in excluded and entry.field_ordinal(field.id) >= 0:
+            if entry.id not in excluded and entry.field_ordinal(field.id) >= 0 and (not required_ids or entry.id in required_ids.value()):
                 eligible_count += 1
     var stats = field_exact_stats(field)
     stats.backend_name = String("qdrant-", query[].query_name(), "-f32")
@@ -148,10 +156,10 @@ def search_scored_field_approx[QueryType: PreparedFieldQuery](
         return FieldSearchExecution([], stats^, query[].query_name() + "_empty")
     var plan = QueryPlanner.plan_dense(
         len(rows), eligible_count, k, ef, config.max_ef_search,
-        Bool(expression) or len(excluded) > 0, True, True,
+        Bool(expression) or len(excluded) > 0 or Bool(required_ids), True, True,
     )
     if not plan.use_hnsw:
-        var exact = search_scored_field_exact(view, field, query[], k, expression, excluded, control)
+        var exact = search_scored_field_exact(view, field, query[], k, expression, excluded, control, required_ids)
         exact.reason = query[].query_name() + "_" + plan.reason
         exact.stats.fallback_reason = exact.reason.copy()
         exact.stats.requested_ef = ef
@@ -169,7 +177,7 @@ def search_scored_field_approx[QueryType: PreparedFieldQuery](
                 control.value().checkpoint(scan_index)
             var ordinal = ordinals[scan_index]
             ref entry = view.run(layer).memtable.entry_ref_at(ordinal)
-            if entry.id in excluded or entry.field_ordinal(field.id) < 0:
+            if entry.id in excluded or entry.field_ordinal(field.id) < 0 or (required_ids and entry.id not in required_ids.value()):
                 continue
             var row = graph[].lookup.ordinal_for(entry.id)
             if row < 0:
@@ -232,7 +240,7 @@ def search_scored_field_approx[QueryType: PreparedFieldQuery](
                 topk.offer(candidate.id, Float64(candidate.score))
     var results = topk.sorted_entries()
     if len(results) < min(k, eligible_count):
-        var exact = search_scored_field_exact(view, field, query[], k, expression, excluded, control)
+        var exact = search_scored_field_exact(view, field, query[], k, expression, excluded, control, required_ids)
         exact.reason = query[].query_name() + "_ann_exhausted"
         exact.stats.fallback_reason = exact.reason.copy()
         exact.stats.requested_ef = ef

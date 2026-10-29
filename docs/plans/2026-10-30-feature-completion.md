@@ -210,3 +210,19 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   offset/projection and full protocol exposure. Q02/Q06 datatype/storage,
   multivector HNSW and quality gates remain; proceed with Q04 functionality
   before performance work. All other master-ledger deliverables are retained.
+
+- **Q04a native universal query tree implemented and verified.** Postorder native
+  planner/executor now exposes ordered nested prefetch, nearest/recommendation/
+  discovery/context rescoring, RRF/weighted RRF/DBSF, root/nested/leaf MMR and
+  bounded ID-ordered no-vector queries through Mojo/Python/Arrow. Ancestor filters
+  apply before leaf selection; all target-collection ID references are excluded
+  globally; candidate unions stay within one retained target root. Native limits,
+  deadlines, cancellation and post-conversion owner checks cover the whole tree.
+  The pinned unchanged Rust planner/validation functions produced 103 source
+  cases; 14 relevant native tests and full Python 2115 passed / 1 optional skip.
+  [Plan](2026-10-30-universal-query-source-port.md) and
+  [validation](../research/2026-10-30-universal-query-validation.md).
+  Q04 remains open for sampling/formula/boosting/feedback; Q03/Q05 retain batch,
+  projections, full cursor/order/group/facet/matrix and protocol work. Datatype/
+  storage, source graph planner and complete nonfinite behavior remain under
+  Q02/Q06. Existing recall/performance failures and native Linux deferral remain.

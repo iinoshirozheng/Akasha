@@ -813,6 +813,86 @@
         "tests/mojo/test_hnsw_entries.mojo": "0f6a4171d70fce7e7a4c15ce0379df406d5b77ad9d1f5cef89056877e736cd8f",
         "tests/python/test_discovery.py": "ab3b3edfa974bedd3d48aada27897ef4f0aaad7d5b236ed43566170350d0783b"
       }
+    },
+    {
+      "id": "Q04a-universal-query-tree",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/shard/src/query/planned_query.rs": "504fa8da9de257b66c40c2143c112660aa4645b2ce5dbd967ca95e88eda076b4",
+        "lib/shard/src/query/validation.rs": "5aabcee62e489216fd9998f0e94c1cc9d4ffbded1d09e8fdae937e71611eb7ed",
+        "lib/shard/src/query/mod.rs": "5cce19d01670a34d7942cb18cc3b4efea5908d2dcdb07210d5085a24ff60346f",
+        "lib/collection/src/shards/local_shard/query.rs": "6a16165049c2df60c4fb74bb5791b2a951f35c037febd99f8a0fc8424fd95bb7",
+        "lib/collection/src/operations/universal_query/collection_query.rs": "157a346aee2aa864121b2e896e36c41436069188a978f4623045250167c2c8a4",
+        "lib/collection/src/collection/query.rs": "ee9b41764fc2be12bc5f27cf0158db6697e4424b21e0318caba28b950cf31524",
+        "lib/shard/src/query/mmr/mod.rs": "ecbb1cb62cb4badf7f2957c90629a541225b4543651270ca6b7f068bc5379b02",
+        "lib/segment/src/common/reciprocal_rank_fusion.rs": "d28f976545043b1203f25136dc65c6aff09218ce7512fbcac344cd2ffe440557",
+        "lib/segment/src/common/score_fusion.rs": "c33a0685920f9f18787cd19eeecf07c95b13567661913caaffbb1adaa28c89fd",
+        "lib/api/src/rest/schema.rs": "c79d738c2a6e530a11876a14d40ff91a37e8b60802f265d784927e26054dbcbe"
+      },
+      "oracle_units_sha256": [
+        "ae80805e75856efd03024ed136f61b420634c8be8decf711291ed03506c08c90",
+        "96389089ff9a26680a2438f89e523807f3dfc261d71d4149e8b7baafaf21ee87",
+        "9658030873736a403e57c96334d0e8e3d6b44b1b144d55ff680655a06d989a13",
+        "3834b59d132a9fa73150fc2588c48cf357d79ee883d9c95c5970c1dc49dcc17c"
+      ],
+      "scaffold_sha256": "b2fe032e969005c51b233e6e219e0ee101fc6528494c0fc70ad7ba540704263d",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/query/query_plan.mojo",
+        "src/akasha/query/universal.mojo",
+        "src/akasha/query/control.mojo",
+        "src/akasha/query/field_examples.mojo",
+        "src/akasha/query/field_lookup.mojo",
+        "src/akasha/query/field_scored.mojo",
+        "src/akasha/query/field_mmr.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/__init__.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/query.py",
+        "python/akashadb/database.py",
+        "python/akashadb/arrow.py",
+        "python/akashadb/__init__.py"
+      ],
+      "adaptations": [
+        "Postorder owned arena replaces recursive source structures; preserves ordered single-parent tree and maximum prefetch depth 64",
+        "All local point references resolve before execution; parent filters propagate before leaf selection and vector rescoring admits the child-ID union",
+        "Root MMR performs nearest rescoring; nested MMR keeps source input order/scores and ignores candidate/threshold pruning; leaf MMR only fetches nearest candidates",
+        "Captured target and distinct external roots, native cumulative resource limits/cancellation/deadline, post-conversion owner checks",
+        "Native finite-score validation, ascending-ID fusion ties and existing graph/precision/storage contracts retained; not full protocol or distributed query compatibility",
+        "Unchanged planner/validation/depth source units compile with opaque type/filter/transport adapters; oracle does not execute scoring or full server",
+        "Full Q04 formula/sampling/feedback, Q05 read operations, datatype/storage, multi-vector HNSW and complete boundary exposure remain open"
+      ],
+      "fixture": "tests/fixtures/qdrant-query-plan/plans.json",
+      "fixture_sha256": "783327e203ed31adeb2c6adaab91e1c9a17b0032af4383d5c859f7f1f7ff9af1",
+      "reference_plan_cases": 103,
+      "status": "implemented_native_query_tree_verified_full_q04_pending",
+      "verification": [
+        "docs/research/2026-10-30-universal-query-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/query_plan.mojo": "54338d343a87cc1bafe40509f180955a007b1da1f762c2a8a1044f4eb8d1bfbf",
+        "src/akasha/query/universal.mojo": "532bb2d604fd2b82e5a06314372bc0d9bbe1279497913c2d62100437008a98e4",
+        "src/akasha/query/control.mojo": "44d3c18b881cf42641137728fc7ca9531174330f2482bb843ef1361623f14d10",
+        "src/akasha/query/field_examples.mojo": "f9f7e8b7b5856bc81377c0d83e9f8b11c1adc2aeb2591058620bf8e892f25dac",
+        "src/akasha/query/field_lookup.mojo": "416497ef45cf7f3398645334f3ad34d5564895c1666b771022ef1c906e610e94",
+        "src/akasha/query/field_scored.mojo": "9756a7025e206000a1cedbac0d7da2a22b8e0b5c96181a5d3af923477a2b4211",
+        "src/akasha/query/field_mmr.mojo": "65e0f18c28712eefe069b57adeac344f4d9627b831371bd36594fc244e7cb91b",
+        "src/akasha/api/snapshot.mojo": "197d2542aa2978dc489d6b4e83e0376f738d1a252d2d71a76c7dd4cb29eedffd",
+        "src/akasha/api/collection.mojo": "606b1d0f7a4c8c722d44887951d4253b9a2b128599e792b5aa3aaafefa80f486",
+        "src/akasha/__init__.mojo": "d74fdd2d8ed926deb67601774e7b32e5e7fc094e839f5fd34863bdec698a6665",
+        "src/bindings/python_module.mojo": "a96fab91ad8b174b65ea2985ce049e01842c532eefa36225823ebe4a762bb77a",
+        "python/akashadb/query.py": "9236ce1440d1cc391d3c6bccfddbcad0ff41911fc4b6e35fcb878c60a30c82bd",
+        "python/akashadb/database.py": "82874e151ece55313b18a4ab665b240da3aed917b9d30705870059a98910a814",
+        "python/akashadb/arrow.py": "8fdb4e3acbfd97194ceb16d5a3112ad69928023a599b5bcf382ff0ffa87f7a3c",
+        "python/akashadb/__init__.py": "652cb54e68b1bfc3f8a485db84798d02a056fbb614c77fe38c09dfa509fcf36f",
+        "scripts/qdrant_query_plan_reference.py": "76873063716ebd60e30c4f9dd1cd8dfeb49d5c1e7e6ff3f92778f57ada75cb4b",
+        "tests/mojo/test_universal_query.mojo": "3e40b8e95c7a54acb0194ca461c59c03f7a428fa45868c66251cbf4038e10d8d",
+        "tests/python/test_universal_query.py": "e25c88e6ca5f2b267bb887d1306ce1ffd895c4bcac3d63b5db514b291b1c58f1"
+      }
     }
   ]
 }

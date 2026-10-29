@@ -1,3 +1,5 @@
+from akasha.query.query_plan import QueryNode
+from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
 from akasha.query.field_discovery import ContextPair
 from akasha.document.point_state import FieldUpdate, PointMutation, PointState
@@ -405,6 +407,18 @@ struct PersistentCollection:
             ivf=ivf, mmr=mmr,
             control=control,
         )
+        with BlockingScopedLock(self._writer_lock[]):
+            self._last_search_stats = copy_search_stats(execution.stats)
+            self._last_dense_plan_reason = execution.reason.copy()
+        return execution.take_results()
+
+    def query(
+        mut self, nodes: List[QueryNode], lookups: List[ReadSnapshot], *,
+        control: Optional[QueryControl] = None, max_nodes: Int = 1024,
+        max_k: Int = 10_000, max_examples: Int = 1024,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.snapshot().query_reported(nodes, lookups,
+            control=control, max_nodes=max_nodes, max_k=max_k, max_examples=max_examples)
         with BlockingScopedLock(self._writer_lock[]):
             self._last_search_stats = copy_search_stats(execution.stats)
             self._last_dense_plan_reason = execution.reason.copy()

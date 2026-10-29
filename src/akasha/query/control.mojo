@@ -27,7 +27,7 @@ struct CancellationToken(Movable):
             return self._state[].cancelled
 
 
-struct QueryControl(Movable):
+struct QueryControl(Copyable, Movable):
     """Cooperative exact-query cancellation, deadline, and scan budget."""
 
     var _state: ArcPointer[_CancellationState]

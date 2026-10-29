@@ -134,6 +134,14 @@ def search_field_record_batch(
     ], names=["id", "score"])
 
 
+def query_record_batch(collection: Collection, request: Any, **options: Any) -> Any:
+    """Return owned Arrow ID/score columns from a native universal query."""
+    import pyarrow as pa
+    raw = collection._query_raw(request, columns=True, **options)
+    return pa.record_batch([pa.array(raw["ids"], type=pa.int64(), from_pandas=False),
+                           pa.array(raw["scores"], type=pa.float64(), from_pandas=False)], names=["id", "score"])
+
+
 def discover_field_record_batch(
     collection: Collection, name: str, target: Any = None, context: list[ContextPair] | None = None,
     k: int = 10, *, mode: str = "exact", ef_search: int | None = None,
