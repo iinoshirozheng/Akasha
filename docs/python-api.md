@@ -258,11 +258,24 @@ check cancellation/deadlines between rows and before publication; graph search
 checks before/after its bounded traversal. Python cancellation is sampled at entry
 to the synchronous call, as in `search_controlled`.
 
-Named sparse fields use independent root-owned inverted postings. Dot products
-multiply and accumulate in Float32 in ascending query-term order, matching
-Qdrant. Only nonzero scores participate: empty vectors, no shared terms and
-exactly cancelling contributions produce no hit. Negative scores remain valid.
-An empty named sparse query returns no results.
+Named and default sparse fields share root-owned inverted postings and the
+source-derived Qdrant search paths. Products round to Float32 before addition,
+in ascending query-term order. `mode="exact"` and `mode="approx"` select the same
+sparse dispatch; HNSW-only `ef_search` / `rerank_k` remain invalid. Without a
+filter, search uses indexed batches. With a filter, source-ID exclusion or
+rerank candidate-ID restriction, fewer than 5000 admitted vectors select plain
+search; at 5000 the indexed path is used. Akasha uses exact admitted counts,
+not Qdrant's cardinality estimate; configurable thresholds and IDF remain open.
+
+Indexed batches omit zero scores, while plain search and the single-posting
+tail may retain overlapping zero scores. Empty queries and no-overlap rows do
+not produce hits. Negative scores remain valid. The source's TopK threshold
+omits NaN, negative overflow and exactly `f32::MIN`; positive overflow can be
+returned by ordinary sparse search. Recommendation queries retain their
+separate finite-result validation. Sparse reranking applies the same search
+with the candidate IDs as an additional filter; it cannot introduce points
+outside that candidate set. Stats report `field_sparse_empty`,
+`field_sparse_plain` or `field_sparse_indexed`.
 
 Dense fields also support `mode="ivf", ivf=IvfOptions(nlist=32, nprobe=4,
 iterations=8)`. Import `IvfOptions` from `akashadb`; these are the defaults when
@@ -426,8 +439,8 @@ Int64 IDs and Float64 scores.
 ### Qdrant behavior migration
 
 All upserts replace whole points (including omitted fields and payload),
-sparse searches exclude zero scores, and RRF defaults to constant 2 with
-zero-based ranks and Float32 accumulation. Use `PointMutation.update` for partial
+sparse searches use the path-specific zero rules above, and RRF defaults to
+constant 2 with zero-based ranks and Float32 accumulation. Use `PointMutation.update` for partial
 changes. Older WAL v4 is replayed with its historical merge semantics; new writes
 use WAL v5. Complete point checkpoints use Segment v5, which permits zero sparse
 weights; existing Segment v4 remains readable with its original validation.
@@ -524,9 +537,9 @@ three use `field-postings`; custom scoring uses `field-flat`. Filter/exclusion
 visibility is retained, and owned Arrow results survive close. Native sparse
 planning currently uses exact eligible counts and the upstream default threshold;
 configurable thresholds, IDF and full source planner/service parity remain open.
-Ordinary native nearest APIs still keep their existing zero-admission contract;
-their full migration is separate pending work. Sparse recommendation has no
-alternate flat average path. See [sparse source validation](research/2026-10-30-sparse-recommendation-validation.md).
+Ordinary nearest, default/hybrid and candidate-rerank APIs now share this source
+dispatch. Sparse recommendation has no alternate flat average path. See
+[shared sparse validation](research/2026-10-30-sparse-nearest-validation.md).
 
 Multivector HNSW recommendation and universal REST/gRPC/C exposure remain
 required work. F32 scalar

@@ -7,6 +7,7 @@ search; recommendation transforms/reducers have their own existing Rust oracle.
 from __future__ import annotations
 
 import hashlib
+import argparse
 import json
 from pathlib import Path
 import random
@@ -24,6 +25,9 @@ def bits(value):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--nearest", action="store_true", help="Add ordinary nearest overflow/TopK fixtures without changing the recommendation fixture")
+    args = parser.parse_args()
     sources = {}
     functions = {}
 
@@ -59,6 +63,8 @@ def main():
     source("lib/segment/src/index/sparse_index/sparse_vector_index/read_view/search.rs")
     source("lib/segment/src/index/sparse_index/sparse_vector_index/vector_index_impl.rs")
     source("lib/segment/src/types.rs")
+    if args.nearest:
+        source("lib/collection/src/shards/local_shard/query.rs")
 
     scaffold = r'''
 use std::cmp::{Ordering, min, max};
@@ -207,6 +213,21 @@ fn main() {
             query.append([term, struct.unpack("<f", struct.pack("<I", value))[0]])
         add(f"pipeline_{index}", len(sample["candidates"]), dict(enumerate(sample["candidates"])), query)
 
+    if args.nearest:
+        add("rounded_products_cancel", 2, {0: [[1, 1.0000001192092896], [2, -1.0000001192092896]]}, [[1, 0.9999998807907104], [2, 0.9999998807907104]])
+        add("overflow_admission", 6, {
+            0: [[1, 3e38], [2, -3e38]], 1: [[1, 3e38]],
+            2: [[1, -3e38]], 3: [[1, 1]], 4: [[9, 1]],
+        }, [[1, 3e38], [2, 3e38]])
+        add("minimum_threshold", 4, {0: [[1, -3.4028234663852886e38]], 1: [[1, -3e38]], 2: [[1, 0]]}, [[1, 1]])
+        add("filtered_overflow", 4, {0: [[1, 3e38]], 1: [[1, -3e38]], 2: [[1, 1]]}, [[1, 3e38]], [2, 3])
+        add("last_posting_overflow", 10005, {0: [[1, 1], [2, 1]], 10001: [[1, 3e38]], 10002: [[1, -3e38]], 10004: [[1, 0]]}, [[1, 2], [2, 1]])
+        add("bounded_topk", 101, {row: [[1, row-50]] for row in range(101)}, [[1, 1]], k=5)
+        for index in range(32):
+            points = {row: [[term, rng.uniform(-8, 8)] for term in range(11) if rng.random() < 0.6] for row in range(19)}
+            query = [[term, rng.uniform(-8, 8)] for term in range(11)]
+            add(f"fractional_{index}", 19, points, query)
+
     def encode(vector):
         return ",".join(f"{term}:{bits(value)}" for term, value in vector) or "-"
 
@@ -232,7 +253,8 @@ fn main() {
                    transforms_fixture=str(transforms_path.relative_to(ROOT)),
                    transforms_fixture_sha256=hashlib.sha256(transforms_path.read_bytes()).hexdigest(),
                    cases=cases)
-    target = ROOT / "tests/fixtures/qdrant-recommendation/sparse-search.json"
+    target = ROOT / ("tests/fixtures/qdrant-sparse-nearest/search.json" if args.nearest else "tests/fixtures/qdrant-recommendation/sparse-search.json")
+    target.parent.mkdir(parents=True, exist_ok=True)
     metadata = {key: value for key, value in fixture.items() if key != "cases"}
     target.write_text(json.dumps(metadata, indent=2)[:-2] + ',\n  "cases": [\n' +
                       ',\n'.join('    ' + json.dumps(case, separators=(',', ':')) for case in cases) + '\n  ]\n}\n')

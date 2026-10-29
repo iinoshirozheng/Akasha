@@ -59,7 +59,7 @@ def test_named_postings_exclude_f32_zero_preserve_negative_and_root_visibility()
         [SparseElement(1, 1), SparseElement(2, 1), SparseElement(3, 1)]
     )
     var result = snapshot.search_field_reported("terms", query, 10)
-    assert_equal(result.reason, "field_sparse")
+    assert_equal(result.reason, "field_sparse_indexed")
     assert_equal(result.stats.storage_name, "field-postings")
     # F32 cancellation, empty rows and non-overlapping rows are not results.
     assert_equal(len(result.results), 1)

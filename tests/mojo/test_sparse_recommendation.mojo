@@ -53,8 +53,8 @@ def test_sparse_controls_bounds_and_nonfinite_admission() raises:
     var query: List[SparseElement] = [SparseElement(1, 2)]
     for plain in [False, True]:
         with assert_raises(contains="finite"):
-            _ = search_sparse_postings(owner, query, [True, True], 2, plain)
-        var filtered = search_sparse_postings(owner, query, [False, True], 2, plain)
+            _ = search_sparse_postings(owner, query, [True, True], 2, plain, require_finite=True)
+        var filtered = search_sparse_postings(owner, query, [False, True], 2, plain, require_finite=True)
         assert_equal(len(filtered.results), 1)
         assert_equal(filtered.results[0].id, 2)
         var token = CancellationToken()

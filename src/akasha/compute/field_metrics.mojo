@@ -1,3 +1,4 @@
+from akasha.index.sparse_values import sparse_product
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from std.bit import pop_count
@@ -60,7 +61,7 @@ def _score_validated_field(
             elif lhs[left].term_id > rhs[right].term_id:
                 right += 1
             else:
-                total += Float32(lhs[left].weight) * Float32(rhs[right].weight)
+                total += sparse_product(lhs[left].weight, rhs[right].weight)
                 left += 1
                 right += 1
         return Float64(total)

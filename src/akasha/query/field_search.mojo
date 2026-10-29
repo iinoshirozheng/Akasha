@@ -9,7 +9,7 @@ from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.field_artifacts import FieldRow
 from akasha.index.field_sparse import FieldSparseIndex
-from akasha.index.sparse import sparse_score_is_eligible
+from akasha.index.sparse_search import search_sparse_postings
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
 from akasha.query.filter_ast import FilterExpression
@@ -94,6 +94,25 @@ def search_point_field(
         expression.value().validate()
     if len(points) == 0:
         return List[FieldSearchResult]()
+    if field.kind == 1:
+        var built = FieldSparseIndex()
+        var allowed = List[Bool]()
+        var matched = 0
+        for row in range(len(points)):
+            ref point = points[row]
+            var ordinal = point.ordinal_for(field.id)
+            if point.tombstone or ordinal < 0:
+                continue
+            built.add(FieldRow(point.id, 0, row), point.field_at(ordinal).value().sparse_values())
+            var admit = not expression or matches_expression(point.payload(), expression.value())
+            allowed.append(admit)
+            if admit:
+                matched += 1
+        var outcome = search_sparse_postings(ArcPointer(built^), query.sparse_values(), allowed, k, Bool(expression) and matched < 5_000)
+        var sparse_results = List[FieldSearchResult](capacity=len(outcome.results))
+        for hit in outcome.results:
+            sparse_results.append(FieldSearchResult(hit.id, Float64(hit.score)))
+        return sparse_results^
     var topk = BoundedTopK[DType.float64](
         min(k, len(points)),
         smaller_is_better=field.metric == 1
@@ -115,8 +134,7 @@ def search_point_field(
         if field.kind == 2 and value.row_count() == 0:
             continue
         var score = _score_validated_field(query, value, field)
-        if field.kind != 1 or sparse_score_is_eligible(Float32(score)):
-            topk.offer(point.id, score)
+        topk.offer(point.id, score)
     return topk.sorted_entries()
 
 
@@ -153,10 +171,10 @@ def search_generation_field_reported(
         control.value().checkpoint(0)
         control.value().validate_candidate_count(view.visible_count)
     var stats = field_exact_stats(field)
+    if field.kind == 1:
+        return search_sparse_field(view, field, query, k, expression, control, excluded_ids)
     if view.visible_count == 0:
         return FieldSearchExecution([], stats^, "field_exact")
-    if field.kind == 1:
-        return _search_sparse_field(view, field, query, k, expression, control, excluded_ids)
     var topk = BoundedTopK[DType.float64](
         min(k, view.visible_count),
         smaller_is_better=field.metric == 1
@@ -233,49 +251,48 @@ def _sparse_artifact(
             raise error^
 
 
-def _search_sparse_field(
-    view: ReadGeneration,
-    field: VectorFieldSpec,
-    query: VectorValue,
-    k: Int,
-    expression: Optional[FilterExpression],
-    control: Optional[QueryControl],
-    excluded_ids: Optional[Dict[Int, Bool]],
+def search_sparse_field(
+    view: ReadGeneration, field: VectorFieldSpec, query: VectorValue, k: Int,
+    expression: Optional[FilterExpression], control: Optional[QueryControl],
+    excluded_ids: Optional[Dict[Int, Bool]] = None, *,
+    required_ids: Optional[Dict[Int, Bool]] = None, require_finite: Bool = False,
 ) raises -> FieldSearchExecution:
-    var owner = _sparse_artifact(view, field, control)
-    ref index = owner[]
+    """Source sparse dispatch, including candidate-ID filters for rescoring.
+
+    Qdrant sparse_vector_index/read_view/search.rs and local_shard/query.rs at
+    74f3e85b9473c62560006c043e13737ce6b48412 (Apache-2.0). Exact native admitted
+    counts stand in for the upstream cardinality estimator; default threshold 5000.
+    """
     var stats = field_exact_stats(field)
     stats.storage_name = "field-postings"
-    if len(index.rows) == 0:
-        return FieldSearchExecution([], stats^, "field_sparse")
-    var scores = index.scores(query.sparse_values(), control)
-    var topk = BoundedTopK[DType.float64](
-        min(k, len(index.rows)), smaller_is_better=False
-    )
-    var visited = 0
-    for row in scores:
-        if control:
-            control.value().checkpoint(visited)
-        visited += 1
-        if not sparse_score_is_eligible(scores[row]):
-            continue
-        ref location = index.rows[row]
-        if excluded_ids and location.id in excluded_ids.value():
-            stats.filtered_rejections += 1
-            continue
-        ref entry = view.run(location.layer).memtable.entry_ref_at(
-            location.ordinal
-        )
-        if expression and not matches_expression(
-            entry.fields(), expression.value()
-        ):
-            stats.filtered_rejections += 1
-            continue
-        topk.offer(location.id, Float64(scores[row]))
-        stats.base_visited += 1
     if control:
         control.value().checkpoint(0)
-    var results = topk.sorted_entries()
-    stats.distance_evaluations = len(scores)
+    if len(query.sparse_values()) == 0:
+        return FieldSearchExecution([], stats^, "field_sparse_empty")
+    var owner = _sparse_artifact(view, field, control)
+    var allowed = List[Bool](length=len(owner[].rows), fill=False)
+    var matched = 0
+    for row in range(len(owner[].rows)):
+        if control:
+            control.value().checkpoint(row)
+        var location = owner[].rows[row]
+        if excluded_ids and location.id in excluded_ids.value():
+            continue
+        if required_ids and location.id not in required_ids.value():
+            continue
+        ref entry = view.run(location.layer).memtable.entry_ref_at(location.ordinal)
+        if expression and not matches_expression(entry.fields(), expression.value()):
+            continue
+        allowed[row] = True
+        matched += 1
+    var filtered = Bool(expression) or Bool(required_ids) or (Bool(excluded_ids) and len(excluded_ids.value()) > 0)
+    var plain = filtered and matched < 5_000
+    var outcome = search_sparse_postings(owner, query.sparse_values(), allowed, k, plain, control, require_finite=require_finite)
+    var results = List[FieldSearchResult](capacity=len(outcome.results))
+    for hit in outcome.results:
+        results.append(FieldSearchResult(hit.id, Float64(hit.score)))
+    stats.distance_evaluations = outcome.evaluated
+    stats.base_visited = outcome.evaluated
+    stats.filtered_rejections = outcome.rejected
     stats.retained_candidates = len(results)
-    return FieldSearchExecution(results^, stats^, "field_sparse")
+    return FieldSearchExecution(results^, stats^, "field_sparse_plain" if plain else "field_sparse_indexed")

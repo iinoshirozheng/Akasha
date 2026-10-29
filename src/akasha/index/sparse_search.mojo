@@ -10,7 +10,7 @@ non-pruning path applies. Native bounded Top-K retains ascending public-ID ties.
 from akasha.compute.topk import BoundedTopK, TopKEntry
 from akasha.index.field_sparse import FieldSparseIndex, _FieldPosting
 from akasha.index.sorted_postings import _lower_bound
-from akasha.index.sparse import SparseElement, validate_sparse
+from akasha.index.sparse_values import SparseElement, validate_sparse, sparse_product
 from akasha.query.control import QueryControl
 from std.math import isfinite
 from std.memory import ArcPointer, bitcast
@@ -32,14 +32,14 @@ struct _PostingCursor(TrivialRegisterPassable):
 
 def _offer_sparse(
     index: FieldSparseIndex, allowed: List[Bool], row: Int, score: Float32,
-    allow_zero: Bool, mut heap: BoundedTopK[DType.float32], mut rejected: Int,
+    allow_zero: Bool, require_finite: Bool, mut heap: BoundedTopK[DType.float32], mut rejected: Int,
 ) raises:
     if not allowed[row]:
         rejected += 1
         return
     # Recommendation's public contract rejects nonfinite results. Keep this
     # after visibility/filter admission so rejected rows cannot fail a query.
-    if not isfinite(score):
+    if require_finite and not isfinite(score):
         raise Error("recommendation score must be finite")
     if (allow_zero or score != 0) and score > bitcast[DType.float32](UInt32(0xFF7FFFFF)):
         heap.offer(index.rows[row].id, score)
@@ -59,7 +59,7 @@ def _next_sparse_row(index: FieldSparseIndex, cursors: List[_PostingCursor]) rai
 def search_sparse_postings(
     owner: ArcPointer[FieldSparseIndex], query: List[SparseElement],
     allowed: List[Bool], k: Int, plain: Bool,
-    control: Optional[QueryControl] = None,
+    control: Optional[QueryControl] = None, *, require_finite: Bool = False,
 ) raises -> SparseSearchOutcome:
     """Nearest sparse search, preserving source path-specific zero admission."""
     if k <= 0:
@@ -98,11 +98,11 @@ def search_sparse_postings(
                 ref postings = index.postings[cursor.term]
                 var position = _lower_bound(postings, _FieldPosting(row, 0))
                 if position < len(postings) and postings[position].row == row:
-                    score += postings[position].weight * cursor.weight
+                    score += sparse_product(postings[position].weight, cursor.weight)
                     overlaps = True
             if overlaps:
                 evaluated += 1
-                _offer_sparse(index, allowed, row, score, True, heap, rejected)
+                _offer_sparse(index, allowed, row, score, True, require_finite, heap, rejected)
     else:
         var next_row = _next_sparse_row(index, cursors)
         while next_row:
@@ -124,7 +124,7 @@ def search_sparse_postings(
                     if control:
                         control.value().checkpoint(operations)
                     operations += 1
-                    scores[posting.row - start] += posting.weight * cursor.weight
+                    scores[posting.row - start] += sparse_product(posting.weight, cursor.weight)
                     touched[posting.row - start] = True
                     cursor.position += 1
             for offset in range(len(scores)):
@@ -132,7 +132,7 @@ def search_sparse_postings(
                     control.value().checkpoint(offset)
                 if touched[offset]:
                     evaluated += 1
-                    _offer_sparse(index, allowed, start + offset, scores[offset], False, heap, rejected)
+                    _offer_sparse(index, allowed, start + offset, scores[offset], False, require_finite, heap, rejected)
             var remaining = List[_PostingCursor](capacity=len(cursors))
             for cursor in cursors:
                 if cursor.position < len(index.postings[cursor.term]):
@@ -153,7 +153,7 @@ def search_sparse_postings(
                         rejected += 1
                         continue
                     evaluated += 1
-                    _offer_sparse(index, allowed, posting.row, posting.weight * cursor.weight, True, heap, rejected)
+                    _offer_sparse(index, allowed, posting.row, posting.weight * cursor.weight, True, require_finite, heap, rejected)
                 break
             next_row = _next_sparse_row(index, cursors)
     if control:

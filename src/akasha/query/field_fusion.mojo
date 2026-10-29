@@ -7,7 +7,6 @@ from akasha.compute.field_metrics import (
 )
 from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats
-from akasha.index.sparse import sparse_score_is_eligible
 from akasha.query.control import QueryControl
 from akasha.query.field_ann import search_generation_field_approx
 from akasha.query.field_ivf import search_generation_field_ivf
@@ -16,6 +15,7 @@ from akasha.query.field_search import (
     FieldSearchExecution,
     field_exact_stats,
     search_generation_field_reported,
+    search_sparse_field,
 )
 from akasha.query.filter_ast import FilterExpression
 from akasha.query.fusion import rrf_position_score, validate_rrf_weights
@@ -207,6 +207,20 @@ def search_generation_fields(
         stats.storage_name = "field-rerank"
         stats.base_candidates = len(results)
         stats.reranked_candidates = 0
+        if field.kind == 1:
+            var candidates = Dict[Int, Bool]()
+            for hit in results:
+                candidates[hit.id] = True
+            var sparse = search_sparse_field(
+                view, field, rerank.value().query, k, expression, control,
+                required_ids=Optional(candidates^),
+            )
+            stats.reranked_candidates = sparse.stats.distance_evaluations
+            stats.distance_evaluations += sparse.stats.distance_evaluations
+            stats.filtered_rejections += sparse.stats.filtered_rejections
+            stats.retained_candidates = len(sparse.results)
+            var sparse_results = sparse.take_results()
+            return FieldSearchExecution(sparse_results^, stats^, "field_rerank")
         var ranked = BoundedTopK[DType.float64](
             max(1, min(k, len(results))),
             smaller_is_better=field.metric == 1
@@ -227,8 +241,7 @@ def search_generation_fields(
             if field.kind == 2 and value.row_count() == 0:
                 continue
             var score = _score_validated_field(rerank.value().query, value, field)
-            if field.kind != 1 or sparse_score_is_eligible(Float32(score)):
-                ranked.offer(entry.id, score)
+            ranked.offer(entry.id, score)
             stats.reranked_candidates += 1
             stats.distance_evaluations += 1
         if control:

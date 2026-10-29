@@ -122,3 +122,12 @@ def test_sparse_zero_cancellation_and_overflow_admission() raises:
     var cancel = SparseIndex()
     cancel.upsert(1, [SparseElement(1, 1), SparseElement(2, -1)])
     assert_equal(len(cancel.search_dot([SparseElement(1, 1), SparseElement(2, 1)], 10)), 0)
+
+
+def test_sparse_products_round_before_accumulation() raises:
+    var index = SparseIndex()
+    # Separate products both round to +/-1. Their sum is exactly zero; an
+    # automatically contracted multiply-add leaves a nonzero residual.
+    index.upsert(1, [SparseElement(1, 1.0000001192092896), SparseElement(2, -1.0000001192092896)])
+    var hits = index.search_dot([SparseElement(1, 0.9999998807907104), SparseElement(2, 0.9999998807907104)], 1)
+    assert_equal(len(hits), 0)

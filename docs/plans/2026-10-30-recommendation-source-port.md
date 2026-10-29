@@ -93,8 +93,9 @@ Next required work includes:
 
 - Sparse source execution is now implemented, including plain/batched/final-list
   zero semantics; see [Q02d evidence](../research/2026-10-30-sparse-recommendation-validation.md).
-  Complete sparse configuration/IDF/input/planner parity and older native nearest
-  contract migration remain. Multivector HNSW and complete independent graph/
+  Ordinary native nearest now shares the source execution; see
+  [Q02e evidence](../research/2026-10-30-sparse-nearest-validation.md).
+  Complete sparse configuration/IDF/input/planner parity remains. Multivector HNSW and complete independent graph/
   service behavior checks still require actual path/fallback reporting.
 
 - Independent F16/U8 query conversion and scoring fixtures, including large

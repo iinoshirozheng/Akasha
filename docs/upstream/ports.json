@@ -474,6 +474,117 @@
         "src/akasha/query/recommendation_scorer.mojo": "3289f2e46966ccc5d3ee2b8fd8518dc7964af79ad91680f9ca36034f2c3c427f",
         "tests/python/test_recommendation.py": "35e5ecaa5388fa1adcf5bf3dc5bc2d1645350d982ecd8efd69176c8680a54580"
       }
+    },
+    {
+      "id": "Q02e-shared-sparse-nearest",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source_sha256": {
+        "lib/sparse/src/index/search_context.rs": "3c5e4d1ebd3fd41046761a90001b16e6df1a57e2ce68bd08c1b33600cdb0102a",
+        "lib/sparse/src/common/sparse_vector.rs": "369f849d59ae1f03f1c381ef6b1fcf3b74a35c5221959a2225a41d2b8d92e5ed",
+        "lib/common/common/src/top_k.rs": "15a92a3c5647af53943b96e82ec5728481b28f670738ebbf8ab3f61e1dd51b77",
+        "lib/segment/src/index/sparse_index/sparse_vector_index/read_view/search.rs": "ca20b74fe9ca63aebb6746bfe03435ee0f1fde64996b0895022d4978ca28e8d2",
+        "lib/segment/src/index/sparse_index/sparse_vector_index/vector_index_impl.rs": "ffad5c036e5fa363e92459720571aa3472de5db415e483818d3419935239dd52",
+        "lib/segment/src/types.rs": "d3e44321025fd37bd286fb57f5f146c3e59bcd60ccc7e01fa3b1464f3e40a3b1",
+        "lib/collection/src/shards/local_shard/query.rs": "6a16165049c2df60c4fb74bb5791b2a951f35c037febd99f8a0fc8424fd95bb7"
+      },
+      "functions": {
+        "plain_search": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn plain_search(",
+          "sha256": "7034b993e6b334e7dd38e3a373f2f34113e34f47fe1cbccfc3c352106649ebe7"
+        },
+        "advance_batch": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn advance_batch<",
+          "sha256": "a63fd84e79f6b9e271f83628e9b97a666c6ee1f8079c075266d7e63bd4933dd5"
+        },
+        "process_last_posting_list": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn process_last_posting_list<",
+          "sha256": "6ca08abf66a5dea020416a82b4108ee8af335c6a9c1bf47d90853646162fe43d"
+        },
+        "next_min_id": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "fn next_min_id(",
+          "sha256": "e3ce2299f3c7078ef628a8a970abc732a09609714eae6fc8219e7273f4c5fb8b"
+        },
+        "promote_longest": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub(crate) fn promote_longest_posting_lists_to_the_front(",
+          "sha256": "8f3f67df380745ccd1356c3b07f755c03fd928fa210ea0053fb7c30725894f76"
+        },
+        "search": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn search<",
+          "sha256": "1df5fefa2979bd2541ff6ea11064c89a115166fcdfa9991d0f91c73ad752e636"
+        },
+        "prune_longest": {
+          "source": "lib/sparse/src/index/search_context.rs",
+          "signature": "pub fn prune_longest_posting_list(",
+          "sha256": "07737864b03808cb461bb49e6fefdb0296f45eb2f3394daf880129955b66e89e"
+        },
+        "score_vectors": {
+          "source": "lib/sparse/src/common/sparse_vector.rs",
+          "signature": "pub fn score_vectors<T: Ord + Eq>(",
+          "sha256": "2a478aac35b64b1392c9105b24a8552b39238cac667754f5f1efdc4d6bdd53ed"
+        }
+      },
+      "topk_sha256": "e300aec6fdfdffef49235b525336330dd07c8218b5099b7cc89834c355ed663e",
+      "scaffold_sha256": "0bc6304e09cefe7f734c3c1447b1d42b0a6edb1fa4d130c3a8f99422ae78333d",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/api/snapshot.mojo",
+        "src/akasha/compute/field_metrics.mojo",
+        "src/akasha/index/field_sparse.mojo",
+        "src/akasha/index/sparse.mojo",
+        "src/akasha/index/sparse_values.mojo",
+        "src/akasha/index/sparse_search.mojo",
+        "src/akasha/query/field_ann.mojo",
+        "src/akasha/query/field_fusion.mojo",
+        "src/akasha/query/field_search.mojo",
+        "src/akasha/query/recommendation_execution.mojo",
+        "src/akasha/query/recommendation_metrics.mojo",
+        "src/akasha/storage/read_generation.mojo"
+      ],
+      "adaptations": [
+        "Named/default/PointStore/mutable nearest, point lookup, hybrid retrieval and candidate-ID reranking share Q02d postings execution",
+        "local_shard/query.rs rescore/filter_with_sources_ids supply candidate restriction semantics; reviewed source dispatch, not a complete server oracle",
+        "Native exact eligible cardinality and default threshold 5000; full sparse config/IDF/source estimator parity remains pending",
+        "Mojo no_inline sparse product preserves Rust separate F32 multiplication rounding under compiler contract=fast; postings and scalar/custom scoring use it",
+        "Ordinary nearest uses source TopK initial threshold, allowing positive infinity but omitting NaN/negative infinity/f32::MIN; recommendation retains finite-result validation",
+        "Native bounded TopK/public-ID ties and source non-pruning branch retained",
+        "Removed old dictionary/flat/per-run sparse search; common sparse values avoid dependency cycles while preserving public import names"
+      ],
+      "fixture": "tests/fixtures/qdrant-sparse-nearest/search.json",
+      "fixture_sha256": "cd747939ee4e69e7a7ef7385dbbbcdf3db5b674281d90c7560d66bb88a5c5970",
+      "reference_cases": 214,
+      "status": "implemented_shared_sparse_paths_verified_full_q02_pending",
+      "verification": [
+        "docs/research/2026-10-30-sparse-nearest-validation.md"
+      ],
+      "verified_file_sha256": {
+        "scripts/qdrant_sparse_recommendation_reference.py": "8b9f98190768b6dfc97bfd5cbc18ac8241c1e6d58ea5c1bf0a1c857d5ef4bd3e",
+        "src/akasha/api/snapshot.mojo": "ff9f7ddad8a4084392c1ae0aa06a51c049a9fbde6282d5bb19c818f230d657d6",
+        "src/akasha/compute/field_metrics.mojo": "98a0d3ba9ab82f6612165ebf06244d695e652d37b2bb601bb9020ebb5353a9ca",
+        "src/akasha/index/field_sparse.mojo": "cfb9aaa573e674344a96dd99fd2c173fc9a78a06e1cb246543b42a2fe39b1f41",
+        "src/akasha/index/sparse.mojo": "fc745e515bb915bc3d7e98d9bd4a6d035673ae429c0836b280fd61c9b27be54b",
+        "src/akasha/index/sparse_values.mojo": "0136a35ba1f84ff5f79021772100b49730577e6c0e755e3e81e2f5b6b2a52f52",
+        "src/akasha/index/sparse_search.mojo": "b459c6528c42802f60beec65ab93b628d075019f022d89255a136cf20c96827c",
+        "src/akasha/query/field_ann.mojo": "2c66eec722c044c979db0a4d7a51f89c213968d959cfe78627a46a7a4519899a",
+        "src/akasha/query/field_fusion.mojo": "a6856b53f30075abe539e6390679372ed3f8d17a395b4043f2808c974524f574",
+        "src/akasha/query/field_search.mojo": "6fd53e0af7b6fb8b677eef116bfa6ef1925d58691bfc23d6370ac0d13377f3f0",
+        "src/akasha/query/recommendation_execution.mojo": "488aa67fef3340ba6718312ff00b610a5b1a7aa1f90826ec1f5b502eddc4da2b",
+        "src/akasha/query/recommendation_metrics.mojo": "4a96a0a1256ab769334e73f27f642f607ce872f813546a4b4ac181c3feca54f2",
+        "src/akasha/storage/read_generation.mojo": "4271caeb1356d900e2e73983de2938b67b081071b82c1a8a3013627ba25133fe",
+        "tests/mojo/test_sparse_nearest.mojo": "b8964fe6c0bfdcbad3e3c4d5de94c2aaa934cc07b8a99f8d2a79dbae3f597504",
+        "tests/mojo/test_sparse_index.mojo": "b587c59a5fdc53c62aa0560329d74cab351c195843fa1c7ac555b20fb8da446c",
+        "tests/mojo/test_sparse_recommendation.mojo": "91323acf8b86fa2341bdc08ed1731eccbbfb06a49f535c7aa7656616a8b9dd94",
+        "tests/mojo/test_named_sparse.mojo": "150b50510684eebeb6bb16b0e45c57cad810f379854ad66fa01b48e653e8a5e2",
+        "tests/python/test_sparse_nearest.py": "1545e463a46e617538a43c633e34c19a3eabb6075603b08c20ef30e4aab9b591"
+      }
     }
   ]
 }

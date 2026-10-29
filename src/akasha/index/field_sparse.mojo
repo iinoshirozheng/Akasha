@@ -7,8 +7,7 @@ apply their own result-admission rules over these same postings.
 """
 
 from akasha.index.field_artifacts import FieldRow
-from akasha.index.sparse import SparseElement
-from akasha.query.control import QueryControl
+from akasha.index.sparse_values import SparseElement
 
 
 @fieldwise_init
@@ -52,25 +51,3 @@ struct FieldSparseIndex(Movable):
             self.postings[value.term_id].append(
                 _FieldPosting(row, value.weight)
             )
-
-    def scores(
-        self, query: List[SparseElement], control: Optional[QueryControl]
-    ) raises -> Dict[Int, Float32]:
-        var result = Dict[Int, Float32]()
-        var visited = 0
-        # Query terms are schema-validated and ascending, preserving each row's
-        # exact scalar oracle order independently of dictionary iteration order.
-        for term in query:
-            if term.term_id not in self.postings:
-                continue
-            for posting in self.postings[term.term_id]:
-                if control:
-                    control.value().checkpoint(visited)
-                visited += 1
-                var contribution = Float32(term.weight) * Float32(
-                    posting.weight
-                )
-                result[posting.row] = (
-                    result.get(posting.row, Float32(0)) + contribution
-                )
-        return result^

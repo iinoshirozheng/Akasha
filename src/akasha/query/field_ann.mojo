@@ -129,6 +129,10 @@ def search_generation_field_approx(
     validate_field_query(query, field)
     if expression:
         expression.value().validate()
+    if field.kind == 1:
+        if ef_search != -1 or rerank_k != 0:
+            raise Error("ef_search and rerank_k require dense HNSW")
+        return search_generation_field_reported(view, field, query, k, expression, control, excluded_ids)
     if field.kind != 0 or field.index != 1 or not field.hnsw:
         raise Error("approximate field search requires configured dense HNSW")
     ref config = field.hnsw.value()

@@ -122,3 +122,7 @@ rerun. GPU paths did not change. Native Linux acceptance remains deferred.
   storage/source semantics; universal queries, C ABI and REST/gRPC exposure.
 - The default dense graph's repeated-vector recall diagnostic and all M5/M6
   failures remain open. All functional work precedes optimization.
+
+Follow-up: the ordinary nearest migration and additional rounding/overflow
+coverage are tracked in [shared nearest validation](2026-10-30-sparse-nearest-validation.md).
+The results above describe the Q02d commit and remain historical evidence.

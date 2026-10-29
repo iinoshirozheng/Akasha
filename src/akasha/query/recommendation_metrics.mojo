@@ -6,6 +6,7 @@ internal similarity, never public Euclidean distance. Native raw authority is
 not mutated. BF16/I8 are Akasha extensions to Qdrant's F32/F16/U8 types.
 """
 
+from akasha.index.sparse_values import sparse_product
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from std.math import inf, sqrt
@@ -125,7 +126,7 @@ def recommendation_similarity(query: VectorValue, candidate: VectorValue, field:
             elif left[i].term_id > right[j].term_id:
                 j += 1
             else:
-                total += left[i].weight * right[j].weight
+                total += sparse_product(left[i].weight, right[j].weight)
                 i += 1
                 j += 1
         return total

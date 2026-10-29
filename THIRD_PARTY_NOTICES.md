@@ -84,3 +84,15 @@ Earlier Qdrant-based ports and their reference paths are described in
 [the existing alignment ledger](docs/research/2026-10-15-qdrant-alignment-evidence.md).
 F00 in the full feature plan keeps the historical per-file attribution audit open;
 the new port ledger does not claim that audit is already complete.
+
+### Shared sparse nearest execution
+
+The Q02d sparse SearchContext port also serves default/named nearest search,
+point lookup, candidate reranking, and mutable/PointStore adapters. Candidate
+restriction follows `lib/collection/src/shards/local_shard/query.rs::rescore`
+and `filter_with_sources_ids` at Qdrant revision
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0). The source fixture
+generator's `--nearest` mode retains the original methods and TopK and adds
+fractional rounding, overflow and threshold cases. The Mojo sparse product
+boundary preserves the source's separately rounded Float32 multiplication.
+See `docs/research/2026-10-30-sparse-nearest-validation.md` and `docs/upstream/ports.json`.

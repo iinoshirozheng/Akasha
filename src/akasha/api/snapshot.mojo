@@ -1,6 +1,7 @@
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
 from akasha.document.point_state import PointState
 from akasha.document.vector_value import VectorValue
+from akasha.document.vector_schema import VectorFieldSpec
 from akasha.query.field_search import (
     FieldSearchResult,
     FieldSearchExecution,
@@ -852,7 +853,7 @@ struct ReadSnapshot(Movable):
     ) raises -> List[SearchResult]:
         var root = self._acquire()
         ref view = root[]
-        return self._search_sparse(view, query, k, Optional[List[List[Int]]]())
+        return self._search_sparse(view, query, k, None)
 
     def search_sparse_dot_where(
         self,
@@ -865,38 +866,21 @@ struct ReadSnapshot(Movable):
         validate_sparse(query)
         expression.validate()
         return self._search_sparse(
-            view, query, k, Optional(self._where_layers(view, expression))
+            view, query, k, Optional(expression.clone())
         )
 
     def _search_sparse(
-        self,
-        view: ReadGeneration,
-        query: List[SparseElement],
-        k: Int,
-        matched: Optional[List[List[Int]]],
+        self, view: ReadGeneration, query: List[SparseElement], k: Int,
+        expression: Optional[FilterExpression],
     ) raises -> List[SearchResult]:
-        """Score each run's visible rows, then merge into one Top-K.
-
-        `matched` holds each run's ascending filter matches, when filtered.
-        """
-        validate_sparse(query)
-        if k <= 0:
-            raise Error("k must be positive")
-        var hits = List[SearchResult]()
-        for layer in range(view.layer_count()):
-            for hit in view.sparse_hits(layer, query):
-                if not matched or contains_sorted(
-                    matched.value()[layer], hit.ordinal
-                ):
-                    hits.append(SearchResult(hit.id, hit.score))
-        if len(hits) == 0:
-            return hits^
-        var topk = BoundedTopK(min(k, len(hits)), smaller_is_better=False)
-        for hit in hits:
-            topk.offer(hit.id, hit.score)
-        var results = List[SearchResult]()
-        for entry in topk.sorted_entries():
-            results.append(SearchResult(entry.id, entry.score))
+        """Default field and named fields share the captured-root postings path."""
+        var execution = search_generation_field_reported(
+            view, VectorFieldSpec(1, "", 1, 0, 0, 2, 0),
+            VectorValue.sparse(query.copy()), k, expression,
+        )
+        var results = List[SearchResult](capacity=len(execution.results))
+        for hit in execution.results:
+            results.append(SearchResult(hit.id, Float32(hit.score)))
         return results^
 
     def search_hybrid_dot(
@@ -1549,7 +1533,7 @@ struct ReadSnapshot(Movable):
             view, dense_query, fetch_k, metric, conditions
         )
         var sparse = self._search_sparse(
-            view, sparse_query, fetch_k, Optional[List[List[Int]]]()
+            view, sparse_query, fetch_k, None
         )
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 
@@ -1575,7 +1559,7 @@ struct ReadSnapshot(Movable):
             view,
             sparse_query,
             fetch_k,
-            Optional(self._where_layers(view, expression)),
+            Optional(expression.clone()),
         )
         return reciprocal_rank_fusion(dense, sparse, k, rank_constant)
 

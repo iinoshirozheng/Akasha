@@ -173,3 +173,14 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   contracts still need their complete migration;
   configurable sparse thresholds, IDF/input/planner/service parity, multivector
   HNSW and the existing datatype/storage/protocol gates keep Q02 open.
+
+- Q02e shared sparse nearest: [implementation plan](2026-10-30-sparse-nearest-source-port.md).
+  Named/default nearest, sparse approx/point lookup, hybrid retrieval, PointStore,
+  mutable index and candidate reranking now share the source postings execution.
+  Obsolete dictionary/flat and per-run sparse search copies removed. Separately
+  rounded F32 products fix a compiler-contraction mismatch found by the extended
+  Rust oracle. 214 source fixtures, 87 native cases, 1693 distinct Python cases
+  and C ABI checks pass (1 optional Qdrant Edge skip);
+  [evidence](../research/2026-10-30-sparse-nearest-validation.md).
+  Full sparse settings/IDF/planner, multivector, datatype/storage and protocol
+  acceptance still keep Q02 open. No performance gate resumed.

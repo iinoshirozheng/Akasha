@@ -21,7 +21,6 @@ from akasha.index.field_sparse import FieldSparseIndex
 from akasha.index.bitmap import Bitmap
 from akasha.index.metadata import MetadataIndex
 from akasha.index.quantization import Sq8Index
-from akasha.index.sparse import SparseElement, SparseIndex, sparse_score_is_eligible
 from akasha.query.evaluator import matches_all, matches_expression
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
@@ -42,29 +41,12 @@ comptime SEALED_RUN_LIMIT = 2 * MAX_SEALED_RUNS
 
 
 struct RunIndex(Movable):
-    """Derived indexes of one run: metadata by slot, sparse by live ID."""
+    """Derived metadata by slot; sparse postings belong to the captured root."""
 
     var metadata: MetadataIndex
-    var sparse: SparseIndex
 
-    def __init__(
-        out self, var metadata: MetadataIndex, var sparse: SparseIndex
-    ):
+    def __init__(out self, var metadata: MetadataIndex):
         self.metadata = metadata^
-        self.sparse = sparse^
-
-
-struct SparseHit(TrivialRegisterPassable):
-    """A visible row's sparse dot product, located in its run."""
-
-    var ordinal: Int
-    var id: Int
-    var score: Float32
-
-    def __init__(out self, ordinal: Int, id: Int, score: Float32):
-        self.ordinal = ordinal
-        self.id = id
-        self.score = score
 
 
 struct ReadRun(Movable):
@@ -299,32 +281,6 @@ struct ReadGeneration(Movable):
             ):
                 result.append(ordinal)
         return result^
-
-    def sparse_hits(
-        self, layer: Int, query: List[SparseElement]
-    ) raises -> List[SparseHit]:
-        """Score visible rows of one run sharing a term with a valid query.
-
-        Indexed and direct scoring both sum in ascending query-term order, so
-        a row scores bit-identically in any run.
-        """
-        ref item = self.layers[layer]
-        ref table = item.run[].memtable
-        var hits = List[SparseHit]()
-        if item.run[].index:
-            for scored in item.run[].index.value().sparse.scores(query):
-                var ordinal = table.ordinal_for(scored.id)
-                if ordinal >= 0 and item.is_visible(ordinal):
-                    hits.append(SparseHit(ordinal, scored.id, scored.score))
-            return hits^
-        for ordinal in self.visible_ordinals(layer):
-            ref entry = table.entry_ref_at(ordinal)
-            if not entry.has_sparse():
-                continue
-            var score = _sparse_dot(query, entry.sparse())
-            if score and sparse_score_is_eligible(score.value()):
-                hits.append(SparseHit(ordinal, entry.id, score.value()))
-        return hits^
 
     def id_ordered_locations(self) raises -> List[Tuple[Int, Int]]:
         """Return (layer, slot) of every visible row in ascending ID order."""
@@ -745,7 +701,6 @@ def _indexed_run(
 ) raises -> ReadRun:
     """Index one run's slots; field owners stay shared, not copied."""
     var metadata = MetadataIndex()
-    var sparse = SparseIndex()
     metadata.begin_bulk()
     for ordinal in range(table.slot_count()):
         ref entry = table.entry_ref_at(ordinal)
@@ -755,13 +710,10 @@ def _indexed_run(
         stats.payload_bytes += entry.payload_bytes()
         var fields = clone_fields(entry.fields())
         metadata.upsert(entry.id, fields^)
-        if entry.has_sparse() and len(entry.sparse()) > 0:
-            stats.sparse_bytes += entry.sparse_bytes()
-            sparse.upsert(entry.id, entry.sparse())
     metadata.finish_bulk()
     if metadata.slot_count() != table.slot_count():
         raise Error("snapshot metadata slot alignment failed")
-    return ReadRun(table^, Optional(RunIndex(metadata^, sparse^)))
+    return ReadRun(table^, Optional(RunIndex(metadata^)))
 
 
 def _hidden_ordinals(older: MemTable, newer: ReadRun) raises -> List[Int]:
@@ -788,30 +740,6 @@ def _union(existing: List[Int], var added: List[Int]) -> List[Int]:
 
 def _field_bytes(entry: MemTableEntry) -> Int:
     return entry.content_bytes()
-
-
-def _sparse_dot(
-    query: List[SparseElement], elements: List[SparseElement]
-) -> Optional[Float32]:
-    """Merge two ascending term lists; None when no term is shared."""
-    var score = Optional[Float32]()
-    var position = 0
-    for query_element in query:
-        while (
-            position < len(elements)
-            and elements[position].term_id < query_element.term_id
-        ):
-            position += 1
-        if position == len(elements):
-            break
-        if elements[position].term_id != query_element.term_id:
-            continue
-        var contribution = query_element.weight * elements[position].weight
-        if score:
-            score = Optional(score.value() + contribution)
-        else:
-            score = Optional(contribution)
-    return score
 
 
 def contains_sorted(values: List[Int], value: Int) -> Bool:

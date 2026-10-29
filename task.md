@@ -31,6 +31,11 @@
   稀疏推薦 exact／approx 已統一依來源分派；舊 native nearest 契約的完整遷移、
   稀疏設定／IDF、multivector HNSW、
   型別／儲存與協定工作仍未完成。
+- Q02e 一般稀疏查詢已共用來源搜尋核心：命名／預設、point lookup、hybrid、
+  candidate rerank、PointStore 與可變索引；移除舊評分與重複 run 索引。
+  214 組上游 fixture、87 項原生與 1693 項不同 Python 案例及 C ABI 檢查通過；
+  含 168 個新增 Python 案例，1 個選配 Qdrant Edge 案例跳過。
+  [共用稀疏驗證](docs/research/2026-10-30-sparse-nearest-validation.md)。
 - M5/M6 保留未達標，功能驗收完成前不恢復效能實驗；原生 Linux 驗收仍依先前指示暫緩。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。
