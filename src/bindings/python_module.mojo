@@ -1,4 +1,5 @@
 from akasha.query.field_recommendation import RecommendationExample
+from akasha.query.field_discovery import ContextPair
 from akasha import (
     BatchMutation,
     CollectionConfig,
@@ -532,6 +533,76 @@ struct BoundCollection(Movable, Writable):
             return Python.none()
         var schema = self[].inner.value().vector_fields()
         return _point_to_python(point.value(), schema)
+
+    @staticmethod
+    def discover_field[columns: Bool = False](
+        py_self: PythonObject, name: PythonObject, raw_target: PythonObject,
+        raw_context: PythonObject, k: PythonObject, options: PythonObject,
+    ) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var count = _exact_python_int(k, "k")
+        if count < 0:
+            raise Error("discovery k must be nonnegative")
+        if count == 0:
+            var pairs = List[ContextPair]()
+            var results = self[].inner.value().discover_field("", None, pairs, 0)
+            return _field_results_to_python[columns](results)
+        var field_name = _exact_python_string(name, "field name")
+        var mode = _exact_python_string(options["mode"], "discovery mode")
+        if mode != "exact" and mode != "approx":
+            raise Error("discovery mode must be exact or approx")
+        var ef = _exact_python_int(options.get("ef_search", PythonObject(-1)), "ef_search")
+        var limit = _exact_python_int(options["max_examples"], "max_examples")
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = Optional(QueryControl(
+            token, max_candidates=_exact_python_int(options["max_candidates"], "max_candidates"),
+            deadline_ns=_exact_python_int(options["deadline_ns"], "deadline_ns"),
+        ))
+        control.value().checkpoint(0)
+        _ensure_open(self[])
+        var fields = self[].inner.value().vector_fields()
+        var ordinal = _named_field_ordinal(fields, field_name)
+        var query_field = fields[ordinal].copy()
+        query_field.scalar = 0
+        var has_target = not _is_python_none(raw_target)
+        var pair_count = len(raw_context)
+        if limit <= 0 or pair_count > (limit - Int(has_target)) // 2:
+            raise Error("discovery example resource limit exceeded")
+        var target = Optional[RecommendationExample]()
+        if has_target:
+            target = Optional(_query_example_from_python(raw_target, query_field))
+        var context = List[ContextPair]()
+        for i in range(pair_count):
+            var pair = raw_context[i]
+            context.append(ContextPair(
+                _query_example_from_python(pair["positive"], query_field),
+                _query_example_from_python(pair["negative"], query_field),
+            ))
+        var expression = Optional[FilterExpression]()
+        if not _is_python_none(options["filter"]):
+            expression = Optional(_filter_expression(options["filter"]))
+        var lookup_field = Optional[String]()
+        var raw_lookup_field = options["lookup_field"]
+        if not _is_python_none(raw_lookup_field):
+            lookup_field = Optional(_exact_python_string(raw_lookup_field, "lookup field"))
+        var raw_lookup = options["lookup_from"]
+        _ensure_open(self[])
+        var lookup = Optional[ReadSnapshot]()
+        if not _is_python_none(raw_lookup):
+            var source = raw_lookup.downcast_value_ptr[BoundCollection]()
+            _ensure_open(source[])
+            if Int(source) != Int(self):
+                lookup = Optional(source[].inner.value().snapshot())
+        _ensure_open(self[])
+        var results = self[].inner.value().discover_field(
+            field_name, target, context, count, lookup=lookup, lookup_field=lookup_field,
+            expression=expression^, max_examples=limit, control=control,
+            approximate=mode == "approx", ef_search=ef,
+        )
+        return _field_results_to_python[columns](results)
 
     @staticmethod
     def recommend_field[columns: Bool = False](
@@ -1499,14 +1570,16 @@ def _is_python_none(value: PythonObject) -> Bool:
 
 def _recommendation_examples_from_python(raw: PythonObject, field: VectorFieldSpec) raises -> List[RecommendationExample]:
     var result = List[RecommendationExample]()
-    var builtins = Python.import_module("builtins")
     for i in range(len(raw)):
-        var item = raw[i]
-        if Bool(py=builtins.type(item) == builtins.int):
-            result.append(RecommendationExample.point(_exact_python_int(item, "point ID")))
-        else:
-            result.append(RecommendationExample.raw(vector_from_python(item, field)))
+        result.append(_query_example_from_python(raw[i], field))
     return result^
+
+
+def _query_example_from_python(item: PythonObject, field: VectorFieldSpec) raises -> RecommendationExample:
+    var builtins = Python.import_module("builtins")
+    if Bool(py=builtins.type(item) == builtins.int):
+        return RecommendationExample.point(_exact_python_int(item, "point ID"))
+    return RecommendationExample.raw(vector_from_python(item, field))
 
 
 def _exact_python_int(value: PythonObject, name: String) raises -> Int:
@@ -1874,6 +1947,8 @@ def PyInit__kernel() abi("C") -> PythonObject:
             )
             .def_method[BoundCollection.recommend_field[False]]("recommend_field")
             .def_method[BoundCollection.recommend_field[True]]("recommend_field_columns")
+            .def_method[BoundCollection.discover_field[False]]("discover_field")
+            .def_method[BoundCollection.discover_field[True]]("discover_field_columns")
             .def_method[BoundCollection.search_field[False]]("search_field")
             .def_method[BoundCollection.search_field[True]](
                 "search_field_columns"

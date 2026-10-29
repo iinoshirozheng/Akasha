@@ -491,6 +491,72 @@ Stats report `field_mmr`, `qdrant-mmr-f32`, candidate counts and aggregate dista
 evaluations. MMR outputs own their result buffers, including Arrow after close.
 Nested prefetch/fusion MMR and Qdrant-compatible REST/gRPC are not exposed yet.
 
+## Discovery and context queries
+
+`Collection.discover_field(name, target=None, context=None, k=10, *, mode="exact",
+ef_search=None, lookup_from=None, lookup_field=None, filter=None,
+cancellation=None, timeout_ns=None)` runs Qdrant-derived discovery/context in Mojo:
+
+```python
+from akashadb import ContextPair
+
+hits = db.discover_field(
+    "image", target=[0.2, 0.8, 0.1],
+    context=[ContextPair(positive=42, negative=19)], k=10,
+)
+zone = db.discover_field("image", context=[ContextPair(42, 19)], k=10)
+```
+
+Each target/positive/negative is a raw vector or integer point ID. IDs resolve
+from `lookup_from` (default: this collection), using `lookup_field` (default:
+the searched field); every referenced ID in the target collection is excluded
+before selection. An external lookup with a colliding ID does not exclude the
+target point. Input kind/dimension, stored-source preprocessing and target
+datatype conversion follow the shared recommendation preparation path.
+
+With a target, each pair contributes `-1`, `0` or `1` according to Rust
+`f32::total_cmp` of its positive/negative similarities. The final F32 score is
+the sum of those ranks plus `0.5 * (s / (1 + abs(s)) + 1)` for target similarity
+`s`. Without a target, each pair contributes `d / (1 + abs(d))`, where
+`d = min(positive_similarity - negative_similarity - f32::EPSILON, 0)`;
+the final score sums these losses. L2 similarities are negative squared
+distances and these composite scores receive no distance postprocessing.
+
+Dot/cosine signed zeros follow the portable source metric; `-0` and `+0` can
+produce different discovery ranks. Finite inputs may overflow during scoring.
+Source-defined NaN final scores rank above finite scores and remain NaN in the
+returned Float64/Arrow score (not null). NaN payload bits are not a public
+contract. Equal final scores use Akasha's ascending point-ID order.
+
+Dense `mode="approx"` requires configured HNSW. Target discovery first searches
+context for up to ten entry candidates, then traverses with the full discovery
+score from the highest-level eligible candidate, taking the last level tie.
+Context-only uses one custom traversal. The native exact/planner fallbacks and
+HNSW graph lineage still apply; this is not graph-identical Qdrant traversal or
+a recall/performance acceptance. Sparse custom queries score all eligible
+vectors in either mode, including zero/nonoverlap. Multivector MaxSim supports
+exact queries; multivector HNSW and binary discovery are unavailable.
+
+`k=0` returns empty before query/lookup/filter resolution, while still requiring
+an open target collection. Otherwise a target or at least one complete pair is
+required. `max_query_batch` counts one target plus two examples per pair;
+`max_k`, visible-candidate budget, cancellation and deadlines apply. Dense ANN
+`ef_search` must be positive and within its configured maximum; the source's
+context entry search requires breadth of at least ten when ten candidates exist.
+
+`discover_field_record_batch` in `akashadb.arrow` takes the same arguments and
+owns its `id: int64` and `score: float64` columns. Native collection/snapshot APIs
+accept `Optional[RecommendationExample]` and `List[ContextPair]`; the existing
+`RecommendationExample.point/raw` is the shared vector-or-ID input. Captured
+target and lookup snapshots remain usable after writer close.
+Stats use `discovery_*` / `context_*` planner reasons and
+`qdrant-discovery-f32` / `qdrant-context-f32` backends, counting both graph
+stages' work. Queries appear in collection telemetry.
+
+Universal/nested prefetch, batch discovery, offsets/projections and Qdrant
+REST/gRPC/C ABI exposure remain pending, along with full low-precision
+canonical-storage and SIMD/source-planner parity.
+
 ## Recommendation queries
 
 `Collection.recommend_field(name, positive, negative=None, k=10, *,

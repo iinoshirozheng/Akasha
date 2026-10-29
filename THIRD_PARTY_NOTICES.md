@@ -110,3 +110,29 @@ Qdrant metrics with recorded container/plumbing adapters. Source-equivalent F32
 product rounding is shared by sparse, recommendation and MMR paths through
 `compute/f32.mojo`. Full service/SIMD/datatype equivalence remains open.
 See `docs/research/2026-10-30-mmr-validation.md` and `docs/upstream/ports.json`.
+
+### Discovery and context queries
+
+`query/discovery.mojo`, `discovery_scorer.mojo` and `field_discovery.mojo`
+port Qdrant `segment/vector_storage/query/{discover_query,context_query}.rs`
+and `collection/src/discovery.rs` at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+`query/field_scored.mojo` and `index/hnsw_entries.mojo` adapt the two-stage
+`discover_search_with_graph` in `index/hnsw_index/hnsw/read_view/search.rs`
+and the custom-entry branch of `graph_layers.rs::get_entry_point`.
+
+The former `recommendation_execution.mojo` is now shared as `field_scored.mojo`;
+the sparse recommendation dispatcher remains in `field_recommendation.mojo`.
+Shared point/vector resolution moved into `field_examples.mojo`, preserving the
+public RecommendationExample type. Existing source attribution still applies.
+Scorers preserve Rust total_cmp, non-NaN min behavior, the signed-zero identity
+of Iterator::sum and source MaxSim's strict greater-than maximum update. NaN
+discovery scores use an infinity sentinel only for native heap ordering, then
+return as NaN. Native stable ID ties, exact planner, run visibility, graph
+lineage and raw-storage preprocessing adaptations remain.
+
+The independent Rust oracle compiles unedited score and custom-entry methods;
+container/filter/normal-entry fallback stubs are documented adapters. It is
+not a full server, graph construction/traversal, SIMD or datatype/storage oracle.
+See `tests/fixtures/qdrant-discovery/README.md`,
+`docs/research/2026-10-30-discovery-validation.md` and `docs/upstream/ports.json`.

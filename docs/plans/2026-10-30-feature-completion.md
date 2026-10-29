@@ -196,3 +196,17 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   [evidence](../research/2026-10-30-mmr-validation.md).
   Discovery/context, nested prefetch/fusion MMR, full datatype/storage and
   protocol gates keep Q03 and the full plan open.
+
+- Q03b discovery/context: implemented and verified for native/Python/Arrow exact
+  dense/sparse/MaxSim and dense two-stage HNSW. Context selects up to 10 entry
+  candidates; discovery uses the highest-level eligible entry with last ties.
+  Shared custom execution/input resolution replaces duplicated recommendation
+  plumbing. Source oracle exposed and fixed signed-zero rank differences.
+  336 unedited-source cases, 42 native tests and the full Python suite
+  (2005 passed, 1 optional skip; 262 new discovery cases) pass.
+  [Plan](2026-10-30-discovery-source-port.md) /
+  [evidence and remaining gates](../research/2026-10-30-discovery-validation.md).
+  Q03 remains open for universal/nested prefetch/fusion MMR, discovery batch,
+  offset/projection and full protocol exposure. Q02/Q06 datatype/storage,
+  multivector HNSW and quality gates remain; proceed with Q04 functionality
+  before performance work. All other master-ledger deliverables are retained.

@@ -751,6 +751,7 @@ def search_scored_allowed_with_widening_core[
     allowed: AdmissionType,
     mut scratch: HnswSearchScratch,
     control: Optional[QueryControl] = None,
+    custom_entries: Optional[List[UInt32]] = None,
 ) raises -> HnswWideningOutcome:
     """Consume one prepared query and reuse it through every widening round.
 
@@ -788,7 +789,7 @@ def search_scored_allowed_with_widening_core[
     var current_ef = min(max(initial_ef, target_count), effective_ceiling)
     if current_ef < target_count:
         raise Error("HNSW result demand exceeds traversable graph slots")
-    var selected_entry = entries.get_entry(graph, allowed)
+    var selected_entry = entries.get_custom_entry(graph, allowed, custom_entries.value()) if custom_entries else entries.get_entry(graph, allowed)
     var results = List[SearchResult]()
     var upper_descents = 0
     var widening_rounds = 0

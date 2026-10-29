@@ -1,4 +1,5 @@
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
+from akasha.query.field_discovery import ContextPair
 from akasha.document.point_state import FieldUpdate, PointMutation, PointState
 from akasha.document.vector_schema import (
     FieldCatalog,
@@ -403,6 +404,24 @@ struct PersistentCollection:
             rerank_k=rerank_k,
             ivf=ivf, mmr=mmr,
             control=control,
+        )
+        with BlockingScopedLock(self._writer_lock[]):
+            self._last_search_stats = copy_search_stats(execution.stats)
+            self._last_dense_plan_reason = execution.reason.copy()
+        return execution.take_results()
+
+    def discover_field(
+        mut self, name: String, target: Optional[RecommendationExample],
+        context: List[ContextPair], k: Int, *,
+        lookup: Optional[ReadSnapshot] = None, lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.snapshot().discover_field_reported(
+            name, target, context, k, lookup=lookup, lookup_field=lookup_field,
+            expression=expression^, max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
         )
         with BlockingScopedLock(self._writer_lock[]):
             self._last_search_stats = copy_search_stats(execution.stats)

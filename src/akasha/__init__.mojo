@@ -56,3 +56,4 @@ from .index.field_ivf import IvfOptions
 from .query.mmr import MmrOptions
 
 from akasha.query.field_recommendation import RecommendationExample
+from akasha.query.field_discovery import ContextPair

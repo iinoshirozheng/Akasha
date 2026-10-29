@@ -1,6 +1,6 @@
 """Python adapter for the AkashaDB Mojo kernel."""
 
-from .vectors import FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField
+from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField
 from .database import CancellationToken, Collection, LocalDatabase
 from .arrow import (
     ArrowBatchLease,
@@ -67,6 +67,7 @@ __all__ = [
     "FieldQuery",
     "IvfOptions",
     "MmrOptions",
+    "ContextPair",
     "VectorField",
     "Projection",
     "ProtocolError",

@@ -59,6 +59,17 @@ class VectorField:
 _UNSET = object()
 
 
+@dataclass(frozen=True, slots=True)
+class ContextPair:
+    """Prefer the positive vector/point ID over the negative vector/point ID."""
+
+    positive: Any
+    negative: Any
+
+    def to_kernel(self) -> dict[str, Any]:
+        return {"positive": _vector_value(self.positive), "negative": _vector_value(self.negative)}
+
+
 def _vector_value(value: Any) -> Any:
     if isinstance(value, (list, tuple)) and value and isinstance(value[0], SparseElement):
         return [element.to_kernel() for element in value]

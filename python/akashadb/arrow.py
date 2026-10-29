@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .vectors import FieldQuery, IvfOptions, MmrOptions
+from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions
 from .database import CancellationToken, Collection
 from .exceptions import ValidationError, map_kernel_error
 from .models import BatchWriteResult, PayloadField, SearchRequest, SearchResult
@@ -128,6 +128,26 @@ def search_field_record_batch(
     columns = collection._search_field_raw(name, vector, k, filter=filter, mode=mode,
                                            ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr, columns=True,
                                            cancellation=cancellation, timeout_ns=timeout_ns)
+    return pa.record_batch([
+        pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
+        pa.array(columns["scores"], type=pa.float64(), from_pandas=False),
+    ], names=["id", "score"])
+
+
+def discover_field_record_batch(
+    collection: Collection, name: str, target: Any = None, context: list[ContextPair] | None = None,
+    k: int = 10, *, mode: str = "exact", ef_search: int | None = None,
+    lookup_from: Collection | None = None, lookup_field: str | None = None,
+    filter: Mapping[str, Any] | None = None,
+    cancellation: CancellationToken | None = None, timeout_ns: int | None = None,
+) -> Any:
+    """Discovery/context results in owned Int64 ID and Float64 score columns."""
+    import pyarrow as pa
+    columns = collection._discover_field_raw(
+        name, target, context, k, mode=mode, ef_search=ef_search,
+        lookup_from=lookup_from, lookup_field=lookup_field, filter=filter,
+        cancellation=cancellation, timeout_ns=timeout_ns, columns=True,
+    )
     return pa.record_batch([
         pa.array(columns["ids"], type=pa.int64(), from_pandas=False),
         pa.array(columns["scores"], type=pa.float64(), from_pandas=False),

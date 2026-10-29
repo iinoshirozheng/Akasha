@@ -679,6 +679,140 @@
         "src/akasha/query/field_ann.mojo": "f0ae9a6f54675e1a6629a7fe030a8383aedc3b8b41dde5e092b29fb4496f0bc2",
         "src/akasha/query/field_ivf.mojo": "4465a400ead61d961bee709ad43f921eb2673779b1ee968a190da5a11d9405f7"
       }
+    },
+    {
+      "id": "Q03b-discovery",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "source_sha256": {
+        "lib/collection/src/recommendations.rs": "9911ee6023e9ba715e834dce425df6e45e39e851cbd0a0a7994ce7a1d65e1920",
+        "lib/sparse/src/common/sparse_vector.rs": "369f849d59ae1f03f1c381ef6b1fcf3b74a35c5221959a2225a41d2b8d92e5ed",
+        "lib/common/common/src/math.rs": "7eda541f4fc90e7fcdfa35022d341fbe0bc10ed40a5634778e14bf1ccb051f23",
+        "lib/segment/src/spaces/simple.rs": "af75786a0c05f47a88651b4660bb99d724b343892342ebc5d03038a3f937ed79",
+        "lib/segment/src/spaces/tools.rs": "f94f7d9942ab0458fa9c90bd53c24b551b7172f8e9772745d168410c2fae65ae",
+        "lib/segment/src/vector_storage/query_scorer/mod.rs": "0a7817fa5df5c9765b1b2a5dc753cbf54e9036ab640cb6ce0ddb93f07a888d34",
+        "lib/segment/src/vector_storage/query/reco_query.rs": "1457b5c7aa5a42b439453f4c12f08eb831f5184c18167de7b93992f6b75a2dfe",
+        "lib/segment/src/vector_storage/query/discover_query.rs": "c0caf50667bf9c302369201d2c3a809cb9a04a327088fb16b5f3ecee65a42bab",
+        "lib/segment/src/vector_storage/query/context_query.rs": "faadbfeb71b4788f82ccb2ab19215342d6557daf8584094b74071d4031344187",
+        "lib/segment/src/index/hnsw_index/graph_layers.rs": "9276d05d66a3d5d22da48816fe463fef337821080f177d13ca5dae8160f367be",
+        "lib/collection/src/discovery.rs": "23fdc5cfe06d29a69c6da2c62281b92bf12a51257466776580a11fb84462ea11",
+        "lib/collection/src/operations/verification/discover.rs": "b2138ac021f801c1ac7b6c788b6e7615ad78d3888189b6ed81c251a556567549",
+        "lib/segment/src/index/hnsw_index/hnsw/read_view/search.rs": "7a7d2b64ac23764111e122a12147d39773077339b9fbfe3090ff2783771b562a",
+        "lib/common/common/src/types.rs": "1e3d8979cf973692875b7d4205c9f44f8dc671989acdd083213aa1152d36a46a"
+      },
+      "functions": {
+        "pair_rank": {
+          "source": "lib/segment/src/vector_storage/query/discover_query.rs",
+          "signature": "fn rank_by(",
+          "after": "",
+          "sha256": "296c3d2a40d7d1b99ab4338dfb0c3ea546540a9e6d15899b09e93d4e975e5bd8"
+        },
+        "rank": {
+          "source": "lib/segment/src/vector_storage/query/discover_query.rs",
+          "signature": "fn rank_by(",
+          "after": "impl<T> DiscoverQuery<T>",
+          "sha256": "13352ded6939616b3bad957e429c5282f5b8ebf87ac1d9232ce85e486dad8421"
+        },
+        "discover_score": {
+          "source": "lib/segment/src/vector_storage/query/discover_query.rs",
+          "signature": "fn score_by(",
+          "after": "",
+          "sha256": "2a233bbb0ed3b456f7bf6007d0ae7f49f7fa64328a0f952e92f373633372a856"
+        },
+        "pair_loss": {
+          "source": "lib/segment/src/vector_storage/query/context_query.rs",
+          "signature": "pub fn loss_by(",
+          "after": "",
+          "sha256": "3dd0f861808ef1452b680e6bc526c4731411b47289ad8501c6a5d59cce56c805"
+        },
+        "context_score": {
+          "source": "lib/segment/src/vector_storage/query/context_query.rs",
+          "signature": "fn score_by(",
+          "after": "",
+          "sha256": "c02314c68f409ed2c3fcde6166e35136cfff17c1b760b219bedafaca3129341f"
+        },
+        "custom_entry": {
+          "source": "lib/segment/src/index/hnsw_index/graph_layers.rs",
+          "signature": "fn get_entry_point(",
+          "after": "impl GraphLayers {",
+          "sha256": "3009b90539c3095d24ea703ba7876f1f50f24a3d6f9e5b6ba7a0ccc1deb10a60"
+        }
+      },
+      "scaffold_sha256": "93d654253f6689e7b76a9d5faaec3c05155cd76e32ea6ab8944f53ece440856f",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "python/akashadb/__init__.py",
+        "python/akashadb/arrow.py",
+        "python/akashadb/database.py",
+        "python/akashadb/vectors.py",
+        "src/akasha/__init__.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/akasha/index/hnsw_core.mojo",
+        "src/akasha/index/hnsw_entries.mojo",
+        "src/akasha/query/discovery.mojo",
+        "src/akasha/query/discovery_scorer.mojo",
+        "src/akasha/query/field_discovery.mojo",
+        "src/akasha/query/field_examples.mojo",
+        "src/akasha/query/field_recommendation.mojo",
+        "src/akasha/query/field_scored.mojo",
+        "src/akasha/query/field_scorer.mojo",
+        "src/akasha/query/recommendation_metrics.mojo",
+        "src/akasha/query/recommendation_scorer.mojo",
+        "src/bindings/python_module.mojo"
+      ],
+      "adaptations": [
+        "Native captured roots, query budgets, ascending-ID ties and exact planner; raw source vectors are preprocessed without changing durable native authority",
+        "Shared exact/custom HNSW execution replaces recommendation_execution.mojo; sparse dispatch remains in field_recommendation.mojo, input resolution moves to field_examples.mojo",
+        "Source two-stage context top-10 discovery and highest-level last-tie custom entries; existing Qdrant Edge traversal plus documented native upper seeds retained",
+        "Source f32 total_cmp ranks, non-NaN min, negative-zero Iterator sum identity, strict MaxSim updates and separate F32 multiplication rounding",
+        "Bounded discovery/context scores use positive infinity only as an internal OrderedFloat NaN ordering sentinel; public results restore NaN",
+        "Single-query zero-k return precedes resolution; native target collection must remain open",
+        "Rust scorer/custom-entry oracle uses container, transport, filter and explicit normal-entry adapters; not server/SIMD/storage/graph equivalence",
+        "Full datatype/canonical storage, multivector HNSW, source planner, universal/batch/offset/projection/C/REST/gRPC remain pending"
+      ],
+      "moved_paths": {
+        "src/akasha/query/recommendation_execution.mojo": [
+          "src/akasha/query/field_scored.mojo",
+          "src/akasha/query/field_recommendation.mojo"
+        ]
+      },
+      "fixture": "tests/fixtures/qdrant-discovery/discovery.json",
+      "fixture_sha256": "dad68df2257d5d4df0b50363c10a6e4edc2f9ee85dee5ded3af39bf77b16fff7",
+      "reference_reductions": 120,
+      "reference_vector_cases": 168,
+      "reference_entry_cases": 48,
+      "status": "implemented_native_discovery_verified_full_q03_pending",
+      "verification": [
+        "docs/research/2026-10-30-discovery-validation.md"
+      ],
+      "verified_file_sha256": {
+        "python/akashadb/__init__.py": "b49d8571984b36eb25bf2a8730444dc7de6352bbe16aa98b707fd151ec548b05",
+        "python/akashadb/arrow.py": "89152c90f2ea190f53f56dcefd0ca58bb894bf3fd1d79e9b61429f047d52a00e",
+        "python/akashadb/database.py": "820fb339b235468ed2cf18e5ffffa5c1a682d412583a098ffbb4001c86362efb",
+        "python/akashadb/vectors.py": "66a50d5c3dd4319bd1ecffe80f8f5dcb4e215a131422f63d1af9492c3a6a0c31",
+        "src/akasha/__init__.mojo": "f24c1e36ce31605bb505a65c7f5dcd889e0120d027e6e9c144101299994d3065",
+        "src/akasha/api/collection.mojo": "fa168874fb6a9a464940696a6a52680e518d2fac28f9e3870d091048b5fd222c",
+        "src/akasha/api/snapshot.mojo": "84081721309441ef3719aa311964dd9d70c5aa2a5c35de645b61f7b309a767e6",
+        "src/akasha/index/hnsw_core.mojo": "3a96cdbdeec66ca606887b2a883f4844a60a0d7874e1b16a8c4b0432996f1177",
+        "src/akasha/index/hnsw_entries.mojo": "327e75e70382533467e731d1261dfa76c95e2d4866da81937288c6841b17d47d",
+        "src/akasha/query/discovery.mojo": "92203b95cddffbf578ec83df599e3169c0720ed044bb87398ebac0f4b494d39f",
+        "src/akasha/query/discovery_scorer.mojo": "0b8243800686d7fe37b40e6b0c58a0d9cd03b4bcb1af9645ad9e848b996900bc",
+        "src/akasha/query/field_discovery.mojo": "dbfc2b3964c5cd9b3a80bedb4dcae656a7620246efc957e47927313fed4a3a00",
+        "src/akasha/query/field_examples.mojo": "23aa74ce89e60f800bd9b095aa52b520ff3b94d8ff5ad6bf35b84c5f3f32d0b5",
+        "src/akasha/query/field_recommendation.mojo": "f5c74c49473269e4b3e9ff0346c01af746b87c9aa2302dc5347a70e55a266dca",
+        "src/akasha/query/field_scored.mojo": "ebf48a0bb3da9e7ca1c116500fbfc1202167a6777c93e94be570a3a40e180536",
+        "src/akasha/query/field_scorer.mojo": "5153897693c33d9350e9fd4f1fb65c1cda7cba2675330414391617e8478eb2be",
+        "src/akasha/query/recommendation_metrics.mojo": "63e5e7369411c1ff9f8f2180e0da50e6d466d5d0f124adbd92b3ca296b26322b",
+        "src/akasha/query/recommendation_scorer.mojo": "d64fa0312ce5ddf4f9e1ef79a71091be2af9baf60cad3d922dce4d2d5cf8816f",
+        "src/bindings/python_module.mojo": "75a93708f50f738743c5015524305c27687c9d958f7ac55ff8bae78484f15f52",
+        "scripts/qdrant_discovery_reference.py": "d80a889154707e0d6c3e6a0f000462158d7c0a020dbfe361267b3ca32ccea3bc",
+        "tests/mojo/test_discovery.mojo": "1d01068ffa56f569ce43b7f7b42708ed4464e8ff3a0d4d6797962258e9de9830",
+        "tests/mojo/test_hnsw_entries.mojo": "0f6a4171d70fce7e7a4c15ce0379df406d5b77ad9d1f5cef89056877e736cd8f",
+        "tests/python/test_discovery.py": "ab3b3edfa974bedd3d48aada27897ef4f0aaad7d5b236ed43566170350d0783b"
+      }
     }
   ]
 }

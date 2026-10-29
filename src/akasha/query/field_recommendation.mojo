@@ -8,63 +8,15 @@ Exact and indexed execution share one prepared recommendation scorer.
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from akasha.query.control import QueryControl
-from akasha.query.field_lookup import resolve_point_field, same_collection_roots
-from akasha.query.field_search import FieldSearchExecution
+from akasha.query.field_lookup import same_collection_roots
+from akasha.query.field_examples import RecommendationExample, resolve_query_examples
+from akasha.query.field_search import FieldSearchExecution, search_sparse_field
 from akasha.query.filter_ast import FilterExpression
 from akasha.query.recommendation import validate_recommendation
-from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_input
 from akasha.query.recommendation_scorer import PreparedRecommendation
-from akasha.query.recommendation_execution import search_recommendation_exact, search_recommendation_approx, search_recommendation_sparse
+from akasha.query.field_scored import search_scored_field_exact, search_scored_field_approx
 from akasha.storage.read_generation import ReadGeneration
 from std.memory import ArcPointer
-
-
-@fieldwise_init
-struct RecommendationExample(Movable):
-    var id: Optional[Int]
-    var vector: Optional[VectorValue]
-
-    @staticmethod
-    def point(id: Int) -> Self:
-        return Self(Optional(id), None)
-
-    @staticmethod
-    def raw(var value: VectorValue) -> Self:
-        return Self(None, Optional(value^))
-
-
-def _resolve_examples(
-    examples: List[RecommendationExample], source: ReadGeneration,
-    name: String, field: VectorFieldSpec, same: Bool,
-    mut excluded: Dict[Int, Bool], control: Optional[QueryControl],
-) raises -> List[VectorValue]:
-    var result = List[VectorValue]()
-    for i in range(len(examples)):
-        if control:
-            control.value().checkpoint(i)
-        ref example = examples[i]
-        var value: VectorValue
-        if example.id:
-            if example.vector:
-                raise Error("recommendation example must contain either ID or vector")
-            var point = resolve_point_field(source, name, example.id.value())
-            ref catalog = source.catalog.value()[]
-            ref source_field = catalog.field_at(catalog.named_ordinal(name))
-            # Qdrant retrieves already preprocessed stored vectors. Akasha keeps
-            # raw native authority, so reconstruct that representation here.
-            value = prepare_recommendation_vector(point.value(), source_field)
-            if same:
-                excluded[example.id.value()] = True
-        elif example.vector:
-            value = recommendation_input(example.vector.value())
-        else:
-            raise Error("recommendation example is empty")
-        if value.kind() != field.kind or (field.kind != 1 and value.dimension() != field.dimension):
-            raise Error("recommendation vector kind or dimension mismatch")
-        if field.kind == 2 and value.row_count() == 0:
-            raise Error("recommendation multivector example must have rows")
-        result.append(value^)
-    return result^
 
 
 def recommend_generation_field(
@@ -97,8 +49,8 @@ def recommend_generation_field(
     var same = same_collection_roots(view, source)
     var source_name = lookup_field.value() if lookup_field else name
     var excluded = Dict[Int, Bool]()
-    var positive = _resolve_examples(positives, source, source_name, field, same, excluded, control)
-    var negative = _resolve_examples(negatives, source, source_name, field, same, excluded, control)
+    var positive = resolve_query_examples(positives, source, source_name, field, same, excluded, control)
+    var negative = resolve_query_examples(negatives, source, source_name, field, same, excluded, control)
     var query = ArcPointer(PreparedRecommendation(field, strategy, positive, negative))
     if field.kind == 1:
         if ef_search != -1:
@@ -106,7 +58,31 @@ def recommend_generation_field(
         # Qdrant's sparse VectorIndex ignores SearchParams (including exact).
         return search_recommendation_sparse(view, query[], k, expression, excluded, control)
     if approximate:
-        return search_recommendation_approx(view, query, k, expression, excluded, ef_search, control)
+        return search_scored_field_approx(view, query[].field, query, k, expression, excluded, ef_search, control)
     if ef_search != -1:
         raise Error("ef_search requires approximate recommendation")
-    return search_recommendation_exact(view, query[], k, expression, excluded, control)
+    return search_scored_field_exact(view, query[].field, query[], k, expression, excluded, control)
+
+
+def search_recommendation_sparse(
+    view: ReadGeneration, query: PreparedRecommendation, k: Int,
+    expression: Optional[FilterExpression], excluded: Dict[Int, Bool],
+    control: Optional[QueryControl],
+) raises -> FieldSearchExecution:
+    """Qdrant sparse search_query: nearest index versus custom full scoring."""
+    if query.strategy != "average_vector":
+        var execution = search_scored_field_exact(view, query.field, query, k, expression, excluded, control)
+        execution.reason = "recommendation_sparse_scored"
+        return execution^
+    var execution = search_sparse_field(
+        view, query.field, query.positive[0], k, expression, control,
+        Optional(excluded.copy()), require_finite=True,
+    )
+    execution.stats.backend_name = "qdrant-recommendation-f32"
+    if execution.reason == "field_sparse_empty":
+        execution.reason = "recommendation_sparse_empty"
+    elif execution.reason == "field_sparse_plain":
+        execution.reason = "recommendation_sparse_plain"
+    else:
+        execution.reason = "recommendation_sparse_indexed"
+    return execution^

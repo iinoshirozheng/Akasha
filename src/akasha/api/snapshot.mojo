@@ -1,4 +1,5 @@
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
+from akasha.query.field_discovery import ContextPair, discover_generation_field
 from akasha.document.point_state import PointState
 from akasha.document.vector_value import VectorValue
 from akasha.document.vector_schema import VectorFieldSpec
@@ -203,6 +204,37 @@ struct ReadSnapshot(Movable):
             approximate=approximate, ef_search=ef_search, rerank_k=rerank_k,
             ivf=ivf, mmr=mmr, control=control,
         )
+
+    def discover_field_reported(
+        self, name: String, target: Optional[RecommendationExample],
+        context: List[ContextPair], k: Int, *,
+        lookup: Optional[ReadSnapshot] = None, lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
+    ) raises -> FieldSearchExecution:
+        var root = self._acquire()
+        var source = lookup.value()._acquire() if lookup and k != 0 else root.copy()
+        return discover_generation_field(
+            root[], source[], name, target, context, k, expression,
+            lookup_field=lookup_field, max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
+        )
+
+    def discover_field(
+        self, name: String, target: Optional[RecommendationExample],
+        context: List[ContextPair], k: Int, *,
+        lookup: Optional[ReadSnapshot] = None, lookup_field: Optional[String] = None,
+        var expression: Optional[FilterExpression] = None,
+        max_examples: Int = 1024, control: Optional[QueryControl] = None,
+        approximate: Bool = False, ef_search: Int = -1,
+    ) raises -> List[FieldSearchResult]:
+        var execution = self.discover_field_reported(
+            name, target, context, k, lookup=lookup, lookup_field=lookup_field,
+            expression=expression^, max_examples=max_examples, control=control,
+            approximate=approximate, ef_search=ef_search,
+        )
+        return execution.take_results()
 
     def recommend_field_reported(
         self, name: String, positives: List[RecommendationExample],

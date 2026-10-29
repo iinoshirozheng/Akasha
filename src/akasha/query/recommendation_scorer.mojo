@@ -7,12 +7,13 @@ Based on CustomQueryScorer and RecoQuery at Qdrant revision
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.document.vector_value import VectorValue
 from akasha.query.control import QueryControl
+from akasha.query.field_scorer import PreparedFieldQuery
 from akasha.query.recommendation import RecommendationScores, average_recommendation
 from akasha.query.recommendation_metrics import prepare_recommendation_vector, recommendation_similarity
 from std.math import isfinite, sqrt
 
 
-struct PreparedRecommendation(Movable):
+struct PreparedRecommendation(PreparedFieldQuery, Movable):
     var field: VectorFieldSpec
     var strategy: String
     var positive: List[VectorValue]
@@ -34,6 +35,9 @@ struct PreparedRecommendation(Movable):
                 self.positive.append(prepare_recommendation_vector(positive[i], field))
             for i in range(len(negative)):
                 self.negative.append(prepare_recommendation_vector(negative[i], field))
+
+    def query_name(self) -> String:
+        return "recommendation"
 
     def similarity_count(self) -> Int:
         return len(self.positive) + len(self.negative)

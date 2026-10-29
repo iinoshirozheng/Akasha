@@ -83,7 +83,9 @@ def _row_similarity(
     query: List[Float32], candidate: List[Float32], qi: Int, ci: Int,
     field: VectorFieldSpec,
 ) -> Float32:
-    var total = Float32(0)
+    # Rust Iterator::sum::<f32> starts at -0.0. Discovery total_cmp observes
+    # this sign when every dot product term is -0, so +0 is not equivalent.
+    var total = Float32(-0.0)
     var integer_total = Int64(0)
     var qnorm = Int64(0)
     var cnorm = Int64(0)
@@ -138,6 +140,8 @@ def recommendation_similarity(query: VectorValue, candidate: VectorValue, field:
     for qrow in range(query.row_count()):
         var best = -inf[DType.float32]()
         for crow in range(candidate.row_count()):
-            best = max(best, _row_similarity(left, right, qrow * field.dimension, crow * field.dimension, field))
+            var similarity = _row_similarity(left, right, qrow * field.dimension, crow * field.dimension, field)
+            if similarity > best:
+                best = similarity
         total += best
     return total

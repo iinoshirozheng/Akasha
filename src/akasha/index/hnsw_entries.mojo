@@ -80,6 +80,25 @@ struct HnswEntryPoints(Movable):
                 best_id = item.id
         return best
 
+    def get_custom_entry[GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission](
+        self, graph: GraphType, allowed: AdmissionType, slots: List[UInt32],
+    ) raises -> Optional[HnswEntry]:
+        """Qdrant graph_layers::get_entry_point custom branch (74f3e85).
+
+        Iterator::max_by_key selects the last eligible point at the highest
+        level. Invalid/filtered entries do not suppress the normal fallback.
+        """
+        var best = Optional[HnswEntry]()
+        for slot in slots:
+            if UInt64(slot) >= UInt64(graph.slot_count()):
+                raise Error("custom HNSW entry slot out of bounds")
+            if not graph.is_current(slot) or not allowed._allows_item(slot, graph.id_at(slot)):
+                continue
+            var level = graph.level(slot)
+            if not best or level >= best.value().level:
+                best = Optional(HnswEntry(slot, level))
+        return best if best else self.get_entry(graph, allowed)
+
     def new_point[GraphType: HnswGraphAccess, AdmissionType: HnswResultAdmission](
         mut self, graph: GraphType, slot: UInt32, allowed: AdmissionType
     ) raises:

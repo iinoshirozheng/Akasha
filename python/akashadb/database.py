@@ -5,7 +5,7 @@ from threading import Event
 from time import monotonic_ns, perf_counter_ns
 from typing import Any, Mapping, Protocol
 
-from .vectors import FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField, _vector_value
+from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField, _vector_value
 from .exceptions import CollectionNotFoundError, ValidationError, map_kernel_error
 from .models import (
     BatchMutation,
@@ -181,7 +181,7 @@ class Collection:
     ) -> None:
         self._operations += 1
         self._total_duration_ns += duration_ns
-        if method.startswith(("search", "get", "recommend")):
+        if method.startswith(("search", "get", "recommend", "discover")):
             self._queries += 1
         if status == "ok" and method.startswith(("upsert", "delete", "apply")):
             self._writes += 1
@@ -264,6 +264,61 @@ class Collection:
                                      ef_search=ef_search, rerank_k=rerank_k, ivf=ivf, mmr=mmr,
                                      cancellation=cancellation, timeout_ns=timeout_ns)
         return [SearchResult(**item) for item in raw]
+
+    def discover_field(
+        self, name: str, target: Any = None, context: list[ContextPair] | None = None,
+        k: int = 10, *, mode: str = "exact", ef_search: int | None = None,
+        lookup_from: "Collection | None" = None, lookup_field: str | None = None,
+        filter: Mapping[str, Any] | None = None,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> list[SearchResult]:
+        """Discover using a target and/or positive/negative context pairs."""
+        raw = self._discover_field_raw(
+            name, target, context, k, mode=mode, ef_search=ef_search,
+            lookup_from=lookup_from, lookup_field=lookup_field, filter=filter,
+            cancellation=cancellation, timeout_ns=timeout_ns,
+        )
+        return [SearchResult(**item) for item in raw]
+
+    def _discover_field_raw(
+        self, name: str, target: Any = None, context: list[ContextPair] | None = None,
+        k: int = 10, *, mode: str = "exact", ef_search: int | None = None,
+        lookup_from: "Collection | None" = None, lookup_field: str | None = None,
+        filter: Mapping[str, Any] | None = None, columns: bool = False,
+        cancellation: "CancellationToken | None" = None, timeout_ns: int | None = None,
+    ) -> Any:
+        if type(k) is not int or not 0 <= k <= self.limits.max_k:
+            raise ValidationError("discovery k exceeds resource limit")
+        method = "discover_field_columns" if columns else "discover_field"
+        if k == 0:
+            # Match Qdrant's single-query early return; still check open target
+            # and record the native result/stats through the normal boundary.
+            return self._call(method, name, None, [], 0, {})
+        if context is not None and not isinstance(context, (list, tuple)):
+            raise ValidationError("context must be a list of ContextPair values")
+        context = [] if context is None else context
+        if 2 * len(context) + (target is not None) > self.limits.max_query_batch:
+            raise ValidationError("discovery example resource limit exceeded")
+        if any(not isinstance(pair, ContextPair) for pair in context):
+            raise ValidationError("context must contain ContextPair values")
+        if mode not in ("exact", "approx"):
+            raise ValidationError("discovery mode must be exact or approx")
+        if ef_search is not None and (type(ef_search) is not int or ef_search <= 0 or mode != "approx"):
+            raise ValidationError("ef_search must be positive and requires approximate discovery")
+        if lookup_from is not None and not isinstance(lookup_from, Collection):
+            raise ValidationError("lookup_from must be an open Collection")
+        if lookup_field is not None and (type(lookup_field) is not str or not lookup_field):
+            raise ValidationError("lookup_field must be a nonempty field name")
+        if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+            raise ValidationError("query timeout must be a positive integer")
+        deadline = 0 if timeout_ns is None else monotonic_ns() + timeout_ns
+        return self._call(method, name, _vector_value(target), [pair.to_kernel() for pair in context], k,
+            {"mode": mode, "ef_search": -1 if ef_search is None else ef_search,
+             "max_examples": self.limits.max_query_batch,
+             "lookup_from": None if lookup_from is None else lookup_from._kernel,
+             "lookup_field": lookup_field, "filter": None if filter is None else dict(filter),
+             "cancelled": bool(cancellation and cancellation.cancelled),
+             "deadline_ns": deadline, "max_candidates": self.limits.max_candidates})
 
     def recommend_field(
         self, name: str, positive: list[Any], negative: list[Any] | None = None,

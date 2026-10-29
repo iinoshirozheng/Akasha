@@ -16,7 +16,7 @@
 - Q02a 查詢既有點 ID、來源 collection／欄位 lookup 與候選前 ID 排除已接上
   Mojo／Python／Arrow；52 組上游參考、18 項原生與 410 項不同 Python 案例通過。
   [驗證紀錄](docs/research/2026-10-30-point-query-validation.md)。目前沿用原生同型別查詢契約。
-- 目前工作：[Q02b 三種推薦策略](docs/plans/2026-10-30-recommendation-source-port.md)。
+- 推薦系列：[Q02b 三種推薦策略](docs/plans/2026-10-30-recommendation-source-port.md)。
   Q02 與完整協定相容仍未完成。
 - Q02b 三種推薦的 exact 路徑已接上 Mojo／Python／Arrow；包含混合 ID／向量、
   lookup／排除、篩選與來源前處理。336 組 F32 上游查詢與 24 組 reducer fixture 已建立。
@@ -42,6 +42,14 @@
   1 項選配 Qdrant Edge 跳過。最後參數修正另通過 50 項 MMR 與 521 項查詢回歸。
   [MMR 驗證與範圍](docs/research/2026-10-30-mmr-validation.md)。
   探索／context、nested prefetch 與完整協定等缺口仍保留。
+- Q03b discovery/context 已接上 Mojo／Python／Arrow：exact dense/sparse/MaxSim、
+  dense 兩階段 HNSW、context-only、自訂入口、raw／ID／lookup／排除／snapshot。
+  336 組來源案例、42 項原生與完整 Python 2005 項通過，1 項選配 Qdrant Edge 跳過；
+  含 262 項新增 Python 案例。來源對照修正了 signed-zero 造成的排名差異。
+  [discovery 計畫](docs/plans/2026-10-30-discovery-source-port.md)／
+  [驗證與限制](docs/research/2026-10-30-discovery-validation.md)。
+  接續 Q04 universal／nested prefetch 與 Q03 完整整合；batch／offset／projection、
+  multivector HNSW、datatype／storage、完整協定及其餘產品功能仍列為未完成。
 
 以下為先前工作與效能歷史，原失敗、參數例外及封存候選全部保留。
 
