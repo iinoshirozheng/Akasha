@@ -4100,6 +4100,117 @@
         "scripts/jsonb_cast_reference.rs": "0b001c3f0b0d28236b08bd1b6813363b946c06a731c8f44f1baa6edba5ad4a97"
       },
       "post_validation_whitespace_only": "Removed extra blank lines at EOF in tests/mojo/test_jsonb_cast.mojo; test statements unchanged."
+    },
+    {
+      "id": "D01c4f-lance-json-functions",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-arrow/src/json.rs",
+          "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/functions/path.rs",
+          "sha256": "a37e93c5fe4049cd40a5a6782e29818f70d289f903c71a51d7f70382468eec74"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/iterator.rs",
+          "sha256": "4f1fcf4bac969da5e5b6f3d996200a6d604a78b04578ebcde77b83576a3a81e6"
+        }
+      ],
+      "source_units": [
+        "Lance Arrow JsonArray::json_path/get_json_path",
+        "All ten Lance DataFusion JSON UDF core and Arrow row implementations; exact nullable casts and JsonbType classification",
+        "jsonb exact get_by_index/get_by_name(false), key entry traversal and owned item wrapping"
+      ],
+      "dependency_provenance": "tests/fixtures/lance-json-functions/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "targets": [
+        "src/akasha/document/lance_json.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/bindings/lance_json_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/json_functions.py"
+      ],
+      "reuses_ports": [
+        "D01c4c-jsonb-selector",
+        "D01c4e-jsonb-scalar-casts",
+        "D01c3i-jsonb-text-writer"
+      ],
+      "adaptations": [
+        "Owned native values and existing codec/input limits; source panics become errors",
+        "Native per-row traversal/consumer budgets and batch input/output/row limits; cancellation/deadlines",
+        "Two source-wrapped bodies exceed established depth 64; all six source outcomes retained and rejection tested",
+        "Detailed internal parser errors mapped to original InvalidJsonPath at consumer boundary",
+        "Python scalar and validated Arrow primitive transport/output construction; all row semantics and computation native",
+        "json_path vectorization/null-path broadcast wraps original per-row Arrow helper; not an additional source SQL UDF",
+        "DataFusion oracle error carrier/dispatch adapted, source core/row bodies unchanged; no SQL engine or ColumnarValue integration claim",
+        "Current Arrow transport materializes primitive lists; no zero-copy/performance claim"
+      ],
+      "oracle": "scripts/lance_json_functions_reference.py",
+      "fixtures": {
+        "tests/fixtures/lance-json-functions/Cargo.lock": "4ef9b9d2c60a6a5e6e7b2b0ce6ae160eedcb82399098ea47d7b382a52d0dc0fd",
+        "tests/fixtures/lance-json-functions/README.md": "b353cdcf3722a8fbbdb38a47483f8b01acc41aa966d4898bcecc82ed88eed320",
+        "tests/fixtures/lance-json-functions/cases.json": "ad0ed75670dbc7698554771eec45ee1b2c977aa94311969c3b83157f72e51cc8",
+        "tests/fixtures/lance-json-functions/sources.json": "116f85b0b6ed82219a3f6ecacb362c8a7f3f6acc3f04f26b15f75d896bf91a72"
+      },
+      "status": "verified_lance_json_consumers_native_python_arrow_collection_index_sql_pending",
+      "verification": [
+        "docs/research/2026-10-30-lance-json-functions-validation.md"
+      ],
+      "results": {
+        "operations": 216337,
+        "source_successes": 202761,
+        "source_errors": 13312,
+        "source_panics": 264,
+        "input_limit_successes": 2,
+        "input_limit_errors": 4,
+        "scenarios": 47223,
+        "source_functions": 26,
+        "input_limit_scenarios": 2,
+        "native_tests_passed": 25,
+        "new_python_tests_passed": 18,
+        "boundary_python_tests_passed": 178,
+        "full_python_passed": 3716,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock": true,
+        "exact_successes": 202759,
+        "exact_source_errors": 13308,
+        "mapped_source_panics": 264
+      },
+      "remaining": [
+        "Collection JSONB predicate/projection planning and dedicated indexes",
+        "Complete C/distributed query boundaries and SQL UDFs with a real SQL engine",
+        "All remaining 49-package product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/lance_json.mojo": "58f797121d2f0b93a847f33db71a45d5ed03b3e488b814a1bfcc9ac3f6e1501f",
+        "src/akasha/document/__init__.mojo": "3962ee645e3224b5e353e9fac30f3a0ce77e40aec33e511fe290f053e1d79735",
+        "src/bindings/lance_json_python.mojo": "3fda65d248e34cb86dfa3294dbddb923e0ef17268e2ab07d1ceaf9c73064dd95",
+        "src/bindings/python_module.mojo": "12f535ff2b03d78a00b8386c7b54068c22790a7f853db440aafac0fce4e670ab",
+        "python/akashadb/json_functions.py": "4a3b0229d0fee50fa778a2e068e93ec6cb579c7fda83704e720b9ffd923ce884",
+        "tests/mojo/test_lance_json.mojo": "5cdbfff0f7715b8f7e04a75c51fb2e91a3929e53687fd127afafe2c23de41f73",
+        "tests/python/test_lance_json_functions.py": "4d452e3d1497524f5b097da0de943187bd8cdf95a9ea5ace820b475d49a6557c",
+        "scripts/lance_json_functions_reference.py": "b924cf627346c896ab4ffd527fc7af82c50aac443cf8212e3cff2e5403df93cc",
+        "scripts/lance_json_functions_reference.rs": "fd96b0533ad5b8508d17bd18b39e919cc86f5c585a348d3ecd4f4b1f3d145650"
+      }
     }
   ]
 }

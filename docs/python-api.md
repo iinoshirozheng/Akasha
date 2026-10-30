@@ -340,6 +340,24 @@ assert JsonbValue.from_json('"hello"').cast('string') == 'hello'
 See [scalar cast contracts](native-jsonb.md#source-scalar-casts), including exact
 integer limits, nonfinite values and differences from `to_json()`.
 
+`akashadb.json_functions` provides source-backed Lance `json_path`,
+`json_extract`, `json_extract_with_type`, `json_exists`, `json_get`, typed
+`json_get_string/int/float/bool`, `json_array_contains`, and `json_array_length`.
+Each accepts a scalar `JsonbValue`/None or a nullable Arrow LargeBinary array,
+with Utf8/string argument broadcasting and native Mojo execution.
+
+```python
+from akashadb import json_functions as jf
+value = JsonbValue.from_json('{items:[1,2],price:1.5}')
+assert jf.json_extract(value, '$.items[*]') == '[1,2]'
+assert jf.json_get_int(value, 'price') == 2
+```
+
+See [Lance function contracts](native-jsonb.md#lance-json-functions) for type
+tags, null/missing, first versus multiple matches, array behavior, Arrow output,
+ownership and bounds. This is value/Arrow execution; collection planner and SQL
+integration remain pending.
+
 Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array

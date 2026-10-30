@@ -494,7 +494,8 @@ Malformed mutable native ASTs, invalid inputs and exhausted limits raise errors.
 
 This value-level API also works on values read after WAL/checkpoint reopen.
 It does not yet add a collection JSONB predicate/projection, JSONB index, SQL
-UDF, Arrow transformation API or C/distributed query operation.
+UDF or C/distributed query operation. The Lance function API below separately
+provides Arrow transformations.
 
 ## Native source Display
 
@@ -570,8 +571,104 @@ Native equivalents, exported by `akasha.document`, are `jsonb_to_bool`,
   and numbers through Number Display, including Decimal scale and source quirks.
 
 Null, arrays, objects and extension values reject these raw casts. This differs
-from Lance's nullable get functions, which must check null/missing before
-casting. Those consumers remain a separate integration step. It also differs
+from Lance's nullable get functions below, which check null/missing before
+casting. It also differs
 from `to_json()`, which serializes complete containers and quotes strings.
 Cast failures do not mutate stored values, and returned strings own their bytes.
 Existing binary input bounds apply; no durable format or query contract changes.
+
+## Lance JSON functions
+
+`akashadb.json_functions` exposes the eleven original Lance consumer operations.
+Ten correspond to Lance DataFusion JSON UDFs; `json_path` wraps the original
+per-row Lance Arrow helper with the same nullable/broadcast batch boundary.
+Pass a `JsonbValue` (or `None`) for a scalar result, or a PyArrow `LargeBinary`
+array for an Arrow result. JSONB bytes are already encoded; text parsing remains
+`JsonbValue.from_json`. Arrow path/key/needle arguments are `Utf8` arrays, or a
+Python string/None broadcast to all rows. A one-element argument array also
+broadcasts. Inputs with `lance.json` extension storage can pass `.storage`.
+
+```python
+import pyarrow as pa
+from akashadb import JsonbValue
+from akashadb import json_functions as jf
+
+value = JsonbValue.from_json('{items:[1,2],price:1.5,flag:"YES"}')
+assert jf.json_path(value, '$.items[*]') == '1'
+assert jf.json_extract(value, '$.items[*]') == '[1,2]'
+assert jf.json_get_int(value, 'price') == 2
+assert jf.json_get_bool(value, 'flag') is True
+assert jf.json_array_length(value, '$.items') == 2
+
+column = pa.array([value.data, None], type=pa.large_binary())
+assert jf.json_extract(column, '$.items').to_pylist() == ['[1,2]', None]
+typed = jf.json_extract_with_type(column, '$.price')
+assert typed.to_pylist()[0]['type_tag'] == 3
+```
+
+| Function | Scalar result / Arrow output |
+| --- | --- |
+| `json_path(value, path)` | First selected JSON text / Utf8 |
+| `json_extract(value, path)` | JSON text; multiple matches form an array / Utf8 |
+| `json_extract_with_type(value, path)` | `{value, type_tag}` / Struct(LargeBinary, UInt8) |
+| `json_exists(value, path)` | Whether any value is selected / Boolean |
+| `json_get(value, key)` | Owned JsonbValue / LargeBinary |
+| `json_get_string(value, key)` | Nullable source cast / Utf8 |
+| `json_get_int(value, key)` | Nullable source cast / Int64 |
+| `json_get_float(value, key)` | Nullable source cast / Float64 |
+| `json_get_bool(value, key)` | Nullable source cast / Boolean |
+| `json_array_contains(value, path, needle)` | Source rendered-element comparison / Boolean |
+| `json_array_length(value, path)` | First match's array length / Int64 |
+
+Keys are exact object keys, including empty strings, dots and Unicode. Array
+keys use Rust's unsigned decimal integer grammar (optional `+`, leading zeros,
+no whitespace/negative sign); these are not JSON paths. Missing keys return None.
+`json_get` preserves JSON null as a value; typed get functions return None for
+JSON null before casting. `json_exists` tests selection, so a selected `false`
+or JSON null still exists.
+
+Type tags are Null=0, Boolean=1, Int64=2, Float64=3, String=4, Array=5, Object=6.
+Stored Float64 remains tag 3 even when integral; exact integral Decimal/UInt64
+within Int64 range can be tag 2. Extensions get tag 4 while retaining their
+binary bytes. A missing/null input produces `{value: None, type_tag: 0}`;
+a selected JSON null has non-null JSONB bytes and tag 0. The Arrow struct itself
+is non-null and its type_tag field is non-nullable.
+
+Array contains checks the elements of every selected array against `needle`
+and a simply quoted `needle`, using the source JSON writer. It does not escape
+the alternative string or perform structural/numeric equality. Array length
+uses the first match; a valid nonarray returns 0, and no match returns None.
+Both execute the source's full selection before consuming matches.
+
+Null storage/path/needle rows return null before decoding or parsing, except
+for typed extraction's struct described above. Other row errors abort the whole
+batch. Results own their data and remain usable after inputs/collections close.
+Arrow structural/UTF-8 validation precedes transport. Python only transports
+values and constructs typed Arrow output; row selection,
+null/broadcast handling, binary traversal and all computations run in Mojo.
+The current Arrow transport materializes primitive lists; it is not zero-copy.
+
+All functions accept `max_work=1_000_000`, `max_results=65_536`,
+`max_bytes=64*1024*1024`, `cancellation=None`, and `timeout_ns=None`.
+Work limits apply per row and traversal/consumer phase; repeated source array
+index scans are charged for each visit. Results limit bounds selector matches
+and batch rows. The byte budget bounds native input transport, staging and
+output; output accounting includes null slots. Batches/argument arrays have a
+65,536-row cap, individual bodies retain the 16 MiB/depth/node codec limits,
+and each string argument has a 65,536 UTF-8 byte cap. Arguments must have length
+one or cover every body row; extra source-compatible argument rows are ignored.
+Negative/zero limits, invalid shapes/types and exhausted budgets raise
+`ValidationError`. Python cancellation is sampled before the synchronous call;
+native deadlines/cancellation are checked during work. Source panics become
+errors; binary and parser limits remain enforced.
+
+Native `LanceJson(value, ...)` exposes `json_path`, `extract`,
+`extract_with_type`, `exists`, `get`, `get_string`, `get_int`, `get_float`,
+`get_bool`, `array_contains`, `array_length`. Native typed extraction returns
+`Optional[Tuple[JsonbValue, UInt8]]`; Arrow/scalar Python exposes the row struct.
+Exact helpers `jsonb_get_by_name`, `jsonb_get_by_index` and `lance_json_type`
+are also exported by `akasha.document`.
+
+These functions work on values read from a collection or an Arrow scanner.
+Collection planner predicates/projections, dedicated indexes, SQL UDF
+registration, and complete C/distributed query exposure remain separate tasks.

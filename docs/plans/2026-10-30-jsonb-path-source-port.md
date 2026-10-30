@@ -116,3 +116,12 @@ division and RawJsonb bool/integer/float/string casts are now native. Python
 pass; fixtures reproduce. Continue the
 [Lance consumer integration plan](2026-10-30-lance-json-functions-source-port.md),
 then collection/filter/projection/index and remaining protocol/SQL boundaries.
+
+## Lance consumer checkpoint: D01c4f
+
+All eleven actual Lance JSON consumer operations and nullable Arrow/Python
+boundaries are now source-verified; exact key/index access and type tags are
+native. See [consumer evidence](../research/2026-10-30-lance-json-functions-validation.md)
+and [continued integration plan](2026-10-30-lance-json-functions-source-port.md).
+Collection planner filtering/projection, indexes, SQL and complete C/distributed
+contracts remain open; all full-product/platform/performance gates stay open.

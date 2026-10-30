@@ -31,6 +31,16 @@
           "path": "LICENSE",
           "sha256": "6f4030a4f059f5618cf00375afd8f5d18fe48e0fc2be1c2e98b2c32c90c44938"
         }
+      ],
+      "integrations": [
+        {
+          "port": "D01c4f-lance-json-functions",
+          "provenance": "tests/fixtures/lance-json-functions/sources.json",
+          "source_units": [
+            "rust/lance-arrow/src/json.rs",
+            "rust/lance-datafusion/src/udf/json.rs"
+          ]
+        }
       ]
     },
     {
@@ -394,6 +404,15 @@
           "source_units": [
             "src/number.rs",
             "src/functions/scalar.rs"
+          ]
+        },
+        {
+          "port": "D01c4f-lance-json-functions",
+          "provenance": "tests/fixtures/lance-json-functions/sources.json",
+          "source_units": [
+            "src/functions/path.rs",
+            "src/core/databend/util.rs",
+            "src/core/databend/iterator.rs"
           ]
         }
       ]

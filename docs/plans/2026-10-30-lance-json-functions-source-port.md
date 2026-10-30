@@ -51,3 +51,19 @@ metadata/lock reproduce. See [evidence](../research/2026-10-30-jsonb-cast-valida
 Continue exact key/index lookup and type tags, the actual consumer functions and
 their nullable Arrow/Python/public integrations. This checkpoint is not full
 Lance consumer, collection query, SQL or product completion.
+
+## Consumer checkpoint: D01c4f
+
+Steps 2 and 3 now have exact key/index access, source tags and all eleven actual
+Lance consumer operations. Step 4's native and public Python/nullable Arrow
+execution is verified; SQL/collection planner/index integration is still open.
+47,223 scenarios / 216,337 source outcomes, 25 native tests, 18 new Python tests,
+178 boundary tests and full Python 3,716 passed / 1 skip; final build and source
+fixture/metadata/lock reproduction pass. Existing depth-limit differences are
+explicitly retained, not hidden. [Evidence](../research/2026-10-30-lance-json-functions-validation.md).
+
+Next, inspect the existing collection filter/project/index call paths and Lance
+expression consumers before implementing planner integration. Reuse these
+verified functions; do not reimplement conversions, path selection or formatting.
+Complete the remaining 49-package ledger in its existing order, without starting
+optimization or treating this consumer checkpoint as full D01/Lance completion.

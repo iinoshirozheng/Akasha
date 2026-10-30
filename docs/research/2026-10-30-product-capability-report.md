@@ -24,6 +24,8 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
+最新 D01c4f 已完成 Lance 的 11 個 JSON 值／Arrow 操作：第一筆與多筆取值、型別標籤、exists、key/index get、nullable 轉型與陣列函式；全部由 Mojo 執行，公開 `akashadb.json_functions` 可直接使用。47,223 組情境／216,337 組來源結果對照，25 項 Mojo、18 項新增 Python、178 項邊界回歸與完整 Python **3,716 通過／1 跳過**；來源可逐 byte 重現。兩組來源包裝輸入超過既有深度限制，保留原始結果並驗證明確拒絕。見[實際 consumer 驗證](2026-10-30-lance-json-functions-validation.md)。collection planner／索引與所有完整產品門檻仍待完成，尚未優化。
+
 最新 D01c4e 已完成原生 Number 精確／四捨五入轉型與 Python `JsonbValue.cast` 的五種轉型，依 jsonb／ethnum／Rust 來源保留 Decimal、溢位、字串與非有限浮點行為。96,744 組數值、19,975 組 JSONB 值及 22,188 組除法對照、25 項 Mojo、17 項新增 Python 與完整 Python **3,698 通過／1 跳過**；來源產物可重現。見[轉型驗證](2026-10-30-jsonb-cast-validation.md)。實際 Lance consumer、collection 過濾／投影／索引及完整產品工作仍開放，尚未優化。
 
 最新 D01c4d 已完成原生 Number／完整已解析 JSONB AST 的來源 Display；依 jsonb／ethnum 保留 Decimal 文字、特殊邊界與路徑輸出規則。88,716 組數值、8,525 組路徑及 11,692 組來源除法對照、21 項相關 Mojo 與完整 Python **3,681 通過／1 跳過**；重建模組與來源重現通過。見[Display 驗證](2026-10-30-jsonb-display-validation.md)。這是原生 API，Lance consumer、完整轉型、collection 過濾／投影／索引及所有完整產品工作仍開放，尚未優化。
@@ -60,7 +62,7 @@ D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契
 | --- | --- | --- |
 | 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值、地理距離與日期的公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
-| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v3 與 v1/v2 讀取；JSONB 全既有型別二進位值與來源文字轉換；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow／JSONB extension 與 Map 匯入、指定型別／nullability／metadata 匯出 | JSONB 路徑查詢／索引、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
+| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v3 與 v1/v2 讀取；JSONB 全既有型別二進位值、來源文字轉換與值／Arrow 路徑取值／轉型；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow／JSONB extension 與 Map 匯入、指定型別／nullability／metadata 匯出 | collection JSONB 過濾／投影／索引、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
 | 搜尋／過濾 | 布林條件、純量索引、JSON-path／巢狀同元素條件、日期範圍、地理矩形／半徑／polygon、集合／純文字條件、空值／數量、點 ID／向量存在／固定 slice、獨立路徑空值條件、snapshot scan、投影 | 全文 tokenizer／BM25／位置式 phrase、專用日期／地理／巢狀／陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |
