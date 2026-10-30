@@ -215,3 +215,16 @@ DocumentField lists preserve Akasha's per-field depth limits. The existing
 writer lock and atomic replacement WAL batch replace Qdrant's segment/chunk
 plumbing; native row sequences and acknowledgment results remain distinct.
 See `docs/research/2026-10-30-payload-mutations-validation.md` and the port registry.
+
+### Rich payload formula retrieval
+
+`query/formula_payload.mojo` and formula/default integration port the
+authoritative payload retriever from Qdrant
+`lib/segment/src/index/struct_payload_index/read_view/value_retriever/helpers.rs`
+and value/default selection in `index/query_optimization/rescore_formula/formula_scorer.rs`
+at the same Apache-2.0 revision. The DocumentField root adapter reuses the ported
+JSON paths; one-level flattening, wildcard suffix, missing vs null and typed
+numeric defaults follow the source. The new oracle compiles the original parser,
+retriever and scorer together with real serde_json values. See
+`tests/fixtures/qdrant-formula-payload/README.md` and `docs/upstream/ports.json`.
+Dedicated typed-index retrievers, geo/date expressions and full protocols remain open.

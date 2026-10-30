@@ -119,7 +119,7 @@ on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array
 index does nothing, and a terminal wildcard clears its array. Collection-level
 operations below use the same source semantics. Rich Arrow schemas,
-dedicated nested/array indexes, nested formula values and complete REST/gRPC/C
+dedicated nested/array indexes and complete REST/gRPC/C
 and distributed payload contracts remain tracked in D01–D05/A01–A03/X01–X04.
 Existing scalar Arrow projections reject incompatible rich values explicitly.
 
@@ -883,7 +883,8 @@ The supported Qdrant numeric expression shapes are:
 - A number is an F32 constant, promoted to F64 for evaluation. A string selects
   `$score` (the first prefetch), `$score[n]`, or a payload field through Qdrant's
   JSON-path grammar. Quoted paths select literal flat names containing dots,
-  spaces or other punctuation; nested/array value traversal remains pending.
+  spaces or other punctuation; nested keys, UInt64 indexes and `[]` wildcards
+  traverse the stored JSON values.
 - `{"sum": [a, b, ...]}` and `{"mult": [a, b, ...]}` evaluate in source order.
   Empty sum is zero; empty multiplication is one.
 - `{"div": {"left": a, "right": b, "by_zero_default": 0}}` supports an optional
@@ -908,9 +909,19 @@ value/decays; division and the other math operators follow source checks.
 Missing prefetch scores use a numeric default for that score variable, otherwise
 zero; a nonnumeric score default also means zero. Missing payload values require
 a default. A present nonnumeric payload value raises even if a numeric default
-exists. Defaults retain native Int64/Float64 precision and may also be string or
-bool; bool is not numeric. Duplicate score-default aliases such as `$score` and
+exists. Defaults accept bounded JSON values, retain Int64/UInt64/Float64 precision,
+and are not flattened or coerced; bool is not numeric. Duplicate score-default aliases such as `$score` and
 `$score[0]` are rejected rather than depending on map iteration order.
+
+Payload retrieval follows Qdrant's authoritative-payload retriever: unless a path
+ends in `[]`, retrieved arrays are flattened by exactly one level. Zero retrieved
+values use the default; one uses that value; multiple form an array and fail a
+numeric expression. For example, `{"a": [3]}` gives `3` for `a` and `a[]`;
+`{"a": [[3]]}` gives `3` for `a[0]`, but `a` and `a[]` are nonnumeric.
+An empty array at `a` uses the default, while null at `a` is a type error. A default
+`[3]` is not unwrapped. A wildcard in the middle, such as `items[].weight`, can
+produce one, zero or multiple values according to the same rules. This does not
+implement Qdrant's typed-index retriever selection/coercions.
 
 Formula nodes require at least one prefetch, and can themselves be nested
 prefetches. Candidates are the visible deduplicated union of child results;
@@ -922,7 +933,10 @@ All stages use the same target read generation, including payload evaluation.
 
 `max_query_batch` also bounds the combined count of query nodes, formula nodes
 and formula defaults. Each formula additionally permits at most 1024 expression
-nodes, 1024 defaults and depth 64. Each condition retains the 256-node/16-depth
+nodes, 1024 defaults and expression depth 64. Default values together are bounded
+to 65,536 value nodes and 16 MiB of content including variable names, with at most
+64 container levels per value. Native validation and Python conversion enforce
+these limits even for unused defaults or an empty candidate set. Each condition retains the 256-node/16-depth
 filter bounds; the binding checks these before recursive construction, including
 cycles. Formula stages charge their input row count against the shared
 `max_candidates` budget; structural limits bound work per candidate. Native
@@ -933,8 +947,8 @@ source, including Unicode 17 alphanumeric raw keys, `_`/`-`, quoted literal keys
 UInt64 indexes and `[]` wildcard syntax. Full input consumption is required.
 Qdrant's quoted keys do not accept backslashes or quote escapes; this is not a
 general JSON-string parser. For example, the expression `'"a.b"'` reads a flat
-field named `a.b`; the expression `"a.b"` parses as a nested path and is rejected
-until rich payload traversal is implemented. Non-alphanumeric keys such as
+field named `a.b`; the expression `"a.b"` reads key `b` inside object `a`.
+Non-alphanumeric keys such as
 spaces or Emoji require quotes. `$"score"[0001]` and `$score[1]` are equivalent.
 All UInt64 score indexes are accepted; absent slots use normal default/zero
 semantics without converting an out-of-range index to a signed machine integer.
@@ -951,8 +965,10 @@ The shared native `JsonPath` type also provides canonical display, prefix and
 wildcard operations and pattern compatibility for subsequent data operations.
 Paths are bounded to 65,536 input bytes and 1024 parts. These are native resource
 limits, not a claim that Qdrant has identical limits.
-Nested/array/null value traversal, datetime operations, geo-distance, rich
-defaults and Qdrant protocol exposure remain open.
+Datetime operations, geo-distance, full formula conditions, typed-index
+retrievers and Qdrant protocol exposure remain open.
 See the [formula source validation](research/2026-10-30-formula-validation.md).
 The [JSON-path validation](research/2026-10-30-json-path-validation.md) records
 the subsequent grammar and Unicode source checks.
+The [rich formula validation](research/2026-10-30-formula-payload-validation.md)
+records the subsequent payload/default retrieval port and end-to-end checks.

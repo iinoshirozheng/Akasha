@@ -109,6 +109,18 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **Q04d rich formula payload retrieval implemented and verified for native,
+  Python and Arrow.** Full JSON paths, source single-level array flattening and
+  wildcard suffix, missing/null/type behavior, UInt64 numeric conversion and
+  bounded JSON defaults use the original payload retriever/scorer semantics.
+  1,068 source cases, 12 native tests across three modules, 933 targeted Python
+  and full Python **3,092 passed / 1 optional skip**. Eighteen new public tests
+  cover writes/mutations/reopen, nested queries, Arrow ownership and limits.
+  [Plan](2026-10-30-formula-payload-source-port.md) /
+  [evidence](../research/2026-10-30-formula-payload-validation.md).
+  Q04/D03 remain open for shared geo/date types and expressions, full conditions,
+  typed-index retrievers, sampling/feedback and protocols. Rich Arrow and every
+  other product/quality/platform row remain open; optimization has not started.
 - **D05a collection payload mutations implemented and verified for native,
   Python and current HTTP.** Source-derived set/overwrite/delete/clear supports
   IDs or existing filters, JSON paths, wildcard edits, source null/order rules,

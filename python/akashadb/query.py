@@ -15,9 +15,10 @@ if TYPE_CHECKING:
 class Formula:
     """Qdrant numeric expression, evaluated in Mojo over prefetched points.
 
-    Numbers are F32 constants; strings select ``$score[n]`` or flat payload
-    fields. Operators use Qdrant's expression shape. ``condition`` wraps an
-    Akasha filter. Defaults accept flat string/int/float/bool values.
+    Numbers are F32 constants; strings select ``$score[n]`` or JSON payload
+    paths. Operators use Qdrant's expression shape. ``condition`` wraps an
+    Akasha filter. Defaults accept bounded JSON values; numeric expressions
+    require a number after source path/array retrieval and default resolution.
     """
 
     expression: Any

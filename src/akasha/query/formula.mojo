@@ -10,6 +10,7 @@ from akasha.document.json_path import FormulaVariable
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
 from akasha.query.filter_ast import FilterExpression
+from akasha.query.formula_payload import formula_payload_value
 from std.math import exp, isfinite, log, log10, pow, sqrt
 
 
@@ -58,8 +59,6 @@ struct FormulaNode(Movable):
         self.lambda_value = 0
         if kind == "variable":
             var parsed = FormulaVariable.parse(key)
-            if parsed.path and len(parsed.path.value().rest) > 0:
-                raise Error("formula nested/array values require the rich payload implementation")
             self.variable = Optional(parsed^)
         if by_zero_default:
             self.by_zero_default = Optional(Float64(by_zero_default.value()))
@@ -90,7 +89,18 @@ struct Formula(Movable):
             raise Error("formula expression resource limit exceeded")
         if len(self.defaults) > 1024:
             raise Error("formula default resource limit exceeded")
+        var default_nodes = 0
+        var default_bytes = 0
         for i in range(len(self.defaults)):
+            default_nodes += self.defaults[i].value.node_count()
+            default_bytes += self.defaults[i].value.content_bytes()
+            ref variable = self.defaults[i].variable
+            if variable.path:
+                default_bytes += variable.path.value().display().byte_length()
+            else:
+                default_bytes += 8 + String(variable.score_index.value()).byte_length()
+            if default_nodes > PayloadValue.MAX_NODES or default_bytes > PayloadValue.MAX_BYTES:
+                raise Error("formula default payload resource limit exceeded")
             for j in range(i):
                 if self.defaults[i].variable.same(self.defaults[j].variable):
                     raise Error("duplicate formula default variable")
@@ -109,8 +119,6 @@ struct Formula(Movable):
                     raise Error("formula condition is missing")
                 if kind == "variable" and not node.variable:
                     raise Error("formula variable is missing")
-                if kind == "variable" and node.variable.value().path and len(node.variable.value().path.value().rest) > 0:
-                    raise Error("formula nested/array values require the rich payload implementation")
             elif kind == "sum" or kind == "mult":
                 pass
             elif kind == "div" or kind == "pow":
@@ -160,14 +168,14 @@ struct Formula(Movable):
             if index < UInt64(len(scores)) and id in scores[Int(index)]:
                 return Float64(scores[Int(index)][id])
         else:
-            for i in range(len(fields)):
-                if fields[i].name == variable.path.value().first_key:
-                    return _formula_number(fields[i].value)
+            var payload = formula_payload_value(fields, variable.path.value())
+            if payload:
+                return _formula_number(payload.value())
         for i in range(len(self.defaults)):
             if not self.defaults[i].variable.same(variable):
                 continue
             ref value = self.defaults[i].value
-            if variable.score_index and not (value.is_integer() or value.is_floating()):
+            if variable.score_index and not (value.is_integer() or value.is_floating() or value.is_unsigned()):
                 return 0
             return _formula_number(value)
         if variable.score_index:
@@ -242,6 +250,8 @@ def _formula_number(value: PayloadValue) raises -> Float64:
         return Float64(value.as_int())
     if value.is_floating():
         return value.as_float()
+    if value.is_unsigned():
+        return Float64(value.as_uint())
     raise Error("formula payload value is not a number")
 
 

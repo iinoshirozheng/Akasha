@@ -59,17 +59,13 @@ def test_formula_rejects_duplicate_normalized_default_paths(db, defaults):
 
 
 @pytest.mark.parametrize("case", FIXTURE["cases"], ids=lambda c: c["input"])
-def test_formula_acceptance_matches_source_variable_parser_with_explicit_rich_value_gap(db, case):
+def test_formula_acceptance_matches_source_variable_parser(db, case):
     variable = case["variable"]
     if variable is None:
         with pytest.raises(ValidationError):
             db.query(query(case["input"]))
         return
-    if "payload" in variable and variable["payload"]["rest"]:
-        with pytest.raises(ValidationError, match="rich payload"):
-            db.query(query(case["input"], {case["input"]: 1}))
-        return
-    # Use a matching default for all missing flat keys. Stored values retain
+    # Use a matching default for all missing paths. Stored values retain
     # priority; score[0] resolves the zero-score scroll source.
     hits = db.query(query(case["input"], {case["input"]: 1}))
     assert [h.id for h in hits] == [1]
@@ -78,8 +74,9 @@ def test_formula_acceptance_matches_source_variable_parser_with_explicit_rich_va
 def test_nested_syntax_never_reads_literal_dot_field_without_quotes(db):
     db.apply_point_batch([PointMutation.update(1, fields=[PayloadField("a.b", "float", 9)])])
     assert db.query(query('"a.b"'))[0].score == 9
-    with pytest.raises(ValidationError, match="rich payload"):
+    with pytest.raises(ValidationError, match="missing"):
         db.query(query("a.b"))
+    assert db.query(query("a.b", {"a.b": 2}))[0].score == 2
 
 
 def test_formula_path_limits_are_enforced_before_recursion(db):

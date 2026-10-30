@@ -26,7 +26,7 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
-| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與數值公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
+| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值的數值公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
 | 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新 | rich Arrow、任意頂層鍵、日期／UUID／geo、完整混合批次及協定相容 |
 | 搜尋／過濾 | 布林條件、純量索引、單層陣列條件、null 排除、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、專用陣列索引、排序／分組／通用聚合 |
@@ -104,7 +104,7 @@ Q04a 原生通用查詢樹已接上 Mojo／Python／Arrow，包含來源 prefetc
 
 Q04b 數值公式已接上 Mojo／Python／Arrow，包含來源短路求值、缺值預設、
 純量條件與三種衰減函數，對 prefetch 候選聯集重排。309 組來源案例與完整
-Python 測試已驗證；完整 JSON-path、日期、地理與 rich defaults 仍未完成，
+Python 測試已驗證；當時完整 JSON-path、日期、地理與 rich defaults 尚未完成；路徑與 rich 值已由後續 D01a／Q04d 補入，日期／地理仍待實作，
 不能列為完整公式相容。見[公式驗證](2026-10-30-formula-validation.md)。
 
 D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 分類，
@@ -113,8 +113,12 @@ D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 �
 後續 D01b 已加入物件／陣列／null／UInt64 持久化及來源對照的 owned-value
 get/set/remove；Python、現有 HTTP、備份與 NDJSON v2 可保存巢狀資料。
 後續 D05a 已將 collection 路徑更新接上 Mojo／Python／現有 HTTP，保留所有向量，
-在同一寫入鎖下選取、轉換並原子提交。rich Arrow、nested formula／filter 及專用索引仍未完成。
+在同一寫入鎖下選取、轉換並原子提交。rich Arrow、nested filter、日期／地理公式及專用索引仍未完成。
 見[rich payload 驗證與範圍](2026-10-30-rich-payload-validation.md)。
+Q04d 已將來源 payload retriever 的路徑取值、單層陣列攤平、缺值／null 分別處理、
+UInt64 與 rich defaults 接入 Mojo／Python／Arrow 公式查詢；這不包含
+專用 typed-index retriever 或日期／地理公式。見
+[rich formula 驗證](2026-10-30-formula-payload-validation.md)。
 更新操作與 native／Qdrant 提交語義邊界另見
 [payload mutation 驗證](2026-10-30-payload-mutations-validation.md)。
 

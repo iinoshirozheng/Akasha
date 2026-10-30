@@ -4,19 +4,26 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D05a：payload set／overwrite／delete／clear 已接上 Mojo／Python／現有 HTTP，
+- 最新 Q04d：巢狀／陣列路徑、來源單層攤平、缺值與 null 區分、UInt64 與
+  JSON 預設值已接上 Mojo／Python／Arrow 公式查詢。1,068 組原始來源案例、
+  12 項原生、933 項指定 Python 與完整 Python 3,092 項通過，1 項選配跳過。
+  [驗證與範圍](docs/research/2026-10-30-formula-payload-validation.md)。
+  下一步持續資料／查詢整合：日期／地理型別及公式、完整條件與專用索引、
+  rich Arrow；LanceDB、SQL／交易、UI／安全／叢集與全產品清單保持未完成。
+- D05a：payload set／overwrite／delete／clear 已接上 Mojo／Python／現有 HTTP，
   支援 IDs／既有條件選取與 JSON 路徑，保留所有向量；同一寫入鎖內選取與原子提交。
   1,644 組來源對照、3 項原生、完整 Python 3,078 項通過，1 項選配跳過；
   18 項新增公開 API 測試涵蓋恢復、快照、限制與轉換重入。
   [驗證與語義邊界](docs/research/2026-10-30-payload-mutations-validation.md)。
-  rich Arrow、任意頂層鍵、巢狀索引／公式、混合批次與完整產品清單仍未完成。
-- 最新 D01b：物件／陣列／null／UInt64 已接上原生持久化、Python、現有 HTTP、
+  rich Arrow、任意頂層鍵、巢狀索引／日期地理公式、混合批次與完整產品清單仍未完成。
+- D01b：物件／陣列／null／UInt64 已接上原生持久化、Python、現有 HTTP、
   備份與 NDJSON v2，保留 payload v1 讀取與原子遷移。依 Qdrant 原始碼移植
   owned-value 路徑 get/set/remove/merge 與單層陣列／null 條件行為。
   2,088 組值操作、110 組條件來源對照，27 模組／171 項原生測試、完整 Python
   3,060 項通過，1 項選配跳過；9 個 crash 模組／24 項及 C ABI 也通過。
   [驗證與剩餘範圍](docs/research/2026-10-30-rich-payload-validation.md)。
-  rich Arrow、collection 路徑更新、巢狀公式／索引與完整協定仍待完成；
+  collection 路徑更新與巢狀數值公式已由 D05a／Q04d 補入；rich Arrow、
+  日期地理公式／巢狀索引與完整協定仍待完成；
   LanceDB 歷史版本／格式、SQL／交易、UI／安全／叢集等完整清單仍開放。
 - [功能差異報告](docs/research/2026-10-30-product-capability-report.md)
 - [完整任務清單與驗收](docs/plans/2026-10-30-feature-completion.md)

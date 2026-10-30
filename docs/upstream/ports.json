@@ -1248,6 +1248,73 @@
         "tests/mojo/test_payload_updates.mojo": "6256a4a786671c3df5062bb2a2744cf1827d123c14cf766e59f2ed111d1a3b07",
         "tests/python/test_payload_updates.py": "d989833b1a195d5dd5b65be365cd45f2a7bf9874e8e92ddb12ae7c49e26fba7b"
       }
+    },
+    {
+      "id": "Q04d-rich-formula-payload",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/segment/src/json_path/mod.rs": "5c34bedfa86a6ab21c295bfddb2a62fc841f11fb4e3c3c01f16c2fdfc4b1f60f",
+        "lib/segment/src/json_path/parse.rs": "727673018f576be73e2fcdfa2a3a9edda21aeda616de1a9f4e2c5459504734fa",
+        "lib/segment/src/index/query_optimization/rescore_formula/parsed_formula.rs": "a9044e924bcc875b4e5b4d37963edee83ff0f1f46e3cdd4ea29e6c9fabefa3b1",
+        "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs": "4522958fb70b69e4d3172735afd286afaf8bad042d3050245ff307d8700e4f42",
+        "lib/segment/src/index/struct_payload_index/read_view/value_retriever/helpers.rs": "7f0ee0b6087dcdafd7d494a433d65bfd4fee05d24da837497e81d376990eed5c"
+      },
+      "extracted_units": {
+        "pub struct JsonPath {": "7e83c0c0f13d7bc0fcba4a05844d0bccfe75c6ac51f8ecadf98f99d0bdff6e32",
+        "pub enum JsonPathItem {": "dfae90bd56fc258716e1a403ae616ae34d5af504d9f65900cd0b1b3be38e9c01",
+        "pub fn value_get<": "cbfeaadf19427d868eec26c1b0a56a3951c9526088d5c0a075c01f25d7763b1d",
+        "pub fn has_wildcard_suffix(": "cc8288573c1573bd0069af141caecbadd818d3c9bfdeab30555a42652674855e",
+        "fn value_get<": "1406c63f49a1706210aaa71006b13a928787172dd84a026297c3276d45c21435",
+        "impl Display for JsonPath {": "f6a5db418102121f22758c6c15a15c67831dc9e0f589205ee7b2b948c58ded36",
+        "impl FromStr for VariableId {": "1f5a7be9bf370c271dae9bcf234fffffee82b0c99f4e7e0a59ee515d263f52cf",
+        "fn payload_variable_retriever<": "0c42ca8e2ef0c54357d653e2464be2348d649a6f5e0ee4a36276e195eee2c2a4",
+        "pub fn score(": "c7db160a3981d1ff20d686ed15d232a6a65779ccabc7e413a0676b932675b756",
+        "fn eval_expression(": "1b403ab39e2adc979b485b47304279b51622a15001fe2bc4ff9710ceb43c7117",
+        "fn get_payload_value(": "e85e11c9dbd7bf1cf2df452d69684a8cd8a841e60024ce4124d24017ffde140b",
+        "fn get_parsed_payload_value<": "565dd2c07a61827b59f43a189483aecc0ae61839f263d8e0297e85079b0176a6",
+        "fn exp_decay(": "6c5d957884ab35123fe437f78ccaa7e27025b9558682b75fc4921e7ca20d28cc",
+        "fn gauss_decay(": "691699a311cdead6148d315c2e6205c1a19016c35aedfb7569f1eb0622b83257",
+        "fn linear_decay(": "7c183e5b5f84b936e163d26a147a1b5255ad4532664f7f0b3def64dd249c3187"
+      },
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "fixture": "tests/fixtures/qdrant-formula-payload/formula.json",
+      "fixture_sha256": "bd1d2408d58e0917a255295de80b6edcd67eb07e2e297c5e41cd2ae1e16f9014",
+      "cargo_lock": "tests/fixtures/qdrant-formula-payload/Cargo.lock",
+      "cargo_lock_sha256": "f4ddc00131ed640635114fde27ed98a8ceca827d3b6f1f19d4be94290c0b3722",
+      "scaffold_sha256": "9bf1188b947e015ad9fdc9c551308425289ba1f35e4895688d9ccbda79bdaaea",
+      "reference_cases": 1068,
+      "reference_expected_errors": 458,
+      "targets": [
+        "src/akasha/query/formula_payload.mojo",
+        "src/akasha/query/formula.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/query.py"
+      ],
+      "adaptations": [
+        "Ordered DocumentField root with shared owned JSON-path traversal preserves per-field depth; native retriever and numeric scorer use source flattening/missing/null/type semantics",
+        "Full JSON defaults and UInt64 numeric conversion; native aggregate node/byte limits and bounded shared Python conversion, with no Python evaluator",
+        "Oracle compiles source parser, payload retriever and scorer with actual serde_json, map-backed provider/no-op counter and Vec-backed MultiValue",
+        "Prior scalar scaffold supplies transport/error/expression types; unused geo/date adapters are outside this oracle; existing scalar oracle retained",
+        "Dedicated typed-index retrieval/coercions, geo/date formulas, complete conditions and protocol exposure remain open"
+      ],
+      "status": "verified_native_python_arrow_rich_numeric_formulas_full_Q04_pending",
+      "verification": [
+        "docs/research/2026-10-30-formula-payload-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/formula_payload.mojo": "eaacd00155444c8844ab80e3785eceed8067a03b9cb0b5e71188fcdf93cf451b",
+        "src/akasha/query/formula.mojo": "75acf3db9391f28d09ebf380c19fe6e489110e22df3a793588bca589af3c23a0",
+        "src/bindings/python_module.mojo": "6bd1e9bfc200d2bf789f26073a8e8552382b8007f112ab7fb8e0e01ec4fdace0",
+        "python/akashadb/query.py": "4581c66b62a70215d10c2c9bb8ce0d30b79cb9ef7f8337735348a0918c3fddb7",
+        "scripts/qdrant_formula_payload_reference.py": "44d85d417e2184f5a609b6cd5218fb7ae0b23cb7ecbd0f77b71ce43e47142310",
+        "tests/mojo/test_formula_payload.mojo": "492d8aa7cd43d7474affbb46ffb72b7520fe30b4a5931c0ae845fe0771f414b1",
+        "tests/python/test_formula_payload.py": "e09e9f7fab182f26e10214cd6ff1d0187ea0edb9d818b5570df1f1f568beac6a",
+        "tests/python/test_formula_paths.py": "241ff941f44edc2c4961ef33ef76ef9d60e04e6350c0695e9282b17a9a0a56e3",
+        "tests/python/test_formula_query.py": "3427d593c4344570136e06549825cdb9003869332eae75f3e209e13b4c81bbe3"
+      }
     }
   ]
 }

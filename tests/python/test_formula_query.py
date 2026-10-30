@@ -130,14 +130,14 @@ def test_formula_shared_budget_bounds_and_cancellation(db):
     {"gauss_decay": {"x": 1, "scale": 0}}, {"exp_decay": {"x": 1, "midpoint": 1}},
     {"lin_decay": {"x": 1, "midpoint": -0.1}}, {"exp_decay": {"x": 1, "scale": True}},
     float("nan"), 1e100, "$unknown", "$score[]", "$score[-1]", "$score[1][2]",
-    "nested.field", {"datetime": "2026-01-01"}, {"geo_distance": {"to": "position"}},
+    {"datetime": "2026-01-01"}, {"geo_distance": {"to": "position"}},
 ])
 def test_formula_rejects_invalid_or_unimplemented_expressions(db, expression):
     with pytest.raises(ValidationError):
         db.query(request(expression, prefetch=sources()))
 
 
-@pytest.mark.parametrize("defaults", [{"x": None}, {"x": []}, {"x": {}}, {"x": float("inf")},
+@pytest.mark.parametrize("defaults", [{"x": float("inf")},
                                      {"$score": 1, "$score[0]": 2}])
 def test_formula_rejects_invalid_defaults(db, defaults):
     with pytest.raises(ValidationError):

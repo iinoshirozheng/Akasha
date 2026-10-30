@@ -27,7 +27,7 @@ from akasha.document.point_state import PointMutation, FieldUpdate, PointState
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
-from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python
+from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, _json_value
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from std.collections import Dict
 from akasha.index.flat import SearchResult
@@ -1949,21 +1949,14 @@ def _formula_from_python(value: PythonObject, limit: Int) raises -> Formula:
     var count = 0
     _ = _formula_expression_from_python(value["expression"], nodes, 0, count, min(1024, limit - len(raw_defaults)))
     var defaults = List[FormulaDefault]()
+    var default_nodes = 0
+    var default_bytes = 0
     for key in raw_defaults:
         var name = _exact_python_string(key, "formula default name")
-        var raw = raw_defaults[key]
-        var kind = builtins.type(raw)
-        var item: PayloadValue
-        if Bool(py=kind == builtins.str):
-            item = PayloadValue.string(String(py=raw))
-        elif Bool(py=kind == builtins.bool):
-            item = PayloadValue.boolean(Bool(py=raw))
-        elif Bool(py=kind == builtins.int):
-            item = PayloadValue.integer(Int64(py=raw))
-        elif Bool(py=kind == builtins.float):
-            item = PayloadValue.floating(Float64(py=raw))
-        else:
-            raise Error("formula default must be a flat scalar value")
+        default_bytes += name.byte_length()
+        if default_bytes > PayloadValue.MAX_BYTES:
+            raise Error("formula default payload resource limit exceeded")
+        var item = _json_value(raw_defaults[key], 0, default_nodes, default_bytes)
         defaults.append(FormulaDefault(name, item^))
     return Formula(nodes^, defaults^)
 
