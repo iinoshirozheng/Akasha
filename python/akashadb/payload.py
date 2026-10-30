@@ -7,7 +7,10 @@ JSON dictionaries never opt into this transport by the names of their keys.
 from dataclasses import dataclass
 import math
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .database import CancellationToken
 
 
 MAX_BYTES = 16 * 1024 * 1024
@@ -67,6 +70,56 @@ class JsonbValue:
             raise ValidationError("JSONB pretty mode must be a bool")
         try:
             return _kernel_module().format_jsonb(self.data, pretty)
+        except Exception as error:
+            raise map_kernel_error(error) from error
+
+    def query(
+        self, path: str | bytes, *, mode: str = "values",
+        max_work: int = 1_000_000, max_results: int = 65_536,
+        max_bytes: int = 64 * 1024 * 1024,
+        cancellation: "CancellationToken | None" = None,
+        timeout_ns: int | None = None,
+    ) -> "list[JsonbValue] | JsonbValue | bool | None":
+        """Execute the original JSONB path semantics in Mojo.
+
+        Modes: values (list), array (always wrapped), first, value (one value
+        or an array of multiple matches), exists, predicate (bool or unknown).
+        Missing first/value returns None; JSON null stays a JsonbValue.
+        Limits bound native traversal/staging. Cancellation is sampled before
+        the synchronous call; the native deadline is checked during execution.
+        """
+        from time import perf_counter_ns
+        from .database import CancellationToken, _kernel_module
+        from .exceptions import ValidationError, map_kernel_error
+
+        modes = {"values": 0, "array": 1, "first": 2, "value": 3, "exists": 4, "predicate": 5}
+        if type(mode) is not str or mode not in modes:
+            raise ValidationError("unknown JSONB query mode")
+        if type(path) not in (str, bytes):
+            raise ValidationError("JSONB query path must be str or immutable bytes")
+        if len(path) > 65_536:
+            raise ValidationError("JSONB query path exceeds byte resource limit")
+        for name, value in (("max_work", max_work), ("max_results", max_results), ("max_bytes", max_bytes)):
+            if type(value) is not int or not 0 < value <= 2**63 - 1:
+                raise ValidationError(f"JSONB {name} must be a positive Int64")
+        if cancellation is not None and type(cancellation) is not CancellationToken:
+            raise ValidationError("cancellation must be a CancellationToken")
+        if timeout_ns is not None and (type(timeout_ns) is not int or not 0 < timeout_ns <= 2**63 - 1):
+            raise ValidationError("timeout_ns must be a positive Int64")
+        deadline = 0 if timeout_ns is None else perf_counter_ns() + timeout_ns
+        if deadline > 2**63 - 1:
+            raise ValidationError("JSONB query deadline exceeds Int64")
+        try:
+            encoded = path.encode("utf-8") if type(path) is str else path
+            result = _kernel_module().query_jsonb(self.data, encoded, modes[mode], {
+                "max_work": max_work, "max_results": max_results, "max_bytes": max_bytes,
+                "deadline_ns": deadline, "cancelled": cancellation.cancelled if cancellation is not None else False,
+            })
+            if mode == "values":
+                return [JsonbValue(value) for value in result]
+            if mode in ("array", "first", "value"):
+                return None if result is None else JsonbValue(result)
+            return result
         except Exception as error:
             raise map_kernel_error(error) from error
 

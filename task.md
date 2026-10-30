@@ -4,7 +4,11 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c4b：原生 JSONB Number 的六種型別比較／算術已依 jsonb、ethnum、Arrow 與 ordered-float 來源移植，保留原始型別、溢位、尺度與 NaN 規則。8,495 組單值、94,213 組雙值、2,404 組 256 位乘法、256 組尺度冪次及 4,709 組含舊格式的數值 body 全部對齊；17 項相關原生測試通過，來源可逐 byte 重現。
+- 最新 D01c4c：完整已解析 JSONB 語法的六種 selector 模式已移植到 Mojo，公開 Python `JsonbValue.query` 可直接查詢值；保留來源排序、重複、unknown、數值序列化及錯誤行為。
+  64,856 組來源案例、389,100 組模式結果完成對照；1 組超過既有 codec 深度限制的來源成功結果明確拒絕。22 項相關 Mojo、52 項新增 Python 及完整 Python **3,681 通過／1 跳過**，fixture／metadata／lock 可逐 byte 重現。
+  [驗證](docs/research/2026-10-30-jsonb-selector-validation.md)／[用法](docs/native-jsonb.md#jsonb-value-queries)。下一步為來源 Display、Lance consumer 與 collection 過濾／投影／索引整合；完整 49 大項與效能門檻仍開放，尚未優化。
+
+- D01c4b：原生 JSONB Number 的六種型別比較／算術已依 jsonb、ethnum、Arrow 與 ordered-float 來源移植，保留原始型別、溢位、尺度與 NaN 規則。8,495 組單值、94,213 組雙值、2,404 組 256 位乘法、256 組尺度冪次及 4,709 組含舊格式的數值 body 全部對齊；17 項相關原生測試通過，來源可逐 byte 重現。
   [驗證](docs/research/2026-10-30-jsonb-number-validation.md)／[用法](docs/native-jsonb.md#native-jsonb-expression-numbers)。下一步為完整 selector 六種輸出模式、Display 及公開 query／索引；完整 49 大項與未達標項目仍開放，尚未優化。
 
 - 最新 D01c4a：已依 jsonb／nom 原始碼移植完整 JSONB 路徑／運算式語法與 owned AST，與 Qdrant 路徑分開。8,525 組原始來源案例包含 4,238 組 AST、4,275 組拒絕與 12 組來源 panic，Mojo 皆一致；7 項相關原生測試通過，來源可重現。

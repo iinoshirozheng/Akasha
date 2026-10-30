@@ -300,10 +300,28 @@ interval extensions become strings. Invalid calendar/offset values raise
 output beyond 16 MiB, so use `.data` or typed transport for lossless interchange.
 See [text output contracts](native-jsonb.md#text-output).
 
+`JsonbValue.query(path, *, mode="values", max_work=1_000_000,
+max_results=65_536, max_bytes=67_108_864, cancellation=None, timeout_ns=None)`
+executes the source JSONB path/expressions entirely in Mojo. Modes are `values`,
+`array`, `first`, `value`, `exists`, and `predicate`. `value` returns one match
+or wraps multiple matches in an array; `first` returns only the first match.
+Missing first/value and unknown/nonpredicate predicate results return `None`;
+JSON null remains a present `JsonbValue`. Both first and existence execute the
+full source selection, preserving later errors and resource limits.
+
+```python
+value = JsonbValue.from_json('{items:[{price:3},{price:9},{price:7}]}')
+assert value.query('$.items[*]?(@.price < 8)', mode="array").to_json() == '[{"price":3},{"price":7}]'
+assert value.query('$.missing', mode="first") is None
+```
+
+Python provides UTF-8/byte transport and result wrappers; the native parser,
+selector, numeric operations and limits are authoritative. `CancellationToken`
+is sampled before the synchronous call; the deadline is checked during native
+execution. See [query modes and resource contracts](native-jsonb.md#jsonb-value-queries).
 The strict ordinary-JSON filter/formula configuration path does not accept a
-JSONB carrier. JSONB traversal/indexes remain in progress; use [native JSONB](native-jsonb.md) for the
-available binary constructors and [wire format](formats/logical-point-format.md)
-for the transport contract.
+JSONB carrier. Collection-level JSONB filtering/projection and indexes remain
+in progress; [wire format](formats/logical-point-format.md) specifies transport.
 
 Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:

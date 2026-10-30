@@ -3750,6 +3750,132 @@
         "scripts/jsonb_number_reference.py": "a238f9a482f0a304beec9af6c1652e0c54c7726b18ba3ecbf10c3f842a166d72",
         "scripts/jsonb_number_reference.rs": "18437f033bbe86eafc8f958b2fb3bf60a2ee45e8f1035f3056f44c6a87c25308"
       }
+    },
+    {
+      "id": "D01c4c-jsonb-selector",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false,
+        "rust_profile": "release"
+      },
+      "sources": [
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/jsonpath/selector.rs",
+          "sha256": "d9efcad581d1e9f32a8c5276ab303d932e00a2dd2ff96cfb3ceeeb89eed8c32a"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/jsonpath/path.rs",
+          "sha256": "9d6e537588a476863c0c7ea264af204d84e97146d304034921ea701c3accf421"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/iterator.rs",
+          "sha256": "4f1fcf4bac969da5e5b6f3d996200a6d604a78b04578ebcde77b83576a3a81e6"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/ser.rs",
+          "sha256": "958f273ad2e3c6fc57f348a72af0d7d825ff28a1fab4a3ea4d120195d7be7201"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/builder.rs",
+          "sha256": "84ce1581b3672dfddad42522c103cbf780fac89aee4d3992abf414a1eea8181c"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/owned.rs",
+          "sha256": "bd042dc192eda942f7ecd2585446ee8e32e06381d72dadc1e75a9114f1e820f8"
+        }
+      ],
+      "dependency_provenance": "tests/fixtures/jsonb-selector/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "Selector six output modes, path queue/recursion, filter and arithmetic evaluation",
+        "ArrayIndex conversion, RecursiveLevel traversal and PathValue comparison",
+        "Number serde serialization and owned databend selection/building"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb_selector.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/bindings/payload_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/payload.py"
+      ],
+      "adaptations": [
+        "Owned bounded stage lists replace VecDeque/swap while preserving source order and duplicates",
+        "Native work/result/cumulative staging budgets, codec output bounds and cooperative QueryControl",
+        "Reject source negative-ended index ranges before enormous usize-set allocation; do not execute dangerous reference cases",
+        "Original level-65 array output retained and annotated; native existing 64-level codec bound rejects it",
+        "Python thin transport/wrapper samples cancellation before the synchronous call; native deadlines remain cooperative",
+        "Mutable native AST structure validated; complete parsed grammar does not expose every programmatic Rust literal enum"
+      ],
+      "oracle": "scripts/jsonb_selector_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-selector/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-selector/README.md": "efd2032655159deb19f42ed40b570f9fd253d7b28ebf23451c0a0b06b573b932",
+        "tests/fixtures/jsonb-selector/cases.json": "42b55d4d85e01baa1664d9a41cfeee039cdc0f9babd0f3190367e3305c053bf7",
+        "tests/fixtures/jsonb-selector/sources.json": "96ebb6f2887637bb6d5ea7ed3dae519526ca82fc48de0f8b767dd80d2609da1c"
+      },
+      "status": "verified_native_parsed_selector_and_python_value_query_collection_indexes_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-selector-validation.md"
+      ],
+      "results": {
+        "documents": 5859,
+        "paths": 4445,
+        "cases": 64856,
+        "parsed": 64850,
+        "parse_errors": 5,
+        "parse_panics": 1,
+        "mode_errors": 20300,
+        "mode_panics": 0,
+        "output_limited_modes": 1,
+        "mode_outcomes": 389100,
+        "exact_successful_modes": 368799,
+        "native_tests_passed": 22,
+        "new_python_tests_passed": 52,
+        "full_python_passed": 3681,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock": true
+      },
+      "remaining": [
+        "Source AST/Number Display and remaining Number conversion APIs",
+        "Lance consumers, collection JSONB filtering/projection/indexes and Arrow transforms",
+        "Remaining C/distributed query contracts and SQL UDF integration with the real SQL engine",
+        "All remaining full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_selector.mojo": "aed4be2b929e03f736b672b4f60d4cc0ba42e1fec5b0027e20a91a51355320eb",
+        "src/akasha/document/__init__.mojo": "c13f62412960e51ec69724c58a95c9e4f5421709b4034765d8e8689c38cb3532",
+        "src/bindings/payload_python.mojo": "4923db4ed539719d2734960f37cba8de9c353eee78abf6434de4c372279862e6",
+        "src/bindings/python_module.mojo": "84de6519cda70f1b95ea0c2952b33668d1f6159a366131be3f9e6e4a75d78072",
+        "python/akashadb/payload.py": "514d6f43d94b7323c10116430999b8a58e83a4b1e47711ecdcb839daec90ffd6",
+        "tests/mojo/test_jsonb_selector.mojo": "66c6a32b2e9bba54ebf68f7a1f028010e2b3160c31dbd48a9f866a6c85d89114",
+        "tests/python/test_jsonb_selector.py": "8447c38d3ed2095716677a80125876636c1215d60bb1ed9113c1b13f139cee6b",
+        "scripts/jsonb_selector_reference.py": "7cba0a68ecb3535e8e8fc551dd4644c19e5e8dbbe414503879cab1db21d7768d",
+        "scripts/jsonb_selector_reference.rs": "7e550a559c9d700a84d8887ed14ad32f133d3f0d887399dd396b916acd01ddcd"
+      }
     }
   ]
 }

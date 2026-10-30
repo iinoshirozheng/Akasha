@@ -365,6 +365,20 @@
           "source_units": [
             "src/number.rs"
           ]
+        },
+        {
+          "port": "D01c4c-jsonb-selector",
+          "provenance": "tests/fixtures/jsonb-selector/sources.json",
+          "source_units": [
+            "src/jsonpath/selector.rs",
+            "src/jsonpath/path.rs",
+            "src/number.rs",
+            "src/core/databend/util.rs",
+            "src/core/databend/iterator.rs",
+            "src/core/databend/ser.rs",
+            "src/core/databend/builder.rs",
+            "src/owned.rs"
+          ]
         }
       ]
     },

@@ -6,7 +6,8 @@ It can be stored in native collection payloads using `PayloadValue.jsonb(value)`
 Python/HTTP/NDJSON also transport this type as complete source bytes. Native
 and Python text parsing support the original standard and extended profiles.
 Native/Python text rendering and Arrow JSON interchange are available below.
-JSONB query execution and indexing remain pending.
+Native/Python JSONB value queries are available below; collection-level
+JSONB filters/projections and indexes remain pending.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -333,9 +334,9 @@ nonfinite-to-null rule above. See [formatting validation](research/2026-10-30-zm
 
 `JsonbPath.parse(String)` and `JsonbPath.parse_bytes(Span[UInt8])`, exported from
 `akasha.document`, build an owned bounded AST using jsonb 0.5.6's complete
-path/expression grammar. This is a native query dependency: **selection,
-predicate evaluation, source Display and Python/collection query APIs are still
-pending**. Parsing a path does not execute it against a document.
+path/expression grammar. `JsonbSelector` below executes it; parsing alone does
+not execute a query. Source AST/Number Display and collection-level JSONB
+filters/projections/indexes remain pending.
 
 ```mojo
 from akasha.document import JsonbPath
@@ -406,4 +407,84 @@ Mojo 1.0 floor `%` and nearest-quotient `std.math.remainder` have different rule
 Finite results, infinity and signed zero are compared bit-for-bit with Rust;
 arithmetic NaNs are compared by classification because their payload/sign are
 not a portable arithmetic guarantee. This API is a native selector dependency,
-not a public Python query executor. See [numeric validation](research/2026-10-30-jsonb-number-validation.md).
+and backs the selector below. See [numeric validation](research/2026-10-30-jsonb-number-validation.md).
+
+## JSONB value queries
+
+Python `JsonbValue.query(path: str | bytes, *, mode="values", max_work=1_000_000,
+max_results=65_536, max_bytes=67_108_864, cancellation=None, timeout_ns=None)`
+parses and executes the original JSONB grammar in Mojo. It validates arbitrary
+carrier bytes before executing and returns independently owned values.
+
+```python
+from akashadb import JsonbValue
+
+value = JsonbValue.from_json('{items:[{price:3},{price:9},{price:7}]}')
+selected = value.query('$.items[*]?(@.price < 8)', mode="array")
+assert selected.to_json() == '[{"price":3},{"price":7}]'
+assert value.query('$.items[*].price', mode="first").to_json() == '3'
+assert value.query('$.missing', mode="value") is None
+```
+
+| Python mode | Native `JsonbSelector` method | Result |
+| --- | --- | --- |
+| `values` | `select_values` | List of every match; empty list if missing |
+| `array` | `select_array` | One JSONB array containing every match |
+| `first` | `select_first` | First match or absent |
+| `value` | `select_value` | Absent, one value, or an array of multiple matches |
+| `exists` | `exists` | Whether execution produced any item |
+| `predicate` | `predicate_match` | Boolean, or absent for unknown/nonpredicate |
+
+Python absence is `None`; native absence is `Optional`. JSON null always
+remains a present `JsonbValue`. A predicate that evaluates to false still
+produces a boolean item, so `exists` returns true for it. First/existence modes
+execute the complete source selection before returning; they do not suppress
+later errors or work limits by stopping early.
+
+Native usage keeps an owned root and starts fresh execution on every call:
+
+```mojo
+from akasha.document import JsonbPath, JsonbSelector
+from akasha.document.jsonb_reader import parse_jsonb
+
+def main() raises:
+    var selector = JsonbSelector(parse_jsonb("[1,2,3]"))
+    var path = JsonbPath.parse("$[0,0 to 1,last]")
+    var values = selector.select_values(path)  # 1, 1, 2, 3 in source order
+```
+
+Object traversal preserves stored order. Recursive traversal is preorder;
+overlapping index groups retain duplicates. Bracket wildcard is lax for
+scalars/objects; dot wildcard selects only object values. Arithmetic inputs
+flatten arrays once: unary accepts a numeric sequence, binary requires exactly
+one number on each side. Extension values are skipped in expression conversion
+as in the source. Containers yield unknown comparisons. Comparison examines
+cross-product pairs in source order, returning on the first true or unknown.
+And/or evaluate both operands and propagate unknown rather than applying SQL
+three-valued short-circuit rules.
+
+Arithmetic output follows the source's serde Number serialization. In the
+pinned profile this converts Decimal results to Float64 even for unary plus;
+ordinary selection preserves original Decimal and legacy bytes. Invalid
+arithmetic/cardinality errors are retained. Queries do not mutate stored data.
+
+Native constructor limits have the same defaults as Python. Work includes
+traversal/expression operations and virtual index-set size. Result limits apply
+to intermediate and final value sequences; the byte limit bounds cumulative
+owned staging, with final arrays checked separately. Output values retain the
+existing codec bounds: 16 MiB, 65,536 nodes and 64 container levels. A root at
+maximum depth can be returned unchanged but cannot be wrapped at level 65.
+The original negative range-end to usize cast can request an enormous set;
+Akasha rejects it before allocation, including `[0 to last]` on an empty array.
+These are explicit bounded-execution adaptations, not changed success values.
+
+Native `control=QueryControl(...)` supports cooperative cancellation/deadlines
+and a work budget. Python accepts the existing `CancellationToken`, sampled
+before its synchronous native call, and a positive `timeout_ns` checked during
+native execution. It does not promise Python-thread cancellation mid-call.
+Malformed mutable native ASTs, invalid inputs and exhausted limits raise errors.
+
+This value-level API also works on values read after WAL/checkpoint reopen.
+It does not yet add a collection JSONB predicate/projection, JSONB index, SQL
+UDF, Arrow transformation API or C/distributed query operation. Source Display
+helpers also remain separate work.

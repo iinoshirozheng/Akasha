@@ -3,6 +3,9 @@ from akasha.document.value import PayloadValue
 from akasha.document.jsonb import JsonbValue
 from akasha.document.jsonb_reader import parse_jsonb_bytes
 from akasha.document.jsonb_writer import format_jsonb
+from akasha.document.jsonb_path import JsonbPath
+from akasha.document.jsonb_selector import JsonbSelector
+from akasha.query.control import QueryControl, CancellationToken
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.json_path import JsonPath
 from std.python import Python, PythonObject
@@ -41,6 +44,65 @@ def format_jsonb_py(raw: PythonObject, pretty: PythonObject) raises -> PythonObj
         bytes.append(UInt8(Int(py=byte)))
     var value = JsonbValue(Span(bytes))
     return PythonObject(format_jsonb(value, pretty=Bool(py=pretty)))
+
+
+def _jsonb_bytes(value: JsonbValue) raises -> PythonObject:
+    var builtins = Python.import_module("builtins")
+    var bytes = List[PythonObject](capacity=len(value._data))
+    for byte in value._data:
+        bytes.append(PythonObject(Int(byte)))
+    return builtins.bytes(Python.list(Span(bytes)))
+
+
+def query_jsonb_py(raw: PythonObject, raw_path: PythonObject, mode: PythonObject, options: PythonObject) raises -> PythonObject:
+    """Thin byte/options boundary; parsing, selection and arithmetic are native."""
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(raw) == builtins.bytes) or not Bool(py=builtins.type(raw_path) == builtins.bytes):
+        raise Error("JSONB body and query path must be immutable bytes")
+    if len(raw) > JsonbValue.MAX_BYTES or len(raw_path) > JsonbPath.MAX_BYTES:
+        raise Error("JSONB query input exceeds byte resource limit")
+    if not Bool(py=builtins.type(mode) == builtins.int) or not Bool(py=builtins.type(options) == builtins.dict):
+        raise Error("JSONB query requires an integer mode and options dictionary")
+    var selected_mode = Int(py=mode)
+    if selected_mode < 0 or selected_mode > 5:
+        raise Error("unknown JSONB query mode")
+    for key in ["max_work", "max_results", "max_bytes", "deadline_ns"]:
+        if not Bool(py=builtins.type(options[PythonObject(key)]) == builtins.int):
+            raise Error("JSONB query limits and deadline must be integers")
+    if not Bool(py=builtins.type(options["cancelled"]) == builtins.bool):
+        raise Error("JSONB query cancellation must be a bool")
+    var token = CancellationToken()
+    if Bool(py=options["cancelled"]):
+        token.cancel()
+    var max_work = Int(py=options["max_work"])
+    var control = QueryControl(token, max_candidates=max_work, deadline_ns=Int(py=options["deadline_ns"]))
+    control.checkpoint(0)
+    var bytes = List[UInt8](capacity=len(raw))
+    for byte in raw:
+        bytes.append(UInt8(Int(py=byte)))
+    var path_bytes = List[UInt8](capacity=len(raw_path))
+    for byte in raw_path:
+        path_bytes.append(UInt8(Int(py=byte)))
+    var path = JsonbPath.parse_bytes(Span(path_bytes))
+    var selector = JsonbSelector(JsonbValue(Span(bytes)), max_work=max_work,
+        max_results=Int(py=options["max_results"]), max_bytes=Int(py=options["max_bytes"]), control=control^)
+    if selected_mode == 0:
+        var values = selector.select_values(path)
+        var output = Python.list()
+        for value in values:
+            output.append(_jsonb_bytes(value))
+        return output
+    if selected_mode == 1:
+        return _jsonb_bytes(selector.select_array(path))
+    if selected_mode == 2 or selected_mode == 3:
+        var value = selector.select_first(path) if selected_mode == 2 else selector.select_value(path)
+        if not value:
+            return Python.none()
+        return _jsonb_bytes(value.value())
+    if selected_mode == 4:
+        return PythonObject(selector.exists(path))
+    var value = selector.predicate_match(path)
+    return PythonObject(value.value()) if value else Python.none()
 
 
 def json_value_from_python(raw: PythonObject) raises -> PayloadValue:

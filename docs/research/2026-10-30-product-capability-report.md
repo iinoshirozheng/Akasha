@@ -24,6 +24,8 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
+最新 D01c4c 已完成 Mojo JSONB selector 六種模式與 Python `JsonbValue.query`。64,856 組來源案例涵蓋 389,100 組模式結果；保留來源輸出，另明確拒絕 1 組超過既有深度限制的結果。22 項相關 Mojo、52 項新增 Python、完整 Python **3,681 通過／1 跳過**，來源產物可逐 byte 重現。見[查詢驗證](2026-10-30-jsonb-selector-validation.md)。這是值層級查詢；來源 Display、Lance consumer、collection 過濾／投影／索引及其他完整產品工作仍開放，尚未優化。
+
 最新 D01c4b 已完成原生 JSONB Number 六種數值的比較與算術依賴，保留 jsonb 的整數轉型、Decimal 尺度／溢位與浮點規則。8,495 組單值、94,213 組雙值、2,404 組 wide 乘法、256 組冪次與 4,709 組含舊格式的數值 body 來源對照通過；17 項原生測試通過，產物可重現。見[數值驗證](2026-10-30-jsonb-number-validation.md)。完整 selector、Display、公開 query 與索引仍待完成；完整 49 大項與效能目標不變，尚未優化。
 
 最新 D01c4a 已完成 JSONB 路徑／運算式的原生語法依賴，8,525 組來源 AST／錯誤結果對齊，7 項原生測試通過；包含全部路徑型態、運算子與精確字面數值型別，與 Qdrant 路徑保持分開。見[parser 驗證](2026-10-30-jsonb-path-parser-validation.md)。選取執行器、完整數值比較／算術、公開 JSONB query 與索引仍待實作，不能將 parser 計為完整查詢功能；完整產品與效能目標維持開放。

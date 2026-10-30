@@ -22,14 +22,14 @@ selector}.rs`, `number.rs`, nom 8.0.0 numeric/string combinators; Lance's
 3. Port the full selector queue/recursion/expression behavior, including all six
    output modes: values, array, first, value, exists and predicate_match.
    Include source path/number Display helpers separately from JSON serialization. Preserve
-   first-vs-single cardinality, ordering/duplicates, lax wildcard behavior,
+   first-vs-value cardinality (value wraps multiple matches), ordering/duplicates, lax wildcard behavior,
    unknown comparison, missing/null, extension values and complete errors.
    Add finite candidate/output/depth limits and cooperative query control.
 4. Expose native/Python JSONB selection and the Lance consumer contracts, then
    integrate native document/query/filter/projection boundaries. Cover WAL and
    checkpoint reopen, snapshot ownership, failures without writes and full
    regression. Keep first-text Lance Arrow helper distinct from DataFusion's
-   single-value semantics; do not silently conflate them.
+   select_value semantics (one match or an array of multiple matches); do not silently conflate them.
 5. Complete JSONB indexing and remaining C/distributed boundaries as tracked in
    D01/D03/A03. Full SQL UDF integration follows the real SQL execution layer.
 
@@ -73,3 +73,18 @@ uses the equivalent native libm primitive rather than Mojo's floor modulo.
 4,709 numeric codec/legacy bodies pass; 17 native tests and source reproduction
 pass. See [evidence](../research/2026-10-30-jsonb-number-validation.md).
 Continue steps 3–5 without reducing the selector or public-query scope.
+
+## Selector and Python value-query checkpoint: D01c4c
+
+Step 3's complete parsed selector semantics and all six output modes are native;
+step 4's standalone Python value query is exposed through `JsonbValue.query`.
+64,856 source cases / 389,100 mode outcomes match source successes/errors,
+except one retained source success rejected by the existing codec depth bound.
+Twenty-two native tests, 52 new Python tests and full Python **3,681 passed /
+1 skip** pass; fixtures/metadata/lock reproduce byte-for-byte. WAL/checkpoint
+reopen and ownership/read-only failures are verified. See
+[evidence](../research/2026-10-30-jsonb-selector-validation.md).
+
+Continue source AST/Number Display, Lance consumers, collection query/filter/
+projection integration and step 5 indexes/protocol boundaries. This checkpoint
+does not complete steps 3–5, D01 or any full-product acceptance gate.
