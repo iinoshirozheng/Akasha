@@ -2447,6 +2447,102 @@
         "scripts/rich_arrow_export_reference.py": "5e92c9e830a9b0de8f4ed0eced7128d95eb018963c9fe53835d6d8f11bf896b4",
         "scripts/rich_arrow_export_reference.rs": "94994f89775a6fbfc76c79838e26730d12dfa737d32d982a3f851154625dc352"
       }
+    },
+    {
+      "id": "D01c3a-native-json-reader",
+      "upstream": "https://github.com/serde-rs/json",
+      "revision": null,
+      "version": "1.0.151",
+      "identity": "crates.io:serde_json@1.0.151",
+      "qdrant_revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": [
+        {
+          "path": "src/de.rs",
+          "sha256": "4998d7e252eb513be85b298e287048b4fb283882e9ba7df905f572f07200f3f3"
+        },
+        {
+          "path": "src/read.rs",
+          "sha256": "17a2efe49e5a6937c8d7d4a5c0b9eac84453de0f86bf8e7ee421387e82341bb3"
+        },
+        {
+          "path": "src/value/de.rs",
+          "sha256": "ceda1bf415aafde89caa83bf275811b70d393717d4e1038e0c61822d2da02993"
+        },
+        {
+          "path": "src/map.rs",
+          "sha256": "b5a2fd1ee865e6cfd83ef2da0a2e1057f892465ac7ede8a78a11354a60526f33"
+        },
+        {
+          "path": "src/number.rs",
+          "sha256": "70b83c36286f6c58123f544f27db2b54a1135f928fe33b08b521b2997773f862"
+        }
+      ],
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/serde-json-MIT.txt",
+      "dependency_provenance": "tests/fixtures/json-value/sources.json",
+      "source_profile": {
+        "features": [
+          "std",
+          "preserve_order"
+        ],
+        "float_roundtrip": false,
+        "arbitrary_precision": false
+      },
+      "source_units": [
+        "de.rs parse_integer / parse_number / parse_decimal / parse_exponent / long and overflow branches",
+        "de.rs default f64_from_parts and original 309-entry POW10 table",
+        "de.rs SeqAccess / MapAccess JSON value grammar",
+        "read.rs parse_str_bytes / parse_escape / parse_unicode_escape / push_wtf8_codepoint, validate=true",
+        "value/de.rs owned Value visitor, map.rs preserve_order insertion and number.rs integer classification"
+      ],
+      "targets": [
+        "src/akasha/document/json_reader.mojo",
+        "src/akasha/document/json_number_tables.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Borrowed bounded native byte span returns owned existing PayloadValue; no Python runtime parser",
+        "Existing flat arenas replace recursive serde_json trees; positive integers through Int64.MAX normalize to the signed native kind",
+        "Keep source floating bits, negative zero and finite rejection for the explicitly selected default numeric profile",
+        "Akasha 16 MiB source/content, 65,536 parsed-node and 64-container-depth caps include discarded duplicate entries",
+        "Native errors preserve acceptance/rejection but do not expose serde_json error text or source positions",
+        "Native API only; no Arrow extension or Lance/jsonb numeric equivalence claim"
+      ],
+      "oracle": "scripts/json_value_reference.py",
+      "fixture": "tests/fixtures/json-value/cases.json",
+      "fixture_sha256": "317f0d23ca126940423b801a7be0d218f1c94f1973d75d2e912df09101347735",
+      "lock_sha256": "ab53f0ed6c60b203f0947cc48d0f2941f34f3bdc00318a8e981e872bdaf99b9c",
+      "status": "verified_native_reader_dependency_Arrow_JSON_and_full_D01_in_progress",
+      "verification": [
+        "docs/research/2026-10-30-json-reader-validation.md"
+      ],
+      "results": {
+        "reference_inputs": 5630,
+        "reference_accepted": 3063,
+        "reference_rejected": 2567,
+        "codec_round_trips": 3063,
+        "source_files": 37,
+        "native_tests": 18,
+        "new_native_tests": 7,
+        "full_python_passed": 3385,
+        "full_python_skipped": 1,
+        "reproducible_fixture_metadata_lock_table": true
+      },
+      "remaining": [
+        "Lance/jsonb numerical source comparison and required conversion profile",
+        "Lossless nested storage-null representation and migration if required",
+        "Native JSON serialization and complete arrow.json ingress/export including StringView",
+        "Arbitrary top-level document keys and complete D01",
+        "All remaining product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/json_reader.mojo": "b3cc91696dff50e1e2b4bbec862e163c282ae4c4127a5e3434efa9489b1e1dbc",
+        "src/akasha/document/json_number_tables.mojo": "a1b121917b41bf0b3891c402c0b166dd61681fa9de3a81dc635adcda069affb6",
+        "src/akasha/document/__init__.mojo": "7a66db75c8242da7a7b154a713918fc161ee73f8bc14c290ffa577a0a5c7ee9b",
+        "tests/mojo/test_json_reader.mojo": "73740ef50ea841f83cb2e366f61824bd33a2e26ecec8f17fbbc8578a1c52425d",
+        "scripts/json_value_reference.py": "010635158e500c326a641973b033acf9d30e53d841b23158210728fab4935705",
+        "scripts/json_value_reference.rs": "bd379f6f2350e8b2721c39d528632883f1683d76221c321059faebe53bb5fc8a"
+      }
     }
   ]
 }

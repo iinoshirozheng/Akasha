@@ -308,6 +308,21 @@ MIT OR Apache-2.0; the original MIT files are retained at
 The independent Arrow cast executable and archive/source hashes are in
 `tests/fixtures/rich-arrow-export`. No Rust numeric runtime is introduced.
 
+### Native JSON owned-value reader
+
+`src/akasha/document/json_reader.mojo` adapts serde_json 1.0.151 `de.rs`
+integer/decimal/exponent parsing, SeqAccess/MapAccess grammar and `read.rs`
+escape, surrogate and UTF-8 rules. `json_number_tables.mojo` contains the
+original `de.rs` POW10 literals. The explicit profile uses std/preserve_order,
+without float_roundtrip or arbitrary_precision; native resource limits and
+PayloadValue storage are Akasha adaptations. This does not claim Lance/jsonb
+numeric equivalence.
+
+serde_json is MIT OR Apache-2.0. Its original MIT license is retained at
+`docs/upstream/licenses/serde-json-MIT.txt`. Source/archive hashes, exact Cargo.lock
+and the independent 5,630-case reference are in `tests/fixtures/json-value`.
+Rust and Python are reference/test infrastructure, not the native parser runtime.
+
 ### Geographic point validation and formula distance
 
 `document/geo.mojo`, geographic formula integration and input conversion adapt

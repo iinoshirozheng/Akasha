@@ -398,6 +398,10 @@ PyArrow scalar/nested types or fields, with native C Data output and checked
 nullability/numeric ranges. Dynamic JSON extension interop remains pending.
 See the [Arrow contracts](docs/python-api.md).
 
+Mojo callers can also [parse JSON into owned native payload values](docs/native-json.md)
+with the pinned serde_json reader profile, then use existing document writes.
+This native reader is separate from the pending Arrow JSON extension adapter.
+
 For direct Arrow search output, use
 `search_record_batch(collection, SearchRequest(...))`. Exact, approximate,
 sparse, hybrid and filtered requests produce owned `int64` ID / `float32` score

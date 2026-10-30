@@ -4,7 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c2：巢狀 typed Arrow 匯出已完成，接受 PyArrow 型別／欄位、保留指定 nullability／metadata，以原生 C Data 輸出；舊純量分支已移除，共用同一匯出路徑。
+- 最新 D01c3a：原生 JSON 讀取基礎已移植並驗證，採固定 serde_json 1.0.151 default numeric profile，保留 UTF-8／surrogate、數字位元、負零、重複鍵順序與原生資源限制。
+  5,630 組來源案例（3,063 接受並通過 codec 往返，2,567 拒絕）、18 項相關原生測試與完整 Python **3,385 通過、1 跳過**；build 與 fixture／數字表重現通過。
+  [驗證](docs/research/2026-10-30-json-reader-validation.md)。這是 D01c3 的原生依賴；下一步為 Lance/jsonb 數字對照及儲存 null 表示，之後接完整 Arrow JSON。未宣稱 Lance 等價、完整 D01 或任何全產品／效能門檻完成。
+- D01c2：巢狀 typed Arrow 匯出已完成，接受 PyArrow 型別／欄位、保留指定 nullability／metadata，以原生 C Data 輸出；舊純量分支已移除，共用同一匯出路徑。
   2,126 組來源輸入各驗證 F16／F32，修正來源所需的 F32 中間捨入；55 項新增 Python、14 項相關原生及完整 Python **3,385 通過、1 跳過**。來源 fixture／metadata／lock 可逐位元重現。
   [驗證](docs/research/2026-10-30-rich-arrow-export-validation.md)。下一步為動態 `arrow.json` extension 與 missing／null／任意鍵互通；D01、Lance schema／歷史版本與完整產品清單仍未完成，尚未優化。
 - D01c1：巢狀 typed Arrow 匯入已移植到 Mojo，涵蓋 struct／list／UInt64／null、所有整數寬度及有限浮點，兩個 upsert API 共用原生 buffer traversal。

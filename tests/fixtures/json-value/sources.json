@@ -1,0 +1,165 @@
+{
+  "qdrant_revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+  "name": "serde_json",
+  "version": "1.0.151",
+  "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
+  "features": [
+    "std",
+    "preserve_order"
+  ],
+  "float_roundtrip": false,
+  "files": [
+    {
+      "path": "src/de.rs",
+      "sha256": "4998d7e252eb513be85b298e287048b4fb283882e9ba7df905f572f07200f3f3"
+    },
+    {
+      "path": "src/error.rs",
+      "sha256": "a13add05a63adf53d89e37effa03221d897a60486cfe360a5a958c0dd2a7e90d"
+    },
+    {
+      "path": "src/io/core.rs",
+      "sha256": "60ba28f67a9acaecf8964b611efba416b13f9f2bae4befc329fdf0e037293802"
+    },
+    {
+      "path": "src/io/mod.rs",
+      "sha256": "fd1ed5080495cab21117f6f7d3c2c9e3687cad0c69a0cd087b08a145a9e672da"
+    },
+    {
+      "path": "src/iter.rs",
+      "sha256": "f832c469cd7999d26ba9b76baa69b257a212a7edb3dfdf9b1d1bb35e8da85fa9"
+    },
+    {
+      "path": "src/lexical/algorithm.rs",
+      "sha256": "54d599033e5a182a3076a0ba23a3550bf8680c99399b0313166b3c42c85b35b9"
+    },
+    {
+      "path": "src/lexical/bhcomp.rs",
+      "sha256": "26f39d52008225a6b377d7246d326940d44200e160a7b4652733e712e1a45a04"
+    },
+    {
+      "path": "src/lexical/bignum.rs",
+      "sha256": "db688e8112389998d0f91906f6857e28f9b510a8b4065ad476c8e8be2f77becf"
+    },
+    {
+      "path": "src/lexical/cached.rs",
+      "sha256": "0e127398691f8042c19cde209e7f4b0161f0f3150342430145929f711e6fdac8"
+    },
+    {
+      "path": "src/lexical/cached_float80.rs",
+      "sha256": "0f8f74a22cb7d871322a9893bffd0255ca10bf9dffd13afb2462dd3d7f51805f"
+    },
+    {
+      "path": "src/lexical/digit.rs",
+      "sha256": "9502805adbc3da059131d1fac0a802e17065b36cd7472606b3af24e3241d5cb8"
+    },
+    {
+      "path": "src/lexical/errors.rs",
+      "sha256": "3d9f6de6245533bcb101dfd718cfed61d59dc293f6768cedae28aa13ace164f5"
+    },
+    {
+      "path": "src/lexical/exponent.rs",
+      "sha256": "51f19443008e8884b15c7d5d4b1f1cfbd5673a9d1da02f1af39fcf20e315f01f"
+    },
+    {
+      "path": "src/lexical/float.rs",
+      "sha256": "fe356213c92a049f4bef2f58bc0e3a26866ca06b8c1d74d0f961c5b883852cad"
+    },
+    {
+      "path": "src/lexical/large_powers.rs",
+      "sha256": "18d697b846b44ecb61bfaaa3b881e0696f9b7bb6be582623e9d3a8a176a48d2f"
+    },
+    {
+      "path": "src/lexical/large_powers32.rs",
+      "sha256": "c70b57a727960beec258758a4d4a1050f8eaf3b4e60027c663a2bfb0246e0153"
+    },
+    {
+      "path": "src/lexical/large_powers64.rs",
+      "sha256": "e7af83ce3159b5fc4669fc5a231e767d8af21bacaece52a0a48951198965b197"
+    },
+    {
+      "path": "src/lexical/math.rs",
+      "sha256": "c5452d3ef9cc9ebd74a99f22dcabf74f4f062bbaeade46301260b79e4662d5df"
+    },
+    {
+      "path": "src/lexical/mod.rs",
+      "sha256": "ace2ccea2cd541f019a84b9eeb3b9ecd88daf6bccbe9edf0eac00b62704f47c4"
+    },
+    {
+      "path": "src/lexical/num.rs",
+      "sha256": "2d06111d28616221995f7b4d4f13625b8d902884921268b0e02e544f871a5339"
+    },
+    {
+      "path": "src/lexical/parse.rs",
+      "sha256": "c2bfac4c70a19938ced61e991f4ec606764887cf12bac1a0978b5b5318a56aac"
+    },
+    {
+      "path": "src/lexical/rounding.rs",
+      "sha256": "4762af3612880b17468ff2a1bb800c8e99f08330ae439699dd53d8dc5463ad13"
+    },
+    {
+      "path": "src/lexical/shift.rs",
+      "sha256": "bc1ed053dd63d45ac9c35302f18de9f00d94027f28af4ab749c9248439de832a"
+    },
+    {
+      "path": "src/lexical/small_powers.rs",
+      "sha256": "73c56b7b83310c6fefa898fb94771c65bdc251c1579ab105151da43935ea02be"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "34a1ddabdcf4759d9a6c64a2e851372546d635d1a578ad902d962fef3c45de58"
+    },
+    {
+      "path": "src/macros.rs",
+      "sha256": "94dda91c847e819a95e64d655eb066dfa44ed69712064016c3fe862c34ef92e6"
+    },
+    {
+      "path": "src/map.rs",
+      "sha256": "b5a2fd1ee865e6cfd83ef2da0a2e1057f892465ac7ede8a78a11354a60526f33"
+    },
+    {
+      "path": "src/number.rs",
+      "sha256": "70b83c36286f6c58123f544f27db2b54a1135f928fe33b08b521b2997773f862"
+    },
+    {
+      "path": "src/raw.rs",
+      "sha256": "0e6ae2ade492a3c5c090dfaf31f03ff4e54123a5a47b59def5f1b3dcc035a2e3"
+    },
+    {
+      "path": "src/read.rs",
+      "sha256": "17a2efe49e5a6937c8d7d4a5c0b9eac84453de0f86bf8e7ee421387e82341bb3"
+    },
+    {
+      "path": "src/ser.rs",
+      "sha256": "f2b8cc0b97e30c49dbc58698fa22c14a7d56ea616cdb57b067835a59af49a75f"
+    },
+    {
+      "path": "src/value/de.rs",
+      "sha256": "ceda1bf415aafde89caa83bf275811b70d393717d4e1038e0c61822d2da02993"
+    },
+    {
+      "path": "src/value/from.rs",
+      "sha256": "ae4b5f93b27e578fa40e3a8d25d0df2032fe40b680cddb15963e47cbd56db613"
+    },
+    {
+      "path": "src/value/index.rs",
+      "sha256": "f1404ed12e795a5553da4bdf72835c441a5e0cc0f6e794fee875eaa887d65319"
+    },
+    {
+      "path": "src/value/mod.rs",
+      "sha256": "6331d59ea362a74b6cd3d302d08114a63a73a384ff56fef737de29edea2f8d91"
+    },
+    {
+      "path": "src/value/partial_eq.rs",
+      "sha256": "c565f7886d3bdf5dd39b8c99acca17091c251f15b3c257addf5d02f414fd0571"
+    },
+    {
+      "path": "src/value/ser.rs",
+      "sha256": "11f2b7daa1eba826d4086d5497f73729478dd7647bff77deccde5e47b0f126f2"
+    }
+  ],
+  "generator_sha256": "010635158e500c326a641973b033acf9d30e53d841b23158210728fab4935705",
+  "scaffold_sha256": "bd379f6f2350e8b2721c39d528632883f1683d76221c321059faebe53bb5fc8a",
+  "fixture_sha256": "317f0d23ca126940423b801a7be0d218f1c94f1973d75d2e912df09101347735",
+  "lock_sha256": "ab53f0ed6c60b203f0947cc48d0f2941f34f3bdc00318a8e981e872bdaf99b9c"
+}

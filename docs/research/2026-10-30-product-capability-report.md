@@ -24,7 +24,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契約；14 項相關原生測試及完整 Python **3,385 通過、1 跳過**。4,252 組浮點轉型結果與原始 Arrow 逐位元／溢位對照通過。動態 JSON extension、持久 schema／歷史版本與 Lance 格式仍未完成，見[匯出驗證與範圍](2026-10-30-rich-arrow-export-validation.md)。
+最新 D01c3a 補入原生 JSON 值讀取（固定 serde_json default profile），5,630 組來源案例、18 項相關 Mojo 與完整 Python **3,385 通過、1 跳過**。這是互通工作的基礎，尚未完成 `arrow.json`；Lance/jsonb 數字語義與 nested storage-null 表示仍須對照和實作，見[JSON 讀取驗證](2026-10-30-json-reader-validation.md)。
+
+D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契約；14 項相關原生測試及完整 Python **3,385 通過、1 跳過**。4,252 組浮點轉型結果與原始 Arrow 逐位元／溢位對照通過。動態 JSON extension、持久 schema／歷史版本與 Lance 格式仍未完成，見[匯出驗證與範圍](2026-10-30-rich-arrow-export-validation.md)。
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
