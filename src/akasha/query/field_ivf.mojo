@@ -11,7 +11,7 @@ from akasha.index.field_dense import dense_f32_projection
 from akasha.index.field_ivf import FieldIvfIndex, IvfOptions
 from akasha.index.quantization import PqCodebook
 from akasha.query.control import QueryControl
-from akasha.query.evaluator import matches_expression
+from akasha.query.point_filter import matches_entry
 from akasha.query.field_search import (
     FieldSearchExecution,
     field_exact_stats,
@@ -159,8 +159,8 @@ def search_generation_field_ivf(
             ref entry = view.run(location.layer).memtable.entry_ref_at(
                 location.ordinal
             )
-            if expression and not matches_expression(
-                entry.fields(), expression.value()
+            if expression and not matches_entry(
+                entry, expression.value(), view.catalog
             ):
                 stats.filtered_rejections += 1
                 continue

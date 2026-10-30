@@ -53,6 +53,7 @@ from akasha.index.sparse import SparseElement, SparseIndex, validate_sparse
 from akasha.query.executor import candidate_ordinals
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
+from akasha.query.point_filter import evaluate_table_expression
 from akasha.query.planner import QueryPlanner
 from akasha.api.snapshot import ReadSnapshot
 from akasha.storage.read_generation import (
@@ -680,7 +681,7 @@ struct PersistentCollection:
     def metadata_match_count(self, expression: FilterExpression) raises -> Int:
         with BlockingScopedLock(self._writer_lock[]):
             self._ensure_open()
-            return evaluate_expression(self._metadata, expression).count()
+            return evaluate_table_expression(self._metadata, self._memtable, expression, self._field_catalog()).count()
 
     def hnsw_cache_hit(self) raises -> Bool:
         with BlockingScopedLock(self._writer_lock[]):
@@ -1945,7 +1946,7 @@ struct PersistentCollection:
         if ef_search <= 0:
             raise Error("ef_search must be positive")
         expression.validate()
-        var matched = evaluate_expression(self._metadata, expression)
+        var matched = evaluate_table_expression(self._metadata, self._memtable, expression, self._field_catalog())
         if self._memtable.dense_live_count() != self._memtable.live_count():
             for ordinal in matched.set_ordinals():
                 if not self._memtable.entry_ref_at(ordinal).has_dense():
@@ -2072,7 +2073,7 @@ struct PersistentCollection:
         if k <= 0:
             raise Error("k must be positive")
         expression.validate()
-        var candidates = evaluate_expression(self._metadata, expression)
+        var candidates = evaluate_table_expression(self._metadata, self._memtable, expression, self._field_catalog())
         return self._search_candidates(query, k, metric, candidates)
 
     def _search_candidates(

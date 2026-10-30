@@ -11,6 +11,7 @@ from akasha.document.geo import GeoPoint, haversine_distance
 from akasha.document.datetime import DateTimeValue
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
+from akasha.query.point_condition import PointFilterContext
 from akasha.query.filter_ast import FilterExpression
 from akasha.query.formula_payload import formula_payload_value
 from std.math import exp, isfinite, log, log10, pow, sqrt
@@ -178,8 +179,10 @@ struct Formula(Movable):
     def score(
         self, id: Int, fields: List[DocumentField], scores: List[Dict[Int, Float32]],
         control: Optional[QueryControl] = None,
+        context: Optional[PointFilterContext] = None,
     ) raises -> Float32:
-        var precise = self._evaluate(len(self.nodes) - 1, id, fields, scores, control)
+        var point = context.value().copy() if context else PointFilterContext(Optional(id))
+        var precise = self._evaluate(len(self.nodes) - 1, id, fields, scores, control, point)
         var value = Float32(precise)
         if not isfinite(value):
             raise Error("formula final score is not finite Float32")
@@ -217,7 +220,7 @@ struct Formula(Movable):
     @no_inline
     def _evaluate(
         self, index: Int, id: Int, fields: List[DocumentField], scores: List[Dict[Int, Float32]],
-        control: Optional[QueryControl],
+        control: Optional[QueryControl], context: PointFilterContext,
     ) raises -> Float64:
         if control:
             control.value().checkpoint(0)
@@ -236,11 +239,11 @@ struct Formula(Movable):
             var value = self._payload_value(node.variable.value(), fields)
             return Float64(DateTimeValue.from_payload(value).timestamp()) / Float64(1_000_000)
         if kind == "condition":
-            return Float64(1 if matches_expression(fields, node.condition.value()) else 0)
+            return Float64(1 if matches_expression(fields, node.condition.value(), context) else 0)
         if kind == "sum" or kind == "mult":
             var result = Float64(1 if kind == "mult" else 0)
             for child in node.children:
-                var value = self._evaluate(child, id, fields, scores, control)
+                var value = self._evaluate(child, id, fields, scores, control, context)
                 if kind == "mult":
                     if value == 0:
                         return 0
@@ -248,7 +251,7 @@ struct Formula(Movable):
                 else:
                     result += value
             return result
-        var left = self._evaluate(node.children[0], id, fields, scores, control)
+        var left = self._evaluate(node.children[0], id, fields, scores, control, context)
         if kind == "neg":
             return -left
         if kind == "abs":
@@ -257,7 +260,7 @@ struct Formula(Movable):
             return 0
         var right = Float64(0)
         if len(node.children) > 1:
-            right = self._evaluate(node.children[1], id, fields, scores, control)
+            right = self._evaluate(node.children[1], id, fields, scores, control, context)
         var result: Float64
         if kind == "div":
             if right == 0 and node.by_zero_default:

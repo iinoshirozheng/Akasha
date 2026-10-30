@@ -6,6 +6,7 @@ from akasha.document.value import PayloadValue
 from akasha.document.json_path import JsonPath
 from akasha.document.payload_path import _value_get, payload_value_get
 from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.point_condition import PointFilterContext
 
 
 def matches_all(
@@ -19,11 +20,12 @@ def matches_all(
 
 
 def matches_expression(
-    fields: List[DocumentField], expression: FilterExpression
+    fields: List[DocumentField], expression: FilterExpression,
+    context: PointFilterContext = PointFilterContext(),
 ) raises -> Bool:
     """Evaluate a bounded expression with deterministic short-circuiting."""
     expression.validate()
-    return matches_node(fields, expression, expression.root_index())
+    return matches_node(fields, expression, expression.root_index(), context=context)
 
 
 def _path_values(fields: List[DocumentField], path: JsonPath, scope: Optional[PayloadValue]) raises -> List[PayloadValue]:
@@ -40,10 +42,25 @@ def _path_values(fields: List[DocumentField], path: JsonPath, scope: Optional[Pa
 
 
 def matches_node(fields: List[DocumentField], expression: FilterExpression, node_index: Int,
-                 scope: Optional[PayloadValue] = None) raises -> Bool:
+                 scope: Optional[PayloadValue] = None,
+                 context: PointFilterContext = PointFilterContext()) raises -> Bool:
     """Bounded source Boolean traversal; nested children use the same object."""
     ref node = expression._nodes[node_index]
     var kind = node.kind
+    if kind == FilterExpression.POINT:
+        return node.point.value().check(context)
+    if kind == FilterExpression.IS_EMPTY or kind == FilterExpression.IS_NULL:
+        # common/utils.rs: all-empty across the path, any-null at the path
+        # itself. Unlike FieldCondition, an array containing null is not null.
+        var values = _path_values(fields, node.path.value(), scope)
+        for i in range(len(values)):
+            if kind == FilterExpression.IS_NULL:
+                if values[i].is_null():
+                    return True
+            elif not values[i].is_null():
+                if not values[i].is_array() or len(values[i].children()) != 0:
+                    return False
+        return kind == FilterExpression.IS_EMPTY
     if kind == FilterExpression.CONDITION:
         if not scope:
             return _matches_condition(fields, node.condition.value())
@@ -67,12 +84,12 @@ def matches_node(fields: List[DocumentField], expression: FilterExpression, node
                     return True
         return False
     if kind == FilterExpression.NEGATE:
-        return not matches_node(fields, expression, node.children[0], scope)
+        return not matches_node(fields, expression, node.children[0], scope, context)
     if kind == FilterExpression.AT_LEAST and node.min_count == 0:
         return True
     var count = UInt64(0)
     for child in node.children:
-        var result = matches_node(fields, expression, child, scope)
+        var result = matches_node(fields, expression, child, scope, context)
         if kind == FilterExpression.ALL and not result:
             return False
         if kind == FilterExpression.ANY and result:

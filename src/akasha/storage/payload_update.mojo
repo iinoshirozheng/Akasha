@@ -7,7 +7,7 @@ Akasha uses one atomic replacement batch instead of Qdrant's segment chunks.
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.point_state import PointMutation, FieldUpdate
 from akasha.query.filter_ast import FilterExpression
-from akasha.query.evaluator import matches_expression
+from akasha.query.point_filter import matches_point
 from akasha.storage.point_table import PointTable
 
 
@@ -32,7 +32,7 @@ def prepare_payload_mutations(table: PointTable, update: PayloadUpdate,
     else:
         var entries = table.entry_view()
         for i in range(len(entries)):
-            if not entries[i].tombstone and matches_expression(entries[i].payload(), expression.value()):
+            if matches_point(entries[i], expression.value(), Optional(table._catalog.copy())):
                 if len(ids) == max_points:
                     raise Error("payload update point count exceeds resource limit")
                 ids.append(entries[i].id)

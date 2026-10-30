@@ -4,14 +4,14 @@ from akasha.compute.field_metrics import (
 )
 from akasha.compute.topk import BoundedTopK, TopKEntry
 from akasha.document.point_state import PointState
-from akasha.document.vector_schema import VectorFieldSpec
+from akasha.document.vector_schema import VectorFieldSpec, FieldCatalog
 from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats
 from akasha.index.field_artifacts import FieldRow
 from akasha.index.field_sparse import FieldSparseIndex
 from akasha.index.sparse_search import search_sparse_postings
 from akasha.query.control import QueryControl
-from akasha.query.evaluator import matches_expression
+from akasha.query.point_filter import matches_entry, matches_point
 from akasha.query.filter_ast import FilterExpression
 from akasha.storage.read_generation import ReadGeneration
 from std.memory import ArcPointer
@@ -85,6 +85,7 @@ def search_point_field(
     query: VectorValue,
     k: Int,
     expression: Optional[FilterExpression],
+    catalog: Optional[ArcPointer[FieldCatalog]] = None,
 ) raises -> List[FieldSearchResult]:
     """Exact native-field search with presence/filter checks before Top-K."""
     if k <= 0:
@@ -104,7 +105,7 @@ def search_point_field(
             if point.tombstone or ordinal < 0:
                 continue
             built.add(FieldRow(point.id, 0, row), point.field_at(ordinal).value().sparse_values())
-            var admit = not expression or matches_expression(point.payload(), expression.value())
+            var admit = not expression or matches_point(point, expression.value(), catalog)
             allowed.append(admit)
             if admit:
                 matched += 1
@@ -126,8 +127,8 @@ def search_point_field(
         var ordinal = point.ordinal_for(field.id)
         if ordinal < 0:
             continue
-        if expression and not matches_expression(
-            point.payload(), expression.value()
+        if expression and not matches_point(
+            point, expression.value(), catalog
         ):
             continue
         ref value = point.field_at(ordinal).value()
@@ -281,7 +282,7 @@ def search_sparse_field(
         if required_ids and location.id not in required_ids.value():
             continue
         ref entry = view.run(location.layer).memtable.entry_ref_at(location.ordinal)
-        if expression and not matches_expression(entry.fields(), expression.value()):
+        if expression and not matches_entry(entry, expression.value(), view.catalog):
             continue
         allowed[row] = True
         matched += 1

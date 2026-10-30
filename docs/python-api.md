@@ -157,6 +157,58 @@ evaluate authoritative payloads; dedicated typed indexes,
 tokenizer/BM25/position-aware phrase search and full Qdrant REST/gRPC schemas remain
 open. Unsupported properties and ambiguous match variants are rejected explicitly.
 
+### Point identity, vector presence and whole-path conditions
+
+The same filter trees also accept these independent nodes:
+
+```python
+{"kind": "has_id", "ids": [1, 42]}
+{"kind": "has_vector", "name": "image"}
+{"kind": "has_vector", "name": ""}  # default dense vector
+{"kind": "has_vector", "field_id": 1}  # native unnamed sparse field
+{"kind": "slice", "total": 8, "index": 3}
+{"kind": "is_empty", "key": "items[].value"}
+{"kind": "is_null", "key": "items[].value"}
+```
+
+`has_id` accepts native signed Int64 IDs; duplicates have no effect. UUIDs and
+integers outside that range remain unsupported until the point-ID format work.
+`has_vector` tests stored presence, including empty sparse/multivector values,
+not whether a vector can contribute a search result. Unknown names return false.
+Exactly one of `name` and the native UInt32 `field_id` selector is required.
+Empty name selects default dense field 0; field 1 is the independent default
+sparse field. Removing a vector changes current results while captured read
+views retain the previous presence.
+
+`slice` requires UInt32 `total > 0` and `0 <= index < total`. It uses Qdrant's
+fixed zero-key SipHash-2-4 of the numeric ID's eight little-endian bytes, modulo
+`total`. Native negative IDs use their two's-complement UInt64 bit pattern.
+Slices for one total partition all live IDs, and totals with shared factors
+produce correlated subsets. The hash does not depend on process, collection,
+payload or vector updates. UUID byte hashing is tested against upstream but
+does not enable UUID point storage or public UUID filters.
+
+Standalone `is_empty` requires **every** value returned by the path to be null
+or an empty array; a missing path matches. Standalone `is_null` requires at least
+one returned value to be null; a missing path does not match. Neither implicitly
+flattens a returned array. For `{"a": [null]}`, `is_null` on `a` is false and on
+`a[]` is true. These are deliberately distinct from a `field` node's any-element
+`is_empty` / `is_null` properties described above.
+
+Inside `nested`, the point ID and vector storage context are absent, following
+Qdrant: `has_id`, `has_vector` and `slice` are false for each nested object.
+Negating those predicates is true within an existing nested object; a missing
+or non-object nested array still cannot match.
+
+Mojo callers use `FilterExpression.point(PointCondition(spec))`, `.is_empty`
+and `.is_null`. Direct payload evaluation can take `PointFilterContext`; its
+default has no ID or vectors. Payload-only `MetadataIndex` evaluation supplies
+IDs but no vector storage. Collection/read-generation evaluators supply current
+authoritative vector presence and the retained field catalog independently of
+the unchanged payload-index cache. Search, scans, formula conditions, payload
+mutations, Python/Arrow and existing HTTP routes share these semantics. These
+native dictionaries do not claim complete Qdrant REST/gRPC schema compatibility.
+
 ### Rich document values
 
 `PayloadField` now accepts `null`, `array`, `object` and `uint` in addition to

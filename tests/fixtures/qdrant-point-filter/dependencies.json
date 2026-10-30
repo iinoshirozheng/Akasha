@@ -1,0 +1,34 @@
+{
+  "siphasher": {
+    "name": "siphasher",
+    "version": "1.0.3",
+    "revision": "451f67d73a772cba325728109bbfa247750ed076",
+    "crate_sha256": "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649",
+    "sources": {
+      "src/sip.rs": "64e6d808ac93c4024ffb1ced16be1891407c6e7026dd0f4eb0145c98605392c3",
+      "src/common.rs": "7319d34054413c01a3740a1d349c487125c5ffc5a39cddf562702f3560e1525a",
+      "COPYING": "c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365",
+      "Cargo.toml.orig": "65fbc684d36923202e8472bab68a9505b9d631d362cd9bd0544015a94f9b6419",
+      ".cargo_vcs_info.json": "67d171b722d201cd15f8851c8a7663d728e65cd0141f919d2571e1c21ab8b3c5"
+    },
+    "units": {
+      "src/sip.rs:fn reset(&mut self)": "218ca6a71fea7a6a03feea6f45191e00affd5c3be862096c41945d0d6594e782",
+      "src/sip.rs:fn hash(&self, msg:": "08887ad3cd57617f9fa316335561f0094c6309f94104cac0837b028d70b9dacd",
+      "src/sip.rs:fn finish_with_state(": "2f12ac1a655a30f202c5e05eb43c2cbef85378e819cdda55f4daffa2c04b7a70",
+      "src/sip.rs:impl Sip for Sip24Rounds {": "9c8ff55f5991c72a59f729a55c64fdbac277fac302f29a255cd42d2575669d97",
+      "src/common.rs:macro_rules! compress {": "b922223ab99cd34d5163911dd21a378c1b94da344508977b765d3af1ea9d789b",
+      "src/common.rs:pub unsafe fn u8to64_le(": "3d575606d34e54f96e0c42608367cfe41c66d7a32e716ca362bb49dba6a0b6ce"
+    }
+  },
+  "uuid": {
+    "name": "uuid",
+    "version": "1.24.0",
+    "revision": "6a8aeab3d02838f6fef71e69cdfda963e8c4158b",
+    "crate_sha256": "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239",
+    "sources": {
+      "src/lib.rs": "4faed808181ee052d97b9f0574f47fd23428282d9c692129bbab3fb59ddf0b72",
+      "Cargo.toml.orig": "f1587f75e41b6bef69a871ed91997d991aba60ebd812b30fc06bd7e0d6c63ba6",
+      ".cargo_vcs_info.json": "d5be73f37afb52c0438135fa6258a2f772bd31aec85f0bff5224ebd166c90d6d"
+    }
+  }
+}

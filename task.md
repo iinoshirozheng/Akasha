@@ -4,7 +4,14 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D03e：Qdrant／GeoRust polygon 與 robust 自適應精度已移植到 Mojo，
+- 最新 D03f：已移植 Qdrant 點 ID／向量存在／固定分片條件、獨立路徑空值條件，
+  以及 siphasher 的固定 SipHash-2-4；nested 範圍依來源清除點身分與向量資訊。
+  搜尋／公式／掃描／條件更新、Python／Arrow／現有 HTTP 已串接。
+  12,656 組來源案例、2,187 組精確雜湊、45 項原生與新增 36 項 Python 測試通過；
+  完整 Python **3,248 項通過、1 項既有跳過**。
+  [驗證與範圍](docs/research/2026-10-30-point-filter-validation.md)。
+  完整 UInt64／UUID 點 ID、rich Arrow、專用索引／全文搜尋及其餘產品待辦仍開放。
+- D03e：Qdrant／GeoRust polygon 與 robust 自適應精度已移植到 Mojo，
   保留外框／孔洞／邊界、EPSILON 閉合與來源退化幾何行為。
   17,060 組 polygon 與 31,167 組精確位元來源對照、33 項原生與 24 項新增
   Python 測試通過；完整 Python **3,212 項通過、1 項既有跳過**。

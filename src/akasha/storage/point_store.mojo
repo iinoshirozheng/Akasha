@@ -213,6 +213,7 @@ struct PointStore(Movable):
             query,
             k,
             expression,
+            Optional(self._catalog.copy()),
         )
 
     def compact(mut self) raises:

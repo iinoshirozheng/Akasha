@@ -136,6 +136,13 @@ ported robust adaptive orientation predicate. Dedicated typed indexes and indexe
 separate work. The Phase 4.2 `search_*_filtered` AND-list methods remain
 supported.
 
+Point filters additionally support `has_id`, `has_vector`, deterministic `slice`,
+and standalone whole-path `is_empty` / `is_null`. These follow Qdrant's separate
+ID/vector context and nested-scope isolation; captured views retain vector
+presence across updates. Slice uses source-derived zero-key SipHash-2-4.
+Existing signed Int64 point IDs remain the public storage contract; full
+UInt64/UUID IDs are separate work. See the [point filter contract](docs/python-api.md#point-identity-vector-presence-and-whole-path-conditions).
+
 Approximate dense search is available through `search_dot_approx`,
 `search_l2_approx`, and `search_cosine_approx`; each accepts `ef_search` after
 `k`. Boolean-filtered variants use the `_approx_where` suffix. The planner uses

@@ -1,4 +1,5 @@
 from akasha.query.payload_condition import PayloadCondition, _uint
+from akasha.query.point_condition import PointCondition
 from akasha.query.query_plan import QueryNode, plan_query
 from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.document.geo import GeoPoint
@@ -2011,6 +2012,13 @@ def _bounded_filter_expression(value: PythonObject, depth: Int, mut count: Int) 
     if kind == "field":
         var spec = json_value_from_python(value)
         return FilterExpression.field(PayloadCondition(spec))
+    if kind == "has_id" or kind == "has_vector" or kind == "slice":
+        return FilterExpression.point(PointCondition(json_value_from_python(value)))
+    if kind == "is_empty" or kind == "is_null":
+        var key = json_value_from_python(value["key"])
+        if not key.is_string():
+            raise Error("empty/null condition key requires a JSON path string")
+        return FilterExpression.is_empty(key.as_string()) if kind == "is_empty" else FilterExpression.is_null(key.as_string())
     if kind == "nested":
         var key = json_value_from_python(value["key"])
         if not key.is_string():

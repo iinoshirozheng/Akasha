@@ -2,6 +2,7 @@ from akasha.document.record import validate_field_name
 from akasha.document.value import PayloadValue
 from akasha.document.json_path import JsonPath
 from akasha.query.payload_condition import PayloadCondition
+from akasha.query.point_condition import PointCondition
 
 
 struct FilterCondition(Movable):
@@ -106,6 +107,7 @@ struct _FilterNode(Movable):
     var payload: Optional[PayloadCondition]
     var path: Optional[JsonPath]
     var min_count: UInt64
+    var point: Optional[PointCondition]
 
     def __init__(
         out self,
@@ -115,6 +117,7 @@ struct _FilterNode(Movable):
         var payload: Optional[PayloadCondition] = None,
         var path: Optional[JsonPath] = None,
         min_count: UInt64 = 0,
+        var point: Optional[PointCondition] = None,
     ):
         self.kind = kind
         self.condition = condition^
@@ -122,6 +125,7 @@ struct _FilterNode(Movable):
         self.payload = payload^
         self.path = path^
         self.min_count = min_count
+        self.point = point^
 
     def clone_with_offset(self, offset: Int) raises -> _FilterNode:
         var condition = Optional[FilterCondition]()
@@ -134,7 +138,7 @@ struct _FilterNode(Movable):
         var payload = Optional[PayloadCondition]()
         if self.payload:
             payload = Optional(self.payload.value().clone())
-        return _FilterNode(self.kind, condition^, children^, payload^, self.path.copy(), self.min_count)
+        return _FilterNode(self.kind, condition^, children^, payload^, self.path.copy(), self.min_count, self.point.copy())
 
 
 struct FilterExpression(Movable):
@@ -147,6 +151,9 @@ struct FilterExpression(Movable):
     comptime FIELD = UInt8(5)
     comptime NESTED = UInt8(6)
     comptime AT_LEAST = UInt8(7)
+    comptime POINT = UInt8(8)
+    comptime IS_EMPTY = UInt8(9)
+    comptime IS_NULL = UInt8(10)
     comptime MAX_DEPTH = 16
     comptime MAX_NODES = 256
 
@@ -162,6 +169,7 @@ struct FilterExpression(Movable):
         var payload: Optional[PayloadCondition] = None,
         var path: Optional[JsonPath] = None,
         min_count: UInt64 = 0,
+        var point: Optional[PointCondition] = None,
     ) raises:
         self._nodes = List[_FilterNode]()
         var root_children = List[Int](capacity=len(children))
@@ -172,7 +180,7 @@ struct FilterExpression(Movable):
                     children[index]._nodes[node_index].clone_with_offset(offset)
                 )
             root_children.append(children[index]._root + offset)
-        self._nodes.append(_FilterNode(kind, condition^, root_children^, payload^, path^, min_count))
+        self._nodes.append(_FilterNode(kind, condition^, root_children^, payload^, path^, min_count, point^))
         self._root = len(self._nodes) - 1
         self.validate()
 
@@ -219,6 +227,24 @@ struct FilterExpression(Movable):
     @staticmethod
     def at_least(var children: List[FilterExpression], min_count: UInt64) raises -> FilterExpression:
         return FilterExpression(Self.AT_LEAST, None, children^, min_count=min_count)
+
+    @staticmethod
+    def point(var condition: PointCondition) raises -> FilterExpression:
+        return FilterExpression(Self.POINT, None, [], point=Optional(condition^))
+
+    @staticmethod
+    def is_empty(key: String) raises -> FilterExpression:
+        return FilterExpression(Self.IS_EMPTY, None, [], path=Optional(JsonPath.parse(key)))
+
+    @staticmethod
+    def is_null(key: String) raises -> FilterExpression:
+        return FilterExpression(Self.IS_NULL, None, [], path=Optional(JsonPath.parse(key)))
+
+    def needs_vector_context(self) -> Bool:
+        for i in range(len(self._nodes)):
+            if self._nodes[i].point and self._nodes[i].point.value().kind == PointCondition.VECTOR:
+                return True
+        return False
 
     def kind(self) -> UInt8:
         return self._nodes[self._root].kind
@@ -316,13 +342,19 @@ def _validate_expression_node(
     var kind = expression._node_kind(node_index)
     var child_count = expression._node_child_count(node_index)
     var condition = expression._get_node_condition(node_index)
-    if kind < FilterExpression.CONDITION or kind > FilterExpression.AT_LEAST:
+    if kind < FilterExpression.CONDITION or kind > FilterExpression.IS_NULL:
         raise Error("unknown filter expression kind")
     ref node = expression._nodes[node_index]
     if Bool(node.payload) != (kind == FilterExpression.FIELD):
         raise Error("field expression has invalid payload condition")
-    if Bool(node.path) != (kind == FilterExpression.NESTED):
-        raise Error("nested expression has invalid path")
+    if Bool(node.path) != (kind == FilterExpression.NESTED or kind == FilterExpression.IS_EMPTY or kind == FilterExpression.IS_NULL):
+        raise Error("path expression has invalid path")
+    if Bool(node.point) != (kind == FilterExpression.POINT):
+        raise Error("point expression has invalid predicate")
+    if node.point:
+        node.point.value().validate()
+    if kind >= FilterExpression.POINT and child_count != 0:
+        raise Error("point/path predicate cannot have children")
     if kind != FilterExpression.AT_LEAST and node.min_count != 0:
         raise Error("minimum match count requires at_least")
     if kind == FilterExpression.FIELD and child_count != 0:

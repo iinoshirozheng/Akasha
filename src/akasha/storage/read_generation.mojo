@@ -24,6 +24,7 @@ from akasha.index.quantization import Sq8Index
 from akasha.query.evaluator import matches_all, matches_expression
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.index_evaluator import evaluate_all, evaluate_expression
+from akasha.query.point_filter import matches_entry, evaluate_table_expression
 from akasha.storage.generation_pins import GenerationPinRegistry
 from akasha.storage.memtable import MemTable, MemTableEntry
 from akasha.storage.field_hnsw_cache import publish_field_hnsw_cache_best_effort
@@ -254,12 +255,12 @@ struct ReadGeneration(Movable):
         if run.index:
             return self.candidate_ordinals(
                 layer,
-                evaluate_expression(run.index.value().metadata, expression),
+                evaluate_table_expression(run.index.value().metadata, run.memtable, expression, self.catalog),
             )
         var result = List[Int]()
         for ordinal in self.visible_ordinals(layer):
-            if matches_expression(
-                run.memtable.entry_ref_at(ordinal).fields(), expression
+            if matches_entry(
+                run.memtable.entry_ref_at(ordinal), expression, self.catalog
             ):
                 result.append(ordinal)
         return result^

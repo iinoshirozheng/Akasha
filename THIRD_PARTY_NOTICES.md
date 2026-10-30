@@ -4,6 +4,25 @@ Akasha contains adaptations of open-source database implementations. Port-specif
 revisions, original source hashes, modified files and executable reference evidence
 are recorded in [the source-port ledger](docs/upstream/ports.json).
 
+## Point/path conditions and deterministic slice hashes
+
+`query/point_condition.mojo`, `query/evaluator.mojo` and their context integration
+translate Qdrant `types.rs`, `payload_storage/query_checker.rs` and
+`common/utils.rs` at `74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+Native owned predicates and retained catalogs replace storage handles; nested
+identity isolation and whole-path null/empty behavior follow the source.
+
+`compute/siphash.mojo` translates zero-key SipHash-2-4 from siphasher 1.0.3,
+commit `451f67d73a772cba325728109bbfa247750ed076`, `src/sip.rs` and
+`src/common.rs`. Copyright 2012-2016 The Rust Project Developers;
+Copyright 2016-2026 Frank Denis. The upstream [COPYING notice](docs/upstream/licenses/siphasher-COPYING.txt)
+offers MIT or Apache-2.0; this adaptation uses Apache-2.0, whose full text is
+included in [the retained Apache license](docs/upstream/licenses/qdrant-Apache-2.0.txt).
+Owned byte lists and native UInt64 operations replace Rust slices and wrapping
+operations; round ordering, constants, canonical bytes and output are unchanged.
+The actual crate supplies reference hashes, with archives checked against
+Qdrant's lockfile. See `tests/fixtures/qdrant-point-filter/` and port D03f.
+
 ## Polygon geometry and robust orientation
 
 `src/akasha/document/geo_polygon.mojo` translates Qdrant v1.19.0 GeoPolygon

@@ -29,7 +29,7 @@ def _evaluate_node(index: MetadataIndex, expression: FilterExpression, node_inde
     var kind = expression.node_kind(node_index)
     if kind == FilterExpression.CONDITION:
         return index.evaluate_condition(expression._nodes[node_index].condition.value())
-    if kind == FilterExpression.FIELD or kind == FilterExpression.NESTED or kind == FilterExpression.AT_LEAST:
+    if kind == FilterExpression.FIELD or kind == FilterExpression.NESTED or kind == FilterExpression.AT_LEAST or kind >= FilterExpression.POINT:
         return index.evaluate_payload_node(expression, node_index)
     if kind == FilterExpression.NEGATE:
         var live = index.live_universe()

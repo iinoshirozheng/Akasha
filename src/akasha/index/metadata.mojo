@@ -9,6 +9,7 @@ from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 from akasha.query.evaluator import _matches_condition, matches_node
+from akasha.query.point_condition import PointFilterContext
 from std.collections import Dict
 from akasha.storage.checksum import BinaryReader, BinaryReaderSource, BinaryWriter
 
@@ -108,7 +109,8 @@ struct MetadataIndex:
     def evaluate_payload_node(self, expression: FilterExpression, node_index: Int) raises -> Bitmap:
         var result = Bitmap(self.slot_count())
         for ordinal in range(self.slot_count()):
-            if self._live.contains(ordinal) and matches_node(self._fields[ordinal], expression, node_index):
+            if self._live.contains(ordinal) and matches_node(self._fields[ordinal], expression, node_index,
+                    context=PointFilterContext(Optional(self._ids[ordinal]))):
                 result.set(ordinal)
         return result^
 

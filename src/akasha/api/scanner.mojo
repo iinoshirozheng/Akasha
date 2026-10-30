@@ -1,7 +1,7 @@
 """Bounded, single-consumer iteration over one immutable read generation."""
 
 from akasha.query.control import CancellationToken, QueryControl
-from akasha.query.evaluator import matches_expression
+from akasha.query.point_filter import matches_entry
 from akasha.query.filter_ast import FilterExpression
 from akasha.storage.memtable import MemTableEntry
 from akasha.storage.read_generation import ReadGeneration
@@ -126,9 +126,10 @@ struct ReadScanner(Movable):
                 if not root[].layers[layer].is_visible(ordinal):
                     continue
                 if self._expression:
-                    if not matches_expression(
-                        source.entry_ref_at(ordinal).fields(),
+                    if not matches_entry(
+                        source.entry_ref_at(ordinal),
                         self._expression.value(),
+                        root[].catalog,
                     ):
                         continue
                 ordinals.append(ordinal)

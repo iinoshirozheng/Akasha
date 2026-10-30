@@ -109,6 +109,22 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D03f point identity, vector presence, deterministic slices and standalone
+  whole-path conditions implemented and verified.** Qdrant checker context and
+  nested isolation, all-empty/any-null path semantics, Slice validation and
+  canonical zero-key SipHash-2-4 are ported to Mojo. The actual pinned siphasher
+  crate supplies hash expectations. Native/Python/Arrow/current HTTP search,
+  formulas, scanners and payload updates share authoritative point context;
+  payload-only cache formats stay unchanged. 12,656 source rows (29 expected
+  errors), 2,187 exact hash cases, 45 native tests across seven modules and full
+  Python **3,248 passed / 1 skip**; 36 new public tests.
+  [Plan](2026-10-30-point-filter-source-port.md) /
+  [evidence](../research/2026-10-30-point-filter-validation.md).
+  Native signed Int64 IDs and the explicit unnamed sparse field selector are
+  documented extensions; hash tests do not claim UUID/UInt64 point storage.
+  Full D02/D03/Q04, rich Arrow, dedicated indexes/FTS, protocols and every other
+  product/platform/quality row remain open. No optimization or changed gates.
+
 - **D03e plain polygon containment implemented and verified.**
   Qdrant GeoPolygon validation, geo 0.33.1 winding/containment, geo-types 0.7.19
   closure and robust 1.2.0 adaptive orient2d are ported to Mojo. Source boundary,

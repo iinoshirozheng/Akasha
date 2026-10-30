@@ -29,7 +29,7 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 | 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值、地理距離與日期的公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
 | 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式 | rich Arrow、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
-| 搜尋／過濾 | 布林條件、純量索引、JSON-path／巢狀同元素條件、日期範圍、地理矩形／半徑／polygon、集合／純文字條件、空值／數量、snapshot scan、投影 | 全文 tokenizer／BM25／位置式 phrase、專用日期／地理／巢狀／陣列索引、排序／分組／通用聚合 |
+| 搜尋／過濾 | 布林條件、純量索引、JSON-path／巢狀同元素條件、日期範圍、地理矩形／半徑／polygon、集合／純文字條件、空值／數量、點 ID／向量存在／固定 slice、獨立路徑空值條件、snapshot scan、投影 | 全文 tokenizer／BM25／位置式 phrase、專用日期／地理／巢狀／陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |
 | 邊界 | Python、C ABI、Arrow、部分 FastAPI 路由 | Qdrant REST/gRPC 相容、完整 CRUD 管理與批次功能、SDK 生態 |
@@ -132,6 +132,10 @@ JSON-path、巢狀同元素條件、至少 N 條件、集合／純文字、數�
 D03d 本身不包含 polygon；後續 D03e 已補入原始 GeoRust 幾何與 robust 自適應
 精度判定。專用 typed indexes、tokenizer／BM25 與完整 Qdrant 協定仍未完成。
 見[polygon 驗證](2026-10-30-polygon-validation.md)。
+D03f 已補上點 ID／向量存在／固定 slice 與獨立路徑空值條件，保留來源 nested
+身分隔離；12,656 組來源案例與 2,187 組雜湊對照，完整 Python 3,248 項通過。
+現有 signed Int64 點 ID 與預設 sparse field_id 選取是原生契約；完整 UInt64／UUID
+持久化與協定仍未完成。見[點條件驗證](2026-10-30-point-filter-validation.md)。
 更新操作與 native／Qdrant 提交語義邊界另見
 [payload mutation 驗證](2026-10-30-payload-mutations-validation.md)。
 

@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REVISION = "74f3e85b9473c62560006c043e13737ce6b48412"
 
 
-def main(*, cases_override=None, fixture_name="qdrant-payload-filter"):
+def main(*, cases_override=None, fixture_name="qdrant-payload-filter",
+         source_adapter=None, extra_dependencies=""):
     build = ROOT / f".build/{fixture_name}-reference"
     target = ROOT / "tests/fixtures" / fixture_name
     (build / "src").mkdir(parents=True, exist_ok=True)
@@ -165,6 +166,8 @@ fn main() {
     println!("{}",json!(output));
 }
 '''
+    if source_adapter is not None:
+        code = source_adapter(code, types, paths, query, source, unit)
     (build / 'src/main.rs').write_text(code)
     (build / 'Cargo.toml').write_text('''[package]
 name="akasha-payload-filter-reference"
@@ -179,8 +182,7 @@ indexmap={version="=2.14.0",features=["serde"]}
 fnv="=1.0.7"
 geo="=0.33.1"
 chrono={version="=0.4.45",default-features=false,features=["std"]}
-[workspace]
-''')
+''' + extra_dependencies + '\n[workspace]\n')
     values = [None, False, True, -1, 0, 1, 2, 2.0, 2.5, 2**53+1, 2**63, 2**64-1,
         "", "2", "other", "Hello world", "中文😀", {}, [], [None], [2], [2, 3], [[2]],
         [None, 2], [None, 3], [{}], [[2], None], [True, False], "1970-01-01",

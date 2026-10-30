@@ -3,6 +3,7 @@ from akasha.document.value import PayloadValue
 from akasha.document.json_path import JsonPath
 from akasha.index.metadata import MetadataIndex
 from akasha.query.payload_condition import PayloadCondition, _uint
+from akasha.query.point_condition import PointCondition
 from akasha.query.filter_ast import FilterExpression, FilterCondition
 from akasha.query.evaluator import matches_expression
 from akasha.query.index_evaluator import evaluate_expression
@@ -15,6 +16,11 @@ def _expression(value: PythonObject) raises -> FilterExpression:
     var kind = String(py=value["kind"])
     if kind == "field":
         return FilterExpression.field(PayloadCondition(json_value_from_python(value)))
+    if kind == "has_id" or kind == "has_vector" or kind == "slice":
+        return FilterExpression.point(PointCondition(json_value_from_python(value)))
+    if kind == "is_empty" or kind == "is_null":
+        var key = json_value_from_python(value["key"]).as_string()
+        return FilterExpression.is_empty(key) if kind == "is_empty" else FilterExpression.is_null(key)
     if kind == "nested":
         return FilterExpression.nested(String(py=value["key"]), _expression(value["filter"]))
     if kind == "not":

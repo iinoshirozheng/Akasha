@@ -9,7 +9,7 @@ from akasha.document.vector_value import VectorValue
 from akasha.index.hnsw_stats import HnswSearchStats, copy_search_stats
 from akasha.query.control import QueryControl
 from akasha.query.discovery_scorer import PreparedDiscovery
-from akasha.query.evaluator import matches_expression
+from akasha.query.point_filter import matches_entry, entry_context
 from akasha.query.field_examples import resolve_query_example
 from akasha.query.field_lookup import same_collection_roots
 from akasha.query.field_mmr import rerank_generation_mmr
@@ -142,7 +142,7 @@ def _candidate_ids(
             current = index
             while current >= 0 and admit:
                 if nodes[current].filter:
-                    admit = matches_expression(entry.fields(), nodes[current].filter.value())
+                    admit = matches_entry(entry, nodes[current].filter.value(), view.catalog)
                 current = steps[current].parent
             if admit:
                 filtered[entry.id] = True
@@ -256,7 +256,8 @@ def _formula_rescore(
             control.value().checkpoint(0)
         var location = candidates[id]
         ref entry = view.run(location[0]).memtable.entry_ref_at(location[1])
-        var score = node.formula.value().score(id, entry.fields(), scores, control)
+        var score = node.formula.value().score(id, entry.fields(), scores, control,
+            Optional(entry_context(entry, view.catalog)))
         top.offer(id, Float64(score))
     var stats = HnswSearchStats()
     stats.reranked_candidates = len(candidates)
