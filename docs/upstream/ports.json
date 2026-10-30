@@ -2543,6 +2543,111 @@
         "scripts/json_value_reference.py": "010635158e500c326a641973b033acf9d30e53d841b23158210728fab4935705",
         "scripts/json_value_reference.rs": "bd379f6f2350e8b2721c39d528632883f1683d76221c321059faebe53bb5fc8a"
       }
+    },
+    {
+      "id": "D01c3b-stringview-lance-json-contracts",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "revision": null,
+      "version": "58.4.0",
+      "identity": "crates.io:arrow-data@58.4.0",
+      "sources": [
+        {
+          "identity": "crates.io:arrow-data@58.4.0",
+          "path": "src/byte_view.rs",
+          "sha256": "0dd180994f35c738c88b89a9345fd348b357f4428da92f6f2e247510d7ff5f5e"
+        },
+        {
+          "identity": "crates.io:arrow-data@58.4.0",
+          "path": "src/ffi.rs",
+          "sha256": "8a80d7d25637700bcf20960c0584a31f531086bada2d4f42da399025144cc081"
+        },
+        {
+          "identity": "crates.io:arrow-array@58.4.0",
+          "path": "src/array/byte_view_array.rs",
+          "sha256": "ec60117c5e60ab417f7653134a6fca70fb98fd49dc281778272927b49f67971f"
+        },
+        {
+          "identity": "crates.io:arrow-array@58.4.0",
+          "path": "src/builder/generic_bytes_view_builder.rs",
+          "sha256": "03af51a1eb35c3724248d5337cca987d8e29f4b0be5875833e426074d4454332"
+        },
+        {
+          "identity": "lance",
+          "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+          "path": "rust/lance-arrow/src/json.rs",
+          "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "dependency_provenance": "tests/fixtures/lance-json/sources.json",
+      "targets": [
+        "python/akashadb/arrow_payload.py",
+        "src/bindings/arrow_payload.mojo",
+        "src/bindings/arrow_payload_export.mojo"
+      ],
+      "adaptations": [
+        "Borrowed view records and data buffers decoded in Mojo; Python supplies descriptors only",
+        "Source 16-byte records, inline zero padding, external bounds, prefix and UTF-8 validation; masked nulls retain existing parent semantics",
+        "Owned recursive C Data view and backing buffers include the variadic size trailer and aligned output budgets",
+        "Existing native string storage; no durable format migration in this slice"
+      ],
+      "oracle": "scripts/lance_json_reference.py",
+      "fixtures": {
+        "tests/fixtures/lance-json/contracts.json": "480cc0848cd97a77ed4debb89380c5d0624aba0afdcb972d895b552ca100b74c",
+        "tests/fixtures/lance-json/sources.json": "8b8238122d0687fe76d98292e4ec59369fefe9a862f0755c971227d0843161c4",
+        "tests/fixtures/lance-json/Cargo.lock": "4ef9b9d2c60a6a5e6e7b2b0ce6ae160eedcb82399098ea47d7b382a52d0dc0fd",
+        "tests/fixtures/lance-json/stringview.arrow": "c3f77446df728025784cda9d1a6e23d4edb9faf6c126fedac61d8058679cca7e"
+      },
+      "status": "verified_native_StringView_dependency_JSONB_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-lance-json-stringview-validation.md"
+      ],
+      "results": {
+        "new_python_tests": 26,
+        "native_tests": 17,
+        "new_native_tests": 3,
+        "targeted_python_tests": 212,
+        "full_python_passed": 3411,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock_ipc": true,
+        "source_files": 411
+      },
+      "reference_only_contracts": {
+        "lance_revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+        "jsonb_version": "0.5.6",
+        "jsonb_features": [
+          "databend"
+        ],
+        "jsonb_default_features": false,
+        "inputs": 5641,
+        "extended_accepted": 3426,
+        "extended_rejected": 2215,
+        "standard_accepted": 3397,
+        "standard_rejected": 2244,
+        "panics": 0,
+        "common_serde_inputs": 5630,
+        "extended_only_accepted": 384,
+        "serde_only_accepted": 31,
+        "different_normalized_accepted_trees": 695,
+        "native_jsonb_conformance": false
+      },
+      "remaining": [
+        "Native JSONB logical body, source binary codec and durable migration",
+        "jsonb grammar, numeric conversion, serialization and full arrow.json APIs",
+        "Arbitrary top-level document keys and complete D01",
+        "All other product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "python/akashadb/arrow_payload.py": "a55ac46c4e82e8fc09ddaa79f00786a1d1274de2bce65ddab8e65dbce3d683b9",
+        "src/bindings/arrow_payload.mojo": "b05e6e42b06ae86c8893dcda070d31ef39054781423aa0230e03ee1b3cf97b0b",
+        "src/bindings/arrow_payload_export.mojo": "f484941ec3056e98d9275ba0e7758dc8575b645b8096d9bdd390204206b713d8",
+        "tests/python/test_arrow_string_view.py": "36313a17e1476a30bde82e7ac072f27f3142e588bc53ad4c068dd5ab0f1e1b24",
+        "tests/mojo/test_arrow_string_view.mojo": "21fa91bbbc65217880310bc5d1c6ccf6cc5ea74d30bf4279fea2a23a43396d41",
+        "scripts/lance_json_reference.py": "cd444135e4573d17057d1ac03af1b154d54d87c3ad88466afe622b809d68d14c",
+        "scripts/lance_json_reference.rs": "00af4bada8b2bf183f7bb85fefbf4db17c4bc08e5aea670b7574d93cd3ce1114"
+      }
     }
   ]
 }

@@ -312,6 +312,85 @@
       },
       "reference_only": false,
       "used_by": "D01c3a-native-json-reader"
+    },
+    {
+      "name": "jsonb",
+      "version": "0.5.6",
+      "checksum": "eb98fb29636087c40ad0d1274d9a30c0c1e83e03ae93f6e7e89247b37fcc6953",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "license": "Apache-2.0",
+      "revision": null,
+      "identity": "crates.io:jsonb@0.5.6",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false
+      }
+    },
+    {
+      "name": "fast-float2",
+      "version": "0.2.3",
+      "checksum": "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55",
+      "upstream": "https://github.com/Alexhuszagh/fast-float-rust",
+      "license": "MIT OR Apache-2.0",
+      "revision": null,
+      "identity": "crates.io:fast-float2@0.2.3",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts"
+    },
+    {
+      "name": "ethnum",
+      "version": "1.5.3",
+      "checksum": "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f",
+      "upstream": "https://github.com/nlordell/ethnum-rs",
+      "license": "MIT OR Apache-2.0",
+      "revision": null,
+      "identity": "crates.io:ethnum@1.5.3",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.21",
+      "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa",
+      "upstream": "https://github.com/dtolnay/zmij",
+      "license": "MIT",
+      "revision": null,
+      "identity": "crates.io:zmij@1.0.21",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts"
+    },
+    {
+      "name": "jiff",
+      "version": "0.2.28",
+      "checksum": "4603d3033e49e2b0e31229fcab20a5d40089c607d975cd9c80551dc69eed9102",
+      "upstream": "https://github.com/BurntSushi/jiff",
+      "license": "Unlicense OR MIT",
+      "revision": null,
+      "identity": "crates.io:jiff@0.2.28",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts"
+    },
+    {
+      "name": "ordered-float",
+      "version": "5.3.0",
+      "checksum": "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e",
+      "upstream": "https://github.com/reem/rust-ordered-float",
+      "license": "MIT",
+      "revision": null,
+      "identity": "crates.io:ordered-float@5.3.0",
+      "provenance": "tests/fixtures/lance-json/sources.json",
+      "reference_only": true,
+      "used_by": "D01c3b-stringview-lance-json-contracts"
     }
   ]
 }

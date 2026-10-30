@@ -323,6 +323,19 @@ serde_json is MIT OR Apache-2.0. Its original MIT license is retained at
 and the independent 5,630-case reference are in `tests/fixtures/json-value`.
 Rust and Python are reference/test infrastructure, not the native parser runtime.
 
+### Arrow StringView and Lance JSON reference
+
+`src/bindings/arrow_payload.mojo` and `arrow_payload_export.mojo` adapt Arrow
+58.4.0 `arrow-data/src/byte_view.rs` view layout/validation and `ffi.rs` variadic
+buffer-length trailers. Existing Arrow Apache-2.0 license and NOTICE apply.
+Mojo preserves active null masking and uses the existing owned C Data allocator.
+
+The independent reference compiles pinned Lance `lance-arrow/src/json.rs`
+unchanged and calls jsonb 0.5.6 to record source contracts, alongside actual
+Arrow StringViewBuilder/IPC output. jsonb is reference-only at this checkpoint;
+its parser/JSONB logical type has not been ported. Pinned dependency checksums,
+licenses/upstreams and source hashes are in `tests/fixtures/lance-json/sources.json`.
+
 ### Geographic point validation and formula distance
 
 `document/geo.mojo`, geographic formula integration and input conversion adapt

@@ -392,7 +392,7 @@ The adapter imports Arrow C Data capsules and does not materialize intermediate
 Python lists. Arrow owns input buffers through the synchronous call; accepted
 values are then copied once into Akasha's durable WAL/MemTable ownership domain.
 Payload ingress accepts nested structs/lists, explicit nulls, UInt64, all Arrow
-integer widths, finite floating types and UTF-8/large UTF-8. Both Arrow upsert
+integer widths, finite floating types and UTF-8/large UTF-8/StringView. Both Arrow upsert
 APIs replace whole points. Scanner projections accept the scalar aliases and
 PyArrow scalar/nested types or fields, with native C Data output and checked
 nullability/numeric ranges. Dynamic JSON extension interop remains pending.

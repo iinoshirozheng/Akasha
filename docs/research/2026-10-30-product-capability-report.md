@@ -24,7 +24,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c3a 補入原生 JSON 值讀取（固定 serde_json default profile），5,630 組來源案例、18 項相關 Mojo 與完整 Python **3,385 通過、1 跳過**。這是互通工作的基礎，尚未完成 `arrow.json`；Lance/jsonb 數字語義與 nested storage-null 表示仍須對照和實作，見[JSON 讀取驗證](2026-10-30-json-reader-validation.md)。
+最新 D01c3b 補入 StringView 原生匯入／匯出；26 項新增 Python、17 項相關 Mojo 與完整 Python **3,411 通過、1 跳過**。Lance 原始模組／jsonb 的 5,641 組來源刻畫已完成，確認數字、語法與 storage null／JSON null 差異；這不代表 Akasha 已有 JSONB。下一步是獨立 JSONB 邏輯值、原生二進位 codec／持久遷移與完整 `arrow.json`，見[StringView 與來源驗證](2026-10-30-lance-json-stringview-validation.md)。
+
+D01c3a 已補入原生 JSON 值讀取（固定 serde_json default profile），5,630 組來源案例、18 項相關 Mojo 與完整 Python **3,385 通過、1 跳過**。此 API 保持原契約，不能代替 Lance/jsonb 的解析路徑，見[JSON 讀取驗證](2026-10-30-json-reader-validation.md)。
 
 D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契約；14 項相關原生測試及完整 Python **3,385 通過、1 跳過**。4,252 組浮點轉型結果與原始 Arrow 逐位元／溢位對照通過。動態 JSON extension、持久 schema／歷史版本與 Lance 格式仍未完成，見[匯出驗證與範圍](2026-10-30-rich-arrow-export-validation.md)。
 

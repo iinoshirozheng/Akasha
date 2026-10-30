@@ -16,7 +16,7 @@ from std.python.numpy import from_numpy_array
 @fieldwise_init
 struct ArrowPayloadNode(Copyable, Movable):
     # null, bool, signed, unsigned, floating, utf8, large_utf8, struct,
-    # list, large_list, fixed_size_list.
+    # list, large_list, fixed_size_list, string_view.
     var kind: Int
     var bits: Int
     var size: Int
@@ -50,7 +50,7 @@ struct ArrowPayloadSchema(Copyable, Movable):
                 raise Error("Arrow C Data field names cannot contain NUL")
         var raw_children = raw["children"]
         var count = len(raw_children)
-        if kind < 0 or kind > 10 or count > PayloadValue.MAX_NODES:
+        if kind < 0 or kind > 11 or count > PayloadValue.MAX_NODES:
             raise Error("unsupported Arrow payload schema")
         if kind == 2 or kind == 3:
             if bits != 8 and bits != 16 and bits != 32 and bits != 64:
@@ -65,7 +65,7 @@ struct ArrowPayloadSchema(Copyable, Movable):
                 raise Error("Arrow fixed-size payload list exceeds node limit")
         elif size != 0:
             raise Error("unexpected Arrow payload list size")
-        if (kind < 7 and count != 0) or (kind > 7 and count != 1):
+        if ((kind < 7 or kind == 11) and count != 0) or (kind >= 8 and kind <= 10 and count != 1):
             raise Error("Arrow payload schema child count mismatch")
         var position = len(self.nodes)
         self.nodes.append(ArrowPayloadNode(kind, bits, size, name^, Bool(py=raw["nullable"]), List[Int](), raw.get("metadata", Python.none())))
@@ -99,6 +99,8 @@ def payload_arrow_type(schema: ArrowPayloadSchema, index: Int = 0) raises -> Pyt
         return pa.string()
     if node.kind == 6:
         return pa.large_string()
+    if node.kind == 11:
+        return pa.string_view()
     var fields = Python.list()
     for child in node.children:
         ref member = schema.nodes[child]
@@ -151,6 +153,40 @@ def _bounds[dtype: DType](raw: PythonObject, row: Int) raises -> Tuple[Int, Int]
     return (begin, end)
 
 
+def _view_u32[origin: ImmOrigin](bytes: Span[UInt8, origin], offset: Int) -> UInt32:
+    var result = UInt32(0)
+    for i in range(4):
+        result |= UInt32(bytes[offset + i]) << UInt32(i * 8)
+    return result
+
+
+def _read_string_view(raw: PythonObject, row: Int, mut budget: _ValueBudget) raises -> PayloadValue:
+    # Arrow 58.4 byte_view.rs: inline <=12, otherwise prefix/index/offset.
+    var views = from_numpy_array[DType.uint8](raw["views"])
+    if row < 0 or row >= len(views) // 16:
+        raise Error("Arrow StringView buffer is too short")
+    var start = row * 16
+    var length = Int(_view_u32(views, start))
+    budget.add(bytes=length)
+    if length <= 12:
+        for i in range(start + 4 + length, start + 16):
+            if views[i] != 0:
+                raise Error("Arrow StringView contains nonzero inline padding")
+        return PayloadValue.string(String(from_utf8=views[start + 4:start + 4 + length]))
+    var index = Int(_view_u32(views, start + 8))
+    var offset = Int(_view_u32(views, start + 12))
+    var buffers = raw["data_buffers"]
+    if index >= len(buffers):
+        raise Error("Arrow StringView data buffer index is out of bounds")
+    var bytes = from_numpy_array[DType.uint8](buffers[index])
+    if offset > len(bytes) or length > len(bytes) - offset:
+        raise Error("Arrow StringView data range is out of bounds")
+    for i in range(4):
+        if views[start + 4 + i] != bytes[offset + i]:
+            raise Error("Arrow StringView prefix does not match data")
+    return PayloadValue.string(String(from_utf8=bytes[offset:offset + length]))
+
+
 def _read_value(
     schema: ArrowPayloadSchema, node: Int, raw: PythonObject, row: Int,
     mut budget: _ValueBudget,
@@ -196,6 +232,8 @@ def _read_value(
         if spec.bits == 32:
             return _number[DType.float32](raw, row)
         return _number[DType.float64](raw, row)
+    if spec.kind == 11:
+        return _read_string_view(raw, row, budget)
     if spec.kind == 7:
         var keys = List[String](capacity=len(spec.children))
         var values = List[PayloadValue](capacity=len(spec.children))

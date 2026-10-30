@@ -179,7 +179,7 @@ def _export(
         expected = 8
     elif spec.kind == 4:
         expected = 3
-    elif spec.kind == 5 or spec.kind == 6:
+    elif spec.kind == 5 or spec.kind == 6 or spec.kind == 11:
         expected = 1
     elif spec.kind == 7:
         expected = 7
@@ -239,6 +239,46 @@ def _export(
             if cells[row].kind(batch) != 5:
                 position = _write_string(batch, cells[row], values, position, control)
             _offset(offsets, row + 1, position, wide)
+    elif spec.kind == 11:
+        # Arrow byte_view.rs layout and ffi.rs variadic buffer-size trailer.
+        var count = 0
+        for row in range(rows):
+            control.checkpoint(row)
+            if cells[row].kind(batch) != 5:
+                var length = _string_length(batch, cells[row])
+                if length > Int(UInt32.MAX):
+                    raise Error("scanner StringView length overflows")
+                if length > 12:
+                    if length > Int(UInt32.MAX) - count:
+                        raise Error("scanner StringView backing buffer overflows")
+                    count += length
+        var views = data.allocate(_checked_bytes(rows, 16), budget)
+        data.buffers.append(Int64(views))
+        var values = 0
+        var sizes = 0
+        if count:
+            values = data.allocate(count, budget)
+            sizes = data.allocate(8, budget)
+            _store(sizes, 0, Int64(count))
+            data.buffers.append(Int64(values))
+        data.buffers.append(Int64(sizes))
+        var position = 0
+        for row in range(rows):
+            control.checkpoint(row)
+            ref cell = cells[row]
+            if cell.kind(batch) == 5:
+                continue
+            var length = _string_length(batch, cell)
+            _store(views, row * 4, UInt32(length))
+            if length <= 12:
+                _ = _write_string(batch, cell, views, row * 16 + 4, control)
+            else:
+                _store(views, row * 4 + 3, UInt32(position))
+                var begin = position
+                position = _write_string(batch, cell, values, position, control)
+                var source = Pointer[UInt8, MutUntrackedOrigin](unsafe_from_address=values)
+                for i in range(4):
+                    _store(views, row * 16 + 4 + i, source[unsafe_offset=begin + i])
     elif spec.kind == 7:
         for child in spec.children:
             control.checkpoint(0)

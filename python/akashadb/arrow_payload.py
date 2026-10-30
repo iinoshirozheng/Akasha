@@ -33,6 +33,8 @@ def type_descriptor(dtype: pa.DataType, *, name: str = "", nullable: bool = True
         kind = 5
     elif pa.types.is_large_string(dtype):
         kind = 6
+    elif pa.types.is_string_view(dtype):
+        kind = 11
     elif pa.types.is_struct(dtype):
         kind = 7
         children = [_field_descriptor(f, _depth + 1) for f in dtype]
@@ -118,6 +120,11 @@ def _borrow(array: Any, schema: dict[str, Any]) -> dict[str, Any]:
         size = schema["size"]
         child = array.values.slice(array.offset * size, len(array) * size)
         result["children"] = [_borrow(child, schema["children"][0])]
+    elif kind == 11:
+        # A byte view is 16 bytes; keep raw bytes to preserve inline UTF-8.
+        buffers = array.buffers()
+        result["views"] = _bytes(buffers[1])[array.offset * 16:(array.offset + len(array)) * 16]
+        result["data_buffers"] = [_bytes(buffer) for buffer in buffers[2:]]
     return result
 
 

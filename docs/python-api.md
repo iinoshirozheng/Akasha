@@ -332,6 +332,15 @@ are not accepted by this typed JSON adapter. Payload depth/node/byte and encoded
 size limits still apply. This imports typed values without retaining the input
 table schema; it does not implement schema evolution or Lance files.
 
+StringView (`pa.string_view()`) is also supported for payload input and output,
+including nested/sliced arrays and multiple external data buffers. Mojo validates
+active view lengths, zero inline padding, external buffer indices/ranges, prefixes
+and UTF-8 before writes. Null parents retain the existing masking rules. String
+values are copied into native durable ownership; the input physical layout is
+not persisted. Output uses 16-byte views with inline data through 12 UTF-8 bytes,
+otherwise owned external data and the Arrow C Data buffer-size trailer. All these
+allocations share the scanner byte cap. The native raw vector datatypes are unchanged.
+
 Typed scalar and nested output use the scanner schema described below.
 Schemaless `arrow.json` extension interop remains pending.
 [Source fixtures](../tests/fixtures/rich-arrow/README.md).
