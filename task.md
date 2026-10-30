@@ -4,12 +4,18 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D03d：已接入來源對照的 JSON-path／巢狀同元素／至少 N 條件、集合與
+- 最新 D03e：Qdrant／GeoRust polygon 與 robust 自適應精度已移植到 Mojo，
+  保留外框／孔洞／邊界、EPSILON 閉合與來源退化幾何行為。
+  17,060 組 polygon 與 31,167 組精確位元來源對照、33 項原生與 24 項新增
+  Python 測試通過；完整 Python **3,212 項通過、1 項既有跳過**。
+  [驗證與範圍](docs/research/2026-10-30-polygon-validation.md)。
+  下一步為專用索引、剩餘條件與 rich Arrow；完整產品待辦持續保留，尚未優化。
+- D03d：已接入來源對照的 JSON-path／巢狀同元素／至少 N 條件、集合與
   純文字比對、數值／日期範圍、空值／數量、地理矩形／半徑過濾，可用於
   Mojo／Python／Arrow 搜尋、現有 HTTP 與條件式 payload 更新。
   10,781 組來源案例、101 項原生與完整 Python 3,188 項通過，1 項既有跳過。
   [驗證與範圍](docs/research/2026-10-30-payload-filter-validation.md)。
-  下一步持續 polygon 與專用日期／地理／巢狀／全文索引、剩餘條件、rich Arrow；
+  polygon 已由後續 D03e 補入；專用日期／地理／巢狀／全文索引、剩餘條件、rich Arrow；
   LanceDB、SQL／交易、UI／安全／叢集與全產品清單仍未完成，尚未進入優化。
 - Q04f／D03c：Qdrant／chrono 日期解析、微秒時間戳及日期常數／payload
   日期公式已接入 Mojo／Python／Arrow，保留時區、負年份、閏秒與來源格式行為。

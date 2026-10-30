@@ -109,6 +109,20 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D03e plain polygon containment implemented and verified.**
+  Qdrant GeoPolygon validation, geo 0.33.1 winding/containment, geo-types 0.7.19
+  closure and robust 1.2.0 adaptive orient2d are ported to Mojo. Source boundary,
+  holes, EPSILON closure, degeneracy and planar antimeridian behavior are retained.
+  17,060 source polygon cases and 31,167 exact-bit orientation cases cover all
+  adaptive exits; 33 native tests across seven modules and 24 new Python tests
+  pass; the rebuilt full Python suite is **3,212 passed / 1 skip**.
+  Python/Arrow/search/formula/HNSW/mutation/snapshot/reopen/HTTP are covered.
+  [Plan](2026-10-30-polygon-source-port.md) /
+  [evidence](../research/2026-10-30-polygon-validation.md).
+  Dedicated indexes, full protocols/C ABI, rich Arrow and the complete remaining
+  Lance/general DB/UI/security/cluster/operations/platform/quality scope stay open.
+  No optimization or changed performance gates.
+
 - **D03d plain payload predicates and scoped filters implemented and verified.**
   Native/Python/Arrow and existing HTTP routes now support source-backed field
   JSON paths, same-object nested conditions, minimum matches, match/set/plain text,

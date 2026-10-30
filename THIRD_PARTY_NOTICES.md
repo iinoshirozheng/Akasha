@@ -4,6 +4,31 @@ Akasha contains adaptations of open-source database implementations. Port-specif
 revisions, original source hashes, modified files and executable reference evidence
 are recorded in [the source-port ledger](docs/upstream/ports.json).
 
+## Polygon geometry and robust orientation
+
+`src/akasha/document/geo_polygon.mojo` translates Qdrant v1.19.0 GeoPolygon
+validation and conversion (`74f3e85b9473c62560006c043e13737ce6b48412`, Apache-2.0),
+geo 0.33.1 polygon containment and winding-number coordinate position
+(`5ab50b072e34a915a33eaa46c80763d51d61295e`), and geo-types 0.7.19 exact ring
+closure (`981be9feea12cdede572fb252064536cb8b287b1`). GeoRust code is copyright
+(c) 2017 The GeoRust Project Developers, MIT OR Apache-2.0; the chosen
+[MIT license](docs/upstream/licenses/geo-MIT.txt) is included. The geo-types
+repository license at its pinned revision was checked against this copy.
+
+`src/akasha/compute/robust_orientation.mojo` translates robust 1.2.0 `orient2d`
+and its reachable expansion arithmetic, commit
+`654f34cb8cdb3ae21bf59ef3472f92652942cd74`. Copyright 2017 The Spade Developers;
+Copyright 2020 The GeoRust Project Developers. It is MIT OR Apache-2.0; the
+chosen [MIT license](docs/upstream/licenses/robust-MIT.txt) is included. The
+source credits Jonathan Richard Shewchuk's adaptive precision predicates.
+Mojo uses bounded active expansion lists and separate rounded products; there
+is no replacement geometry algorithm. Native exact-bit tests compare against
+the actual crate; a separately traced source copy verifies branch coverage.
+
+The fixture generator reuses original Qdrant checker code and actual pinned
+GeoRust dependencies. Source units, archives, locks, adapters and verification
+are recorded under `tests/fixtures/qdrant-polygon/` and port `D03e-geo-polygon`.
+
 ## Qdrant
 
 Project: <https://github.com/qdrant/qdrant>

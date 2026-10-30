@@ -118,6 +118,29 @@
       "license_file": "docs/upstream/licenses/rust-MIT.txt",
       "license_sha256": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
       "used_by": "Q04f-D03c-datetime"
+    },
+    {
+      "name": "geo-types",
+      "version": "0.7.19",
+      "revision": "981be9feea12cdede572fb252064536cb8b287b1",
+      "crate_sha256": "94776032c45f950d30a13af6113c2ad5625316c9abfbccee4dd5a6695f8fe0f5",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/geo-MIT.txt",
+      "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727",
+      "license_source": "https://raw.githubusercontent.com/georust/geo/981be9feea12cdede572fb252064536cb8b287b1/LICENSE-MIT",
+      "upstream": "https://github.com/georust/geo",
+      "used_by": "D03e-geo-polygon"
+    },
+    {
+      "name": "robust",
+      "version": "1.2.0",
+      "revision": "654f34cb8cdb3ae21bf59ef3472f92652942cd74",
+      "crate_sha256": "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/robust-MIT.txt",
+      "license_sha256": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc",
+      "upstream": "https://github.com/georust/robust",
+      "used_by": "D03e-geo-polygon"
     }
   ]
 }

@@ -9,6 +9,7 @@ from akasha.document.json_path import JsonPath
 from akasha.document.datetime import DateTimeValue
 from akasha.document.chrono_tables import is_whitespace
 from akasha.document.geo import GeoPoint, haversine_coordinates
+from akasha.document.geo_polygon import GeoPolygon
 
 
 def _number(value: PayloadValue) raises -> Float64:
@@ -239,9 +240,10 @@ struct PayloadCondition(Movable):
     var _bottom_right: Optional[GeoPoint]
     var _center: Optional[GeoPoint]
     var _radius: Float64
+    var _polygon: Optional[GeoPolygon]
 
     def __init__(out self, spec: PayloadValue) raises:
-        _known_keys(spec, ["kind", "key", "match", "range", "values_count", "is_empty", "is_null", "geo_bounding_box", "geo_radius"])
+        _known_keys(spec, ["kind", "key", "match", "range", "values_count", "is_empty", "is_null", "geo_bounding_box", "geo_radius", "geo_polygon"])
         var key = _required(spec, "key")
         if not key.is_string():
             raise Error("field key requires a JSON path string")
@@ -255,6 +257,7 @@ struct PayloadCondition(Movable):
         self._bottom_right = None
         self._center = None
         self._radius = 0
+        self._polygon = None
         var value = _optional(spec, "match")
         if value:
             self._match = Optional(_Match(value.value()))
@@ -280,7 +283,10 @@ struct PayloadCondition(Movable):
             _known_keys(value.value(), ["center", "radius"])
             self._center = Optional(GeoPoint.from_payload(_required(value.value(), "center")))
             self._radius = _number(_required(value.value(), "radius"))
-        if not (Bool(self._match) or Bool(self._range) or Bool(self._count) or Bool(self._empty) or Bool(self._null) or Bool(self._top_left) or Bool(self._center)):
+        value = _optional(spec, "geo_polygon")
+        if value:
+            self._polygon = Optional(GeoPolygon(value.value()))
+        if not (Bool(self._match) or Bool(self._range) or Bool(self._count) or Bool(self._empty) or Bool(self._null) or Bool(self._top_left) or Bool(self._center) or Bool(self._polygon)):
             raise Error("at least one field condition must be specified")
 
     def __init__(out self, *, copy: Self):
@@ -296,6 +302,7 @@ struct PayloadCondition(Movable):
         self._bottom_right = copy._bottom_right.copy()
         self._center = copy._center.copy()
         self._radius = copy._radius
+        self._polygon = copy._polygon.copy()
 
     def clone(self) -> PayloadCondition:
         return PayloadCondition(copy=self)
@@ -338,7 +345,7 @@ struct PayloadCondition(Movable):
             return True
         if self._range and self._range.value().check(stored):
             return True
-        if not (Bool(self._top_left) or Bool(self._center)) or not stored.is_object():
+        if not (Bool(self._top_left) or Bool(self._center) or Bool(self._polygon)) or not stored.is_object():
             return False
         var lon = stored.get_key("lon")
         var lat = stored.get_key("lat")
@@ -356,5 +363,8 @@ struct PayloadCondition(Movable):
             ref left = self._top_left.value()
             ref right = self._bottom_right.value()
             var longitude = (x > left.lon or x < right.lon) if left.lon > right.lon else (left.lon < x and x < right.lon)
-            return longitude and right.lat < y and y < left.lat
+            if longitude and right.lat < y and y < left.lat:
+                return True
+        if self._polygon:
+            return self._polygon.value().contains(x, y)
         return False

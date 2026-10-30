@@ -121,6 +121,7 @@ Supported `field` properties:
 | `is_null` | Boolean: explicit null or an array containing null; missing matches only `false` |
 | `geo_bounding_box` | `top_left`/`bottom_right` coordinates; strict borders and antimeridian handling |
 | `geo_radius` | `center` and numeric `radius` in meters; strict distance less than radius |
+| `geo_polygon` | Exterior ring and optional interior holes; boundaries are excluded |
 
 Numeric ranges convert JSON numbers to Float64. A string range bound selects
 datetime parsing for every bound; invalid query dates are rejected, invalid stored
@@ -129,6 +130,18 @@ source leap-second representation; they do not use rounded formula scores.
 Geo query coordinates are validated; stored points must be objects containing
 numeric `lon` and `lat`, with the source's unchecked-coordinate evaluation.
 Coordinate arrays are accepted for query points, not as stored geo objects.
+
+Polygon filters use `{"geo_polygon": {"exterior": {"points": [...]},
+"interiors": [{"points": [...]}]}}` inside a `field` node. Each ring must have at
+least four points, including closure; points use `{"lon": x, "lat": y}` or
+`[x, y]`. Omitted/null `interiors` means no holes. The first and last coordinate
+may differ by at most Float64 EPSILON on each axis; accepted rings then close
+exactly, following Qdrant and GeoRust. Exterior edges, hole edges and vertices
+do not match. Coordinates use GeoRust's planar winding-number interpretation;
+a polygon crossing longitude ±180 is not automatically wrapped. Ring direction,
+degeneracy, self-intersections and holes outside/overlapping the exterior follow
+the source algorithm; no extra topology validation or repair is added. Robust
+adaptive orientation preserves the source decisions near collinear boundaries.
 
 Within a single field node, source precedence is `values_count`, then `is_empty`,
 then `is_null`; these override other properties. Otherwise match/range/geo checks
@@ -140,7 +153,7 @@ These filters reach existing Python search/batches, named queries, universal
 prefetch/formula conditions, Arrow queries/scans and HTTP search/payload updates.
 Native callers construct `PayloadCondition(spec: PayloadValue)` and use
 `FilterExpression.field`, `.nested` and `.at_least`. New predicates currently
-evaluate authoritative payloads; dedicated typed indexes, polygon geometry,
+evaluate authoritative payloads; dedicated typed indexes,
 tokenizer/BM25/position-aware phrase search and full Qdrant REST/gRPC schemas remain
 open. Unsupported properties and ambiguous match variants are rejected explicitly.
 

@@ -1757,6 +1757,238 @@
         "tests/mojo/test_payload_filter.mojo": "3d1c6ac965502c70fc0515d3cc9668df0fe717364a3335e358e5e90f67abdf48",
         "tests/python/test_payload_filter.py": "d34929bff18f814593bdd38469fe8917232a8a27d5aac020e29730b8030c9b26"
       }
+    },
+    {
+      "id": "D03e-geo-polygon",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/segment/src/types.rs": "d3e44321025fd37bd286fb57f5f146c3e59bcd60ccc7e01fa3b1464f3e40a3b1",
+        "lib/segment/src/json_path/mod.rs": "5c34bedfa86a6ab21c295bfddb2a62fc841f11fb4e3c3c01f16c2fdfc4b1f60f",
+        "lib/segment/src/payload_storage/condition_checker.rs": "1976c780204582ed87b51a882543245e5f2673c3dbec8b2ddd7f39aa2531ca30",
+        "lib/segment/src/payload_storage/query_checker.rs": "d3874e10d0289acb952f1797283aabec4059c19d567ff7eee2f69ac0ec226127",
+        "lib/segment/src/json_path/parse.rs": "727673018f576be73e2fcdfa2a3a9edda21aeda616de1a9f4e2c5459504734fa",
+        "Cargo.lock": "ac6941c2dcf706eddda4a1926d987232a981685586b35d407cc2f72605442233"
+      },
+      "units": {
+        "pub struct JsonPath {": "7e83c0c0f13d7bc0fcba4a05844d0bccfe75c6ac51f8ecadf98f99d0bdff6e32",
+        "pub enum JsonPathItem {": "dfae90bd56fc258716e1a403ae616ae34d5af504d9f65900cd0b1b3be38e9c01",
+        "pub fn value_get<": "cbfeaadf19427d868eec26c1b0a56a3951c9526088d5c0a075c01f25d7763b1d",
+        "pub fn array_key(": "8575ff1766f40c2dcd47e9293c92e48f2a39878b9c2948ba2edbd46783c7d928",
+        "\nfn value_get<": "1406c63f49a1706210aaa71006b13a928787172dd84a026297c3276d45c21435",
+        "pub struct DateTimeWrapper(": "c14226c47a10d5bc104a3946b6f551fec9ca80b169db9304bf8335b9ecc9d4a9",
+        "impl DateTimeWrapper {": "4b72b61ec981798c02163025ca57bfc05a88e143ed9e2c24bb7cea5c479dc3d6",
+        "impl<'de> Deserialize<'de> for DateTimePayloadType {": "a9b7566ce682bf3b9fa82d52f0eb79a8788b4247c20b58be348b66be7e70186a",
+        "impl FromStr for DateTimePayloadType {": "ccfe0093ac5ff342d4efd9c288678886f2a0033abf404e07a7c91a20f3510b10",
+        "impl From<chrono::DateTime<chrono::Utc>> for DateTimePayloadType {": "aaa1f529f8be84070e8a96159fe8f6276ffa6b83419690bce4fbd67f9e032d20",
+        "pub enum ValueVariants {": "0dfdf27a6882b357b50651a14568aa780157084fa0abe61e3eda959bb6c184f7",
+        "pub enum AnyVariants {": "f7bb453b8fbe1919ab84c6c86cd19969feeb787e9e34eeda169ddc2dcd8eef0c",
+        "pub enum MatchInterface {": "f7d89d2fc583ca78bd8d23f9aff475fba7a92e74ee5f9d244986d32b54290ab8",
+        "pub struct MatchValue {": "cd66966d242b654e0eb4a90e5d98b85da457451a1a020e8ffb6eaeb141c7256f",
+        "pub struct MatchAny {": "ec6f2d7b649cf648a67ebe9b34ca411442cc814776826948212133176ca0be27",
+        "pub struct MatchExcept {": "d458a12a038d5fc46073dfbf77a3be88e9f981852b86491bf02d6624fd55aa88",
+        "pub struct MatchText {": "eb14eb1ecb401c5e43778ecf4e73914aad12f74001ede0fdc88c957df84ee888",
+        "pub struct MatchPhrase {": "71955b64bb958a10a383e84978dabbe07e1e725f487864111d905031441edbeb",
+        "pub struct MatchPrefix {": "b23fafa8066a56b28e1c60d703e55366616b25852c3d67ff7271de5b1e3d5975",
+        "pub struct MatchTextAny {": "3f7c96dc981a8acc6749e79529ac3208d744598e4bc34e3364baad8295961221",
+        "pub enum Match {": "8490859378df487b532023e9efc794eed501a7ad96bb066ee84d180c83a05cb1",
+        "impl From<MatchInterface> for Match {": "27aead8933f75fa0bcbac5427ea9b056c24edcaa2871ac85aa8006664f3f046b",
+        "pub struct Range<T> {": "741ce71d9f14cd97191b2628c3b7a432c21b2f47dfac96dab446a0927f11f141",
+        "impl<T: Copy + PartialOrd> Range<T> {": "a9836961eb400c8750a52829fb81ea180d418a6f542d9c27970e3026ec857674",
+        "pub enum RangeInterface {": "eb123196b7d57964b93b538269f3edcf37b815c8753c60bcc98bdb76a2113ec4",
+        "enum RangeInterfaceUntagged {": "95878868c941d229146898ba90e0da22436abb4846b25462a43000af9e516ac7",
+        "impl<'de> serde::Deserialize<'de> for RangeInterface {": "7f5a0a47dd1eed43c31a0f0e340db49f9e9a689b72be90af3d7840eba8f38fa1",
+        "pub struct ValuesCount {": "2974e11b11756b2a7b1d84bda8b2dc271d748b6fef91f2d9fea795a57144f096",
+        "struct GeoPointShadow {": "b25fc689264c582aca63a2135d6839fb12c42fc7ddde21553dcfad858cc4f5d9",
+        "pub struct GeoLineString {": "8a867d5f5d173627fdb870ffceb397f34a407a6d8f9bedc4071c64f7fa6eeda9",
+        "pub struct GeoBoundingBox {": "00b89e93b4ed658b84c331c04dca699ec3c4cefe42bb6614206eebb6df995f88",
+        "pub struct GeoRadius {": "fb764e68ca097f255aed828b2a14fb53fb3a24aac36173739cbe6f11cf5a5ab6",
+        "pub struct GeoPolygonShadow {": "3226de41c6df6163f6ecb1c359da15b158401bf6ea7988346cacf77644434b26",
+        "pub struct GeoPoint {": "3503ec5a299b1bbe58d684df3d4991cb4bb696a4736fd90700994b653a1c9df9",
+        "pub struct GeoPointValidationError {": "53bec197a34cec56dd23b8c494c87100e2e4e651c7dfb6edc3c194d6a3e23a0c",
+        "pub struct GeoPolygon {": "6e3bea6e635f36c9274f38a8615a7145c0ef5ee932b95169cba7af5129167b69",
+        "impl ValuesCount {": "a8d68032e23be2caba5143456fffe1b1457e09e7b2708e55a4f24cbcfbe9fccd",
+        "impl GeoPoint {": "dd42811f63d0edaa6316a2ea87055ded792b32d9781684c6dd669235a8d8058f",
+        "impl std::fmt::Display for GeoPointValidationError {": "767cbadaff4a543c271da368b28178c88f352e1467435e2d9badf38030404997",
+        "impl TryFrom<GeoPointShadow> for GeoPoint {": "f9dd1ab7cc74bd4a07c3ab426650801440880b249d2eb88ae53e1614e8db8bea",
+        "impl From<GeoPoint> for geo::Point {": "1ccbf8a1e8b1eabd33e4c0348468b59e4aaf414791f04bef6d1227f15c321e2f",
+        "pub trait CheckGeoPoint {": "fd486c1c89a84e1458ba801fd2b12bc24d32cab0b3bcf8cf9e122ac990360d8e",
+        "impl CheckGeoPoint for GeoBoundingBox {": "9f72ad7f8e39d1305862a28b2f2f356e149230846a8e76d7735d06981a4ce174",
+        "impl CheckGeoPoint for GeoRadius {": "4251dacd6f2b3b3cc17a8908e819ad744c651629db3c3420b2a28a4cc940398c",
+        "pub struct PolygonWrapper {": "588c99d434462135c6c203e84e6538f8c00786e5efdb840f407ef65aa0788178",
+        "impl CheckGeoPoint for PolygonWrapper {": "8327d29928244b697fab45b653d3cd5dd287fdfccfbe0856c940f9b8a2c91b9d",
+        "impl GeoPolygon {": "e2362c13069e80fcec9e22ef4c199c8779b7d5f766c89f1ea58cad0ddd2f9d46",
+        "impl TryFrom<GeoPolygonShadow> for GeoPolygon {": "255713523fbd111b2bd92a56800dadaae959db5ef4ff75f3101f1834f836a17e",
+        "pub struct FieldCondition {": "a826eb9123d69aaf41810fcb6aa110a80bd06da08270df8de84047654874e80a",
+        "pub trait ValueChecker {": "2221f452ffe013631fcc9a683479938191e370f205a37b36332cf37040db7751",
+        "fn check_is_empty(": "789e4305597dd8ef3d9b09323b486c62c87fc7bed9d7921b776e36c2aa9ee957",
+        "fn check_is_null(": "2c86309bcbe6d213b6d44f025920d6fd3600b66799048316fd7b0a4e43916757",
+        "impl ValueChecker for FieldCondition {": "fa1a91b07e850fe13c511c869a66a84dfad1774be612d77157ac591774c31739",
+        "impl ValueChecker for Match {": "2d1e36318695e07ae74baef59b9e722b811a6f6531f2b47f658494b0f3751ba8",
+        "impl ValueChecker for Range<OrderedFloat<FloatPayloadType>> {": "1a73cfdd40b43dcec15e763a358c39acf4b8f56c774880082a582ee4a5ea126a",
+        "impl ValueChecker for Range<DateTimePayloadType> {": "45c461dc7212e57c92f3ec9a68dfaa5e0287ad09076da73dd79dff5ac8e7f7d3",
+        "impl ValueChecker for GeoBoundingBox {": "7dc69b896931277a16913944aa1bcb569463573b3d3844103a2882cf8f314385",
+        "impl ValueChecker for GeoRadius {": "785233b305404c12528b47f1faad0b8bc8b1b00d5262cd66a2c513ef53648e00",
+        "impl ValueChecker for GeoPolygon {": "80da269ed55adc70073784977c0fcd56c9cc2e694a2e95c3b7c295fa331566eb",
+        "impl ValueChecker for ValuesCount {": "02a2ace261689e1a00152cba188d593e47527d54961e7e25971896e8907d92f4",
+        "fn check_condition<F>": "8d2b68f490595ccc11c9ae5de7d6365a110995523167555fe93e7c0674061e43",
+        "pub fn check_filter<F>": "933623d0ee2a5e0bc7759f118b66dfd1e19885d6be822e98d44068b72494e1e0",
+        "fn check_should<F>": "6b7f5eb1d5568ab529d8ae25107cd200e6dec8c0f42f14e89acfb3033feb4be4",
+        "fn check_min_should<F>": "8af1ca541d77bb249a9a76f9878730eb949641be34211371cec1142c4f0741ee",
+        "fn check_must<F>": "7b8d00d1d1021929ceb70e38fafff6b546ccbd07c747fc21374b230516c43df1",
+        "fn check_must_not<F>": "304538cba17fc228f899a3e8e862f005806f0d5148ea2fde7537a8c06ced51e1",
+        "pub fn check_field_condition<R, FI>": "95fd6bc5abf42ebd902e79bef1a0f620ccc8bb6417ad6eb4e43852d42a0cd830",
+        "Condition::Nested(nested) => {": "4999afed54232e7c2c059eb39f8188eba8443381035f4ea4009e8d7097455b10"
+      },
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "dependencies": [
+        {
+          "name": "geo",
+          "version": "0.33.1",
+          "revision": "5ab50b072e34a915a33eaa46c80763d51d61295e",
+          "crate_sha256": "30eb1fdc57c1e5cfd11826fe0caec4b9dc7901f3758263bb506228d88c8d9e9a",
+          "sources": {
+            "src/algorithm/coordinate_position.rs": "dbc188f206bfbf84fb98ee8b375deeb81e8b54ea278937d32c9e18b47831745a",
+            "src/algorithm/contains/polygon.rs": "3f79648d8e99772427484b61d6462f0dcf92a846f5a13fc29b2ca93d69972507",
+            "src/algorithm/kernels/robust.rs": "98027a7d8a211bbd22332476ff470537c09728e75cb8a9c0949ab40fbb3fcc26",
+            "src/algorithm/intersects/mod.rs": "b13c044c71881108769ced57261e6c36d705210fbb09f4d5e64d90c59b8009ef"
+          },
+          "units": {
+            "src/algorithm/coordinate_position.rs": {
+              "impl<T> CoordinatePosition for Polygon<T>": "1a2fb1be1057f5b669ae43d87a6b9e0890bf365f761afb1bdb4447435b9926de",
+              "pub fn coord_pos_relative_to_ring<T>": "1192f291566ba46ce8a8553d69eab1e52f29a88638a30348ff15a7dcd325e5d2"
+            },
+            "src/algorithm/contains/polygon.rs": {
+              "impl<T> Contains<Coord<T>>": "b2308b43e429017e10c89665d781049e407fd18aad0de023e55d53685aa87040",
+              "impl<T> Contains<Point<T>>": "f73a2e94edddb38c33134043074dd41e7658593e55c4af3d9373083295836511"
+            },
+            "src/algorithm/kernels/robust.rs": {
+              "fn orient2d(": "ce2bc0cef5effa23b87e580efe114205f04787fc6b8f6ac67ef26d7a2d963a87"
+            },
+            "src/algorithm/intersects/mod.rs": {
+              "pub(crate) fn value_in_between": "74ed6e31d4f23e3351be2c27dc2a9456559d690859adcef4426c5aac5ce39cc7",
+              "fn value_in_range": "59a7cf8ac8832f52f0142bc0c2a068d3f97b606468dc1de9b5b9cdd71220395d"
+            }
+          },
+          "license": "MIT OR Apache-2.0",
+          "license_file": "docs/upstream/licenses/geo-MIT.txt",
+          "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727"
+        },
+        {
+          "name": "geo-types",
+          "version": "0.7.19",
+          "revision": "981be9feea12cdede572fb252064536cb8b287b1",
+          "crate_sha256": "94776032c45f950d30a13af6113c2ad5625316c9abfbccee4dd5a6695f8fe0f5",
+          "sources": {
+            "src/geometry/polygon.rs": "91ac590915c744db147ab2b7b715e7463fa2c5bcafbda93f28427c15e57e46bd",
+            "src/geometry/line_string.rs": "77c32f81750a79ed9752759db191525e8672c9ed4b6d1a6b55a6a0890db55c65"
+          },
+          "units": {
+            "src/geometry/polygon.rs": {
+              "pub fn new(": "65575bae2f34aecfb18bc5e18284ccc4dca6a27ebcada11835aa89898b0205a7"
+            },
+            "src/geometry/line_string.rs": {
+              "pub fn close(": "038ce0c904a45d2ef5693d397b1710afe872889c3e0041fb94aa4ca265f0feec",
+              "pub fn is_closed(": "70ae7cccc02b59694553fd0ed03b41ba8ba87e3b5ed538aedb921e994051d4f9"
+            }
+          },
+          "license": "MIT OR Apache-2.0",
+          "license_file": "docs/upstream/licenses/geo-MIT.txt",
+          "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727",
+          "license_source": "https://raw.githubusercontent.com/georust/geo/981be9feea12cdede572fb252064536cb8b287b1/LICENSE-MIT"
+        },
+        {
+          "name": "robust",
+          "version": "1.2.0",
+          "revision": "654f34cb8cdb3ae21bf59ef3472f92652942cd74",
+          "crate_sha256": "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839",
+          "sources": {
+            "src/lib.rs": "4fdf1a8db16a99cb8d366631996ac8de6b955f74edb30f163905f5f37a1da929",
+            "fixtures/orient2d.txt": "46098649d40faec33f7655eefe819e7bf91739abba8e05b868fb4ceeb3260237",
+            "LICENSE-MIT": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc"
+          },
+          "units": {
+            "src/lib.rs": {
+              "pub fn orient2d<": "a49f6d2e4962f8be13e135288dbdf5f09f79ef2163665cc894f82752f1acf8d2",
+              "fn orient2dadapt(": "c480d50f37be13823b047517b1a7b682c4b1f56f4eed252c3e542bf9d622e17d",
+              "fn two_product(": "60f8e104500e5363919f786d652dc8d80c2ddac282ead59c72c4ce6e2a4e21a5",
+              "fn two_product_tail(": "8308cd2b450daaefab65587c8ba91372c916aa852230bd9e9b67a598ef274b5c",
+              "fn split(": "9764782a9d408a16750a666e2df3ac12860353d91002bddc52b578693d359745",
+              "fn two_sum(": "38374d41b6f24434e6f53cdca55d944be2944d25e6bdf12ad2a7969b4ff5d9d0",
+              "fn two_sum_tail(": "1eaefce97d49ee8e45bd90462b86f64b908fcee95b923f2f286a84182fb7f33b",
+              "fn fast_two_sum(": "1b59c458fa3a510a6d4311ad74305df11d82108ceeea876ff387eed10c3f4b0d",
+              "fn fast_two_sum_tail(": "d6dc4cef85153bbad526b30aae89e9d336b8fb0eb4ffc5acf23c9b4981fc61ab",
+              "fn two_diff(": "4e4dcc72a6c668a6b065747b75a02727102776c12a485f5e93f263fc2a15349c",
+              "fn two_diff_tail(": "32e26df61b3ecb545bffb42eaa2b39113274bc0593be816a8bd43806a1ceede6",
+              "fn two_one_diff(": "c387c8e19e486e8f3dba750cfeedcae6bde62610778ebc25dc63c0bef9e114e5",
+              "fn two_two_diff(": "ce7f9227d14ed6ad8d788d67fa71034e778ddaf064bd4d58362348ff8aec8769",
+              "fn estimate(": "80e83d74cb4395119f0b480284f52cc68eb61c52224912ba9c45d7505c5968f7",
+              "fn fast_expansion_sum_zeroelim(": "84c1dd5a075f84636fca33dafbed86acae183e5843dcca72ff02af9478f4df4b"
+            }
+          },
+          "license": "MIT OR Apache-2.0",
+          "license_file": "docs/upstream/licenses/robust-MIT.txt",
+          "license_sha256": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc"
+        }
+      ],
+      "fixture": "tests/fixtures/qdrant-polygon/filters.json",
+      "fixture_sha256": "03ed48ebc299561282f3f2b970e06262d868884f431a69011770cb27b9c5a67d",
+      "cargo_lock": "tests/fixtures/qdrant-polygon/Cargo.lock",
+      "cargo_lock_sha256": "f5ff96820f8ca3508cbab15903e2985291e3570f749d8f240250aea1e1d9fdd9",
+      "scaffold_sha256": "21b9df47f15d651cd22afe159801b3aea125b6e7630c74207b94e2bd34ec99ff",
+      "orientation_fixture": "tests/fixtures/qdrant-polygon/orientation.json",
+      "orientation_fixture_sha256": "8597c05a93a25d791977b4e5939939110b640f339699abde643cae9b00ac726d",
+      "orientation_cargo_lock": "tests/fixtures/qdrant-polygon/orientation-Cargo.lock",
+      "orientation_cargo_lock_sha256": "88d5f787ea1981350a1129a93f71696ba02b9d3ac7f8782141c9850523d8786b",
+      "orientation_scaffold_sha256": "11845013dc1436edc29bb50ad10b14777fe14b357d2089d12d88875be9ce4f8e",
+      "orientation_traced_sha256": "921ee120271a5b91ce5b1176fe851b9fbc7bbcb76a955c941f9319da6e8395f5",
+      "reference_cases": 17060,
+      "orientation_cases": 31167,
+      "adaptive_stage_coverage": [
+        9513,
+        2351,
+        7236,
+        12051,
+        16
+      ],
+      "reference_groups": {
+        "matches": 3081,
+        "nonmatches": 13960,
+        "expected_errors": 19
+      },
+      "targets": [
+        "src/akasha/compute/robust_orientation.mojo",
+        "src/akasha/document/geo_polygon.mojo",
+        "src/akasha/query/payload_condition.mojo",
+        "src/akasha/__init__.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Original Qdrant polygon validation and GeoRust polygon/ring coordinate-position source ported to native owned geometry; EPSILON acceptance followed by exact closure retained",
+        "Original robust adaptive orient2d and reachable expansion arithmetic translated; active Mojo lists replace bounded Rust array prefixes, separate products prevent FMA",
+        "Polygon contains specializes coordinate-position Inside; original RobustKernel sign mapping preserved, including nonfinite determinant behavior for unchecked stored coordinates",
+        "Shared payload field OR and override semantics reach direct/metadata/clone, Python/Arrow/named/formula/mutation and existing HTTP without persistent-format changes",
+        "Existing Qdrant Rust oracle reused with original code and real pinned dependencies; only destination/input overrides added to generator, default fixture remains unchanged",
+        "Expected orientation bits come from the unchanged published robust crate; separate traced source copy adds adaptive exit counters and removes crate-only module attributes, all results cross-checked",
+        "Dedicated spatial indexes, full protocol/C ABI exposure and all other product work remain open"
+      ],
+      "status": "verified_native_python_arrow_http_plain_polygon_filters_full_D03_pending",
+      "verification": [
+        "docs/research/2026-10-30-polygon-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/compute/robust_orientation.mojo": "42e05eac22acde49d5e479b9588d42de0cb165830d6c7fb8c827b238fbfe90e5",
+        "src/akasha/document/geo_polygon.mojo": "af8e7f469fd1b34da754a68d4afa644bbfb6f40da6ddc46c20581014456230cd",
+        "src/akasha/query/payload_condition.mojo": "c104a9704d8a0526939c87da7302bbbcdfce31d97df5518adc72e34ce0e155f2",
+        "src/akasha/__init__.mojo": "bf1ed35263f38edba93cba958a4b80095140d8004b6af5f30de6e2c500b6fb69",
+        "src/akasha/document/__init__.mojo": "920433c19f4f7fffac2dc53e5eb963cbcc1e0cd6423eade949a176657754e55a",
+        "scripts/qdrant_polygon_reference.py": "501e66cc3c5871a541fbcbdb0aaaa4b14d4158314a108b14cd5424552dc7d407",
+        "scripts/qdrant_payload_filter_reference.py": "1dad2fa03214519d211eb25009d674cdb17852a78e25443fecc6ada267702be2",
+        "tests/mojo/test_geo_polygon.mojo": "e73ba2dd635734547aa7f5a978f44530be643f279c38c6afb0e0d05db5588b0a",
+        "tests/python/test_geo_polygon.py": "02ed678af973f4cb5de478ed768e20e7f12bffbc560e9facb4aeb0980f0a199c"
+      }
     }
   ]
 }

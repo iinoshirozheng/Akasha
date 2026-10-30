@@ -1,0 +1,90 @@
+[
+  {
+    "name": "geo",
+    "version": "0.33.1",
+    "revision": "5ab50b072e34a915a33eaa46c80763d51d61295e",
+    "crate_sha256": "30eb1fdc57c1e5cfd11826fe0caec4b9dc7901f3758263bb506228d88c8d9e9a",
+    "sources": {
+      "src/algorithm/coordinate_position.rs": "dbc188f206bfbf84fb98ee8b375deeb81e8b54ea278937d32c9e18b47831745a",
+      "src/algorithm/contains/polygon.rs": "3f79648d8e99772427484b61d6462f0dcf92a846f5a13fc29b2ca93d69972507",
+      "src/algorithm/kernels/robust.rs": "98027a7d8a211bbd22332476ff470537c09728e75cb8a9c0949ab40fbb3fcc26",
+      "src/algorithm/intersects/mod.rs": "b13c044c71881108769ced57261e6c36d705210fbb09f4d5e64d90c59b8009ef"
+    },
+    "units": {
+      "src/algorithm/coordinate_position.rs": {
+        "impl<T> CoordinatePosition for Polygon<T>": "1a2fb1be1057f5b669ae43d87a6b9e0890bf365f761afb1bdb4447435b9926de",
+        "pub fn coord_pos_relative_to_ring<T>": "1192f291566ba46ce8a8553d69eab1e52f29a88638a30348ff15a7dcd325e5d2"
+      },
+      "src/algorithm/contains/polygon.rs": {
+        "impl<T> Contains<Coord<T>>": "b2308b43e429017e10c89665d781049e407fd18aad0de023e55d53685aa87040",
+        "impl<T> Contains<Point<T>>": "f73a2e94edddb38c33134043074dd41e7658593e55c4af3d9373083295836511"
+      },
+      "src/algorithm/kernels/robust.rs": {
+        "fn orient2d(": "ce2bc0cef5effa23b87e580efe114205f04787fc6b8f6ac67ef26d7a2d963a87"
+      },
+      "src/algorithm/intersects/mod.rs": {
+        "pub(crate) fn value_in_between": "74ed6e31d4f23e3351be2c27dc2a9456559d690859adcef4426c5aac5ce39cc7",
+        "fn value_in_range": "59a7cf8ac8832f52f0142bc0c2a068d3f97b606468dc1de9b5b9cdd71220395d"
+      }
+    },
+    "license": "MIT OR Apache-2.0",
+    "license_file": "docs/upstream/licenses/geo-MIT.txt",
+    "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727"
+  },
+  {
+    "name": "geo-types",
+    "version": "0.7.19",
+    "revision": "981be9feea12cdede572fb252064536cb8b287b1",
+    "crate_sha256": "94776032c45f950d30a13af6113c2ad5625316c9abfbccee4dd5a6695f8fe0f5",
+    "sources": {
+      "src/geometry/polygon.rs": "91ac590915c744db147ab2b7b715e7463fa2c5bcafbda93f28427c15e57e46bd",
+      "src/geometry/line_string.rs": "77c32f81750a79ed9752759db191525e8672c9ed4b6d1a6b55a6a0890db55c65"
+    },
+    "units": {
+      "src/geometry/polygon.rs": {
+        "pub fn new(": "65575bae2f34aecfb18bc5e18284ccc4dca6a27ebcada11835aa89898b0205a7"
+      },
+      "src/geometry/line_string.rs": {
+        "pub fn close(": "038ce0c904a45d2ef5693d397b1710afe872889c3e0041fb94aa4ca265f0feec",
+        "pub fn is_closed(": "70ae7cccc02b59694553fd0ed03b41ba8ba87e3b5ed538aedb921e994051d4f9"
+      }
+    },
+    "license": "MIT OR Apache-2.0",
+    "license_file": "docs/upstream/licenses/geo-MIT.txt",
+    "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727",
+    "license_source": "https://raw.githubusercontent.com/georust/geo/981be9feea12cdede572fb252064536cb8b287b1/LICENSE-MIT"
+  },
+  {
+    "name": "robust",
+    "version": "1.2.0",
+    "revision": "654f34cb8cdb3ae21bf59ef3472f92652942cd74",
+    "crate_sha256": "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839",
+    "sources": {
+      "src/lib.rs": "4fdf1a8db16a99cb8d366631996ac8de6b955f74edb30f163905f5f37a1da929",
+      "fixtures/orient2d.txt": "46098649d40faec33f7655eefe819e7bf91739abba8e05b868fb4ceeb3260237",
+      "LICENSE-MIT": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc"
+    },
+    "units": {
+      "src/lib.rs": {
+        "pub fn orient2d<": "a49f6d2e4962f8be13e135288dbdf5f09f79ef2163665cc894f82752f1acf8d2",
+        "fn orient2dadapt(": "c480d50f37be13823b047517b1a7b682c4b1f56f4eed252c3e542bf9d622e17d",
+        "fn two_product(": "60f8e104500e5363919f786d652dc8d80c2ddac282ead59c72c4ce6e2a4e21a5",
+        "fn two_product_tail(": "8308cd2b450daaefab65587c8ba91372c916aa852230bd9e9b67a598ef274b5c",
+        "fn split(": "9764782a9d408a16750a666e2df3ac12860353d91002bddc52b578693d359745",
+        "fn two_sum(": "38374d41b6f24434e6f53cdca55d944be2944d25e6bdf12ad2a7969b4ff5d9d0",
+        "fn two_sum_tail(": "1eaefce97d49ee8e45bd90462b86f64b908fcee95b923f2f286a84182fb7f33b",
+        "fn fast_two_sum(": "1b59c458fa3a510a6d4311ad74305df11d82108ceeea876ff387eed10c3f4b0d",
+        "fn fast_two_sum_tail(": "d6dc4cef85153bbad526b30aae89e9d336b8fb0eb4ffc5acf23c9b4981fc61ab",
+        "fn two_diff(": "4e4dcc72a6c668a6b065747b75a02727102776c12a485f5e93f263fc2a15349c",
+        "fn two_diff_tail(": "32e26df61b3ecb545bffb42eaa2b39113274bc0593be816a8bd43806a1ceede6",
+        "fn two_one_diff(": "c387c8e19e486e8f3dba750cfeedcae6bde62610778ebc25dc63c0bef9e114e5",
+        "fn two_two_diff(": "ce7f9227d14ed6ad8d788d67fa71034e778ddaf064bd4d58362348ff8aec8769",
+        "fn estimate(": "80e83d74cb4395119f0b480284f52cc68eb61c52224912ba9c45d7505c5968f7",
+        "fn fast_expansion_sum_zeroelim(": "84c1dd5a075f84636fca33dafbed86acae183e5843dcca72ff02af9478f4df4b"
+      }
+    },
+    "license": "MIT OR Apache-2.0",
+    "license_file": "docs/upstream/licenses/robust-MIT.txt",
+    "license_sha256": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc"
+  }
+]

@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 REVISION = "74f3e85b9473c62560006c043e13737ce6b48412"
 
 
-def main():
-    build = ROOT / ".build/qdrant-payload-filter-reference"
-    target = ROOT / "tests/fixtures/qdrant-payload-filter"
+def main(*, cases_override=None, fixture_name="qdrant-payload-filter"):
+    build = ROOT / f".build/{fixture_name}-reference"
+    target = ROOT / "tests/fixtures" / fixture_name
     (build / "src").mkdir(parents=True, exist_ok=True)
     target.mkdir(parents=True, exist_ok=True)
     sources, units = {}, {}
@@ -245,6 +245,8 @@ chrono={version="=0.4.45",default-features=false,features=["std"]}
                  {'range':{'lt':True}},{'values_count':{'lt':-1}},{'values_count':{'gt':1.5}},
                  {'geo_radius':{'center':point(181,0),'radius':1}}, {'is_null':0}]:
         add({'a':2},field(**spec))
+    if cases_override is not None:
+        cases = cases_override
     (build/'input.json').write_text(json.dumps(cases,ensure_ascii=True))
     lock=target/'Cargo.lock'
     if lock.exists():

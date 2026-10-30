@@ -126,12 +126,13 @@ var results = reopened.search_cosine_where(query, 10, expression)
 `FilterExpression.all`, `any`, and `negate` form an owned flat-arena tree.
 Empty All matches and empty Any does not. Expressions are limited to 16 levels
 and 256 nodes. New `PayloadCondition` field nodes add source-backed JSON-path
-matches, numeric/datetime ranges, counts, empty/null and bounding-box/radius
+matches, numeric/datetime ranges, counts, empty/null and bounding-box/radius/polygon
 predicates. `FilterExpression.nested` scopes all child conditions to the same
 array object; `at_least` requires a minimum number of matching children. The
 same nodes are accepted by Python/Arrow queries and existing HTTP search/payload
 updates. See [payload filters](docs/python-api.md#json-path-payload-filters).
-Dedicated typed indexes, polygon geometry and indexed full-text search remain
+Polygon containment preserves source exterior/hole boundaries and uses the
+ported robust adaptive orientation predicate. Dedicated typed indexes and indexed full-text search remain
 separate work. The Phase 4.2 `search_*_filtered` AND-list methods remain
 supported.
 
