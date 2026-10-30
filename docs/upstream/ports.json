@@ -2890,6 +2890,134 @@
         "tests/crash/test_point_checkpoint_order.mojo": "ad0ff009c79643407d6db59f869bebc05dfd4465642bfb445e5c0ab95107116c",
         "tests/fixtures/payload/generate_v3.py": "2ed8c6280e03ca1ba8cabfae3aa7125c7de5a1829de904487a4a6ac04a0461a8"
       }
+    },
+    {
+      "id": "D01c3e-jsonb-public-boundaries",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "revision": null,
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "sources": [
+        {
+          "path": "src/core/databend/constants.rs",
+          "sha256": "89758ee3dfbf73987bf4e2f08db74feb9cb331432f085b8cc47eb2a53467e198"
+        },
+        {
+          "path": "src/core/databend/jentry.rs",
+          "sha256": "ece1ed0edb36e25564a67aa244f085e31d92acba7db6982eb8f475af108a6844"
+        },
+        {
+          "path": "src/core/databend/ser.rs",
+          "sha256": "958f273ad2e3c6fc57f348a72af0d7d825ff28a1fab4a3ea4d120195d7be7201"
+        },
+        {
+          "path": "src/core/databend/de.rs",
+          "sha256": "f92f51d81ea4ec43e61fa6ed5b26a2e4b3650246c30b5f71177cd693e805302d"
+        },
+        {
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "path": "src/core/databend/builder.rs",
+          "sha256": "84ce1581b3672dfddad42522c103cbf780fac89aee4d3992abf414a1eea8181c"
+        },
+        {
+          "path": "src/owned.rs",
+          "sha256": "bd042dc192eda942f7ecd2585446ee8e32e06381d72dadc1e75a9114f1e820f8"
+        },
+        {
+          "path": "src/value.rs",
+          "sha256": "7d6c604552cbb0e56b11b2136e7c669d08cf2f9ebdab5e4805c479c99b34c5ff"
+        },
+        {
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "path": "src/extension.rs",
+          "sha256": "9977b16d37ebee979a4348fd788fa575f9af0959c68089948cd36945483cfec6"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "dependency_provenance": "tests/fixtures/jsonb-codec/sources.json",
+      "source_profile": {
+        "jsonb_default_features": false,
+        "jsonb_features": [
+          "databend"
+        ]
+      },
+      "lance_source": {
+        "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+        "path": "rust/lance-arrow/src/json.rs",
+        "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16",
+        "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt"
+      },
+      "inherited_native_port": "D01c3d-native-jsonb-persistence",
+      "targets": [
+        "src/bindings/payload_python.mojo",
+        "python/akashadb/payload.py",
+        "python/akashadb/models.py",
+        "python/akashadb/__init__.py",
+        "python/akashadb/logical_points.py",
+        "apps/server/schemas.py",
+        "apps/server/routes/points.py"
+      ],
+      "source_units": [
+        "Reuse original databend checked native JSONB body and owned copies",
+        "Lance binary JSONB body separate from nullable storage slot"
+      ],
+      "adaptations": [
+        "Python immutable bytes carrier; only Mojo interprets/validates the binary body and combined resource limits",
+        "Explicit typed HTTP and NDJSON v3 values avoid ordinary-dictionary sentinel collisions",
+        "Ordinary field-root int/uint identity remains; nested Python/JSON integers use logical integer values, exact JSONB integer encodings remain in body bytes",
+        "Preserve v1/v2 logical imports and complete atomic import validation",
+        "Strict ordinary JSON configuration does not accept JSONB carriers; no JSON text parser or Arrow extension claim"
+      ],
+      "oracle": "scripts/jsonb_codec_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-codec/cases.json": "bdb1e5a8ecbf9a7b414f7bca6e0c12a8ba3c170e2c62256651866a765627b40b",
+        "tests/fixtures/jsonb-codec/sources.json": "6af7a48fd77d3f52eaf23dd1308618f09f0f2f0233a492d23291650465543551",
+        "tests/fixtures/jsonb-codec/Cargo.lock": "b1258cb907bab000061f7b394b303ccfeeeea99e3baaf315a9d15cda122e6487",
+        "tests/fixtures/payload/v3.bin": "1dae485e8d78910a42c4c8965bc237999a2636bda9a5caa49b3ae729fa300d66",
+        "tests/fixtures/logical-points/v1.ndjson": "99601837a2a494bed1c9f46670d2ea100ca02f29f41e2a29df3adbfdb88d5e6a",
+        "tests/fixtures/logical-points/v2.ndjson": "eb3f4f7338f4eb3a712dc53b0418f53e25f664a9251cdc54a6aa7531a1746827",
+        "tests/fixtures/logical-points/v3.ndjson": "74fffc2266f27ad2e20fb121820e84b2299ca085b07d74599a73cb3d8c1fd924"
+      },
+      "status": "verified_JSONB_python_http_NDJSON_binary_boundaries_text_Arrow_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-boundary-validation.md"
+      ],
+      "results": {
+        "source_cases": 6246,
+        "legacy_source_cases": 85,
+        "new_python_tests": 46,
+        "related_native_tests": 17,
+        "targeted_python_tests": 120,
+        "full_python_passed": 3457,
+        "full_python_skipped": 1,
+        "module_build": true,
+        "durable_source_unchanged_from": "459cfe9"
+      },
+      "remaining": [
+        "Actual jsonb text grammar, fast-float numerical conversion and source text serialization",
+        "Full Arrow arrow.json/lance.json extension ingress/export and null/metadata behavior",
+        "Full C/distributed/Qdrant protocol boundaries, JSONB query/index and decimal operations",
+        "All other product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/bindings/payload_python.mojo": "00f33d9e0bacb0970203da3676bbc7696ec84ea0509c0c18e5583493d73e210f",
+        "python/akashadb/payload.py": "f7ed642969bc373499c385c0703a266b33dcac7381f408d2ec819f721ccddac2",
+        "python/akashadb/models.py": "bebcb9754a358ac0b06bd4bc78e7dc321088e8da796c0eef2080979a7037441e",
+        "python/akashadb/__init__.py": "28c41ffe806d9e51e6cac1659fac75f0b5d4af608f1c4b9d2b7da8f6f4a5f4f9",
+        "python/akashadb/logical_points.py": "fea376c7cbb94aaaa8050ebfc11c8a8aa3eb25be5b73e50f0bfef75ca30cd41c",
+        "apps/server/schemas.py": "d988a98cca49d4b63c5fde246af388342ada5ce27d6c4427c72df56952e6f8f0",
+        "apps/server/routes/points.py": "f2b3bf364cc54e0c095c5eaf75a82a340d0c20064aa40682177a3d506bd40c9e",
+        "tests/python/test_jsonb_payload.py": "35fbd0db4020b4cdba2fe7454ab69a51e3fc3e639ba1a172ec7afa3cc7b1bdc5",
+        "tests/python/test_rich_payload.py": "d04f16b38fa0ead71983f493d52f8451f6f2396d80c620234257f6bc38744323"
+      }
     }
   ]
 }

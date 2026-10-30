@@ -58,7 +58,7 @@ def test_owned_rich_payload_wal_segment_and_reopen(tmp_path, named, flush):
         _assert_fields(reopened.get_point(1).fields)
 
 
-def test_rich_backup_restore_and_logical_v2(tmp_path):
+def test_rich_backup_restore_and_logical_v3_and_legacy_v2(tmp_path):
     with closing(Collection(tmp_path / "source", 2, vectors={})) as source:
         source.upsert(1, [1, 2], _fields())
         source.backup(tmp_path / "backup")
@@ -67,9 +67,16 @@ def test_rich_backup_restore_and_logical_v2(tmp_path):
     with closing(Collection(tmp_path / "restored", 2)) as restored:
         _assert_fields(restored.get(1).fields)
     rows = [json.loads(line) for line in (tmp_path / "export.ndjson").read_text().splitlines()]
-    assert rows[0]["version"] == 2
+    assert rows[0]["version"] == 3
     with closing(Collection(tmp_path / "imported", 2, vectors={})) as target:
         assert import_ndjson(target, tmp_path / "export.ndjson") == 1
+        _assert_fields(target.get_point(1).fields)
+        before = target.last_sequence
+        # Legacy v2 uses ordinary JSON values and no per-field encoding marker.
+        rows[0]["version"] = 2
+        rows[1]["fields"] = [field.to_kernel() for field in _fields()]
+        (tmp_path / "legacy.ndjson").write_text("".join(json.dumps(row) + "\n" for row in rows))
+        assert import_ndjson(target, tmp_path / "legacy.ndjson") == 1
         _assert_fields(target.get_point(1).fields)
         before = target.last_sequence
         rows[0]["version"] = 1

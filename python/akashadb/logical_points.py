@@ -7,11 +7,12 @@ import re
 from typing import Any
 
 from .models import CollectionConfig, PayloadField
+from .payload import encode_field, decode_field, JSON_KINDS
 from .vectors import PointMutation, VectorField
 
 
 FORMAT = "akashadb.points"
-VERSION = 2
+VERSION = 3
 _CONFIG_KEYS = {"dimension", "ann_metric", "scalar_kind", "m", "m0", "ef_construction",
                 "default_ef_search", "max_ef_search", "max_level", "rebuild_inactive_percent",
                 "delta_max_points", "level_seed"}
@@ -34,6 +35,7 @@ def encode_export(captured: dict[str, Any]) -> tuple[dict[str, Any], list[dict[s
         encoded_schema[name] = value
     rows = captured["points"]
     for row in rows:
+        row["fields"] = [encode_field(field, typed=True) for field in row["fields"]]
         row["vectors"] = {
             name: {"encoding": "hex", "data": value.hex()}
             if schema[name].kind == "binary" else value
@@ -60,7 +62,7 @@ def _integer(value: Any, low: int, high: int, label: str) -> int:
 
 def decode_header(header: dict[str, Any]) -> tuple[CollectionConfig, dict[str, VectorField]]:
     _object(header, _HEADER_KEYS, "point export header")
-    if header["format"] != FORMAT or type(header["version"]) is not int or header["version"] not in (1, VERSION):
+    if header["format"] != FORMAT or type(header["version"]) is not int or header["version"] not in (1, 2, VERSION):
         raise ValueError("unsupported logical point export version")
     _integer(header["count"], 0, (1 << 63) - 1, "point count")
     _integer(header["source_sequence"], 0, (1 << 64) - 1, "source sequence")
@@ -169,8 +171,13 @@ def decode_points(header: dict[str, Any], rows: list[dict[str, Any]],
             raise ValueError("default vector must be a list or null")
         if not isinstance(row["fields"], list):
             raise ValueError("payload fields must be a list")
-        payload = [PayloadField(**_object(item, {"name", "type", "value"}, "payload"))
-                   for item in row["fields"]]
+        if header["version"] == 3:
+            payload = [PayloadField(**decode_field(item, require_typed=True)) for item in row["fields"]]
+        else:
+            payload = [PayloadField(**_object(item, {"name", "type", "value"}, "payload"))
+                       for item in row["fields"]]
+            if any(type(field.type) is not str or field.type not in JSON_KINDS for field in payload):
+                raise ValueError("legacy logical point exports support only JSON payload fields")
         if header["version"] == 1 and any(field.type not in {"string", "int", "float", "bool"} for field in payload):
             raise ValueError("logical point v1 supports only scalar payload fields")
         result.append(PointMutation.upsert(point_id, vector=row["vector"],

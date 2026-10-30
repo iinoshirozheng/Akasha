@@ -241,7 +241,52 @@ Payloads retain the 16 MiB encoded and 1,024 top-level-field limits, with at mos
 nonfinite numbers, non-string object keys and integers outside Int64/UInt64 are
 rejected before WAL append. Null differs from an absent field and from an empty
 container. Rich values survive WAL-only reopen, checkpoint, physical backup and
-NDJSON v2. Reads retain payload v1 compatibility; new writes use payload v2.
+NDJSON v3. Reads retain payload v1/v2 compatibility; new writes use payload v3.
+
+### JSONB values
+
+`JsonbValue(data: bytes)` carries the exact jsonb 0.5.6 databend body used by
+the pinned Lance implementation. It accepts immutable bytes; Mojo validates
+the body and combined payload limits before writing. The carrier itself does
+not parse JSON text or guarantee that arbitrary supplied bytes are valid.
+
+```python
+from akashadb import JsonbValue, PayloadField
+from akashadb.payload import encode_value
+
+json_null = JsonbValue(bytes.fromhex("2000000000000000"))
+fields = [PayloadField("items", "array", [None, json_null])]
+collection.upsert(42, [1.0, 0.0], fields)
+assert collection.get(42).fields == fields
+collection.set_payload({"json_null": json_null}, points=[42])
+
+# POST /collections/demo/points
+body = {"id": 42, "vector": [1, 0], "fields": [f.to_wire() for f in fields]}
+# POST /collections/demo/points/payload
+update = {"points": [42], "encoding": "typed",
+          "payload": {"items": encode_value([None, json_null])}}
+```
+
+JSONB null is present; plain null still follows the source mutation semantics
+(for example, shallow `set_payload` removes a plain-null member). The carrier
+also works in `PointMutation`, batches, nested objects and overwrite operations.
+Reads return independently owned wrappers/containers. Body bytes survive WAL,
+checkpoints, physical backup and logical export/import unchanged, including
+accepted old JSONB encodings and nonfinite numbers inside the body.
+
+`PayloadField.to_wire()` adds `encoding: "typed"` only if the field contains
+JSONB; `typed=True` always selects it. `PayloadField.from_wire()` decodes an
+explicit wire field. The HTTP API accepts these fields and uses the same shape
+in GET results. Typed updates encode each payload member as a `{type, value}`
+node. Normal JSON object keys such as `type`, `value` and `encoding` remain user
+data. NDJSON v3 always uses typed fields, retaining v1/v2 reads. Ordinary nested
+integers use the `integer` wire tag; explicit field roots retain int/uint.
+
+The strict ordinary-JSON filter/formula configuration path does not accept a
+JSONB carrier. JSONB traversal/indexes, textual parsing/rendering and Arrow JSON
+extensions remain in progress; use [native JSONB](native-jsonb.md) for the
+available binary constructors and [wire format](formats/logical-point-format.md)
+for the transport contract.
 
 Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:

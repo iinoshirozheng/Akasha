@@ -115,3 +115,19 @@ Public value boundaries, the jsonb textual profile and Arrow JSON remain open.
 - Complete the source text parser/numeric/serializer before Arrow JSON text
   conversion. Cover native `lance.json` binary cells and `arrow.json` textual
   cells, slices/masks and UTF-8/large UTF-8/StringView storage as specified above.
+
+
+D01c3e completes the Python/HTTP/NDJSON binary-value boundary requirements above:
+explicit immutable bytes carrier, native validation and combined resource
+budgets, distinct ordinary JSON configuration, typed nested wire encoding and
+v3 logical export with frozen v1/v2 reads. All 6,331 source bodies pass public
+writes/reads and logical round trips; 46 new Python tests, 17 related native
+and 120 targeted Python pass. Final full Python is 3,457 passed / 1 skip.
+[Evidence](../research/2026-10-30-jsonb-boundary-validation.md).
+
+Step 4 is now next: port actual jsonb text grammar/numerical parsing and source
+serialization (including the fast-float dependency), preserving extended and
+standard profiles rather than substituting the serde_json reader. Then complete
+step 5's native Arrow binary/text extension integration and step 6's full public
+acceptance. Full C/distributed/protocol value boundaries and the complete
+product ledger remain required; this binary transport slice does not close them.

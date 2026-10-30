@@ -3,9 +3,8 @@
 `akasha.document.JsonbValue` owns a checked binary JSONB value. Its encoding is
 ported from jsonb 0.5.6's databend backend, the backend used by pinned Lance.
 It can be stored in native collection payloads using `PayloadValue.jsonb(value)`.
-Python/HTTP/NDJSON values, textual JSONB parsing/rendering and `arrow.json`
-integration are still pending; those public boundaries do not yet accept this
-logical type.
+Python/HTTP/NDJSON also transport this type as complete source bytes. Textual
+JSONB parsing/rendering and `arrow.json` integration remain pending.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -52,6 +51,38 @@ JSONB encodings. [Payload v3](formats/payload-format.md) is the default writer;
 v1/v2 payload readers remain and old values migrate when rewritten. Existing
 plain JSON paths treat the JSONB body as a leaf. Source-based JSONB traversal,
 query and typed index integration remain separate work.
+
+## Python and JSON transport
+
+```python
+from akashadb import JsonbValue, PayloadField
+
+json_null = JsonbValue(bytes.fromhex("2000000000000000"))
+field = PayloadField("items", "array", [None, json_null])
+collection.upsert(1, [1, 0], [field])
+assert collection.get(1).fields == [field]
+http_field = field.to_wire()
+assert PayloadField.from_wire(http_field) == field
+```
+
+Python `JsonbValue` is an immutable bytes carrier, not a second binary codec.
+It checks the byte type and maximum body length; Mojo validates the complete
+JSONB body and combined depth/node/byte limits before any write. Invalid bytes
+may be held in the carrier but cannot enter the database. This API does not
+parse JSON text. `set_payload` and `overwrite_payload` accept carriers inside
+ordinary dicts/lists; JSONB null remains a value while plain null follows the
+existing mutation semantics.
+
+`PayloadField.to_wire()` preserves the ordinary JSON field shape unless JSONB
+occurs in that field. JSONB fields use explicit `encoding: "typed"`, with each
+container child encoded as a `{type, value}` node; JSONB values are hexadecimal
+source bytes. `to_wire(typed=True)` always selects that representation.
+The HTTP point routes accept it and return it for fields containing JSONB.
+Typed payload updates put `encoding: "typed"` alongside `payload` and encode
+each top-level value as a node. Ordinary dict keys never opt into this format.
+NDJSON exports always use version 3 and typed fields; v1/v2 readers remain.
+See [the wire contract](formats/logical-point-format.md) for exact value tags
+and [the public API](python-api.md#jsonb-values) for examples.
 
 ## Constructors and readers
 

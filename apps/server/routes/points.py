@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Request
 from dataclasses import asdict
 from starlette.concurrency import run_in_threadpool
 
-from akashadb import PayloadField, SearchRequest, SparseElement
+from akashadb import PayloadField, SearchRequest, SparseElement, ValidationError
+from akashadb.payload import decode_payload
 from apps.server.schemas import (SearchRequestBody, UpsertRequest, SetPayloadRequest,
                                 OverwritePayloadRequest, DeletePayloadRequest, PayloadSelectorRequest)
 
@@ -12,16 +13,33 @@ from apps.server.schemas import (SearchRequestBody, UpsertRequest, SetPayloadReq
 router = APIRouter(prefix="/collections", tags=["points"])
 
 
+def _payload(body: OverwritePayloadRequest) -> dict[str, object]:
+    try:
+        return decode_payload(body.payload) if body.encoding == "typed" else body.payload
+    except (ValueError, TypeError) as error:
+        raise ValidationError(str(error)) from error
+
+
+def _field(item) -> PayloadField:
+    value = item.model_dump()
+    if value["encoding"] is None:
+        del value["encoding"]
+    try:
+        return PayloadField.from_wire(value)
+    except (ValueError, TypeError) as error:
+        raise ValidationError(str(error)) from error
+
+
 @router.post("/{name}/points/payload")
 def set_payload(name: str, body: SetPayloadRequest, request: Request) -> dict[str, int]:
     collection = request.app.state.database.collection(name)
-    return asdict(collection.set_payload(body.payload, points=body.points, filter=body.filter, key=body.key))
+    return asdict(collection.set_payload(_payload(body), points=body.points, filter=body.filter, key=body.key))
 
 
 @router.put("/{name}/points/payload")
 def overwrite_payload(name: str, body: OverwritePayloadRequest, request: Request) -> dict[str, int]:
     collection = request.app.state.database.collection(name)
-    return asdict(collection.overwrite_payload(body.payload, points=body.points, filter=body.filter))
+    return asdict(collection.overwrite_payload(_payload(body), points=body.points, filter=body.filter))
 
 
 @router.post("/{name}/points/payload/delete")
@@ -43,7 +61,7 @@ def upsert_point(
     collection = request.app.state.database.collection(name)
     fields = None
     if body.fields is not None:
-        fields = [PayloadField(**item.model_dump()) for item in body.fields]
+        fields = [_field(item) for item in body.fields]
     collection.upsert(body.id, body.vector, fields)
     if body.sparse is not None:
         collection.upsert_sparse(
@@ -70,10 +88,7 @@ def get_point(name: str, point_id: int, request: Request) -> dict[str, object]:
         "id": document.id,
         "sequence": document.sequence,
         "vector": document.vector,
-        "fields": [
-            {"name": item.name, "type": item.type, "value": item.value}
-            for item in document.fields
-        ],
+        "fields": [item.to_wire() for item in document.fields],
     }
 
 

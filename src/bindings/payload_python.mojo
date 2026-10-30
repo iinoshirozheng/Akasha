@@ -1,5 +1,6 @@
 """Bounded Python/JSON representation conversion; value ownership stays in Mojo."""
 from akasha.document.value import PayloadValue
+from akasha.document.jsonb import JsonbValue
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.json_path import JsonPath
 from std.python import Python, PythonObject
@@ -47,7 +48,7 @@ def payload_update_from_python(kind: String, raw: PythonObject,
             if content > PayloadValue.MAX_BYTES:
                 raise Error("payload content exceeds size limit")
             names.append(converted^)
-            values.append(_json_value(raw[name], 0, nodes, content))
+            values.append(_json_value(raw[name], 0, nodes, content, True))
     elif not (raw is Python.none()):
         raise Error("payload delete/clear cannot contain values")
     var operation: UInt8
@@ -64,12 +65,30 @@ def payload_update_from_python(kind: String, raw: PythonObject,
     return PayloadUpdate(operation, names^, values^, path^, paths^)
 
 
-def _json_value(raw: PythonObject, depth: Int, mut nodes: Int, mut content: Int) raises -> PayloadValue:
+def _json_value(raw: PythonObject, depth: Int, mut nodes: Int, mut content: Int,
+                allow_jsonb: Bool = False) raises -> PayloadValue:
     nodes += 1
     if nodes > PayloadValue.MAX_NODES:
         raise Error("payload node count exceeds limit")
     var builtins = Python.import_module("builtins")
     var kind = builtins.type(raw)
+    if allow_jsonb and Bool(py=kind == Python.import_module("akashadb.payload").JsonbValue):
+        var data = raw.data
+        if not Bool(py=builtins.type(data) == builtins.bytes):
+            raise Error("JSONB data must be immutable bytes")
+        if len(data) > PayloadValue.MAX_BYTES - content:
+            raise Error("payload content exceeds size limit")
+        var bytes = List[UInt8](capacity=len(data))
+        for byte in data:
+            bytes.append(UInt8(Int(py=byte)))
+        var value = JsonbValue(Span(bytes))
+        nodes += value._node_count - 1
+        content += len(bytes)
+        if nodes > PayloadValue.MAX_NODES:
+            raise Error("payload node count exceeds limit")
+        if depth + value._depth > PayloadValue.MAX_DEPTH:
+            raise Error("payload nesting depth exceeds limit")
+        return PayloadValue.jsonb(value^)
     if raw is Python.none():
         return PayloadValue.null()
     if Bool(py=kind == builtins.str):
@@ -117,9 +136,9 @@ def _json_value(raw: PythonObject, depth: Int, mut nodes: Int, mut content: Int)
             if content > PayloadValue.MAX_BYTES:
                 raise Error("payload content exceeds size limit")
             keys.append(key^)
-            values.append(_json_value(raw[entry], depth + 1, nodes, content))
+            values.append(_json_value(raw[entry], depth + 1, nodes, content, allow_jsonb))
         else:
-            values.append(_json_value(entry, depth + 1, nodes, content))
+            values.append(_json_value(entry, depth + 1, nodes, content, allow_jsonb))
         if content > PayloadValue.MAX_BYTES:
             raise Error("payload content exceeds size limit")
     if object:
@@ -138,9 +157,12 @@ def payload_value_from_python(kind: String, raw: PythonObject) raises -> Payload
         return PayloadValue.floating(Float64(py=raw))
     if kind == "bool":
         return PayloadValue.boolean(Bool(py=raw))
-    var value = json_value_from_python(raw)
+    var nodes = 0
+    var content = 0
+    var value = _json_value(raw, 0, nodes, content, True)
     if ((kind == "null" and value.is_null()) or (kind == "array" and value.is_array())
-        or (kind == "object" and value.is_object()) or (kind == "uint" and value.is_unsigned())):
+        or (kind == "object" and value.is_object()) or (kind == "uint" and value.is_unsigned())
+        or (kind == "jsonb" and value.is_jsonb())):
         return value^
     if kind == "uint" and value.is_integer() and value.as_int() >= 0:
         return PayloadValue.unsigned(UInt64(value.as_int()))
@@ -164,6 +186,8 @@ def payload_kind_name(value: PayloadValue) raises -> String:
         return "object"
     if value.is_unsigned():
         return "uint"
+    if value.is_jsonb():
+        return "jsonb"
     raise Error("unknown payload value kind")
 
 
@@ -180,6 +204,11 @@ def payload_value_to_python(value: PayloadValue) raises -> PythonObject:
         return PythonObject(value.as_uint())
     if value.is_null():
         return Python.none()
+    if value.is_jsonb():
+        var bytes = Python.list()
+        for byte in value._jsonb_value.value()._data:
+            bytes.append(PythonObject(Int(byte)))
+        return Python.import_module("akashadb.payload").JsonbValue(Python.import_module("builtins").bytes(bytes))
     var children = value.children()
     if value.is_array():
         var result = Python.list()

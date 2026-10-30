@@ -47,11 +47,12 @@ racing the commit point.
 Logical export captures one immutable root. Field-aware collections write a
 versioned NDJSON schema header and every live point, including named-only and
 payload-only points, all native vector types, binary bytes and ragged matrices.
-New exports use logical version 2 and preserve recursive JSON payload values,
-explicit nulls, object order and full UInt64 values. Version 1 imports remain
-supported with their original scalar-only payload tags. Physical storage uses
+New exports use logical version 3 and preserve recursive JSON payload values,
+explicit nulls, object order, full UInt64 values and exact JSONB bodies. Every
+v3 payload field uses explicit typed encoding. Version 1 scalar and version 2
+recursive JSON imports remain supported. Physical storage uses
 the independently versioned [payload codec](formats/payload-format.md); new writes
-and checkpoints emit v2, while old v1 records remain readable.
+and checkpoints emit payload v3, while old v1/v2 records remain readable.
 Absent vectors and present empty values remain distinct. The importer requires
 the same default collection identity and named schema, validates the complete
 input, then commits one atomic point batch. Imported IDs replace complete point

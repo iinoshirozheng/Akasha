@@ -1,4 +1,4 @@
-# Logical point NDJSON, versions 1 and 2
+# Logical point NDJSON, versions 1, 2 and 3
 
 Field-aware collections export one UTF-8 JSON header line followed by exactly
 `count` complete point lines, in ascending signed point ID order. Every line is
@@ -11,7 +11,7 @@ The header has exactly these keys:
 | Key | Meaning |
 |---|---|
 | `format` | Exactly `"akashadb.points"` |
-| `version` | Integer `2` for new exports; frozen version `1` remains readable |
+| `version` | Integer `3` for new exports; frozen versions `1` and `2` remain readable |
 | `config` | Default collection identity, as listed below |
 | `vectors` | Named field name to schema object |
 | `count` | Nonnegative integer number of following point records |
@@ -40,7 +40,7 @@ arrays, multivectors are arrays of equal-width rows (including zero rows), and
 sparse fields use the same element objects. Binary values use exactly
 `{ "encoding": "hex", "data": "0101" }`: two hexadecimal characters per
 packed byte, with the schema's bit dimension and zero high padding bits.
-`fields` is the complete typed payload array of `{ "name", "type", "value" }`.
+For v1/v2, `fields` is the complete payload array of `{ "name", "type", "value" }`.
 V1 restricts field types to string/int/float/bool. V2 also permits null/array/object/
 uint. Arrays and objects contain ordinary recursive JSON values; keys retain
 insertion order and may be empty or contain escaped NUL. Null is a present field,
@@ -49,6 +49,41 @@ numbers retain their value and signed floating zero, while JSON itself does not
 label small positive integers as signed vs unsigned. Native integer range and
 value depth/node/byte limits are validated before any batch commit. A v1 header
 containing v2 field tags is rejected, not silently upgraded.
+
+V3 fields have exactly `{ "name", "type", "value", "encoding": "typed" }`.
+The field type is string/int/uint/float/bool/null/array/object/jsonb. The value
+body follows this table; every nested child has exactly `{ "type", "value" }`:
+
+| Type | Body |
+| --- | --- |
+| `string` | JSON string |
+| `bool` | JSON boolean |
+| `null` | JSON null |
+| `float` | finite JSON number converted to Float64; signed zero retained |
+| `int`, `uint` | Field roots only: signed Int64 or unsigned UInt64 JSON integer |
+| `integer` | Nested values and typed updates: JSON integer in Int64/UInt64 union range |
+| `array` | Array of typed child nodes |
+| `object` | Object mapping arbitrary JSON member names to typed child nodes |
+| `jsonb` | Even-length hexadecimal string containing a complete source JSONB body |
+
+The existing ordinary Python/JSON numeric contract remains: nested integers
+retain value but have no small-positive signed/unsigned identity. V3 uses the
+`integer` tag to make this explicit, and rejects nested `int`/`uint` tags rather
+than silently discarding a declared label. A field's explicit root int/uint
+identity is retained. This restriction does not affect the exact source bytes
+inside a JSONB body, including its compact integers and nonfinite F64 values.
+
+Hex output is lowercase; input accepts either case, with no spaces or prefix.
+Native Mojo checks all decoded JSONB bytes and aggregate payload resource limits
+before the complete import can commit. Storage null is a `null` node; JSONB null
+is a `jsonb` node with body `2000000000000000`. They remain distinct at any depth.
+No ordinary object is interpreted as a marker based on its keys. The same
+explicit field encoding is used by the Akasha HTTP API. This is an Akasha wire
+format, not Qdrant REST or Lance file compatibility.
+
+V3 requires typed encoding on every field. V1/v2 reject JSONB and v3 encoding
+members; there is no content-dependent version fallback. Independent v2 and v3
+fixtures accompany the frozen v1 fixture. Older clients reject the new header.
 
 Numeric values retain native precision: the exporter expands finite native
 scalars to exact Python numbers and the importer applies the destination's

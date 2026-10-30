@@ -1,5 +1,7 @@
 """Python adapter for the AkashaDB Mojo kernel."""
 
+from .payload import JsonbValue
+
 from .query import Formula, QueryRequest
 from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField
 from .database import CancellationToken, Collection, LocalDatabase
@@ -63,6 +65,7 @@ __all__ = [
     "DistributedCluster",
     "LocalDatabase",
     "PayloadField",
+    "JsonbValue",
     "Point",
     "PointMutation",
     "FieldQuery",

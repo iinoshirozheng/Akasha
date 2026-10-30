@@ -2,13 +2,14 @@
 
 from dataclasses import dataclass, field, fields, replace
 from typing import Any, Literal, TypeAlias
+from .payload import JsonbValue, encode_field, decode_field
 
 
 Metric: TypeAlias = Literal["dot", "l2", "cosine"]
 ScalarKind: TypeAlias = Literal["f32", "bf16", "f16", "i8"]
-PayloadKind: TypeAlias = Literal["string", "int", "float", "bool", "null", "array", "object", "uint"]
+PayloadKind: TypeAlias = Literal["string", "int", "float", "bool", "null", "array", "object", "uint", "jsonb"]
 PayloadScalar: TypeAlias = str | int | float | bool | None
-PayloadJSON: TypeAlias = PayloadScalar | list["PayloadJSON"] | dict[str, "PayloadJSON"]
+PayloadJSON: TypeAlias = PayloadScalar | JsonbValue | list["PayloadJSON"] | dict[str, "PayloadJSON"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +158,13 @@ class PayloadField:
     name: str
     type: PayloadKind
     value: PayloadJSON
+
+    def to_wire(self, *, typed: bool = False) -> dict[str, object]:
+        return encode_field(self.to_kernel(), typed=typed)
+
+    @classmethod
+    def from_wire(cls, value: dict[str, object]) -> "PayloadField":
+        return cls(**decode_field(value))
 
     def to_kernel(self) -> dict[str, object]:
         return {"name": self.name, "type": self.type, "value": self.value}

@@ -72,8 +72,9 @@ class OpenCollectionRequest(BaseModel):
 
 class PayloadFieldRequest(BaseModel):
     name: str = Field(min_length=1)
-    type: Literal["string", "int", "float", "bool", "null", "array", "object", "uint"]
+    type: Literal["string", "int", "float", "bool", "null", "array", "object", "uint", "jsonb"]
     value: Any
+    encoding: Literal["typed"] | None = None
 
 
 class PayloadSelectorRequest(BaseModel):
@@ -84,6 +85,7 @@ class PayloadSelectorRequest(BaseModel):
 
 class OverwritePayloadRequest(PayloadSelectorRequest):
     payload: dict[str, Any]
+    encoding: Literal["typed"] | None = None
 
 
 class SetPayloadRequest(OverwritePayloadRequest):

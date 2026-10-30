@@ -4,7 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c3d：原生 JSONB 已接入 payload v3 與 collection；保留 v1／v2 讀取，更新／checkpoint／compaction 沿既有原子流程轉寫，不增加資料序號或 schema revision。
+- 最新 D01c3e：JSONB 已接上 Python 值／批次／payload 更新、HTTP 與 NDJSON v3；使用明確的 bytes carrier／typed encoding，保留一般物件鍵及 storage null／JSONB null 差異。v1／v2 邏輯匯入持續支援。
+  全部 6,331 組來源 body 通過公開寫讀與邏輯往返；新增 46 項 Python、17 項相關 Mojo、120 項指定回歸通過；完整 Python **3,457 通過、1 跳過**。
+  [公開邊界驗證](docs/research/2026-10-30-jsonb-boundary-validation.md)。下一步依來源移植 jsonb 文字 parser／fast-float／serializer，再完成 Arrow JSON；完整 C／分散式值介面、JSONB 查詢／索引與所有產品待辦仍開放，尚未優化。
+- D01c3d：原生 JSONB 已接入 payload v3 與 collection；保留 v1／v2 讀取，更新／checkpoint／compaction 沿既有原子流程轉寫，不增加資料序號或 schema revision。
   21 個 Mojo 模組／130 項測試通過，包含 6,331 組來源 body 的 payload 往返、巢狀資源限制、混合版本恢復、快照、壓縮、實體備份與損毀／torn WAL。
   [持久化驗證](docs/research/2026-10-30-jsonb-storage-validation.md)／[格式契約](docs/formats/payload-format.md)。完整 Python **3,411 通過、1 跳過**，crash **9 模組／24 項**與 C ABI 通過；公開 Python／HTTP／NDJSON／Arrow JSON、文字解析與序列化仍需完成。未優化，完整任務清單持續開放。
 - D01c3c：原生 `JsonbValue` 二進位值／codec 已依 jsonb 0.5.6 databend 來源移植，包含 JSON 基本型別、NaN／Infinity、三種 Decimal、Binary、日期／時間區間與容器；儲存 null 保持獨立。
