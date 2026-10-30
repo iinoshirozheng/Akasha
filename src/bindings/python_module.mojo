@@ -1,3 +1,4 @@
+from akasha.query.jsonb_condition import JsonbCondition
 from akasha.query.payload_condition import PayloadCondition, _uint
 from akasha.query.point_condition import PointCondition
 from akasha.query.query_plan import QueryNode, plan_query
@@ -2006,6 +2007,8 @@ def _bounded_filter_expression(value: PythonObject, depth: Int, mut count: Int) 
             String(py=value["name"]), operator_kind, payload^
         )
         return FilterExpression.condition(condition^)
+    if kind == "jsonb":
+        return FilterExpression.jsonb(JsonbCondition(json_value_from_python(value)))
     if kind == "field":
         var spec = json_value_from_python(value)
         return FilterExpression.field(PayloadCondition(spec))

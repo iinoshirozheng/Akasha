@@ -3,6 +3,7 @@ from akasha.document.value import PayloadValue
 from akasha.document.json_path import JsonPath
 from akasha.query.payload_condition import PayloadCondition
 from akasha.query.point_condition import PointCondition
+from akasha.query.jsonb_condition import JsonbCondition
 
 
 struct FilterCondition(Movable):
@@ -108,6 +109,7 @@ struct _FilterNode(Movable):
     var path: Optional[JsonPath]
     var min_count: UInt64
     var point: Optional[PointCondition]
+    var jsonb: Optional[JsonbCondition]
 
     def __init__(
         out self,
@@ -118,6 +120,7 @@ struct _FilterNode(Movable):
         var path: Optional[JsonPath] = None,
         min_count: UInt64 = 0,
         var point: Optional[PointCondition] = None,
+        var jsonb: Optional[JsonbCondition] = None,
     ):
         self.kind = kind
         self.condition = condition^
@@ -126,6 +129,7 @@ struct _FilterNode(Movable):
         self.path = path^
         self.min_count = min_count
         self.point = point^
+        self.jsonb = jsonb^
 
     def clone_with_offset(self, offset: Int) raises -> _FilterNode:
         var condition = Optional[FilterCondition]()
@@ -138,7 +142,7 @@ struct _FilterNode(Movable):
         var payload = Optional[PayloadCondition]()
         if self.payload:
             payload = Optional(self.payload.value().clone())
-        return _FilterNode(self.kind, condition^, children^, payload^, self.path.copy(), self.min_count, self.point.copy())
+        return _FilterNode(self.kind, condition^, children^, payload^, self.path.copy(), self.min_count, self.point.copy(), self.jsonb.copy())
 
 
 struct FilterExpression(Movable):
@@ -154,6 +158,7 @@ struct FilterExpression(Movable):
     comptime POINT = UInt8(8)
     comptime IS_EMPTY = UInt8(9)
     comptime IS_NULL = UInt8(10)
+    comptime JSONB = UInt8(11)
     comptime MAX_DEPTH = 16
     comptime MAX_NODES = 256
 
@@ -170,6 +175,7 @@ struct FilterExpression(Movable):
         var path: Optional[JsonPath] = None,
         min_count: UInt64 = 0,
         var point: Optional[PointCondition] = None,
+        var jsonb: Optional[JsonbCondition] = None,
     ) raises:
         self._nodes = List[_FilterNode]()
         var root_children = List[Int](capacity=len(children))
@@ -180,7 +186,7 @@ struct FilterExpression(Movable):
                     children[index]._nodes[node_index].clone_with_offset(offset)
                 )
             root_children.append(children[index]._root + offset)
-        self._nodes.append(_FilterNode(kind, condition^, root_children^, payload^, path^, min_count, point^))
+        self._nodes.append(_FilterNode(kind, condition^, root_children^, payload^, path^, min_count, point^, jsonb^))
         self._root = len(self._nodes) - 1
         self.validate()
 
@@ -239,6 +245,10 @@ struct FilterExpression(Movable):
     @staticmethod
     def is_null(key: String) raises -> FilterExpression:
         return FilterExpression(Self.IS_NULL, None, [], path=Optional(JsonPath.parse(key)))
+
+    @staticmethod
+    def jsonb(var condition: JsonbCondition) raises -> FilterExpression:
+        return FilterExpression(Self.JSONB, None, [], jsonb=Optional(condition^))
 
     def needs_vector_context(self) -> Bool:
         for i in range(len(self._nodes)):
@@ -342,7 +352,7 @@ def _validate_expression_node(
     var kind = expression._node_kind(node_index)
     var child_count = expression._node_child_count(node_index)
     var condition = expression._get_node_condition(node_index)
-    if kind < FilterExpression.CONDITION or kind > FilterExpression.IS_NULL:
+    if kind < FilterExpression.CONDITION or kind > FilterExpression.JSONB:
         raise Error("unknown filter expression kind")
     ref node = expression._nodes[node_index]
     if Bool(node.payload) != (kind == FilterExpression.FIELD):
@@ -351,6 +361,10 @@ def _validate_expression_node(
         raise Error("path expression has invalid path")
     if Bool(node.point) != (kind == FilterExpression.POINT):
         raise Error("point expression has invalid predicate")
+    if Bool(node.jsonb) != (kind == FilterExpression.JSONB):
+        raise Error("JSONB expression has invalid predicate")
+    if node.jsonb:
+        node.jsonb.value().validate()
     if node.point:
         node.point.value().validate()
     if kind >= FilterExpression.POINT and child_count != 0:

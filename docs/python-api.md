@@ -320,7 +320,9 @@ selector, numeric operations and limits are authoritative. `CancellationToken`
 is sampled before the synchronous call; the deadline is checked during native
 execution. See [query modes and resource contracts](native-jsonb.md#jsonb-value-queries).
 The strict ordinary-JSON filter/formula configuration path does not accept a
-JSONB carrier. Collection-level JSONB filtering/projection and indexes remain
+JSONB carrier as configuration. The `kind="jsonb"` filter reads stored carriers
+using source boolean operations; see [collection JSONB filters](native-jsonb.md#collection-jsonb-filters).
+Computed JSONB projection and dedicated indexes remain
 in progress; [wire format](formats/logical-point-format.md) specifies transport.
 
 `JsonbValue.cast(target)` provides Mojo scalar conversion to `bool`, `int64`,

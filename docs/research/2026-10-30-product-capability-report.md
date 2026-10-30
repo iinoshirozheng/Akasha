@@ -1,5 +1,7 @@
 # Akasha 完整產品功能差異報告
 
+最新 D01c4g 已將來源 JSONB 布林函式接上 collection 過濾、搜尋、掃描、公式及條件更新；111,100 組來源結果、59 項 Mojo、完整 Python **3,739 通過／1 跳過**。計算投影、專用索引、SQL 與完整協定仍待完成。見 [整合驗證](2026-10-30-jsonb-condition-validation.md)。
+
 日期：2026-10-30。盤點起點：`16c0c08`；Mojo `1.0.0 (ed45d567)`。
 
 ## 使用者目標與執行順序
@@ -62,7 +64,7 @@ D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契
 | --- | --- | --- |
 | 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值、地理距離與日期的公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
-| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v3 與 v1/v2 讀取；JSONB 全既有型別二進位值、來源文字轉換與值／Arrow 路徑取值／轉型；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow／JSONB extension 與 Map 匯入、指定型別／nullability／metadata 匯出 | collection JSONB 過濾／投影／索引、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
+| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v3 與 v1/v2 讀取；JSONB 全既有型別二進位值、來源文字轉換與值／Arrow 路徑取值／轉型；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow／JSONB extension 與 Map 匯入、指定型別／nullability／metadata 匯出 | collection JSONB 計算投影／專用索引、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
 | 搜尋／過濾 | 布林條件、純量索引、JSON-path／巢狀同元素條件、日期範圍、地理矩形／半徑／polygon、集合／純文字條件、空值／數量、點 ID／向量存在／固定 slice、獨立路徑空值條件、snapshot scan、投影 | 全文 tokenizer／BM25／位置式 phrase、專用日期／地理／巢狀／陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |

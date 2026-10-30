@@ -66,6 +66,13 @@ def matches_node(fields: List[DocumentField], expression: FilterExpression, node
             return _matches_condition(fields, node.condition.value())
         var value = scope.value().get_key(node.condition.value().name)
         return _matches_condition_value(value.value(), node.condition.value()) if value else False
+    if kind == FilterExpression.JSONB:
+        ref condition = node.jsonb.value()
+        var values = _path_values(fields, condition.key, scope)
+        for i in range(len(values)):
+            if condition.check(values[i]):
+                return True
+        return False
     if kind == FilterExpression.FIELD:
         ref condition = node.payload.value()
         var values = _path_values(fields, condition.key, scope)

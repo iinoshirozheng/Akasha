@@ -22,6 +22,13 @@ def evaluate_expression(
 ) raises -> Bitmap:
     """Compose indexed predicates, evaluating nested scopes as one predicate."""
     expression.validate()
+    for i in range(expression.node_count()):
+        if expression.node_kind(i) == FilterExpression.JSONB:
+            # JSONB casts and selectors can fail for a particular value. Set
+            # operations over independently evaluated leaves would execute
+            # branches skipped by per-row all/any short circuiting. Evaluate
+            # this whole expression over the authoritative metadata payloads.
+            return index.evaluate_payload_node(expression, expression.root_index())
     return _evaluate_node(index, expression, expression.root_index())
 
 

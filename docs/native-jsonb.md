@@ -670,5 +670,70 @@ Exact helpers `jsonb_get_by_name`, `jsonb_get_by_index` and `lance_json_type`
 are also exported by `akasha.document`.
 
 These functions work on values read from a collection or an Arrow scanner.
-Collection planner predicates/projections, dedicated indexes, SQL UDF
-registration, and complete C/distributed query exposure remain separate tasks.
+Boolean collection predicates are described below. Computed projections,
+dedicated indexes, SQL UDF registration, and complete C/distributed query
+exposure remain separate tasks.
+
+## Collection JSONB filters
+
+The existing collection filter tree accepts a `jsonb` leaf. Selection and
+computation run in Mojo, reusing the source selector and Lance consumers above.
+
+```python
+from akashadb import JsonbValue, PayloadField, QueryRequest
+
+collection.upsert(1, [1.0], [PayloadField(
+    "data", "jsonb", JsonbValue.from_json('{price:12,active:true,tags:["sale"]}')
+)])  # example collection dimension: 1
+predicate = {
+    "kind": "jsonb", "key": "data", "function": "predicate_match",
+    "argument": "$.price >= 10 && $.active == true",
+}
+hits = collection.query(QueryRequest(filter=predicate))
+collection.set_payload({"selected": True}, filter=predicate)
+```
+
+| `function` | `argument` | Match rule |
+| --- | --- | --- |
+| `predicate_match` | JSONB path/expression | Source predicate result is true; unknown and non-predicate paths do not match |
+| `json_exists` | JSONB path/expression | Source selects any value, including false or JSON null |
+| `json_array_contains` | JSONB path/expression | Source array contains `needle` (required string), using rendered-element comparison |
+| `json_get_bool` | Exact object key or unsigned array index string | Source nullable boolean cast is true; missing/null is a nonmatch, invalid casts raise |
+
+`key` is the existing Qdrant-style payload path, for example `items[].data`;
+`argument` uses the separate JSONB grammar, except for exact-key `json_get_bool`.
+The empty string is a valid exact key. Any selected carrier that matches makes
+the leaf true, in payload traversal order. Missing fields and storage null do
+not match. JSONB null is a real JSONB value. A visited non-JSONB value raises
+`ValidationError`; strings and ordinary objects are not implicitly converted.
+
+The leaf composes with existing `all`, `any`, `not`, `nested` and `at_least`
+nodes. Outer Boolean semantics remain the collection filter contract, including
+`not` of a nonmatch being true. This is not SQL three-valued logic. Row-local
+short circuiting is preserved in metadata bitmap evaluation, so masked invalid
+values do not cause extra errors. Expressions containing JSONB currently use
+the metadata plain checker over the whole expression, not a dedicated JSONB
+index or independent per-leaf set operations.
+
+Optional positive Int64 `max_work`, `max_results`, `max_bytes` default to
+1,000,000, 65,536 and 64 MiB. These bound each evaluated carrier and native
+traversal/consumer phase, not the total collection query. String arguments and
+needles are limited to 65,536 UTF-8 bytes. Existing outer query controls retain
+their checkpoints; this integration does not add mid-leaf cancellation checks.
+Unknown properties, invalid types, incompatible/missing `needle`, invalid
+limits and path syntax are rejected during filter construction, even on an
+empty collection. Unlike scalar/Arrow value functions, a missing/null payload
+does not suppress configuration errors. Existing API no-op/zero-limit
+short circuits remain unchanged.
+
+The shared tree reaches scans, dense/HNSW/IVF/sparse/hybrid and batch searches,
+universal queries/formula conditions, Arrow results, current HTTP search routes
+and conditional payload set/overwrite/delete/clear. Updates select and validate
+before their atomic commit; data-dependent errors leave WAL and sequence
+unchanged. Snapshots retain their own JSONB values across updates and reopen.
+Native callers use `FilterExpression.jsonb(JsonbCondition(...))` from
+`akasha.query` or `akasha`.
+
+This is an Akasha filter extension composed from source implementations. It
+does not claim a Qdrant wire condition, SQL execution, computed projection or
+dedicated JSONB indexing. See [integration validation](research/2026-10-30-jsonb-condition-validation.md).

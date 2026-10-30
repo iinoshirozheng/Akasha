@@ -4211,6 +4211,108 @@
         "scripts/lance_json_functions_reference.py": "b924cf627346c896ab4ffd527fc7af82c50aac443cf8212e3cff2e5403df93cc",
         "scripts/lance_json_functions_reference.rs": "fd96b0533ad5b8508d17bd18b39e919cc86f5c585a348d3ecd4f4b1f3d145650"
       }
+    },
+    {
+      "id": "D01c4g-jsonb-collection-filters",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-arrow/src/json.rs",
+          "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/functions/path.rs",
+          "sha256": "a37e93c5fe4049cd40a5a6782e29818f70d289f903c71a51d7f70382468eec74"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/iterator.rs",
+          "sha256": "4f1fcf4bac969da5e5b6f3d996200a6d604a78b04578ebcde77b83576a3a81e6"
+        }
+      ],
+      "source_context": {
+        "path": "reference/lance/rust/lance/src/dataset/sql.rs",
+        "sha256": "bec9385288403974be4fd22e8946ae1434af60282aa287f3b576f4aab3ef0375",
+        "purpose": "JSON functions inside actual SQL filters/projections; SQL engine not ported in this slice"
+      },
+      "reuses_ports": [
+        "D01c4c-jsonb-selector",
+        "D01c4f-lance-json-functions"
+      ],
+      "source_units": [
+        "Existing jsonb predicate_match and Lance exists/get_bool/array_contains; no replacement selector algorithm"
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "targets": [
+        "src/akasha/query/jsonb_condition.mojo",
+        "src/akasha/query/filter_ast.mojo",
+        "src/akasha/query/evaluator.mojo",
+        "src/akasha/query/index_evaluator.mojo",
+        "src/akasha/query/__init__.mojo",
+        "src/akasha/__init__.mojo",
+        "src/bindings/python_module.mojo"
+      ],
+      "adaptations": [
+        "Akasha JSONB filter leaf, distinct from Qdrant wire schema and SQL three-valued logic",
+        "Eager configuration validation including empty collections; source nullable booleans match only true",
+        "Existing Qdrant-style payload paths select stored JSONB; missing/storage null false, visited wrong types error",
+        "Whole-expression plain metadata evaluation preserves per-row Boolean error short circuiting",
+        "Source per-carrier budgets retained; no mid-leaf cancellation or dedicated JSONB index claim"
+      ],
+      "fixtures": {
+        "tests/fixtures/jsonb-selector/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-selector/README.md": "efd2032655159deb19f42ed40b570f9fd253d7b28ebf23451c0a0b06b573b932",
+        "tests/fixtures/jsonb-selector/cases.json": "42b55d4d85e01baa1664d9a41cfeee039cdc0f9babd0f3190367e3305c053bf7",
+        "tests/fixtures/jsonb-selector/sources.json": "96ebb6f2887637bb6d5ea7ed3dae519526ca82fc48de0f8b767dd80d2609da1c",
+        "tests/fixtures/lance-json-functions/Cargo.lock": "4ef9b9d2c60a6a5e6e7b2b0ce6ae160eedcb82399098ea47d7b382a52d0dc0fd",
+        "tests/fixtures/lance-json-functions/README.md": "b353cdcf3722a8fbbdb38a47483f8b01acc41aa966d4898bcecc82ed88eed320",
+        "tests/fixtures/lance-json-functions/cases.json": "ad0ed75670dbc7698554771eec45ee1b2c977aa94311969c3b83157f72e51cc8",
+        "tests/fixtures/lance-json-functions/sources.json": "116f85b0b6ed82219a3f6ecacb362c8a7f3f6acc3f04f26b15f75d896bf91a72"
+      },
+      "status": "verified_collection_jsonb_filters_projection_index_sql_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-condition-validation.md"
+      ],
+      "results": {
+        "source_outcomes": 111100,
+        "native_tests_passed": 59,
+        "new_python_tests_passed": 23,
+        "full_python_passed": 3739,
+        "full_python_skipped": 1,
+        "unchanged_fixture_provenance_files": 8
+      },
+      "verified_file_sha256": {
+        "src/akasha/query/jsonb_condition.mojo": "cf1f56877b7a4fbf29cc5023efc6a47c775b014043d2889d6c669a1df11d5325",
+        "src/akasha/query/filter_ast.mojo": "cee398afd0e5e504599fcbc537641feb5a0516592c4b2273e67e17917bb6957e",
+        "src/akasha/query/evaluator.mojo": "c2c55e5cd3068685c86b6cd6aec0ee404e39e2286b60c005c790cc2d7b8b83c7",
+        "src/akasha/query/index_evaluator.mojo": "2ceb78cc41e689158efa71bcae5131254a185eed04e6a2afaeef21a4c6726746",
+        "src/akasha/query/__init__.mojo": "0fd069b386df8bcebfda47139585327e51710cd4d9be254fbbf7b5d36c260066",
+        "src/akasha/__init__.mojo": "993ce2fdcb7ed6083b39652988180e571c3869efd74ab816e82755abf6385936",
+        "src/bindings/python_module.mojo": "5a86700f272f0505aa44b889e75e57a44d38d1d2fe9880e3ca7f4354713162ae",
+        "tests/mojo/test_jsonb_condition.mojo": "12ae6e82b9596866e4a8b640baf5e70ff75d10361e329b08915498c2498f5a85",
+        "tests/python/test_jsonb_condition.py": "058898d6ba30d003eb8809d10fc37bb791d0f87d1ea5b9a21b2f641413a81f82"
+      },
+      "remaining": [
+        "Computed collection JSONB projections and dedicated indexes",
+        "Full C/distributed/protocol exposure and SQL engine integration",
+        "All 49 complete master packages, M5/M6 and deferred native Linux acceptance"
+      ]
     }
   ]
 }
