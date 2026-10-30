@@ -7,6 +7,7 @@ import pyarrow as pa
 
 from .database import Collection
 from .vectors import VectorField
+from .arrow_payload import payload_descriptor
 
 
 def _validity(array: Any) -> dict[str, Any]:
@@ -85,16 +86,15 @@ def point_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
     schema = collection.vector_fields()
     updates = []
     payloads = []
-    payload_types = {pa.string(): "string", pa.int64(): "int", pa.float64(): "float", pa.bool_(): "bool"}
     for name in names:
         if name == "id":
             continue
         array = batch.column(name)
         if name.startswith("payload."):
             key = name.removeprefix("payload.")
-            if not key or "\0" in key or array.type not in payload_types:
+            if not key or "\0" in key:
                 raise ValueError("invalid Arrow payload name or type")
-            payloads.append({"name": key, "type": payload_types[array.type], "values": array})
+            payloads.append({"name": key, "array": payload_descriptor(array, batch.schema.field(name))})
             continue
         if name == "vector":
             spec = VectorField(collection.dimension)

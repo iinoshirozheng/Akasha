@@ -62,6 +62,7 @@ def test_c_data_lease_and_typed_batch_round_trip(tmp_path) -> None:
     }
     assert {field.name: field.value for field in collection.get(20).fields} == {
         "chunk": "second",
+        "page": None,
         "weight": 1.5,
         "visible": False,
     }

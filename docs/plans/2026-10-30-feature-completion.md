@@ -109,6 +109,8 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D01c1 typed rich Arrow ingress implemented and verified.** Both upsert APIs use one Mojo buffer traversal for null/bool, all integer widths, finite floating types, UTF-8/large UTF-8 and nested struct/list/large/fixed lists. Supplied nulls remain explicit; masked children are ignored; atomicity, bounds and ownership remain native. Arrow/Lance source oracle covers 88 cells plus source invariants; 15 native tests and full Python **3,330 passed / 1 skip**, including 82 new public tests. [Evidence](../research/2026-10-30-rich-arrow-ingress-validation.md). Recursive rich output and dynamic JSON extension are next; complete D01 and all other product/platform/quality/performance rows remain open.
+
 - **D03f point identity, vector presence, deterministic slices and standalone
   whole-path conditions implemented and verified.** Qdrant checker context and
   nested isolation, all-empty/any-null path semantics, Slice validation and

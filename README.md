@@ -391,6 +391,11 @@ upsert_record_batch(collection, batch)
 The adapter imports Arrow C Data capsules and does not materialize intermediate
 Python lists. Arrow owns input buffers through the synchronous call; accepted
 values are then copied once into Akasha's durable WAL/MemTable ownership domain.
+Payload ingress accepts nested structs/lists, explicit nulls, UInt64, all Arrow
+integer widths, finite floating types and UTF-8/large UTF-8. Both Arrow upsert
+APIs replace whole points. Rich payload output and dynamic JSON extension
+interop remain pending; scanner projections currently support the four scalar
+types. See the [Arrow contracts](docs/python-api.md).
 
 For direct Arrow search output, use
 `search_record_batch(collection, SearchRequest(...))`. Exact, approximate,

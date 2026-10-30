@@ -32,6 +32,7 @@ from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
 from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, json_value_from_python, _json_value
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
+from bindings.arrow_payload import arrow_payload_schemas, arrow_payload_fields
 from std.collections import Dict
 from akasha.index.flat import SearchResult
 from akasha.api.scanner import ReadScanner
@@ -513,6 +514,7 @@ struct BoundCollection(Movable, Writable):
             if _exact_python_int(raw["row_count"], "vector row count") != rows:
                 raise Error("Arrow field row count mismatch")
             positions[ordinal] = index
+        var payload_schemas = arrow_payload_schemas(descriptor["payloads"], rows)
         var mutations = List[PointMutation](capacity=rows)
         for row in range(rows):
             var updates = List[FieldUpdate](capacity=len(positions))
@@ -531,24 +533,7 @@ struct BoundCollection(Movable, Writable):
                     updates.append(FieldUpdate.remove(spec.id))
             var payload = Optional[List[DocumentField]]()
             if len(descriptor["payloads"]) != 0:
-                var values = List[DocumentField]()
-                for column in descriptor["payloads"]:
-                    var raw = column["values"][row].as_py()
-                    if not _is_python_none(raw):
-                        values.append(
-                            DocumentField(
-                                _exact_python_string(
-                                    column["name"], "payload name"
-                                ),
-                                _payload_value(
-                                    _exact_python_string(
-                                        column["type"], "payload type"
-                                    ),
-                                    raw,
-                                ),
-                            )
-                        )
-                payload = Optional(values^)
+                payload = Optional(arrow_payload_fields(payload_schemas, descriptor["payloads"], row))
             mutations.append(
                 PointMutation(Int(ids[row]), 1, updates^, payload^)
             )
@@ -2320,20 +2305,11 @@ def _apply_arrow_buffers(
     if has_sparse and len(sparse_offsets) != row_count + 1:
         raise Error("Arrow sparse offsets length mismatch")
 
+    var payload_schemas = arrow_payload_schemas(descriptor["payloads"], row_count)
     for row in range(row_count):
         var vector = List[Float32](capacity=dimension)
         vector.extend(vectors[row * dimension : (row + 1) * dimension])
-        var fields = List[DocumentField]()
-        for payload in descriptor["payloads"]:
-            var raw = payload["values"][row].as_py()
-            if Bool(py=raw == Python.none()):
-                continue
-            fields.append(
-                DocumentField(
-                    String(py=payload["name"]),
-                    _payload_value(String(py=payload["type"]), raw),
-                )
-            )
+        var fields = arrow_payload_fields(payload_schemas, descriptor["payloads"], row)
         var sparse = List[SparseElement]()
         if has_sparse:
             var begin = Int(sparse_offsets[row])

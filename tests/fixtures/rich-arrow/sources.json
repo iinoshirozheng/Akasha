@@ -1,0 +1,877 @@
+{
+  "lance_revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+  "lance_sources": [
+    {
+      "path": "rust/lance-arrow/src/list.rs",
+      "sha256": "2c72248da01bb3319778ef501b51dad31d67a89673d433dbd9c3c48bcdc02a12"
+    },
+    {
+      "path": "rust/lance-arrow/src/struct.rs",
+      "sha256": "27057c3a70986314ba6047f3ad553d8105d0b39b50b3b84ccd721daf2ddb0b98"
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "arrow-array",
+      "version": "58.4.0",
+      "checksum": "ae33dad492b7df00a217563a7b0ef2874df68a0deea1b1a3acf628152f7f7a69",
+      "revision": null,
+      "identity": "crates.io:arrow-array@58.4.0",
+      "files": [
+        {
+          "path": "benches/boolean_array.rs",
+          "sha256": "a06d20f7f7bd689a4dddbd981545995ea8c0108b538422f290f5fe279912407c"
+        },
+        {
+          "path": "benches/decimal_overflow.rs",
+          "sha256": "770338d38e4625f695d81660f3d203f3fb299d0be1f6ad59e108ecff4a02705f"
+        },
+        {
+          "path": "benches/fixed_size_list_array.rs",
+          "sha256": "5346cbf9f2b9be7d453772d6a95e0eb8478996e985174fbf7277074e10169f7a"
+        },
+        {
+          "path": "benches/null_dict.rs",
+          "sha256": "d3cb27e6b400f1b4620da53a7ae80f7ebcd85f8a72fd4e2912f6738e93767762"
+        },
+        {
+          "path": "benches/occupancy.rs",
+          "sha256": "3e1a797ab9aa0b5cf29170ffdd71ff5f528a77c106b8d56f6317e754151ee9ee"
+        },
+        {
+          "path": "benches/record_batch.rs",
+          "sha256": "c7571435778cbf452fdb1ade4ce5eb47ff5ccf455393574fe4c1d77845c070cf"
+        },
+        {
+          "path": "benches/union_array.rs",
+          "sha256": "cf1df65113353ef5f44a8099613b1e6ffabec97e5eb9d486f2bdfe0901638ab7"
+        },
+        {
+          "path": "benches/view_types.rs",
+          "sha256": "e46da421aca53d0ac254e9113abbee1f08ae0d5242a8e3fc9eecf752f2e623ae"
+        },
+        {
+          "path": "src/arithmetic.rs",
+          "sha256": "6428b04aa7760e8c0159eb240664d1c67f46b6812677e67eea7795c4fe73c096"
+        },
+        {
+          "path": "src/array/binary_array.rs",
+          "sha256": "8844ef152078d57cc445718915212d199f2ef6218685c47d7f128dc71df9ffe9"
+        },
+        {
+          "path": "src/array/boolean_array.rs",
+          "sha256": "370e0872cb6beb7641745c49a78d69e833c6428f8fa823204da73fc47af1a934"
+        },
+        {
+          "path": "src/array/byte_array.rs",
+          "sha256": "30a3455bde1accb8c8bf54fe419428330142db5891f99190482a872c118d53c3"
+        },
+        {
+          "path": "src/array/byte_view_array.rs",
+          "sha256": "ec60117c5e60ab417f7653134a6fca70fb98fd49dc281778272927b49f67971f"
+        },
+        {
+          "path": "src/array/dictionary_array.rs",
+          "sha256": "27bc3a27f3fe2819c4d81d390557f48d4fcfb1ee879c5b8aa4d58cd4de85e950"
+        },
+        {
+          "path": "src/array/fixed_size_binary_array.rs",
+          "sha256": "fd1e81b3f1eefdf601f5c0e584747ca6f66ae4ffd271603c1b78e3545c25604e"
+        },
+        {
+          "path": "src/array/fixed_size_list_array.rs",
+          "sha256": "827718af9c41cc838a3a8ebd0a8a327d7468573ba6d00d1be3eb1c634fa5fe50"
+        },
+        {
+          "path": "src/array/list_array.rs",
+          "sha256": "87a46a159f0b6476c65a03ba8f73f0d5005d240733530b628e97565fc3c2f689"
+        },
+        {
+          "path": "src/array/list_view_array.rs",
+          "sha256": "8f14c00e18089b1691446b0e8bc6fd4b96ae107cceb7de5fceb3a93972255dfd"
+        },
+        {
+          "path": "src/array/map_array.rs",
+          "sha256": "35c85b68c734470cdf31004d471604d24e11b99bef8d02804bf35eaa210acc85"
+        },
+        {
+          "path": "src/array/mod.rs",
+          "sha256": "64308d3f7ca0271d57cff5c407323a6315374bba8542b7dbf98392979539b83b"
+        },
+        {
+          "path": "src/array/null_array.rs",
+          "sha256": "5f1ae207db27f21c3365d7771a2c1761a709dae5adb7ec13f35a8a2406404dfd"
+        },
+        {
+          "path": "src/array/primitive_array.rs",
+          "sha256": "d78ac867831864699353244465d577fd3b72ce620e04c9ed0c3b50265a4d49e7"
+        },
+        {
+          "path": "src/array/run_array.rs",
+          "sha256": "a25ebde5a651710742b0188e5f6323ec0282448ac36995f3b6e015427b63da30"
+        },
+        {
+          "path": "src/array/string_array.rs",
+          "sha256": "efeba5272e8940f0fb250e318b39f9199e899a8ac39114c542be55c4ab226cd6"
+        },
+        {
+          "path": "src/array/struct_array.rs",
+          "sha256": "efdfadbdc0418538038536057c7d44c57e3d29fb5a4986fb22993c98cfafe144"
+        },
+        {
+          "path": "src/array/union_array.rs",
+          "sha256": "8aebb3984b8c66cbebc282e8de2d20e36e39fc3d54f70a7caed5d34fd231f3c9"
+        },
+        {
+          "path": "src/builder/boolean_builder.rs",
+          "sha256": "df7560ff8aa076fe20cc5a7148d985315ca5186ac1e4c74092cd33b13cf59efb"
+        },
+        {
+          "path": "src/builder/buffer_builder.rs",
+          "sha256": "1197a612524acf7e79e78f98fb9e624ddb69daa9e444b5ec2926cf2cc1cefdb2"
+        },
+        {
+          "path": "src/builder/fixed_size_binary_builder.rs",
+          "sha256": "937ee89c445ff44b60ecb9e81450fe845a69f31c3c0e2b3f8dd4625c9a98bc58"
+        },
+        {
+          "path": "src/builder/fixed_size_binary_dictionary_builder.rs",
+          "sha256": "d46c2725e70c7a6c0f097f65fdaa7a314963ec80dbba6068c6512fbd100953b9"
+        },
+        {
+          "path": "src/builder/fixed_size_list_builder.rs",
+          "sha256": "7ea2d7168eb0f003298ba051f4a9951baaf1d9d527c8ac452922f800fe84dfae"
+        },
+        {
+          "path": "src/builder/generic_byte_run_builder.rs",
+          "sha256": "c328bd54b1e547038e6cde032064cec5141ac820167b1cb5445a2e8212e32d2b"
+        },
+        {
+          "path": "src/builder/generic_bytes_builder.rs",
+          "sha256": "df0a137fca3f1fa11e3d6257f8d411438799530ec0e4b102ee7eea363779eec0"
+        },
+        {
+          "path": "src/builder/generic_bytes_dictionary_builder.rs",
+          "sha256": "5166c1cba2b9f32bac92d6f0bd0a41671be5b89f6b52bbbd89717abd66adafc1"
+        },
+        {
+          "path": "src/builder/generic_bytes_view_builder.rs",
+          "sha256": "03af51a1eb35c3724248d5337cca987d8e29f4b0be5875833e426074d4454332"
+        },
+        {
+          "path": "src/builder/generic_list_builder.rs",
+          "sha256": "036227bf4f8aca9b01a8001587a6e183e8519c5994a07b5c893450a1530e39b1"
+        },
+        {
+          "path": "src/builder/generic_list_view_builder.rs",
+          "sha256": "707d365ff1ce08ae4ddf6f12c878b70c0bb72f356ee872dde624f665298dc901"
+        },
+        {
+          "path": "src/builder/map_builder.rs",
+          "sha256": "4f8f2abc2a47ca85f4151826e148cdc3766018f8a77f979cce0f2c22e93e151a"
+        },
+        {
+          "path": "src/builder/mod.rs",
+          "sha256": "895d9abc4be0fbfa8f09e3d804d0c29a2e63a70dc24e984f4070f9f6ada6610a"
+        },
+        {
+          "path": "src/builder/null_builder.rs",
+          "sha256": "5ba0774108e756a53c0e0ae04472909a855da2d2d8e2d452ad660943d42675ad"
+        },
+        {
+          "path": "src/builder/primitive_builder.rs",
+          "sha256": "ea774b603f6e523e79a1b7faf2092aca5724d95fbffe99956a266114bc89f1ff"
+        },
+        {
+          "path": "src/builder/primitive_dictionary_builder.rs",
+          "sha256": "a0d7cf6d97c89f9f0554086acc47bf8625d554250a158013b0c507301af29ff0"
+        },
+        {
+          "path": "src/builder/primitive_run_builder.rs",
+          "sha256": "ecf118d9a8dd0c714d0559e53fff2b4f8459c4c5a34b223133f16a7bf0f89225"
+        },
+        {
+          "path": "src/builder/struct_builder.rs",
+          "sha256": "1a07dc7549141f04b4f5bc514fcb70b33532796c22c38f9e2d72dae868b867ea"
+        },
+        {
+          "path": "src/builder/union_builder.rs",
+          "sha256": "f72bc58b07ac19ba5ac0e9a2cadf78de2f9bfae801fcdf52c5d29f3e3851ef26"
+        },
+        {
+          "path": "src/cast.rs",
+          "sha256": "b10269ac1359903ce4cdfc99b98d83f2eae8a836e5e4b42273be68735c543dce"
+        },
+        {
+          "path": "src/delta.rs",
+          "sha256": "1a2bf53772d5921481863d0e8f381343b8546e53ead78c98303ba3f4b2af6435"
+        },
+        {
+          "path": "src/ffi.rs",
+          "sha256": "5a7862d5410d5b21786e4e45a5734f8d8bf211b0422630c30b97b44d5bb814e6"
+        },
+        {
+          "path": "src/ffi_stream.rs",
+          "sha256": "4449e7b6b645e8a9a4f7a86abb20de685a075eeda6928b98de0c5ff97d2c97de"
+        },
+        {
+          "path": "src/iterator.rs",
+          "sha256": "97ff37ae21e5c0e2a77143132db86deb66981f4ed9a00695f33055978786ccf2"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "75d3ce821fd4ec1a3072b599204b587ab50d2255a54113b5591cb7d8bfd4f0a7"
+        },
+        {
+          "path": "src/nonblocking.rs",
+          "sha256": "d04757f2349a70c0e45e8bbed5055234d1441a02e70a007798badf117000fc03"
+        },
+        {
+          "path": "src/numeric.rs",
+          "sha256": "c33c17a60d2975ba308de5eef66c89c14d085c70f76e056a40c817462d880d0e"
+        },
+        {
+          "path": "src/record_batch.rs",
+          "sha256": "375cf2a786d4a819f43caacb7252bb6ab4d963ecf5c954cbf812149a9368ec7f"
+        },
+        {
+          "path": "src/run_iterator.rs",
+          "sha256": "2d87fa3499dee118acecb0bd47adac99fcc2ee230e90aab203551d2fc463e3b0"
+        },
+        {
+          "path": "src/scalar.rs",
+          "sha256": "02d76b47f065ce9d19ac9e70579372c4660e8bf908d9821cbbb38c49f2c29adb"
+        },
+        {
+          "path": "src/temporal_conversions.rs",
+          "sha256": "e0cbe0d1162670cb07f31901156125f2dc12b8d290147825ee1370af3a8797fb"
+        },
+        {
+          "path": "src/timezone.rs",
+          "sha256": "e1804a8bf351b48bf55018627076755fab1c836c364e951fa7fe0d349fcc2cf5"
+        },
+        {
+          "path": "src/trusted_len.rs",
+          "sha256": "38345d50859a7fadc406f12f521c7a20252454bef60a2682a731d04d0d698813"
+        },
+        {
+          "path": "src/types.rs",
+          "sha256": "980634004f2c19ad50181c6c1e193676ea8ddcdc1303d866269139b3767299fa"
+        }
+      ]
+    },
+    {
+      "name": "arrow-schema",
+      "version": "58.4.0",
+      "checksum": "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e",
+      "revision": null,
+      "identity": "crates.io:arrow-schema@58.4.0",
+      "files": [
+        {
+          "path": "benches/ffi.rs",
+          "sha256": "14432b5a9f7d29dd85deabca58021244523e916ea456cf993b347a4f4a9c8db3"
+        },
+        {
+          "path": "src/datatype.rs",
+          "sha256": "057f2157e07d675f985dc465565a9c86ae97f2f826841d67361f6fc3f39ebf5d"
+        },
+        {
+          "path": "src/datatype_display.rs",
+          "sha256": "012b1aceecf43a919d15023fe162e21ba38636a5bbfd2d7668da25cdf6cf8ce0"
+        },
+        {
+          "path": "src/datatype_parse.rs",
+          "sha256": "f8afd183edf6284cfb5fc4777f5da8db7f1199b276f68896c1e043971ba6b0b7"
+        },
+        {
+          "path": "src/error.rs",
+          "sha256": "ea0a3f25853ef5cbcbea9cc1f5da49f1fc46a4fd463e4f954c42189d3e9f172c"
+        },
+        {
+          "path": "src/extension/canonical/bool8.rs",
+          "sha256": "308e0d25bb8b15bb321c625cfdeeda4d9c6f4a8c9ca00c7a1e9d63f8de446e83"
+        },
+        {
+          "path": "src/extension/canonical/fixed_shape_tensor.rs",
+          "sha256": "ce74d469543ae6525130f570c7f453ecf8397a743880ffedcda7ccac42230f16"
+        },
+        {
+          "path": "src/extension/canonical/json.rs",
+          "sha256": "824275bc53d48f5c0d96b21ac511eb29f616ae8a50268f485a18b9e98b5ed221"
+        },
+        {
+          "path": "src/extension/canonical/mod.rs",
+          "sha256": "b34e38e9b4b18db82dc7aa2e127ce932018c3b77e35dcbe8c0a5380afec64422"
+        },
+        {
+          "path": "src/extension/canonical/opaque.rs",
+          "sha256": "4370bb4ead6364830a9158a3b93de47febf282c3e6e1e48cbb0acccc49663871"
+        },
+        {
+          "path": "src/extension/canonical/timestamp_with_offset.rs",
+          "sha256": "8da77204d275572cf1337db1d569368bbcd05dac05af3b7b6e16989050c84c25"
+        },
+        {
+          "path": "src/extension/canonical/uuid.rs",
+          "sha256": "e33dd70269c5747ee5a994d3212a659e9699d29b046abae84c90364a9eb8c357"
+        },
+        {
+          "path": "src/extension/canonical/variable_shape_tensor.rs",
+          "sha256": "b6897c2999355a6f8592815b8de39b29bc7e21ae6093283778fe28327d6c9aef"
+        },
+        {
+          "path": "src/extension/mod.rs",
+          "sha256": "05b6de4f0e2922b914221cf1b22a2aa91cee2d7a6b9cd4b47172ce8c16bcc9a8"
+        },
+        {
+          "path": "src/ffi.rs",
+          "sha256": "38bbcd822ed3a537af3adb6918bbd89ce2348f87215879c97c38731cfb81e7ca"
+        },
+        {
+          "path": "src/field.rs",
+          "sha256": "7aea498fb386d32b1aac87d2b08a9aff591c2f7e259d4c12ed5c8667828afae1"
+        },
+        {
+          "path": "src/fields.rs",
+          "sha256": "4882abd09049fc33c09f2886b831ce66270e49f8ec0bd2daa4708fad6051cb3a"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "fcf571d02309a9f0f1a60b3e54b9271619835e5525c4247d7b3743cdbee62942"
+        },
+        {
+          "path": "src/schema.rs",
+          "sha256": "0ce39e9a147c98fff1adc1c93517904592a3d8e33dc542164227d7596dcd13e9"
+        }
+      ]
+    },
+    {
+      "name": "arrow-buffer",
+      "version": "58.4.0",
+      "checksum": "b9552f96391c005e6ab449fa941420935e7e062489b12b8b1b08879b2163f5b5",
+      "revision": null,
+      "identity": "crates.io:arrow-buffer@58.4.0",
+      "files": [
+        {
+          "path": "benches/bit_mask.rs",
+          "sha256": "d3e6318de530f26c98cfe4c5c9fb0f3a8e2a1c41e7f6a781b83a453cedb766c8"
+        },
+        {
+          "path": "benches/i256.rs",
+          "sha256": "69d819f21ce8cc6b420d5d0a54b7949e573dab5d8321d410208fe22b71122556"
+        },
+        {
+          "path": "benches/mutable_buffer_repeat_slice.rs",
+          "sha256": "8c050441ba9edf22e60f498f8d3bc788741953c043ccf0c49864f1aa03c9dff7"
+        },
+        {
+          "path": "benches/offset.rs",
+          "sha256": "0f40623c19af9342649fd79a5c46ffa5a4e4b8e5987ae50dbead5690a225f4cb"
+        },
+        {
+          "path": "src/alloc/alignment.rs",
+          "sha256": "e43131f060bab7763e706865c6aaf4c5f5ea2b2af2adb4f922100428e6236125"
+        },
+        {
+          "path": "src/alloc/mod.rs",
+          "sha256": "d42326da63b7747056c217f5a51b74e919bb88c943df1bfb1a95155aa9c0bef8"
+        },
+        {
+          "path": "src/arith.rs",
+          "sha256": "e0d5015e659876705cdd638e54f8f7aa3fa69dde71870b092c8fa6fe025397f2"
+        },
+        {
+          "path": "src/bigint/div.rs",
+          "sha256": "4965f535fee00f14cc80b2815a16281d684c872d06ba06a6c332a08a5f27df73"
+        },
+        {
+          "path": "src/bigint/mod.rs",
+          "sha256": "c87a2051496470ae199b17dafd27f3b42e7abceefca50a131669f51796bed373"
+        },
+        {
+          "path": "src/buffer/boolean.rs",
+          "sha256": "11cea5649d40b642bbcfc9db0f89005b8f52081040b4c9bc66c2a69982d52cfc"
+        },
+        {
+          "path": "src/buffer/immutable.rs",
+          "sha256": "3f10e81efa242387b11f4355ff7a509f9d0d672c1acbe682edac7142592a38ff"
+        },
+        {
+          "path": "src/buffer/mod.rs",
+          "sha256": "e4d1ac9ec079818bd64a7ea5dfab5fe253a50c54293d2e724bc15f4b71db8709"
+        },
+        {
+          "path": "src/buffer/mutable.rs",
+          "sha256": "344d455292944f18f87d87d241612be935471e1d4a2fa96726575e85863e0e4d"
+        },
+        {
+          "path": "src/buffer/null.rs",
+          "sha256": "6e575ae740b6cfa8b95608e12e9b8b18fa58ff04bcd64df621040c6f5fc1bf65"
+        },
+        {
+          "path": "src/buffer/offset.rs",
+          "sha256": "db35f2934394225ba0ea2c11291ace451cdb3d95706e6bcd90dcae5e73dba9cf"
+        },
+        {
+          "path": "src/buffer/ops.rs",
+          "sha256": "aa90a247f5090f8e801654334ba2a7fb4f57bcdc24d27ccf82387109722fb352"
+        },
+        {
+          "path": "src/buffer/run.rs",
+          "sha256": "c2b5d797b9e9939798e73dca0ee0f3e523dd205462033825a0633f06f34cfff9"
+        },
+        {
+          "path": "src/buffer/scalar.rs",
+          "sha256": "fecd4593c3ea7f3a1c30822040e32024cd117d5b2abaaa9a1dc177b89d27ea58"
+        },
+        {
+          "path": "src/builder/boolean.rs",
+          "sha256": "27741e0cbe0fac523714b7ae9fa5d37b999d677c2b54c9dc6bc64a16c839b48d"
+        },
+        {
+          "path": "src/builder/mod.rs",
+          "sha256": "830080bec7f61f0e4a71271bf37b933e742bcfe87a4fab89f13273209a447b19"
+        },
+        {
+          "path": "src/builder/null.rs",
+          "sha256": "074140bf22154b482f156076a2e35f30f44da96484dcf1ac55b2ab4030dbcea5"
+        },
+        {
+          "path": "src/builder/offset.rs",
+          "sha256": "c429edcf40db78262448375994146e309bd113f1ca00d986094a5a5d43f90ded"
+        },
+        {
+          "path": "src/bytes.rs",
+          "sha256": "77fa7219ae49504b95fe345047a3358d4f130b353628213b2f16d3378f4bbe46"
+        },
+        {
+          "path": "src/interval.rs",
+          "sha256": "7bcf3bf269379598069fbfba5fca0777000ab8462b5a8f048a1c1dbb2835c180"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "0701eec0e0895b1f6ecd4ece7a473b5ef99b39b8cfeb8018f0c374d54795305c"
+        },
+        {
+          "path": "src/native.rs",
+          "sha256": "8a9466f26a7fa53a73b21ab93910b55a44ddaca47ef727e25573545d276bd4e4"
+        },
+        {
+          "path": "src/pool.rs",
+          "sha256": "8a6a396005c6cd9c2f4970de004bb3a982eb4782373d9862eda0af3c038f996b"
+        },
+        {
+          "path": "src/util/bit_chunk_iterator.rs",
+          "sha256": "7e230332c65d6232d00efac4f8bcbb9520aff79b413da04840cc8b7d56cb9405"
+        },
+        {
+          "path": "src/util/bit_iterator.rs",
+          "sha256": "d6b5dca8fe9aeb700562673b1b04e6f7b9c43f03f5e4ac98f11c4f84eab9287f"
+        },
+        {
+          "path": "src/util/bit_mask.rs",
+          "sha256": "e92325e7bc4d4a6f31197450ca6fda7bcb8e7a3efaf622a7501cb8b6025352d0"
+        },
+        {
+          "path": "src/util/bit_util.rs",
+          "sha256": "3d1e4ce49bf1bd004e7b927ce6b6420e0675983dde0d8f605ee25596050672a9"
+        },
+        {
+          "path": "src/util/mod.rs",
+          "sha256": "46e839a701661e452928d676f4b7dd20d3e455c063b7e880fe75ba74629c178d"
+        }
+      ]
+    },
+    {
+      "name": "arrow-data",
+      "version": "58.4.0",
+      "checksum": "2b24852db04738907e06c04ea61e42fe7fda962a34513022dc0d0e754fb7976b",
+      "revision": null,
+      "identity": "crates.io:arrow-data@58.4.0",
+      "files": [
+        {
+          "path": "src/byte_view.rs",
+          "sha256": "0dd180994f35c738c88b89a9345fd348b357f4428da92f6f2e247510d7ff5f5e"
+        },
+        {
+          "path": "src/data.rs",
+          "sha256": "b22fda962430ae62d42a0a007eaf2f0e82ae10356e4954cfba91f93641382753"
+        },
+        {
+          "path": "src/decimal.rs",
+          "sha256": "6f7017217e6ee9157cc73ef91e0875ea3c90540b772fbd13a633ee848122e9a0"
+        },
+        {
+          "path": "src/equal/boolean.rs",
+          "sha256": "13dfce12e9dd2220da4e5ec9fc08a32588b460488e5c7293bb43bc361b365421"
+        },
+        {
+          "path": "src/equal/byte_view.rs",
+          "sha256": "b2827cb3ff6b84c3c00616625bfdef191726f663079090c0f930d9d975fabdc8"
+        },
+        {
+          "path": "src/equal/dictionary.rs",
+          "sha256": "c82ef433a161190183e67d727ca1334b5dd5dd0ab9e00acfc118f7f82e7fbacf"
+        },
+        {
+          "path": "src/equal/fixed_binary.rs",
+          "sha256": "3036070834e80b5ea3cc8c6bad59bffe15eba32818dd042be546d24d67f46a8e"
+        },
+        {
+          "path": "src/equal/fixed_list.rs",
+          "sha256": "ffac0b7aeed0834a2d8ad4eb2c5155c2ee79986b242b89bb1c2968b5da1da1e5"
+        },
+        {
+          "path": "src/equal/list.rs",
+          "sha256": "54f703bf0ae09966854470e9f92fa6bb8039ff4daf307a27c94f8696e3bd51f6"
+        },
+        {
+          "path": "src/equal/list_view.rs",
+          "sha256": "0637419720389e3ee9b0b36e0946c272705fd29b1a53e9ed467d12fa5c8d52d4"
+        },
+        {
+          "path": "src/equal/mod.rs",
+          "sha256": "1fc457ffb411198e50da56d1a866ba6a1b7f6fd342b30096d2b48eb29ce76362"
+        },
+        {
+          "path": "src/equal/null.rs",
+          "sha256": "b6feab8ce04ec2b85e93a67e2333c5bc7cc4169b8acb98f2af66d812f8df867e"
+        },
+        {
+          "path": "src/equal/primitive.rs",
+          "sha256": "975eae9c54e92eff5d744a4df60f013be2102b1789f4c5ab535fac24ad5651f1"
+        },
+        {
+          "path": "src/equal/run.rs",
+          "sha256": "6c2260c28a360e233e5a34ce52cab28a5d929dcd636e7d10f367e9ebe5fa454e"
+        },
+        {
+          "path": "src/equal/structure.rs",
+          "sha256": "f52ac0326aebc2ca2230de182fa60d2d82785298ca045f0c5720bbbed24d488e"
+        },
+        {
+          "path": "src/equal/union.rs",
+          "sha256": "2de73d055d79d8f79a01a0f386303b3e8c4b6e4f2630dfb0c6902fd61820bf33"
+        },
+        {
+          "path": "src/equal/utils.rs",
+          "sha256": "adb2589bea2ddb7a0b2a6b173dd189b70793c325a26fda244a9781b883450a77"
+        },
+        {
+          "path": "src/equal/variable_size.rs",
+          "sha256": "22eaac0957d0724e57fa4480b9b2b987bb995b81ddf5ea13584fd7058e96c9a5"
+        },
+        {
+          "path": "src/ffi.rs",
+          "sha256": "8a80d7d25637700bcf20960c0584a31f531086bada2d4f42da399025144cc081"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "da363ea926b382c8737a80010fcca27aba8b8db2f1e5781b678e6ec6071e2600"
+        },
+        {
+          "path": "src/transform/boolean.rs",
+          "sha256": "8b21eb31108c5ea71c4182ea64813b27b5afdefa5414f0547a0fa96da8ebd21b"
+        },
+        {
+          "path": "src/transform/fixed_binary.rs",
+          "sha256": "5580bb123d03555b2f50b13ffa12309ebbc604bba3b3946269c7151205295f29"
+        },
+        {
+          "path": "src/transform/fixed_size_list.rs",
+          "sha256": "e298cf1e9133546f8cb72e0f1f9b8d853faa2493e0f5a32b550da2eeaf07e47d"
+        },
+        {
+          "path": "src/transform/list.rs",
+          "sha256": "cb56e8179d7fed0f5e12aa38965c9280720d05bc3bcbc35968538415ff535096"
+        },
+        {
+          "path": "src/transform/list_view.rs",
+          "sha256": "eecc32c326b30174b7cdec3251ace09da81745b2df92a3aee2b34962208abcb4"
+        },
+        {
+          "path": "src/transform/mod.rs",
+          "sha256": "6b0ad7d09b6c503c023a41285d8cd3b45f6f0995116ff41132cfd750088ba17e"
+        },
+        {
+          "path": "src/transform/null.rs",
+          "sha256": "c49272fcddfc97e622e5e64ec97e253cce04f3d54aeb2539d125fa24927d7a63"
+        },
+        {
+          "path": "src/transform/primitive.rs",
+          "sha256": "5f30dfec97a5269e28f821c6961004d9bbb9268cc30332908f62bf17ae87c2e4"
+        },
+        {
+          "path": "src/transform/run.rs",
+          "sha256": "e84dc4c10d1836ee6ce8deff445bae4f58fe16ecabc886e6a0273da13e51960f"
+        },
+        {
+          "path": "src/transform/structure.rs",
+          "sha256": "18d6b5a459d92a41c6fcddac00dd954ab6054c0d83429da4065a8653a4e3829c"
+        },
+        {
+          "path": "src/transform/union.rs",
+          "sha256": "20b4b858958022343fa8f04826e3ec4985808f43c43d4ec4f3fe377e96e86414"
+        },
+        {
+          "path": "src/transform/utils.rs",
+          "sha256": "279471531e250204bd63473101deade5e64a198e5d0a4c450036f04b45a79663"
+        },
+        {
+          "path": "src/transform/variable_size.rs",
+          "sha256": "ce928c511d8d7cbbfe44915c235b481d95bb932af06a5fede6083c901f0e2da9"
+        }
+      ]
+    },
+    {
+      "name": "arrow-json",
+      "version": "58.3.0",
+      "checksum": "205ca2119e6d679d5c133c6f30e68f027738d95ed948cf77677ea69c7800036b",
+      "revision": null,
+      "identity": "crates.io:arrow-json@58.3.0",
+      "files": [
+        {
+          "path": "benches/json_reader.rs",
+          "sha256": "9d74153ce644aae5ac774aea6f12a2eba8887a4945b7727a4e0da486c3e63308"
+        },
+        {
+          "path": "benches/json_writer.rs",
+          "sha256": "c383d1478b03ff685777d2ed52b79340c53e40799e512ee130ab69035f38988b"
+        },
+        {
+          "path": "benches/serde.rs",
+          "sha256": "151f0107e83370b0dce6c041aaedbdc2db5bf7b5e8c0527a683bc0f7ed963822"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "6e9f6247048c39ff2688ae53fa2d7293d5e1a950d9c61a8b46abf41556cdda80"
+        },
+        {
+          "path": "src/reader/binary_array.rs",
+          "sha256": "b0b55199acbda7440bf284edf8f1781da322d72a9234d28fc2a430ab597d304c"
+        },
+        {
+          "path": "src/reader/boolean_array.rs",
+          "sha256": "58edb6c14621aa3bb991d474543114eec59454f9ead5ea28918265ee5cc67961"
+        },
+        {
+          "path": "src/reader/decimal_array.rs",
+          "sha256": "b9c80a70b383204ec63200384853b576386f297918f9d5bcf790e3334ff9ef52"
+        },
+        {
+          "path": "src/reader/list_array.rs",
+          "sha256": "3570ffecab26d63418217af9b7e0a3e7c3e076754123a8ceadfed489e5e4b87c"
+        },
+        {
+          "path": "src/reader/map_array.rs",
+          "sha256": "487f708a2e8c359f1b6e2690b9426f4ed82dbc3ec524e5c7693ec44fd4167ad9"
+        },
+        {
+          "path": "src/reader/mod.rs",
+          "sha256": "558969c521344717613047337f123f8fcdf6e94749d2723b9d9b602aabea635a"
+        },
+        {
+          "path": "src/reader/null_array.rs",
+          "sha256": "cf6d4ab2ca311256e5fe86dff228fca6b9004a4e9e4b00ce93ede67c8f8fb125"
+        },
+        {
+          "path": "src/reader/primitive_array.rs",
+          "sha256": "b62a65b02331e9e41a0f019113e57f53e640620e3103053668da6ffa6d4e61b7"
+        },
+        {
+          "path": "src/reader/run_end_array.rs",
+          "sha256": "63dc89b48a073692e1b0dd417f34a75decc2cfae081dbaf9d073124c685be6a9"
+        },
+        {
+          "path": "src/reader/schema.rs",
+          "sha256": "b0ec494b8ef8eaaeaeb8bd76826bf8d3c87cfd453633bfe3e2cfdf7911054239"
+        },
+        {
+          "path": "src/reader/serializer.rs",
+          "sha256": "2e9f1ebaba8109eed45492a7893681758f77cad719869db6bda7bf95dd59ae80"
+        },
+        {
+          "path": "src/reader/string_array.rs",
+          "sha256": "e98d5e705f8e2874a7bb87e48ae7f84355513a714c80dc3d1b7e24b6b6bb7841"
+        },
+        {
+          "path": "src/reader/string_view_array.rs",
+          "sha256": "05983f2ade20e077ff98d6acc3fc982d458eb2577c384421714653926771726c"
+        },
+        {
+          "path": "src/reader/struct_array.rs",
+          "sha256": "38fe86bb1e4a75528c8a6927378fa5bd9158d17dad1836e151dda0c71cb6f50f"
+        },
+        {
+          "path": "src/reader/tape.rs",
+          "sha256": "7870a68cdedcc058c199f8091c492a1cac4e2d3280c31cab9a8297879c3689b5"
+        },
+        {
+          "path": "src/reader/timestamp_array.rs",
+          "sha256": "f63853a0ccbff74a6eede0cd5444902a16d51a8c63ba1bbb2e73a8354ff3a38a"
+        },
+        {
+          "path": "src/reader/value_iter.rs",
+          "sha256": "f2433722f765f15fc29cb876b3a66e810228c54d544a0e1288ab4803a3d7860a"
+        },
+        {
+          "path": "src/writer/encoder.rs",
+          "sha256": "4463b171c7441dc6b435df26920fdf613dce5bbe0018fae94f5bdd462e5dceda"
+        },
+        {
+          "path": "src/writer/mod.rs",
+          "sha256": "2f9ceb4ec49f885e105e9c8252c64fd41694b9c4c172bf14e01057a4c7f1906e"
+        }
+      ]
+    },
+    {
+      "name": "arrow-ipc",
+      "version": "58.4.0",
+      "checksum": "29a908a11fcfb3fb2f6730f4ac15e367bc644e419155e96238f68cf3adde572b",
+      "revision": null,
+      "identity": "crates.io:arrow-ipc@58.4.0",
+      "files": [
+        {
+          "path": "benches/ipc_reader.rs",
+          "sha256": "5b7bd5de02afe36268d99001890f4a8acf228d5869af1be9384e51496c570175"
+        },
+        {
+          "path": "benches/ipc_writer.rs",
+          "sha256": "83d1ae54a1b877055390f13454c1fecb983e2b26df1fad3e6bc8f0e9fb4a56b0"
+        },
+        {
+          "path": "src/compression.rs",
+          "sha256": "7dbc702558abc50b8155fd84f93524ce08e5468ec6c0c4885c7f98db0ee9144b"
+        },
+        {
+          "path": "src/convert.rs",
+          "sha256": "36a1d44d1ece4bfa1347c4483469f21f145e0e2308f249c6fd32c477f939b3fb"
+        },
+        {
+          "path": "src/gen/File.rs",
+          "sha256": "a3d6db68ef5c3a661781d7affd0798f00fd8cd579cde216f9cc8ac3be57de019"
+        },
+        {
+          "path": "src/gen/Message.rs",
+          "sha256": "34de329442ccc7cf8aa680a68414a2bca87105988ffe78334078c4c8055acb91"
+        },
+        {
+          "path": "src/gen/Schema.rs",
+          "sha256": "eb44e418d226cb4901cfc341f3def1738e5c14e175814bff5cc3eb3755bf95b3"
+        },
+        {
+          "path": "src/gen/SparseTensor.rs",
+          "sha256": "89aba36f97e7d7d530f4af4ca3b01d066fe5e554a806a97ab557ba47432a1be3"
+        },
+        {
+          "path": "src/gen/Tensor.rs",
+          "sha256": "8d1838b259a84f65dd111d90928a7d5399cbcfeb76d0b2d49802b38b18d1700f"
+        },
+        {
+          "path": "src/gen/mod.rs",
+          "sha256": "e75e6355f4fe05da56f1601e9dedf9657b020977889f9276103a109f532733ab"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "6808a9e6e8e8c9f2ff68db695bc9573d87a459213f50fb49bf6ce258dd85625d"
+        },
+        {
+          "path": "src/reader/stream.rs",
+          "sha256": "cf19e649c464d8f59ceabcd8ed15c04696fcfb6344ad5dd7c929af55678c2fb2"
+        },
+        {
+          "path": "src/reader.rs",
+          "sha256": "d27d205e98d2158515f6d2ceab7059b38142441fba3059e0b750e27009890ff7"
+        },
+        {
+          "path": "src/tests/delta_dictionary.rs",
+          "sha256": "2b2ee01196b4d13f7bfe6b5615306537af43db82fe8d4d27d82d40c909b2cc39"
+        },
+        {
+          "path": "src/tests/mod.rs",
+          "sha256": "bc41e9df42de9ebd21af2da32306ef2a705e22c4f8731cbcdea2f837b3804029"
+        },
+        {
+          "path": "src/writer.rs",
+          "sha256": "1a5a79912bd82cd0d941ee851e8407ccbb6c175537481a2d457742bc0e9eacda"
+        }
+      ]
+    },
+    {
+      "name": "arrow-select",
+      "version": "58.4.0",
+      "checksum": "c58da39eb3d8350ad4a549e5c2bc49284dac554016c69829310350f1731b0aad",
+      "revision": null,
+      "identity": "crates.io:arrow-select@58.4.0",
+      "files": [
+        {
+          "path": "src/coalesce/byte_view.rs",
+          "sha256": "d8ab68045733e7dc01c08aff03a60fe1865075318473307dbd9d2746e4fbea5d"
+        },
+        {
+          "path": "src/coalesce/generic.rs",
+          "sha256": "8b2b3d911521d0222bf9b93779f0f0f1f688b33f511b2cef69726c607ab217d3"
+        },
+        {
+          "path": "src/coalesce/primitive.rs",
+          "sha256": "59ac94e96bf0ab82ed209dc813a7d75edaa25291536d473d7d2269f5a5dcca97"
+        },
+        {
+          "path": "src/coalesce.rs",
+          "sha256": "b00913a7edc39cf00252242d14b83cb91816be375eedd09587dfda860e37a92a"
+        },
+        {
+          "path": "src/concat.rs",
+          "sha256": "5f86ccc3c658531cfc655889fb1cfe8446f493d2d54136e633c949efd86f7246"
+        },
+        {
+          "path": "src/dictionary.rs",
+          "sha256": "7bebafda4d94f88197a73e196f0faa419dc0b904e99075a1ab3c482127e1a6b7"
+        },
+        {
+          "path": "src/filter.rs",
+          "sha256": "e7c12f8e8a298bdcb92c0d34fd5f1a7442ecc76416b637c06382270cc8ffea4d"
+        },
+        {
+          "path": "src/interleave.rs",
+          "sha256": "b6c32d51cc2ce39287b091084c195bf141f7584561d4409e679059222be93d0d"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "b0417fcf23ea530bf2f7c03c421bd440bb413bda1f98ba39a542f4d6f4eb728d"
+        },
+        {
+          "path": "src/merge.rs",
+          "sha256": "c8ef3620664ca4cb8b3466d85afcc58d05f2a2efdd2267ed007fb77b002f7bd2"
+        },
+        {
+          "path": "src/nullif.rs",
+          "sha256": "065467dd86324734dd959123cd10004c117424a4f3e5e01a8cefec4f55654a73"
+        },
+        {
+          "path": "src/take.rs",
+          "sha256": "5f4c244d5e9530d77426ed2031854c3b6face426f68446f173a84b1e1c42145a"
+        },
+        {
+          "path": "src/union_extract.rs",
+          "sha256": "a0faf93b1f86fd80cd4a3557872dc8120cb5ea8225a8449075e87a293109218e"
+        },
+        {
+          "path": "src/window.rs",
+          "sha256": "4703faef8c3f36f09a37756394f0a407d6e1258558aeadd73b712beffc4c0d2b"
+        },
+        {
+          "path": "src/zip.rs",
+          "sha256": "cb84a2ac9169cafcb092bba0e4268102fdc4979d3d1b5dc25bd8817ad417bf05"
+        }
+      ]
+    }
+  ],
+  "generator_sha256": "6a2fc9156ee6a980905f1f1568b27d3ea2f10dd8464e9c752938b11154ca4399",
+  "scaffold_sha256": "87fe5a2e3a1797206cb0d45f5c64ca15245fa40c39adb10f0a86c6e7d4b54afe",
+  "lock_sha256": "79a1b968550fac66df5da00bb87dbae3ce28e5c67f94dddcc4d682cd03776bc7",
+  "files": {
+    "values.arrow": "70218b6b5219c75ce3e3fef2ab8351b31eb8034e61d2ca5c3923f8b1cd63d470",
+    "expected.json": "f4eda7a9887e36a5d669a0aba96ffeba696b32c021b05b3c061ae20ad716085e"
+  }
+}

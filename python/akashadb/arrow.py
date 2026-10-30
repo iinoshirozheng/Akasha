@@ -27,6 +27,9 @@ class ArrowBatchLease:
             raise RuntimeError("pyarrow is required for Arrow C Data import") from error
         if not hasattr(producer, "__arrow_c_array__"):
             raise TypeError("producer does not implement Arrow C Data protocol")
+        if isinstance(producer, pa.RecordBatch):
+            from .arrow_payload import validate_c_field_names
+            validate_c_field_names(producer.schema)
         schema_capsule, array_capsule = producer.__arrow_c_array__()
         batch = pa.RecordBatch._import_from_c_capsule(schema_capsule, array_capsule)
         return cls(batch)
@@ -81,9 +84,9 @@ def upsert_point_record_batch(
     """Commit native vector and payload columns in one atomic WAL batch.
 
     Columns: id, optional vector/sparse, vectors.<name>, payload.<name>.
-    Omitted vectors remain unchanged, null vectors are removed, and empty
-    sparse/multivector values stay present. Payload columns replace the payload;
-    without payload columns it is preserved. Input buffers are borrowed for this
+    Each upsert replaces the point: omitted vectors and payload fields are absent.
+    Null vectors are absent; empty sparse/multivector values stay present.
+    Supplied payload nulls are stored as explicit null. Input buffers are borrowed for this
     synchronous call and copied into native authority before returning.
     """
     from .arrow_points import point_descriptor
@@ -373,6 +376,7 @@ def scan_record_batches(
 def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
     import numpy as np
     import pyarrow as pa
+    from .arrow_payload import payload_descriptor
 
     if not isinstance(batch, pa.RecordBatch):
         raise TypeError("Arrow producer must yield one RecordBatch")
@@ -462,12 +466,6 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
             raise ValueError("sparse weights must be finite")
 
     payloads: list[dict[str, Any]] = []
-    type_names = {
-        pa.string(): "string",
-        pa.int64(): "int",
-        pa.float64(): "float",
-        pa.bool_(): "bool",
-    }
     for name in names:
         if not name.startswith("payload."):
             continue
@@ -475,10 +473,7 @@ def _validated_descriptor(collection: Collection, batch: Any) -> dict[str, Any]:
         if not field_name or "\x00" in field_name:
             raise ValueError("payload field name is invalid")
         array = batch.column(name)
-        kind = type_names.get(array.type)
-        if kind is None:
-            raise ValueError(f"unsupported payload Arrow type for {name}: {array.type}")
-        payloads.append({"name": field_name, "type": kind, "values": array})
+        payloads.append({"name": field_name, "array": payload_descriptor(array, batch.schema.field(name))})
 
     return {
         "row_count": batch.num_rows,

@@ -1,0 +1,143 @@
+[
+  {
+    "payload.i8": -128,
+    "payload.i16": -32768,
+    "payload.i32": -2147483648,
+    "payload.i64": -9223372036854775808,
+    "payload.u8": 0,
+    "payload.u16": 0,
+    "payload.u32": 0,
+    "payload.u64": 0,
+    "payload.f32": -0.0,
+    "payload.f64": -0.0,
+    "payload.bool": true,
+    "payload.text": "",
+    "payload.large_text": "字",
+    "payload.null": null,
+    "payload.list": [
+      1.5
+    ],
+    "payload.large_list": [
+      "α",
+      null
+    ],
+    "payload.object": {
+      "required": 7
+    },
+    "payload.nested": [
+      {
+        "required": 7
+      },
+      null
+    ],
+    "payload.fixed_required": [
+      7
+    ],
+    "payload.fixed_masked": [
+      1.0,
+      2.0
+    ],
+    "payload.empty_object": {},
+    "payload.empty_fixed": []
+  },
+  {
+    "payload.i8": null,
+    "payload.i16": null,
+    "payload.i32": null,
+    "payload.i64": null,
+    "payload.u8": null,
+    "payload.u16": null,
+    "payload.u32": null,
+    "payload.u64": null,
+    "payload.f32": null,
+    "payload.f64": null,
+    "payload.bool": null,
+    "payload.text": null,
+    "payload.large_text": null,
+    "payload.null": null,
+    "payload.list": null,
+    "payload.large_list": [],
+    "payload.object": null,
+    "payload.nested": [],
+    "payload.fixed_required": null,
+    "payload.fixed_masked": null,
+    "payload.empty_object": {},
+    "payload.empty_fixed": []
+  },
+  {
+    "payload.i8": 127,
+    "payload.i16": 32767,
+    "payload.i32": 2147483647,
+    "payload.i64": 9223372036854775807,
+    "payload.u8": 255,
+    "payload.u16": 65535,
+    "payload.u32": 4294967295,
+    "payload.u64": 18446744073709551615,
+    "payload.f32": 1.5,
+    "payload.f64": 1.5,
+    "payload.bool": false,
+    "payload.text": "中文\u0000😀",
+    "payload.large_text": "",
+    "payload.null": null,
+    "payload.list": [],
+    "payload.large_list": [
+      "β"
+    ],
+    "payload.object": {
+      "required": 9
+    },
+    "payload.nested": [
+      {
+        "required": 9
+      }
+    ],
+    "payload.fixed_required": [
+      9
+    ],
+    "payload.fixed_masked": [
+      3.0,
+      4.0
+    ],
+    "payload.empty_object": {},
+    "payload.empty_fixed": []
+  },
+  {
+    "payload.i8": 0,
+    "payload.i16": 0,
+    "payload.i32": 0,
+    "payload.i64": 0,
+    "payload.u8": 0,
+    "payload.u16": 0,
+    "payload.u32": 0,
+    "payload.u64": 0,
+    "payload.f32": 16777216.0,
+    "payload.f64": 1.7976931348623157e+308,
+    "payload.bool": true,
+    "payload.text": "é",
+    "payload.large_text": "\u0000",
+    "payload.null": null,
+    "payload.list": [
+      4.5
+    ],
+    "payload.large_list": [
+      ""
+    ],
+    "payload.object": {
+      "required": 10
+    },
+    "payload.nested": [
+      {
+        "required": 10
+      }
+    ],
+    "payload.fixed_required": [
+      10
+    ],
+    "payload.fixed_masked": [
+      5.0,
+      6.0
+    ],
+    "payload.empty_object": {},
+    "payload.empty_fixed": []
+  }
+]

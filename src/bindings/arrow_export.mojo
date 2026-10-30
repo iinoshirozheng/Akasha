@@ -381,6 +381,8 @@ def _export_column(
             var slot = -1
             for index in range(len(fields)):
                 if fields[index].name == column.payload_name:
+                    if fields[index].value.kind() == 5:
+                        break
                     slot = index
                     if Int(fields[index].value.kind()) != column.kind - 5:
                         raise Error(

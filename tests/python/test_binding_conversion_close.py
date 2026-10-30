@@ -160,7 +160,9 @@ def _exercise_close(path, case):
         if case.endswith("early"):
             descriptor = ClosingDict(descriptor, "ids")
         else:
-            descriptor["payloads"] = [dict(name="x", type="int", values=[ClosingScalar()])]
+            from akashadb.arrow_payload import payload_descriptor
+            payload = payload_descriptor(pa.array([1], type=pa.int64()), pa.field("x", pa.int64()))
+            descriptor["payloads"] = [dict(name="x", array=ClosingDict(payload, "values"))]
         method = native.apply_point_arrow_batch if named else native.apply_arrow_batch
         operation = lambda: method(descriptor)
     elif case.startswith("scanner_"):

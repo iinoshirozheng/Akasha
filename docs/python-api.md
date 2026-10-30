@@ -313,6 +313,29 @@ and keeps the imported owner alive through the synchronous Mojo call. Primitive
 buffers reach the compiled binding without an intermediate Python list.
 Persistence still copies accepted values once into WAL/MemTable-owned memory.
 
+Both `upsert_record_batch` and `upsert_point_record_batch` accept payload columns
+of Arrow null, boolean, signed/unsigned integer (8/16/32/64 bits), floating
+(16/32/64 bits), UTF-8/large UTF-8, struct, list/large list and fixed-size list.
+Nested types compose. Signed integers become native Int64, unsigned integers
+become UInt64, and floating values become finite Float64. Values in masked null
+parents are ignored. Valid parents enforce their child fields' nullability.
+Supplied null cells are stored as **explicit payload null**, including top-level
+cells; older scalar ingress omitted these fields. An absent column is absent.
+Every row is a whole-point upsert, and an invalid row rejects the complete batch.
+
+Struct keys preserve declaration order. Arrow C Data names are NUL-terminated:
+RecordBatch schemas containing NUL in a field name are rejected before exporting
+capsules, preventing silent truncation. Empty nested struct keys and NUL inside
+string **values** are supported. Other producers must supply valid C Data names.
+Dictionary, map, union, binary payload, decimal, temporal and extension types
+are not accepted by this typed JSON adapter. Payload depth/node/byte and encoded
+size limits still apply. This imports typed values without retaining the input
+table schema; it does not implement schema evolution or Lance files.
+
+Rich typed output and schemaless `arrow.json` extension interop remain separate
+pending work. Current scanner payload projections still accept the four scalar
+names below. [Source fixtures](../tests/fixtures/rich-arrow/README.md).
+
 `search_record_batch(collection, request)` runs any `SearchRequest` directly into
 owned `int64` ID and `float32` score columns. It uses the same limits, filters,
 errors and ordering as `Collection.search`, without staging Python result rows.
@@ -367,7 +390,7 @@ their ragged lengths. The existing writer rejects empty sparse vectors.
 
 Payload remains schemaless in storage, so the caller specifies projected field
 types as `string`, `int`, `float` or `bool`. Output names use the `payload.` prefix.
-Missing fields become null; a present value with a different type raises and
+Missing fields and explicit null become Arrow null; a present non-null value with a different type raises and
 closes the scanner. No preliminary whole-collection schema discovery occurs.
 An empty `columns` projection is supported, including zero-column batches with
 their row counts preserved. `filter` accepts the same expression dictionaries

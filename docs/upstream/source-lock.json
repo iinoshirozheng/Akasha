@@ -141,6 +141,97 @@
       "license_sha256": "ddb606a4226673241b8dedb155a25b271178d028a2bf74c90ee47fe495f4d9bc",
       "upstream": "https://github.com/georust/robust",
       "used_by": "D03e-geo-polygon"
+    },
+    {
+      "name": "arrow-array",
+      "version": "58.4.0",
+      "checksum": "ae33dad492b7df00a217563a7b0ef2874df68a0deea1b1a3acf628152f7f7a69",
+      "revision": null,
+      "identity": "crates.io:arrow-array@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": false
+    },
+    {
+      "name": "arrow-schema",
+      "version": "58.4.0",
+      "checksum": "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e",
+      "revision": null,
+      "identity": "crates.io:arrow-schema@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": false
+    },
+    {
+      "name": "arrow-buffer",
+      "version": "58.4.0",
+      "checksum": "b9552f96391c005e6ab449fa941420935e7e062489b12b8b1b08879b2163f5b5",
+      "revision": null,
+      "identity": "crates.io:arrow-buffer@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": false
+    },
+    {
+      "name": "arrow-data",
+      "version": "58.4.0",
+      "checksum": "2b24852db04738907e06c04ea61e42fe7fda962a34513022dc0d0e754fb7976b",
+      "revision": null,
+      "identity": "crates.io:arrow-data@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": false
+    },
+    {
+      "name": "arrow-json",
+      "version": "58.3.0",
+      "checksum": "205ca2119e6d679d5c133c6f30e68f027738d95ed948cf77677ea69c7800036b",
+      "revision": null,
+      "identity": "crates.io:arrow-json@58.3.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": true
+    },
+    {
+      "name": "arrow-ipc",
+      "version": "58.4.0",
+      "checksum": "29a908a11fcfb3fb2f6730f4ac15e367bc644e419155e96238f68cf3adde572b",
+      "revision": null,
+      "identity": "crates.io:arrow-ipc@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": true
+    },
+    {
+      "name": "arrow-select",
+      "version": "58.4.0",
+      "checksum": "c58da39eb3d8350ad4a549e5c2bc49284dac554016c69829310350f1731b0aad",
+      "revision": null,
+      "identity": "crates.io:arrow-select@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "provenance": "tests/fixtures/rich-arrow/sources.json",
+      "reference_only": true
     }
   ]
 }

@@ -2207,6 +2207,93 @@
         "tests/mojo/test_payload_filter.mojo": "2d1749d696ca8aa5dcb9d02e6be0600392a81c372b7d7ff8a4635f46b980936e",
         "tests/python/test_point_filter.py": "6c195c8e33ab9cbd393229255e14d9659c7909c65fd97c32d861424983d65ab6"
       }
+    },
+    {
+      "id": "D01c1-rich-arrow-ingress",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "path": "rust/lance-arrow/src/list.rs",
+          "sha256": "2c72248da01bb3319778ef501b51dad31d67a89673d433dbd9c3c48bcdc02a12"
+        },
+        {
+          "path": "rust/lance-arrow/src/struct.rs",
+          "sha256": "27057c3a70986314ba6047f3ad553d8105d0b39b50b3b84ccd721daf2ddb0b98"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/arrow-Apache-2.0.txt"
+      ],
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "dependency_provenance": "tests/fixtures/rich-arrow/sources.json",
+      "source_units": [
+        "Lance StructArrayExt::normalize_slicing / pushdown_nulls",
+        "Lance ListArrayExt::filter_garbage_nulls / trimmed_values / trimmed_offsets",
+        "Arrow primitive/boolean/byte array value and slice accessors",
+        "Arrow StructArray::try_new_with_length / slice",
+        "Arrow GenericListArray::try_new / value / slice",
+        "Arrow FixedSizeListArray::try_new_with_length / value_offset / slice"
+      ],
+      "targets": [
+        "src/bindings/arrow_payload.mojo",
+        "src/bindings/arrow_export.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/arrow_payload.py",
+        "python/akashadb/arrow.py",
+        "python/akashadb/arrow_points.py"
+      ],
+      "adaptations": [
+        "Flat bounded native schema arena for Mojo ownership",
+        "Borrowed PyArrow physical buffers; active payload traversal and materialization in Mojo",
+        "JSON-compatible types widen to Int64/UInt64/finite Float64; typed input schema is not persisted",
+        "Explicit supplied top-level null replaces former omission; existing scalar output maps null and missing to Arrow null",
+        "NUL-containing field names rejected before RecordBatch C Data export; producer-supplied C Data names must meet Arrow contract",
+        "Native existing payload depth/node/byte and encoded-size limits; all-or-nothing existing point WAL batch",
+        "Reject unknown Arrow extension metadata rather than silently decoding its storage type"
+      ],
+      "oracle": "scripts/rich_arrow_reference.py",
+      "fixture": "tests/fixtures/rich-arrow/values.arrow",
+      "fixture_sha256": "70218b6b5219c75ce3e3fef2ab8351b31eb8034e61d2ca5c3923f8b1cd63d470",
+      "expected_fixture": "tests/fixtures/rich-arrow/expected.json",
+      "expected_sha256": "f4eda7a9887e36a5d669a0aba96ffeba696b32c021b05b3c061ae20ad716085e",
+      "lock_sha256": "79a1b968550fac66df5da00bb87dbae3ce28e5c67f94dddcc4d682cd03776bc7",
+      "status": "verified_native_ingress_slice_rich_export_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-rich-arrow-ingress-validation.md"
+      ],
+      "results": {
+        "reference_rows": 4,
+        "reference_columns": 22,
+        "reference_cells": 88,
+        "native_tests": 15,
+        "new_python_tests": 82,
+        "full_python_passed": 3330,
+        "full_python_skipped": 1,
+        "reproducible_ipc_json_lock": true
+      },
+      "remaining": [
+        "Recursive typed payload export and PyArrow projection types",
+        "Dynamic arrow.json missing/null/key/heterogeneous-value interop",
+        "Durable table schema/history and Lance format",
+        "All other full product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/bindings/arrow_payload.mojo": "1a4dbdd9f56cac3929fa91c226845ae7314fbcda7b5fd0bdfefdd720ceb5f6b4",
+        "src/bindings/arrow_export.mojo": "304d691d27bba07e2ab9d16105139441a74941b15116408f33ecc25e4f8bd546",
+        "src/bindings/python_module.mojo": "eb33e8acd49c4999f4d76937b3f734bf34ee74be3c6d6c8c74bb1966d571e01e",
+        "python/akashadb/arrow_payload.py": "801c6090decf065320229be8d52a04b0638487f0f137fa0d852f68bd17f58b73",
+        "python/akashadb/arrow.py": "2d15bd5d0ffbcf7df0a616b93f2fc538da574c3c6ea04ce975ddcd9f2fd6038a",
+        "python/akashadb/arrow_points.py": "147f4784afa292e71b55200a9e864399876bffff757377047842ad68c0eaf486",
+        "tests/mojo/test_arrow_payload.mojo": "04155b8d864526e940364848bc4a14e10995d0ada94fb0ee34b1330c59957ab6",
+        "tests/python/test_rich_arrow.py": "b85e46847c19acda245020b0a6faf6888a0203cf9569397f58683b46ffe51bba",
+        "tests/python/test_arrow_c_data.py": "5022214516dcff6fa11981a713072061a0309b18fd3eb9221e8a16853720d936",
+        "tests/python/test_binding_conversion_close.py": "6a5f0e4246e0355c5b305fb0b1ce9cd50808af4ff8503a65ff71629b1048b260",
+        "scripts/rich_arrow_reference.py": "6a2fc9156ee6a980905f1f1568b27d3ea2f10dd8464e9c752938b11154ca4399",
+        "scripts/rich_arrow_reference.rs": "87fe5a2e3a1797206cb0d45f5c64ca15245fa40c39adb10f0a86c6e7d4b54afe"
+      }
     }
   ]
 }

@@ -274,6 +274,24 @@ retriever and scorer together with real serde_json values. See
 Dedicated typed-index retrievers, date expressions and full protocols remain open;
 the subsequent geographic port is described below.
 
+### Typed Arrow payload ingress
+
+`src/bindings/arrow_payload.mojo` and `python/akashadb/arrow_payload.py` adapt
+Arrow array buffer access, child slicing and validity rules and Lance's null
+masking/garbage-list rules to Mojo-owned JSON values. Arrow Rust array, buffer,
+data and schema 58.4.0 are pinned by Lance's Cargo.lock. Apache Arrow copyright
+2016–2026 The Apache Software Foundation; Apache-2.0 license and original notice
+are retained in `docs/upstream/licenses/arrow-Apache-2.0.txt` and
+`docs/upstream/licenses/arrow-NOTICE.txt`. Lance's `rust/lance-arrow/src/list.rs`
+and `struct.rs` at `ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e` are Apache-2.0,
+copyright The Lance Authors; its license is retained in
+`docs/upstream/licenses/lance-Apache-2.0.txt`.
+
+The independent reference executable compiles those unchanged Lance units and
+uses actual Arrow IPC 58.4.0 / JSON 58.3.0 to produce fixtures. Rust remains a
+test-generation dependency only. Archive checksums, source hashes, adaptations
+and limits are recorded in `tests/fixtures/rich-arrow` and the port registry.
+
 ### Geographic point validation and formula distance
 
 `document/geo.mojo`, geographic formula integration and input conversion adapt
