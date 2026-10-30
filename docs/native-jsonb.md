@@ -827,8 +827,8 @@ the planned JSON index. It does not yet expose collection create-index/search.
 - `extract_json_index_batch(values, path)` accepts owned nullable `JsonbValue`
   slots and returns owned `JsonIndexValue(value, tag)` entries in row order.
 - `infer_json_index_type(batch, path)` reads the first non-null type tag. It
-  returns none for an all-null batch; the future stream trainer must choose
-  Utf8 only after exhausting the entire input, not after an empty/null prefix.
+  returns none for an all-null batch; the stream trainer below chooses Utf8
+  only after exhausting the entire input, not after an empty/null prefix.
 - `convert_json_index_batch(batch, target, path)` validates all tags before
   strict deserialization and returns owned nullable `LanceJsonResult` values.
 
@@ -844,9 +844,9 @@ text/binary bytes count toward that allocation bound. Binary-null and tag-null
 are preserved independently. Source nonfinite F64 values remain representable.
 
 The [validation report](research/2026-10-31-lance-json-index-input-validation.md)
-records source comparisons and exact scope. Target indexing, stream training,
-query matching and durable collection lifecycle remain in the
-[index plan](plans/2026-10-31-lance-json-index.md).
+records source comparisons and exact scope. The materialized target and stream
+trainer are documented below; query matching and durable collection lifecycle
+remain in the [index plan](plans/2026-10-31-lance-json-index.md).
 
 The next native dependency is `akasha.index.roaring_rows.RoaringRowSet`:
 point `insert`/`remove` return whether the set changed; `contains`, `count`,
@@ -904,5 +904,52 @@ search and remap operations; the standard sort checks before/after rather than
 inside its implementation. See [validation](research/2026-10-31-lance-bitmap-validation.md).
 
 This API does not yet persist collection indexes or select indexes in collection
-queries. Stream inference/default type, planner matching, durable lifecycle and
-public Python/Arrow/service index APIs remain in the index plan.
+queries. The stream trainer is documented below; planner matching, durable
+lifecycle and public Python/Arrow/service index APIs remain in the index plan.
+
+## Native JSON bitmap training
+
+`akasha.index.lance_json_stream.LanceJsonBitmapTrainer(path)` accepts incremental
+`push(values, ids)` calls, where values are nullable owned `JsonbValue` slots
+and IDs are UInt64. Empty batches are allowed and do not mean end-of-stream.
+Only the prefix through the first non-null inferred type is buffered as JSON;
+later batches convert directly to that fixed type. Call `finish()` at EOF to
+get an owned `LanceJsonBitmapIndex`. An entirely null/empty stream defaults to
+Utf8 at finish. Int64 followed by Float64 rejects; Float64 followed by Int64
+converts to Float64.
+
+```mojo
+from akasha.document.jsonb import JsonbValue
+from akasha.document.jsonb_reader import parse_jsonb
+from akasha.index.lance_json_stream import LanceJsonBitmapTrainer
+
+def example() raises:
+    var trainer = LanceJsonBitmapTrainer("$.price")
+    trainer.push([None, Optional(parse_jsonb("{price: 1.5}"))], [1, 2])
+    var index = trainer.finish()
+    var update = index.trainer()
+    update.push([Optional(parse_jsonb("{price: 2}"))], [3])
+    var updated = update.finish_update(index)
+```
+
+`index.target()` reports the learned target tag. `index.trainer()` retains that
+type, path and target limits: use `finish_update(index, old_filter=...)` to
+merge or `finish()` to build a replacement from a complete new input. An
+all-null rebuild with a learned type retains that type. A manually constructed
+trainer can also take `learned_type=Optional(target)`; update rejects an absent
+or mismatching type/path. `search` and `remapped` delegate to the bitmap target
+and preserve the wrapper path/type. All returned indexes own their state.
+
+A trainer closes on any failure, discards staged data and cannot be reused.
+Call `abort()` if the input reader fails. No failed or partial index is returned,
+and an old index is unchanged even when the final merge fails. The API performs
+no durable writes. Defaults are `max_rows=1_000_000`, `max_bytes=64*1024*1024`
+and `control=None` (optional native `QueryControl`); each batch is still capped
+at 65,536 rows.
+Prefix JSON storage and converted keys have separate logical byte limits.
+Converted keys remain materialized for sorting; this is not external sorting
+or a peak-memory guarantee. See [validation](research/2026-10-31-lance-json-stream-validation.md).
+
+Collection index definitions, planner selection, durable lifecycle and public
+Python/Arrow/service management remain unfinished. Generic Arrow passthrough
+columns and external sort/spill are also separate from this native bitmap API.

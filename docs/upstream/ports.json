@@ -4711,6 +4711,80 @@
         "Lance shard merge/file encoding/lazy IO/cache, other scalar target variants/types",
         "All full-product/platform/performance gates; no tuning"
       ]
+    },
+    {
+      "id": "D01c4l-lance-json-bitmap-stream",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/json.rs",
+          "sha256": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        }
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "infer_type_from_batch",
+        "extract_json_with_type_info",
+        "validate_json_types",
+        "convert_batch_by_type",
+        "convert_stream_by_type",
+        "execution_error",
+        "parse_json_path",
+        "extract_json_path_with_type",
+        "JsonIndexPlugin::train_index and JsonIndex::update/derive_index_params/remap/search orchestration inspected, not executed wholesale in oracle"
+      ],
+      "targets": [
+        "src/akasha/index/lance_json_stream.mojo"
+      ],
+      "adaptations": [
+        "Single-consumer push/finish preserves prefix inference and batch error order without Mojo async",
+        "Source-ported materialized bitmap target receives bounded converted keys; no external sort/spill claim",
+        "Fixed learned type/path reused for updates and rebuilds; old index remains immutable",
+        "Failed/finished/aborted trainers are closed; logical prefix and converted-key bounds and native controls",
+        "Oracle executes original inference/conversion streams with real Arrow/jsonb/futures and lazy extraction/transport/error adapters; row-address passthrough remains reference-only"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-json-stream/Cargo.lock": "8b8429234610ecfba867107c2a4e88ea401af21e711a091b059c9a30a6771811",
+        "tests/fixtures/lance-json-stream/README.md": "7a1b74f4fd4a2606de7208186a6372f35910430705254a7c96c4c18164ffc5a1",
+        "tests/fixtures/lance-json-stream/cases.json": "6030673d78d551455f8515c8877f4106e585b77b995c366f97c7d32e08d86e7e",
+        "tests/fixtures/lance-json-stream/sources.json": "a9e0ff9714efa9a893bdc5e3014994b2a35cb0acb05437aaff9d5d2c124f303b"
+      },
+      "status": "verified_native_json_bitmap_training_update_rebuild_stream_planner_durable_public_pending",
+      "verification": [
+        "docs/research/2026-10-31-lance-json-stream-validation.md"
+      ],
+      "results": {
+        "source_scenarios": 786,
+        "source_successful_streams": 593,
+        "source_conversion_errors": 188,
+        "source_inference_errors": 5,
+        "source_successful_batches": 2842,
+        "source_successful_rows": 2283,
+        "native_tests_passed": 15,
+        "reproduced_fixture_files": 4
+      },
+      "verified_file_sha256": {
+        "src/akasha/index/lance_json_stream.mojo": "be1a657809b55607171e0f23ef91465e43ff62f029ef50566e49312632daf423",
+        "tests/mojo/test_lance_json_stream.mojo": "def1697b3ddef62f514c83dfaea31f2b80bbc8968e375b4f1421d5a7525f44bf",
+        "scripts/lance_json_stream_reference.py": "bb6591466ce37935400de02f729b6467e1ebd522576da256b92eadac6f09f1c7",
+        "scripts/lance_json_stream_reference.rs": "f6d41075c456c73d99e6c62bcfa66dbfc9956d1aa817508ccde07c985e8683ad"
+      },
+      "remaining": [
+        "Exact function/path matching, residual predicates and planner selection",
+        "Authoritative index catalog/migration/durable lifecycle/public collection APIs",
+        "External sort/spill, generic Arrow passthrough, disk-backed streaming publication, shard/file/cache and other scalar variants",
+        "All full-product/platform/performance gates; no tuning"
+      ]
     }
   ]
 }

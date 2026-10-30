@@ -141,6 +141,28 @@ Also retain these source target operations in the remaining index inventory:
 - [ ] Lance bitmap file encoding, lazy loading/cache and all relevant options.
 - [ ] Other supported scalar targets and their types/lifecycle contracts.
 
-Next is the JSON stream wrapper, then exact query matching/residuals and the
-shared durable index catalog migration/public collection path described above.
+The JSON stream wrapper is now verified below. Next is exact query matching/
+residuals and the shared durable index catalog migration/public collection path.
 No application runtime/format change or optimization in this target slice.
+
+## Verified native JSON stream wrapper (2026-10-31)
+
+`lance_json_stream.mojo` now connects incremental JSON batches to the bitmap
+index: only the inference prefix stays as extracted JSON, later batches convert
+under the fixed learned type, and EOF alone defaults to Utf8. Source errors and
+prefix stopping match **786 source scenarios (593 success / 193 errors)**.
+The successful source streams contain 2,842 batches / 2,283 converted rows;
+all rows reach the native index under their original UInt64 identities.
+
+A native trainer retains the path/type for updates and rebuilds. Search/remap
+use the verified target, failed/aborted/finished trainers cannot be reused,
+and errors during conversion or final index merge preserve old indexes.
+**15 native tests** pass; four source fixture files reproduce exactly.
+[Evidence](../research/2026-10-31-lance-json-stream-validation.md).
+
+The target still sorts bounded materialized keys. Original external sort/spill,
+generic Arrow passthrough, disk-backed publication, shard/file/cache operations
+and other scalar target variants remain open; the overall target/lifecycle stage
+is therefore not relabeled fully complete. Next: source exact function/path
+query matching and residual delegation, followed by authoritative catalog/index
+migration and public collection integration. No durable format change or tuning.

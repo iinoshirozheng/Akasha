@@ -425,3 +425,17 @@ methods with real Arrow/DataFusion/roaring and transport/store adapters only;
 these crates are test infrastructure, not new runtime dependencies. Pinned
 source/unit/archive hashes and adaptation scope are in `tests/fixtures/lance-bitmap`
 and `docs/upstream/ports.json`.
+
+### Lance JSON bitmap training stream
+
+`src/akasha/index/lance_json_stream.mojo` adapts prefix inference/reconstruction,
+per-batch conversion and learned-type update/rebuild orchestration from Lance
+`scalar/json.rs` at `ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e` (The Lance Authors,
+Apache-2.0; existing `docs/upstream/licenses/lance-Apache-2.0.txt`). It reuses
+the existing Lance/jsonb and bitmap ports. The single-consumer push/finish API,
+bounded converted-key storage and closed-on-error lifecycle are native
+adaptations; DataFusion executor/spill and durable publication remain separate.
+Original source methods run in `tests/fixtures/lance-json-stream`'s oracle with
+actual Arrow/jsonb/futures and transport/error adapters, not a runtime Rust or
+Python index engine. Source, dependency and adaptation records are in the port
+registry and fixture metadata.
