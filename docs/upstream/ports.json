@@ -3876,6 +3876,108 @@
         "scripts/jsonb_selector_reference.py": "7cba0a68ecb3535e8e8fc551dd4644c19e5e8dbbe414503879cab1db21d7768d",
         "scripts/jsonb_selector_reference.rs": "7e550a559c9d700a84d8887ed14ad32f133d3f0d887399dd396b916acd01ddcd"
       }
+    },
+    {
+      "id": "D01c4d-jsonb-display",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false,
+        "rust_profile": "release"
+      },
+      "sources": [
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/jsonpath/path.rs",
+          "sha256": "9d6e537588a476863c0c7ea264af204d84e97146d304034921ea701c3accf421"
+        },
+        {
+          "identity": "crates.io:ethnum@1.5.3",
+          "path": "src/intrinsics/native/divmod.rs",
+          "sha256": "1c4ff2ab9ab6d2e883358a902a70af3e70776c71f06f9ad4149fcc64ec3d210b"
+        }
+      ],
+      "dependency_provenance": "tests/fixtures/jsonb-display/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/ethnum-MIT.txt",
+        "docs/upstream/licenses/zmij-MIT.txt"
+      ],
+      "source_units": [
+        "Number::fmt, format_decimal_i128 and format_decimal_i256",
+        "JsonPath/Path/Index/ArrayIndex/RecursiveLevel/parsed PathValue/operators/Expr Display",
+        "ethnum native udiv256_by_128_to_128 and udivmod4 single-word-divisor branch"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb_display.mojo",
+        "src/akasha/document/jsonb_path.mojo",
+        "src/akasha/document/jsonb_selector.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "reuses_ports": [
+        "D01c3h-zmij-f64-formatting",
+        "D01c4b-jsonb-number"
+      ],
+      "adaptations": [
+        "Owned native text with output/visit budgets and cooperative QueryControl",
+        "Source decimal panics become native errors; successful release overflow/cast quirks preserved",
+        "Mojo primitive integer formatting replaces itoa buffer API, checked by original-source text oracle",
+        "Existing parsed AST scope; no additional manually constructed Rust Raw/Decimal literal variants",
+        "Behavior-identical AST validator moved to path module for selector/formatter reuse",
+        "Internal unsigned division scope is 256-bit dividend by nonzero 128-bit divisor, not the full ethnum division API"
+      ],
+      "oracle": "scripts/jsonb_display_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-display/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-display/README.md": "3a0d1b07ae07535b9152e27a486767fd16297382bbca161a3c8f15a6b326fb49",
+        "tests/fixtures/jsonb-display/cases.json": "4373ea857fb2b0b752c55e965dfc9eb9137980a4f68df70a86c5856e13cd8197",
+        "tests/fixtures/jsonb-display/sources.json": "40a5ad6d5b99ef2f9eda67f7087a147e24d5344a2ff6b33fcea0bad3246d9ecf"
+      },
+      "status": "verified_native_number_and_parsed_ast_display_lance_consumers_collection_queries_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-display-validation.md"
+      ],
+      "results": {
+        "numbers": 88716,
+        "number_panics": 9058,
+        "paths": 8525,
+        "formatted_paths": 4238,
+        "path_parse_errors": 4275,
+        "path_panics": 12,
+        "divisions": 11692,
+        "number_texts": 79658,
+        "float_bit_patterns": 71175,
+        "new_native_tests": 5,
+        "native_tests_passed": 21,
+        "full_python_passed": 3681,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock": true
+      },
+      "remaining": [
+        "Actual Lance first-text/multi-match/typed extraction and conversion consumer integrations",
+        "Remaining Number conversion APIs; collection JSONB filters/projections/indexes",
+        "Remaining C/distributed query contracts and SQL UDFs with real SQL engine",
+        "All remaining full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_display.mojo": "6da0af326e8f5fa251a8ae070338a1515044e431e473b5f4fc68666a9236d79e",
+        "src/akasha/document/jsonb_path.mojo": "7e222ff998c15c2238babd92ded7e30d4d14e7373379b4483b2cfec2852af11e",
+        "src/akasha/document/jsonb_selector.mojo": "43500b9e0188c6fb0bd4e14d118f1ebc56853e00fe2e373153a684ce6e83bd9b",
+        "src/akasha/document/__init__.mojo": "2b461ab00be4cf8e45d087c5e399f36abd9e56784a7cbefcc1bcf630d2055b3e",
+        "tests/mojo/test_jsonb_display.mojo": "4355d1d5a9b47de056b1a044351a98b0e4fd4565438f0ddc66c5602d1414ecc0",
+        "scripts/jsonb_display_reference.py": "bfefabdb72df115caa8abbddf0c0fbf06bf060cc1a26f83fbbad9eed81cdac7f",
+        "scripts/jsonb_display_reference.rs": "9c0b6b177b94b14c0f2961e32db5f6382410f1f29951bd77419a56ffd7772d38"
+      }
     }
   ]
 }

@@ -379,6 +379,14 @@
             "src/core/databend/builder.rs",
             "src/owned.rs"
           ]
+        },
+        {
+          "port": "D01c4d-jsonb-display",
+          "provenance": "tests/fixtures/jsonb-display/sources.json",
+          "source_units": [
+            "src/number.rs",
+            "src/jsonpath/path.rs"
+          ]
         }
       ]
     },
@@ -415,7 +423,7 @@
       "used_by": "D01c3i-jsonb-text-writer",
       "license_file": "docs/upstream/licenses/ethnum-MIT.txt",
       "license_sha256": "6b2702e491e967c99d7e0191bb0ec6b3b91db5c703a71c3b952c9e271ba46ac2",
-      "ported_scope": "I256/U256 F64 conversion and fixed-word multiply/power for JSONB numbers",
+      "ported_scope": "I256/U256 F64 conversion, fixed-word multiply/power and unsigned 256/128 division for JSONB numbers",
       "integrations": [
         {
           "port": "D01c4b-jsonb-number",
@@ -423,6 +431,13 @@
           "source_units": [
             "src/intrinsics/native/mul.rs",
             "src/int/api.rs"
+          ]
+        },
+        {
+          "port": "D01c4d-jsonb-display",
+          "provenance": "tests/fixtures/jsonb-display/sources.json",
+          "source_units": [
+            "src/intrinsics/native/divmod.rs"
           ]
         }
       ]

@@ -88,3 +88,21 @@ reopen and ownership/read-only failures are verified. See
 Continue source AST/Number Display, Lance consumers, collection query/filter/
 projection integration and step 5 indexes/protocol boundaries. This checkpoint
 does not complete steps 3–5, D01 or any full-product acceptance gate.
+
+## Source Display checkpoint: D01c4d
+
+Native Number and the complete existing parsed-AST Display now match original
+jsonb: 88,716 typed Number inputs, 4,238 parsed path texts from 8,525 parser
+cases, and 11,692 ethnum 256/128 division results. Source panics are errors;
+source successful quirks (including unescaped paths and decimal edge outputs)
+remain exact. Twenty-one native tests, rebuilt Python kernel and full Python
+**3,681 passed / 1 skip** pass; source verification and fixture/metadata/lock reproduction pass.
+See [evidence](../research/2026-10-30-jsonb-display-validation.md).
+
+Continue step 4's actual Lance consumers and collection integration. Lance
+Arrow `JsonArray::json_path` returns the first match rendered through RawJsonb;
+DataFusion `json_extract` uses select_value and wraps multiple matches. Its
+typed extraction, key lookup and scalar conversions have additional contracts
+in `lance-datafusion/src/udf/json.rs`; port them with source execution evidence
+instead of conflating the two consumers. Complete step 5 indexes/protocols and
+remaining Number conversions without declaring D01 or the full product finished.

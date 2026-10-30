@@ -335,8 +335,8 @@ nonfinite-to-null rule above. See [formatting validation](research/2026-10-30-zm
 `JsonbPath.parse(String)` and `JsonbPath.parse_bytes(Span[UInt8])`, exported from
 `akasha.document`, build an owned bounded AST using jsonb 0.5.6's complete
 path/expression grammar. `JsonbSelector` below executes it; parsing alone does
-not execute a query. Source AST/Number Display and collection-level JSONB
-filters/projections/indexes remain pending.
+not execute a query. Native AST/Number Display is available below;
+collection-level JSONB filters/projections/indexes remain pending.
 
 ```mojo
 from akasha.document import JsonbPath
@@ -486,5 +486,47 @@ Malformed mutable native ASTs, invalid inputs and exhausted limits raise errors.
 
 This value-level API also works on values read after WAL/checkpoint reopen.
 It does not yet add a collection JSONB predicate/projection, JSONB index, SQL
-UDF, Arrow transformation API or C/distributed query operation. Source Display
-helpers also remain separate work.
+UDF, Arrow transformation API or C/distributed query operation.
+
+## Native source Display
+
+`format_jsonb_number_display(number, *, max_bytes=512)` and
+`format_jsonb_path(path, *, max_bytes=65_536, max_work=1_000_000, control=None)`
+are exported by `akasha.document`. They implement the original jsonb 0.5.6
+Number and parsed-AST Display contracts, independently of `format_jsonb`.
+
+```mojo
+from akasha.document import JsonbNumber, JsonbPath
+from akasha.document import format_jsonb_number_display, format_jsonb_path
+
+def main() raises:
+    print(format_jsonb_number_display(JsonbNumber.floating(1.0)))  # 1.0
+    print(format_jsonb_path(JsonbPath.parse("$ [1,last + 2]")))  # $[1, last+2]
+```
+
+Number Display preserves Decimal scale and coefficient text instead of converting
+to Float64. Floating values use the existing original zmij formatter, including
+`NaN`, `inf`, `-inf` and signed zero. Integer output is exact. The source's
+Decimal edge behavior is retained: Decimal128 minimum with nonzero scale may
+produce two minus signs; Decimal256's split/cast rules can truncate or wrap high
+digits beyond its intended decimal range. This is the source formatter's output,
+not a promise of valid JSON or numeric round trips.
+
+Source Decimal lookup/padding panics and Decimal256 minimum negation become
+`JSONB Number Display source panic` errors. These Display limits do not change
+which binary values can be stored, selected or rendered through `format_jsonb`.
+
+Path Display normalizes whitespace, operators, index groups and selected
+parentheses as source does. Field names and string literals are written without
+escaping: a quoted literal field containing a dot can display as a dotted path;
+quotes/control characters may make the displayed text unparsable. Use the
+original input or owned AST when identity matters. The existing AST represents
+the complete parsed grammar; manually constructed Rust Raw/Decimal literal
+variants outside that AST are not added by this formatter.
+
+Results own their text. Mutable ASTs share the selector's structure/depth/text
+validation before traversal. Output bytes and rendered visits are bounded;
+repeated DAG children consume work on each visit. Native QueryControl applies
+cancellation, deadlines and candidate budgets. Both formatters reject nonpositive
+limits; Number formatting has fixed bounded internal output before its byte
+limit check. These are native helpers, with no new Python/protocol API.

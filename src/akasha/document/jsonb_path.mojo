@@ -551,3 +551,62 @@ struct _PathParser[origin: ImmOrigin](Movable):
         except err:
             self.depth -= 1
             raise err
+
+
+def _validate_path(path: JsonbPath) raises:
+    # The parser emits a postorder arena. Check public mutable ASTs before
+    # indexing: child ordering also rejects cycles without recursive validation.
+    if len(path.nodes) > JsonbPath.MAX_NODES or len(path.roots) > JsonbPath.MAX_NODES:
+        raise Error("JSONB selector AST resource limit exceeded")
+    var heights = List[Int](length=len(path.nodes), fill=0)
+    var work = len(path.roots)
+    var text_bytes = 0
+    for i in range(len(path.nodes)):
+        ref node = path.nodes[i]
+        var kind = node.kind
+        var count = len(node.children)
+        work += count + 1
+        text_bytes += node.text.byte_length()
+        if work > JsonbPath.MAX_WORK or text_bytes > JsonbPath.MAX_BYTES:
+            raise Error("JSONB selector AST resource limit exceeded")
+        if kind < 0 or kind > 17:
+            raise Error("InvalidJsonPath")
+        var height = 1
+        for child in node.children:
+            if child < 0 or child >= i:
+                raise Error("InvalidJsonPath")
+            height = max(height, heights[child] + 1)
+            var child_kind = path.nodes[child].kind
+            if kind == 8:
+                if child_kind != 16 and child_kind != 17:
+                    raise Error("InvalidJsonPath")
+            elif kind == 11 or kind == 15:
+                if child_kind > 9:
+                    raise Error("InvalidJsonPath")
+            elif kind == 17:
+                if child_kind != 16:
+                    raise Error("InvalidJsonPath")
+            elif child_kind < 11 or child_kind > 15:
+                raise Error("InvalidJsonPath")
+        if height > JsonbPath.MAX_DEPTH:
+            raise Error("JSONB selector AST depth exceeded")
+        heights[i] = height
+        if (kind <= 7 or kind == 12 or kind == 16) and count != 0:
+            raise Error("InvalidJsonPath")
+        if (kind == 9 or kind == 10 or kind == 14) and count != 1:
+            raise Error("InvalidJsonPath")
+        if (kind == 13 or kind == 17) and count != 2:
+            raise Error("InvalidJsonPath")
+        if kind == 3 and (node.a < -1 or node.a > 255 or node.b < -1 or node.b > 256):
+            raise Error("InvalidJsonPath")
+        if kind == 12 and (node.a < 0 or node.a > 5 or (node.a == 1 and node.bits > 1)):
+            raise Error("InvalidJsonPath")
+        if kind == 13 and (node.a < 0 or node.a > 13):
+            raise Error("InvalidJsonPath")
+        if kind == 14 and (node.a < 0 or node.a > 1):
+            raise Error("InvalidJsonPath")
+        if kind == 16 and (node.a < 0 or node.a > 1 or node.b < Int(Int32.MIN) or node.b > Int(Int32.MAX)):
+            raise Error("InvalidJsonPath")
+    for root in path.roots:
+        if root < 0 or root >= len(path.nodes) or path.nodes[root].kind > 10:
+            raise Error("InvalidJsonPath")

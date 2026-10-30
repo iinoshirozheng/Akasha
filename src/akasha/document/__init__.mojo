@@ -12,3 +12,4 @@ from .jsonb_writer import format_jsonb
 from .jsonb_path import JsonbPath, JsonbPathNode
 from .jsonb_number import JsonbNumber
 from .jsonb_selector import JsonbSelector
+from .jsonb_display import format_jsonb_number_display, format_jsonb_path

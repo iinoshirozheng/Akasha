@@ -4,7 +4,11 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c4c：完整已解析 JSONB 語法的六種 selector 模式已移植到 Mojo，公開 Python `JsonbValue.query` 可直接查詢值；保留來源排序、重複、unknown、數值序列化及錯誤行為。
+- 最新 D01c4d：Number／完整已解析 JSONB AST 的原生 Display 已依 jsonb／ethnum 來源移植，保留精確 Decimal 文字、路徑原始輸出規則與上游邊界行為；查詢及格式化共用 AST 驗證。
+  88,716 組數值、8,525 組路徑與 11,692 組來源除法對照通過；21 項相關 Mojo、重建 Python 模組與完整 Python **3,681 通過／1 跳過**，來源產物可重現。
+  [驗證](docs/research/2026-10-30-jsonb-display-validation.md)／[用法](docs/native-jsonb.md#native-source-display)。下一步為 Lance consumer、完整轉型與 collection 過濾／投影／索引整合；完整 49 大項與效能門檻仍開放，尚未優化。
+
+- D01c4c：完整已解析 JSONB 語法的六種 selector 模式已移植到 Mojo，公開 Python `JsonbValue.query` 可直接查詢值；保留來源排序、重複、unknown、數值序列化及錯誤行為。
   64,856 組來源案例、389,100 組模式結果完成對照；1 組超過既有 codec 深度限制的來源成功結果明確拒絕。22 項相關 Mojo、52 項新增 Python 及完整 Python **3,681 通過／1 跳過**，fixture／metadata／lock 可逐 byte 重現。
   [驗證](docs/research/2026-10-30-jsonb-selector-validation.md)／[用法](docs/native-jsonb.md#jsonb-value-queries)。下一步為來源 Display、Lance consumer 與 collection 過濾／投影／索引整合；完整 49 大項與效能門檻仍開放，尚未優化。
 
