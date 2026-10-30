@@ -24,6 +24,8 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
+最新 D01c4b 已完成原生 JSONB Number 六種數值的比較與算術依賴，保留 jsonb 的整數轉型、Decimal 尺度／溢位與浮點規則。8,495 組單值、94,213 組雙值、2,404 組 wide 乘法、256 組冪次與 4,709 組含舊格式的數值 body 來源對照通過；17 項原生測試通過，產物可重現。見[數值驗證](2026-10-30-jsonb-number-validation.md)。完整 selector、Display、公開 query 與索引仍待完成；完整 49 大項與效能目標不變，尚未優化。
+
 最新 D01c4a 已完成 JSONB 路徑／運算式的原生語法依賴，8,525 組來源 AST／錯誤結果對齊，7 項原生測試通過；包含全部路徑型態、運算子與精確字面數值型別，與 Qdrant 路徑保持分開。見[parser 驗證](2026-10-30-jsonb-path-parser-validation.md)。選取執行器、完整數值比較／算術、公開 JSONB query 與索引仍待實作，不能將 parser 計為完整查詢功能；完整產品與效能目標維持開放。
 
 D01c3j 已完成 Arrow JSON／JSONB 的兩種匯入與原生 scanner 匯出，涵蓋 Utf8／LargeUtf8／StringView、巢狀 Struct／List／Map、null、metadata 與生命週期。24 項 Mojo、183 項指定 Python、完整 Python **3,629 通過／1 跳過**；20,757 組來源文字、28,901 組 JSONB binary／text 及 12 組直接執行 Lance 的巢狀轉換一致，產物可重現。見[Arrow JSON 驗證](2026-10-30-arrow-json-validation.md)。JSONB 路徑／索引、任意頂層鍵與完整 C／分散式邊界仍待完成；完整產品清單維持開放，尚未優化。

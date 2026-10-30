@@ -61,3 +61,15 @@ All 18 AST node kinds, all operators and literal categories are exercised,
 including 594 distinct literal Float64 bit patterns. This is not step 2–5 or
 public query completion. Continue Number semantics and the complete selector;
 do not substitute a restricted path-only executor for the documented scope.
+
+## Arithmetic/comparison dependency checkpoint: D01c4b
+
+Step 2's six Number variants are native and verified, including original
+negation/arithmetic/errors, exact scale comparison and source float fallback.
+Fixed-size words use ethnum's multiplication/power and Arrow's checked i256
+multiply, independently checked against original ethnum. Rust float remainder
+uses the equivalent native libm primitive rather than Mojo's floor modulo.
+8,495 unary inputs, 94,213 pairs, 2,404 wide products, every scale power and
+4,709 numeric codec/legacy bodies pass; 17 native tests and source reproduction
+pass. See [evidence](../research/2026-10-30-jsonb-number-validation.md).
+Continue steps 3–5 without reducing the selector or public-query scope.

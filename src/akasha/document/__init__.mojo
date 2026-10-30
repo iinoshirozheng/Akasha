@@ -10,3 +10,4 @@ from .jsonb import JsonbValue
 from .jsonb_reader import parse_jsonb, parse_jsonb_bytes
 from .jsonb_writer import format_jsonb
 from .jsonb_path import JsonbPath, JsonbPathNode
+from .jsonb_number import JsonbNumber

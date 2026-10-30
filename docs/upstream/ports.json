@@ -3649,6 +3649,107 @@
         "scripts/jsonb_path_reference.py": "f0cfd723421e143f603fc3e2500053ba446a345f6c485f6b0fdedf2c0d0f5f80",
         "scripts/jsonb_path_reference.rs": "9dcc78e883ff3f7e7fccbf9afc3a851c387fc0f3dab751650f853d6c1647f905"
       }
+    },
+    {
+      "id": "D01c4b-jsonb-number",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false,
+        "rust_profile": "release"
+      },
+      "sources": [
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "identity": "crates.io:ethnum@1.5.3",
+          "path": "src/intrinsics/native/mul.rs",
+          "sha256": "fe9db08dfc9c2c2a10744fec6b5c1a2d95be5af33c54991550256f74651d2b70"
+        },
+        {
+          "identity": "crates.io:ethnum@1.5.3",
+          "path": "src/int/api.rs",
+          "sha256": "9c62c114baad834e659c4eeb16a580a25a12f22a33cd6daf0dd047e8d89bb301"
+        },
+        {
+          "identity": "crates.io:ordered-float@5.3.0",
+          "path": "src/lib.rs",
+          "sha256": "e896f54f9a646ac3687055ea92bbf27b44ef1b01149e1a0fd007a4f286d2d4dd"
+        },
+        {
+          "identity": "crates.io:arrow-buffer@58.4.0",
+          "path": "src/bigint/mod.rs",
+          "sha256": "c87a2051496470ae199b17dafd27f3b42e7abceefca50a131669f51796bed373"
+        }
+      ],
+      "dependency_provenance": "tests/fixtures/jsonb-number/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/ethnum-MIT.txt",
+        "docs/upstream/licenses/arrow-Apache-2.0.txt",
+        "docs/upstream/licenses/arrow-NOTICE.txt",
+        "docs/upstream/licenses/ordered-float-MIT.txt"
+      ],
+      "source_units": [
+        "Number::as_f64/neg/add/sub/mul/div/rem/cmp and adjust_decimal_scales",
+        "ethnum native umulddi3/mul3 and I256::pow",
+        "Arrow bigint i256::checked_mul",
+        "ordered-float total NaN and signed-zero comparison"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb_number.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Fixed two-word coefficients replace Rust numeric enums while retaining variant/scale/bits",
+        "Equivalent source Arrow checked product avoids a division dependency, independently tested against ethnum",
+        "Existing source decimal conversion/codec reused; native libm fmod preserves Rust truncating remainder",
+        "Rust arithmetic NaNs compared by classification; literal conversion and all other numeric results compare exact bits"
+      ],
+      "oracle": "scripts/jsonb_number_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-number/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-number/README.md": "7afb839a0098c085100087940d33843677563cfc3a549c543a04a620fd52a524",
+        "tests/fixtures/jsonb-number/cases.json": "ca0b9858143b3ac7348dce0d9ff55243974b7d0b4b974eef401e74087a04c420",
+        "tests/fixtures/jsonb-number/sources.json": "10868b5701d49816f985b079a720d08172350767b5b467b05b5dfcaa4e9bebae"
+      },
+      "status": "verified_native_number_arithmetic_comparison_dependency_selector_public_queries_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-number-validation.md"
+      ],
+      "results": {
+        "unary": 8495,
+        "pairs": 94213,
+        "wide": 2404,
+        "powers": 256,
+        "numeric_bodies": 4709,
+        "arithmetic_errors": 25354,
+        "arithmetic_results": 471065,
+        "native_tests_passed": 17,
+        "new_native_tests": 4,
+        "reproduced_fixture_metadata_lock_license": true
+      },
+      "remaining": [
+        "Full selector output/evaluation modes and source Number/AST Display",
+        "Public native/Python/collection/filter/projection/index and remaining C/distributed query boundaries",
+        "Full Number conversion APIs beyond the expression arithmetic/comparison scope",
+        "All remaining full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_number.mojo": "3c796d85b48c6562fde946856d6eaaac113ec949f296dc6f367b0e1146aa8811",
+        "src/akasha/document/__init__.mojo": "0309f02d90b9f3b8107667ef19f95b9eca788e6aa73b050377595f77a807ce62",
+        "tests/mojo/test_jsonb_number.mojo": "712f81ef0e763fbc8fbc10f2e6cf88560fd629cce37b29086c1a3d6703d7b185",
+        "scripts/jsonb_number_reference.py": "a238f9a482f0a304beec9af6c1652e0c54c7726b18ba3ecbf10c3f842a166d72",
+        "scripts/jsonb_number_reference.rs": "18437f033bbe86eafc8f958b2fb3bf60a2ee45e8f1035f3056f44c6a87c25308"
+      }
     }
   ]
 }

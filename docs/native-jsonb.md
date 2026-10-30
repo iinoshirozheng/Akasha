@@ -5,7 +5,8 @@ ported from jsonb 0.5.6's databend backend, the backend used by pinned Lance.
 It can be stored in native collection payloads using `PayloadValue.jsonb(value)`.
 Python/HTTP/NDJSON also transport this type as complete source bytes. Native
 and Python text parsing support the original standard and extended profiles.
-Text rendering and `arrow.json` integration remain pending.
+Native/Python text rendering and Arrow JSON interchange are available below.
+JSONB query execution and indexing remain pending.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -24,7 +25,7 @@ def main() raises:
 
 An outer absent slot and a present JSON null are different states. Plain JSONB
 arrays contain values, including JSON null; they do not introduce an undefined
-element. The future Arrow extension boundary must preserve its own validity.
+element. The Arrow extension boundary preserves its independent validity.
 
 ## Native collection payloads
 
@@ -116,10 +117,12 @@ floating contract of ordinary `PayloadValue` or the serde_json reader.
 
 Decimal values use signed two's-complement big-endian unscaled bytes of width
 8, 16 or 32 and an unsigned 8-bit scale. The API preserves the complete source
-storage range; it does not yet provide decimal arithmetic or formatting.
+storage range. `JsonbNumber` below provides the source arithmetic/comparison
+rules; text rendering uses the source's floating conversion for decimals.
 Dates are signed days since the Unix epoch, timestamps signed microseconds,
 timezone offsets signed seconds, and intervals `(months, days, microseconds)`.
-These are binary codec fields, not calendar validation or formatting APIs.
+These constructors preserve binary codec fields; `format_jsonb` applies the
+source's calendar validation and formatting rules.
 
 Object construction sorts UTF-8 keys and rejects duplicates as the upstream
 ObjectBuilder does. Empty and NUL-containing keys/strings are supported. Raw
@@ -363,3 +366,44 @@ Limits are 65,536 input bytes, 65,536 AST nodes, 64 syntax/AST levels and
 resource adaptations, not claims about unbounded upstream inputs. See
 [path grammar validation](research/2026-10-30-jsonb-path-parser-validation.md)
 and the [complete query implementation plan](plans/2026-10-30-jsonb-path-source-port.md).
+
+## Native JSONB expression numbers
+
+`akasha.document.JsonbNumber` provides source Number comparison and arithmetic
+for Int64, UInt64, Float64 and Decimal64/128/256. Construct with `integer`,
+`unsigned`, `floating`, or `decimal(big_endian_bytes, scale)`, or convert a
+numeric `JsonbValue` with `from_value`. `to_value` returns a canonical JSONB
+number body; accepted legacy decimal bodies decode to the same numeric value.
+
+```mojo
+from akasha.document import JsonbNumber
+
+def main() raises:
+    var a = JsonbNumber.integer(-5)
+    var b = JsonbNumber.integer(2)
+    print(a.rem(b).as_f64())  # -1.0: source truncating remainder
+    print(a.cmp(b))          # -1, 0, or 1
+    var stored = a.add(b).to_value()
+```
+
+Methods are `neg`, `add`, `sub`, `mul`, `div`, `rem`, `cmp`, and `as_f64`.
+The fixed-size Number retains its variant between operations, including signed
+integer zero and floating bits. Serializing may canonicalize integer zero or
+NaNs as described above. It owns no input references.
+
+These are the original jsonb rules: mixed signed/unsigned arithmetic can cast
+before checking overflow; subtraction returns Int64; division returns Float64;
+binary arithmetic involving decimals uses source Float64 conversion. Decimal
+comparison instead promotes coefficients and adjusts scales exactly when the
+source checked multiplication succeeds, then uses its float fallback on overflow.
+The pinned release source wraps the scale power before checking multiplication.
+Decimal64/128 minimum negation wraps; Decimal256 minimum negation errors.
+NaNs sort equal and above infinity; positive and negative floating zero compare
+equal. Overflow and zero division raise the original source error messages.
+
+Floating remainder uses native libm `fmod`, matching Rust's truncating operation.
+Mojo 1.0 floor `%` and nearest-quotient `std.math.remainder` have different rules.
+Finite results, infinity and signed zero are compared bit-for-bit with Rust;
+arithmetic NaNs are compared by classification because their payload/sign are
+not a portable arithmetic guarantee. This API is a native selector dependency,
+not a public Python query executor. See [numeric validation](research/2026-10-30-jsonb-number-validation.md).
