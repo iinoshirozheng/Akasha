@@ -131,3 +131,22 @@ standard profiles rather than substituting the serde_json reader. Then complete
 step 5's native Arrow binary/text extension integration and step 6's full public
 acceptance. Full C/distributed/protocol value boundaries and the complete
 product ledger remain required; this binary transport slice does not close them.
+
+
+## Numeric dependency update: D01c3f
+
+Step 5's F64 conversion dependency is now ported from fast-float2 0.2.3:
+original short/disguised path, binary product path and long decimal path,
+including copied source tables, full/prefix APIs, exponent rollback, signed
+zero, nonfinite values and ties-to-even. The compiled source oracle matches
+15,191 inputs, including 801 dispatcher fallbacks and 12,162 independently
+forced long-decimal comparisons. Three native modules / 18 tests pass and
+fixture/table/license/lock metadata reproduce exactly. The existing serde_json
+numeric contract remains distinct. See the [report](../research/2026-10-30-fast-float-validation.md).
+
+The next implementation remains step 5: the actual jsonb standard and extended
+text grammar plus source text serialization. The source extended number path
+also accepts hexadecimal fractions and selects integer versus float according
+to its own rules; fast-float's token API alone does not implement that grammar.
+Then complete step 6's Arrow JSON extension integration and round trips.
+No complete D01, JSONB text/Arrow or product capability is closed by this helper.

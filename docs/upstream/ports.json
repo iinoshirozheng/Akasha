@@ -3018,6 +3018,118 @@
         "tests/python/test_jsonb_payload.py": "35fbd0db4020b4cdba2fe7454ab69a51e3fc3e639ba1a172ec7afa3cc7b1bdc5",
         "tests/python/test_rich_payload.py": "d04f16b38fa0ead71983f493d52f8451f6f2396d80c620234257f6bc38744323"
       }
+    },
+    {
+      "id": "D01c3f-fast-float-f64",
+      "upstream": "https://github.com/Alexhuszagh/fast-float-rust",
+      "revision": null,
+      "version": "0.2.3",
+      "identity": "crates.io:fast-float2@0.2.3",
+      "sources": [
+        {
+          "path": "src/binary.rs",
+          "sha256": "f4ae41189ed5224607c3b0f9caae8171d1a9b62311d92848e6d7efae00bb729a"
+        },
+        {
+          "path": "src/common.rs",
+          "sha256": "8bb936547699dbfcb0e91a7bd5576393cda061ca820646967f626fed31fa76b5"
+        },
+        {
+          "path": "src/decimal.rs",
+          "sha256": "d3fbb40f333a212614758fc2620281295a6842331b71b7d447d0c4aaa3cf4930"
+        },
+        {
+          "path": "src/float.rs",
+          "sha256": "db9770a2a136cd3df695d5f7846c4feaa1ae89ef53ce1b1a8f9e5130c6f2cc85"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "8d239f300b3e13327a2c3eeac010c7cba4e23d9150aa36aa127b00f43e6c072e"
+        },
+        {
+          "path": "src/number.rs",
+          "sha256": "48789c587e9d13100f6b4c69f693b5bfc938b53586652718dad198703bf937c8"
+        },
+        {
+          "path": "src/parse.rs",
+          "sha256": "5b3fe8f6866a65083e0c4b3d8b7aa07997db5afae679087c1f5944396a3d1aec"
+        },
+        {
+          "path": "src/simple.rs",
+          "sha256": "2c306275c4f8c56b56bb19cf63922af31a21b831f692249db87c5e76903ababc"
+        },
+        {
+          "path": "src/table.rs",
+          "sha256": "9aefdc638f8f38cd1b08e385aa786b5778277dfab53c929c8b736bce7bccc5e2"
+        }
+      ],
+      "license": "MIT",
+      "license_file": "docs/upstream/licenses/fast-float2-MIT.txt",
+      "license_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "dependency_provenance": "tests/fixtures/fast-float/sources.json",
+      "source_profile": {
+        "float": "f64",
+        "features": [
+          "std"
+        ]
+      },
+      "targets": [
+        "src/akasha/document/fast_float.mojo",
+        "src/akasha/document/fast_float_tables.mojo"
+      ],
+      "source_units": [
+        "number.rs decimal prefix grammar, exponent rollback, 19-digit accumulation, fast/disguised conversion, Inf/NaN",
+        "binary.rs 128-bit product, subnormal and ties-to-even conversion",
+        "decimal.rs and simple.rs 768-digit decimal shift/truncation/rounding fallback",
+        "parse.rs/lib.rs complete and partial dispatch; float.rs F64 constants",
+        "table.rs/decimal.rs/float.rs/number.rs/simple.rs original literal tables"
+      ],
+      "adaptations": [
+        "Checked byte-index loops in place of Rust slice cursors and eight-digit batching",
+        "Mojo UInt128 for source u64-by-u64 full product; fixed native arrays and generated source literal tables",
+        "Sign applied by outer parsed Number; Decimal arithmetic has no separate unused sign field",
+        "Standalone native F64 dependency; no libc, Python or Rust runtime conversion; F32 and JSON grammar not claimed"
+      ],
+      "oracle": "scripts/fast_float_reference.py",
+      "fixtures": {
+        "tests/fixtures/fast-float/cases.json": "2beaeb6ff9ecff26bb7220fd1851a469d7b2729f1586b1f30feb500fe69838e8",
+        "tests/fixtures/fast-float/sources.json": "e6fd55d9f6a55ccc7826122774bbc6b82612052b36503647d216a4d5bc8bfaf4",
+        "tests/fixtures/fast-float/Cargo.lock": "7dac406f6e6ac262013ebc8d0b0e1470cb35811a0cdf834cf47f327bf8c59127"
+      },
+      "status": "verified_f64_numeric_dependency_jsonb_text_Arrow_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-fast-float-validation.md"
+      ],
+      "results": {
+        "source_cases": 15191,
+        "complete_accepted": 11439,
+        "prefix_accepted": 12269,
+        "forced_long_comparisons": 12162,
+        "source_paths": {
+          "invalid": 2922,
+          "fast": 1147,
+          "binary": 10178,
+          "disguised": 36,
+          "special": 107,
+          "long": 801
+        },
+        "new_native_tests": 5,
+        "related_native_modules": 3,
+        "related_native_tests": 18,
+        "reproduced_fixture_metadata_lock_license_tables": true
+      },
+      "remaining": [
+        "Source jsonb standard and extended text grammar and source text serialization",
+        "Full Arrow JSON extension ingress/export and nullable-slot metadata behavior",
+        "All remaining product, protocol, platform and performance acceptance"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/fast_float.mojo": "790722ba8bbba3404c32f33dfbec946fb1cbfd7db703564bfba9e7b517aabd51",
+        "src/akasha/document/fast_float_tables.mojo": "556f3e648fdbd05cfe94f83f41ed002c831aa8724445ba43b1615e3710ba9372",
+        "scripts/fast_float_reference.py": "60c656b5af8ce596889ef5e9fd2d0c1e46512357974eb759e886e7b0fd7d0512",
+        "scripts/fast_float_reference.rs": "545d6e526b01e3b687b10630080c3458c7b12a5ec438af7775141e5dc06d0193",
+        "tests/mojo/test_fast_float.mojo": "fe3cd013edd60978f996f9c63b6fb0921a6f810f84b13d9e2e785e0161f393d2"
+      }
     }
   ]
 }

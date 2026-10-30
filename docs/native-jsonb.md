@@ -147,3 +147,17 @@ the result. A scalar counts as one value and has container depth zero.
 
 Source fixtures, old-format evidence and validation results are recorded in
 [the codec report](research/2026-10-30-jsonb-codec-validation.md).
+
+
+## Text conversion dependency
+
+The native `akasha.document.fast_float` module provides
+`parse_fast_float(Span[UInt8]) -> Float64` and
+`parse_fast_float_partial(Span[UInt8]) -> Tuple[Float64, Int]`, both raising on
+invalid input. The latter returns a consumed byte count. These are the pinned
+fast-float2 F64 token rules, including optional plus signs, partial decimal
+forms, Inf/NaN, signed zero and overflow to infinity. They are not a JSON
+validation API and do not yet parse text into `JsonbValue`.
+The source jsonb grammar and text serializer remain the next implementation
+step; the ordinary serde_json reader keeps its separate numeric contract.
+See [numeric source validation](research/2026-10-30-fast-float-validation.md).
