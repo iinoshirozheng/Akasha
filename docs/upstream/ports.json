@@ -3413,6 +3413,134 @@
         "tests/mojo/test_jsonb_writer.mojo": "077f9b6f5d67a616a52859868503d478dbb722c54002ad1e30ba753e5d9ddba1",
         "tests/python/test_jsonb_writer.py": "979811a39cb0128fb8db9c9bfb53eb40a316f392d8eb66e10114868e0fec5bfd"
       }
+    },
+    {
+      "id": "D01c3j-arrow-json-interop",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-arrow/src/json.rs",
+          "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16"
+        },
+        {
+          "identity": "crates.io:arrow-schema@58.4.0",
+          "path": "src/extension/canonical/json.rs",
+          "sha256": "824275bc53d48f5c0d96b21ac511eb29f616ae8a50268f485a18b9e98b5ed221"
+        },
+        {
+          "identity": "crates.io:arrow-array@58.4.0",
+          "path": "src/array/map_array.rs",
+          "sha256": "35c85b68c734470cdf31004d471604d24e11b99bef8d02804bf35eaa210acc85"
+        }
+      ],
+      "source_units": [
+        "Lance JSON field recognition, recursive field/array conversion, null slots, metadata and binary/text leaves",
+        "Arrow canonical JSON storage types and Map entries/offset/null layout",
+        "Existing source-ported JSONB reader and RawJsonb writer"
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/arrow-Apache-2.0.txt",
+        "docs/upstream/licenses/arrow-NOTICE.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "dependency_provenance": "tests/fixtures/arrow-json/sources.json",
+      "targets": [
+        "python/akashadb/arrow_payload.py",
+        "src/bindings/arrow_payload.mojo",
+        "src/bindings/arrow_payload_export.mojo",
+        "src/akasha/document/jsonb_writer.mojo",
+        "src/akasha/document/jsonb_formatting.mojo"
+      ],
+      "adaptations": [
+        "Reuse native JSONB kind 9 and payload v3; text parsing/formatting remains Mojo",
+        "Arrow canonical Utf8View beyond the pinned Lance adapter storage list",
+        "Existing parent-null masking and nonempty ingestion contract retained; structural Arrow validation precedes native parsing",
+        "PyArrow 21 C Data normalization of Map child names and canonical extension metadata; validated retained MapType preserves entries metadata",
+        "Maps use ordered entry objects with non-null keys; no deduplication or sorting",
+        "Checked raw bodies, aggregate JSONB budgets and Error replace unchecked raw fallback/panics",
+        "Cooperative bounded native output, recursive C Data ownership; no persistent producer table schema"
+      ],
+      "oracle": "scripts/arrow_json_reference.py",
+      "fixtures": {
+        "tests/fixtures/arrow-json/Cargo.lock": "4ef9b9d2c60a6a5e6e7b2b0ce6ae160eedcb82399098ea47d7b382a52d0dc0fd",
+        "tests/fixtures/arrow-json/README.md": "3c66b86d154f4d02bd1f58d5f6a81f977f2b92fc36d5a971c081b9bd80d829c5",
+        "tests/fixtures/arrow-json/cases.json": "e107b11248df685311435d96f169b6529ee0dccca546c95a792346d9bb7f808f",
+        "tests/fixtures/arrow-json/large-fixed-binary.arrow": "8ce729edf3084b57d98ec6449e195e8fafc1549d2cc212636dfd4cbb24b6b713",
+        "tests/fixtures/arrow-json/large-fixed-input.arrow": "beb1c0118e914e9c10e5836a9937c451077d1c0020b40e154df62a7403a2a308",
+        "tests/fixtures/arrow-json/large-fixed-text.arrow": "be14f7b07281e307dda353742d99267e0418db7a04e7b095ad818e12491da1c1",
+        "tests/fixtures/arrow-json/large-large-list-binary.arrow": "f7d7c4168da2f94fe72be7fe84deccda3f9a59ae2848f23bf7a4da6a7f6de710",
+        "tests/fixtures/arrow-json/large-large-list-input.arrow": "999287c55abe1bd83d838a67bbf137982eb4e432afd52e77716507ecdebcabdb",
+        "tests/fixtures/arrow-json/large-large-list-text.arrow": "8af73477f7f780476fc39588ee477a29f1e2ba159071e7ebf9c3a9b9a0963101",
+        "tests/fixtures/arrow-json/large-list-binary.arrow": "b19389891ad01fb55694b0cb24ae3b603401eac078fe1b8330d858d3331f49a3",
+        "tests/fixtures/arrow-json/large-list-input.arrow": "dd94089078a64893f3ce179ab773c20f7832c5ffcaeac7376578cf3502d25f29",
+        "tests/fixtures/arrow-json/large-list-text.arrow": "b032e01804736de97e69b374b55b385646e411d2aa663bcbdd9bf9317d722e1c",
+        "tests/fixtures/arrow-json/large-map-binary.arrow": "731d36a97357e2550153df3c9f87373657e514db7a79d34150f5390474d0fff5",
+        "tests/fixtures/arrow-json/large-map-input.arrow": "a1be1b6ad607d054c6acc81da8703861102e8ab59f1c704ce1987ebee8c5693c",
+        "tests/fixtures/arrow-json/large-map-text.arrow": "9485dac8da58285a0dfe7f96b2d4d26ae0603291cb0d831e8a2ab93e01b0368f",
+        "tests/fixtures/arrow-json/large-scalar-binary.arrow": "3b37c9d2b7b852c394c9c0a98999ca9045e7b871293d581d1ba9b34f810486e4",
+        "tests/fixtures/arrow-json/large-scalar-input.arrow": "c8a34a97c9250e963f57103dc1f315bcf75c7232fd15df6236f449a495d75375",
+        "tests/fixtures/arrow-json/large-scalar-text.arrow": "33f8fa9a33f7c105f39cf0d2831e6996fbb193af49cb33f10b0707f44bf1bbfc",
+        "tests/fixtures/arrow-json/large-struct-binary.arrow": "de125f9d740d6595a6ef59998a0a477acc33a9d8c6da88feae71d44b991874a0",
+        "tests/fixtures/arrow-json/large-struct-input.arrow": "d068f3040a11e1de44fdaf324ca0e7dc0fa5088bc9695a6827492ff6be87ad27",
+        "tests/fixtures/arrow-json/large-struct-text.arrow": "b9bf6eda5fc2687b83904bf46e67c7cf01066fc7a886440af310c3f3bbb4f502",
+        "tests/fixtures/arrow-json/sources.json": "a99936b990b53c35090b939ba798accf90e083209c0bb0b41d378d072b5c214a",
+        "tests/fixtures/arrow-json/utf8-fixed-binary.arrow": "8ce729edf3084b57d98ec6449e195e8fafc1549d2cc212636dfd4cbb24b6b713",
+        "tests/fixtures/arrow-json/utf8-fixed-input.arrow": "1de33e4070574128573c31d08e49ac5142d7308d6f5779199eb8c3c0dd439166",
+        "tests/fixtures/arrow-json/utf8-fixed-text.arrow": "be14f7b07281e307dda353742d99267e0418db7a04e7b095ad818e12491da1c1",
+        "tests/fixtures/arrow-json/utf8-large-list-binary.arrow": "f7d7c4168da2f94fe72be7fe84deccda3f9a59ae2848f23bf7a4da6a7f6de710",
+        "tests/fixtures/arrow-json/utf8-large-list-input.arrow": "7dc9415ece154c66f7588a0d6063e2d0f93a9a4715d560a7087f91325b1979de",
+        "tests/fixtures/arrow-json/utf8-large-list-text.arrow": "8af73477f7f780476fc39588ee477a29f1e2ba159071e7ebf9c3a9b9a0963101",
+        "tests/fixtures/arrow-json/utf8-list-binary.arrow": "b19389891ad01fb55694b0cb24ae3b603401eac078fe1b8330d858d3331f49a3",
+        "tests/fixtures/arrow-json/utf8-list-input.arrow": "a1926a7678183d634b7a7807fb0ae3f5dd5b21ac83ce02dab8ec6235bdc31445",
+        "tests/fixtures/arrow-json/utf8-list-text.arrow": "b032e01804736de97e69b374b55b385646e411d2aa663bcbdd9bf9317d722e1c",
+        "tests/fixtures/arrow-json/utf8-map-binary.arrow": "731d36a97357e2550153df3c9f87373657e514db7a79d34150f5390474d0fff5",
+        "tests/fixtures/arrow-json/utf8-map-input.arrow": "ff2cd365e9815845f6103d96f98337008b50c48bc183346c84a201126aa35d4d",
+        "tests/fixtures/arrow-json/utf8-map-text.arrow": "9485dac8da58285a0dfe7f96b2d4d26ae0603291cb0d831e8a2ab93e01b0368f",
+        "tests/fixtures/arrow-json/utf8-scalar-binary.arrow": "3b37c9d2b7b852c394c9c0a98999ca9045e7b871293d581d1ba9b34f810486e4",
+        "tests/fixtures/arrow-json/utf8-scalar-input.arrow": "0c9488cdcccbce82aa1fa3b140a471f60c15c9940b97d54ece5316b18be92064",
+        "tests/fixtures/arrow-json/utf8-scalar-text.arrow": "33f8fa9a33f7c105f39cf0d2831e6996fbb193af49cb33f10b0707f44bf1bbfc",
+        "tests/fixtures/arrow-json/utf8-struct-binary.arrow": "de125f9d740d6595a6ef59998a0a477acc33a9d8c6da88feae71d44b991874a0",
+        "tests/fixtures/arrow-json/utf8-struct-input.arrow": "3d5ae72021f0762b94b1d765bdf8a184e8673e9093af97472607e38d05dcfbfe",
+        "tests/fixtures/arrow-json/utf8-struct-text.arrow": "b9bf6eda5fc2687b83904bf46e67c7cf01066fc7a886440af310c3f3bbb4f502"
+      },
+      "status": "verified_native_Arrow_JSON_interchange_full_D01_A03_product_pending",
+      "verification": [
+        "docs/research/2026-10-30-arrow-json-validation.md"
+      ],
+      "results": {
+        "native_tests_passed": 24,
+        "new_python_tests": 144,
+        "targeted_python_passed": 183,
+        "full_python_passed": 3629,
+        "full_python_skipped": 1,
+        "source_reader_inputs": 20757,
+        "source_reader_accepted": 16353,
+        "source_reader_rejected": 4404,
+        "invalid_utf8_rejected_by_arrow": 1264,
+        "source_writer_binary_and_text_pairs": 28901,
+        "lance_cases": 12,
+        "lance_ipc_files": 36,
+        "reproduced_fixture_files": 40
+      },
+      "remaining": [
+        "Native JSONB path traversal, queries and indexes",
+        "Arbitrary top-level payload keys and remaining C/distributed value contracts",
+        "All other full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "python/akashadb/arrow_payload.py": "a99633c949a6539f2ce2590f28fb6514b18ca8489e59dbad1caeee642a8d7f22",
+        "src/bindings/arrow_payload.mojo": "aa4283d292ceb42cc65797b486e54a9ae863e5137822107ce58338855238e5df",
+        "src/bindings/arrow_payload_export.mojo": "5404dcd2bc1124c0f5442e04ebcefbd3f6195e8de256de15b19873776fd4b915",
+        "src/akasha/document/jsonb_writer.mojo": "3fb7c22fed22c2271143aef5e16ad07981327f2bf091dabbbeecbb162ce4278a",
+        "src/akasha/document/jsonb_formatting.mojo": "06486ad033e6c9cf970daa004614159deb0c47235623b4552af4fc6dabc63016",
+        "tests/python/test_arrow_json.py": "74fb790955624c03da9ad2e6d71fab623042b6a93338f947aca26d7039981d79",
+        "tests/mojo/test_jsonb_writer.mojo": "22b1aa907e70002d7170972e2e19ea1c05c3c84d72df6f3449d2f13568b8e4ab",
+        "scripts/arrow_json_reference.py": "23c20ea8cd545693ee443ce95c114c26fcf9a7819b70f09b1fcfe49138f8b2bc",
+        "scripts/arrow_json_reference.rs": "aae6afeef045e78dd6a517d712d70bfac80ef258bbc3c4a0c9200f60e1889bcb"
+      }
     }
   ]
 }

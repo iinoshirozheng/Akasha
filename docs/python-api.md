@@ -301,8 +301,7 @@ output beyond 16 MiB, so use `.data` or typed transport for lossless interchange
 See [text output contracts](native-jsonb.md#text-output).
 
 The strict ordinary-JSON filter/formula configuration path does not accept a
-JSONB carrier. JSONB traversal/indexes and Arrow JSON
-extensions remain in progress; use [native JSONB](native-jsonb.md) for the
+JSONB carrier. JSONB traversal/indexes remain in progress; use [native JSONB](native-jsonb.md) for the
 available binary constructors and [wire format](formats/logical-point-format.md)
 for the transport contract.
 
@@ -310,8 +309,7 @@ Native `payload_value_get`, `payload_value_set` and `payload_value_remove` opera
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array
 index does nothing, and a terminal wildcard clears its array. Collection-level
-operations below use the same source semantics. Schemaless Arrow JSON interop,
-dedicated nested/array indexes and complete REST/gRPC/C
+operations below use the same source semantics. Dedicated nested/array indexes and complete REST/gRPC/C
 and distributed payload contracts remain tracked in D01–D05/A01–A03/X01–X04.
 Typed Arrow projections require an explicit compatible scalar or nested schema.
 
@@ -390,8 +388,9 @@ Struct keys preserve declaration order. Arrow C Data names are NUL-terminated:
 RecordBatch schemas containing NUL in a field name are rejected before exporting
 capsules, preventing silent truncation. Empty nested struct keys and NUL inside
 string **values** are supported. Other producers must supply valid C Data names.
-Dictionary, map, union, binary payload, decimal, temporal and extension types
-are not accepted by this typed JSON adapter. Payload depth/node/byte and encoded
+Dictionary, union, unmarked binary payload, decimal, temporal and unknown
+extension types are not accepted by this typed JSON adapter. Map and the
+`arrow.json`/`lance.json` extensions use the contracts below. Payload depth/node/byte and encoded
 size limits still apply. This imports typed values without retaining the input
 table schema; it does not implement schema evolution or Lance files.
 
@@ -405,7 +404,14 @@ otherwise owned external data and the Arrow C Data buffer-size trailer. All thes
 allocations share the scanner byte cap. The native raw vector datatypes are unchanged.
 
 Typed scalar and nested output use the scanner schema described below.
-Schemaless `arrow.json` extension interop remains pending.
+`arrow.json` on UTF-8/large UTF-8/StringView and `lance.json` on LargeBinary
+are supported in both ingress APIs and scanner projections. Text parses to
+owned native JSONB; storage null and valid JSON null remain distinct. Binary
+projection preserves original bytes; text projection follows RawJsonb formatting.
+Nested Struct/List/Map fields, slicing, metadata, ownership and budgets use the
+same native traversal. Maps retain ordered entry objects, duplicate/non-string
+keys and `keys_sorted`; PyArrow C Data normalizes child names to key/value.
+See [JSON extension examples and contracts](native-jsonb.md#arrow-json-interchange).
 [Source fixtures](../tests/fixtures/rich-arrow/README.md).
 
 `search_record_batch(collection, request)` runs any `SearchRequest` directly into

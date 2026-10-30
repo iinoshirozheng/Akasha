@@ -35,6 +35,11 @@ def type_descriptor(dtype: pa.DataType, *, name: str = "", nullable: bool = True
         kind = 6
     elif pa.types.is_string_view(dtype):
         kind = 11
+    elif pa.types.is_large_binary(dtype):
+        kind = 12
+    elif pa.types.is_map(dtype):
+        kind = 13
+        children = [_field_descriptor(dtype.field(0), _depth + 1)]
     elif pa.types.is_struct(dtype):
         kind = 7
         children = [_field_descriptor(f, _depth + 1) for f in dtype]
@@ -45,17 +50,47 @@ def type_descriptor(dtype: pa.DataType, *, name: str = "", nullable: bool = True
         children = [_field_descriptor(f, _depth + 1)]
     else:
         raise ValueError(f"unsupported payload Arrow type: {dtype}")
-    return dict(kind=kind, bits=bits, size=size, name=name, nullable=nullable, children=children, metadata=None)
+    return dict(kind=kind, bits=bits, size=size, name=name, nullable=nullable, children=children, metadata=None, extension=0,
+                map_type=dtype if kind == 13 else None)
 
 
 def _field_descriptor(field: pa.Field, depth: int = 0) -> dict[str, Any]:
-    # Unknown extensions can arrive as their storage type plus field metadata.
-    # Do not silently interpret an extension as plain JSON-compatible storage.
-    if b"ARROW:extension:name" in (field.metadata or {}):
-        raise ValueError("Arrow payload extension types are not yet supported")
-    result = type_descriptor(field.type, name=field.name, nullable=field.nullable, _depth=depth)
-    result["metadata"] = field.metadata
+    dtype = field.type
+    metadata = dict(field.metadata or {})
+    extension = metadata.get(b"ARROW:extension:name")
+    if isinstance(dtype, pa.BaseExtensionType):
+        extension = dtype.extension_name.encode()
+        dtype = dtype.storage_type
+    if extension == b"arrow.json":
+        if dtype not in (pa.string(), pa.large_string(), pa.string_view()):
+            raise ValueError("arrow.json requires UTF-8, large UTF-8 or StringView storage")
+        logical = 1
+        # PyArrow consumes these keys when importing canonical arrow.json.
+        metadata.pop(b"ARROW:extension:name", None)
+        metadata.pop(b"ARROW:extension:metadata", None)
+    elif extension == b"lance.json":
+        if dtype != pa.large_binary():
+            raise ValueError("lance.json requires large binary storage")
+        logical = 2
+        metadata[b"ARROW:extension:name"] = b"lance.json"
+    elif extension is not None:
+        raise ValueError(f"unsupported Arrow payload extension: {extension!r}")
+    else:
+        logical = 0
+        if pa.types.is_large_binary(dtype):
+            raise ValueError("large binary payload requires lance.json extension metadata")
+    result = type_descriptor(dtype, name=field.name, nullable=field.nullable, _depth=depth)
+    result["metadata"] = metadata or None
+    result["extension"] = logical
     return result
+
+
+def _canonical_field(field: pa.Field) -> pa.Field:
+    validate_c_field_names(pa.schema([field]))
+    # Use Arrow's actual C Data normalization for registered extension types.
+    # Keep the canonical MapType so entries-field metadata, not expressible
+    # through pa.map_(), survives export. C Data normalizes Map child names.
+    return pa.Field._import_from_c_capsule(field.__arrow_c_schema__())
 
 
 def projection_descriptor(name: str, requested: Any) -> dict[str, Any]:
@@ -72,7 +107,7 @@ def projection_descriptor(name: str, requested: Any) -> dict[str, Any]:
         field = pa.field(name, requested)
     else:
         raise ValueError(f"unsupported scanner payload type: {requested!r}")
-    return _field_descriptor(field)
+    return _field_descriptor(_canonical_field(field))
 
 
 def validate_c_field_names(schema: pa.Schema) -> None:
@@ -94,6 +129,8 @@ def _bytes(buffer: Any) -> np.ndarray:
 
 
 def _borrow(array: Any, schema: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(array, pa.ExtensionArray):
+        array = array.storage
     kind, bits = schema["kind"], schema["bits"]
     result = {**schema, "row_count": len(array), "validity": _bytes(array.buffers()[0]),
               "validity_offset": array.offset}
@@ -105,12 +142,12 @@ def _borrow(array: Any, schema: dict[str, Any]) -> dict[str, Any]:
             buffer, dtype=dtype, count=len(array), offset=array.offset * dtype.itemsize)
     elif kind == 1:
         result["values"] = _bytes(array.buffers()[1])
-    elif kind in (5, 6, 8, 9):
-        dtype = np.dtype("int64" if kind in (6, 9) else "int32")
+    elif kind in (5, 6, 8, 9, 12, 13):
+        dtype = np.dtype("int64" if kind in (6, 9, 12) else "int32")
         buffer = array.buffers()[1]
         result["offsets"] = np.empty(0, dtype=dtype) if buffer is None else np.frombuffer(
             buffer, dtype=dtype, count=len(array) + 1, offset=array.offset * dtype.itemsize)
-        if kind in (5, 6):
+        if kind in (5, 6, 12):
             result["values"] = _bytes(array.buffers()[2])
         else:
             result["children"] = [_borrow(array.values, schema["children"][0])]
@@ -129,4 +166,4 @@ def _borrow(array: Any, schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def payload_descriptor(array: Any, field: pa.Field) -> dict[str, Any]:
-    return _borrow(array, _field_descriptor(field))
+    return _borrow(array, _field_descriptor(_canonical_field(field)))

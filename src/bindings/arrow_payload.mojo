@@ -7,6 +7,8 @@ children, including arbitrary bytes in their physical storage.
 """
 
 from akasha.document.value import PayloadValue
+from akasha.document.jsonb import JsonbValue
+from akasha.document.jsonb_reader import parse_jsonb_bytes
 from akasha.document.record import DocumentField, validate_field_name
 from bindings.point_arrow import _valid_bit
 from std.python import Python, PythonObject
@@ -16,7 +18,7 @@ from std.python.numpy import from_numpy_array
 @fieldwise_init
 struct ArrowPayloadNode(Copyable, Movable):
     # null, bool, signed, unsigned, floating, utf8, large_utf8, struct,
-    # list, large_list, fixed_size_list, string_view.
+    # list, large_list, fixed_size_list, string_view, large_binary, map.
     var kind: Int
     var bits: Int
     var size: Int
@@ -24,6 +26,8 @@ struct ArrowPayloadNode(Copyable, Movable):
     var nullable: Bool
     var children: List[Int]
     var metadata: PythonObject
+    var extension: Int
+    var map_type: PythonObject
 
 
 struct ArrowPayloadSchema(Copyable, Movable):
@@ -50,7 +54,7 @@ struct ArrowPayloadSchema(Copyable, Movable):
                 raise Error("Arrow C Data field names cannot contain NUL")
         var raw_children = raw["children"]
         var count = len(raw_children)
-        if kind < 0 or kind > 11 or count > PayloadValue.MAX_NODES:
+        if kind < 0 or kind > 13 or count > PayloadValue.MAX_NODES:
             raise Error("unsupported Arrow payload schema")
         if kind == 2 or kind == 3:
             if bits != 8 and bits != 16 and bits != 32 and bits != 64:
@@ -65,10 +69,13 @@ struct ArrowPayloadSchema(Copyable, Movable):
                 raise Error("Arrow fixed-size payload list exceeds node limit")
         elif size != 0:
             raise Error("unexpected Arrow payload list size")
-        if ((kind < 7 or kind == 11) and count != 0) or (kind >= 8 and kind <= 10 and count != 1):
+        if ((kind < 7 or kind == 11 or kind == 12) and count != 0) or ((kind >= 8 and kind <= 10 or kind == 13) and count != 1):
             raise Error("Arrow payload schema child count mismatch")
+        var extension = Int(py=raw.get("extension", 0))
+        if extension < 0 or extension > 2 or (extension == 1 and kind != 5 and kind != 6 and kind != 11) or (extension == 2 and kind != 12) or (kind == 12 and extension != 2):
+            raise Error("invalid Arrow JSON extension storage")
         var position = len(self.nodes)
-        self.nodes.append(ArrowPayloadNode(kind, bits, size, name^, Bool(py=raw["nullable"]), List[Int](), raw.get("metadata", Python.none())))
+        self.nodes.append(ArrowPayloadNode(kind, bits, size, name^, Bool(py=raw["nullable"]), List[Int](), raw.get("metadata", Python.none()), extension, raw.get("map_type", Python.none())))
         var children = List[Int](capacity=count)
         var names = Dict[String, Bool]()
         for child in raw_children:
@@ -79,6 +86,12 @@ struct ArrowPayloadSchema(Copyable, Movable):
                     raise Error("Arrow struct field names must be unique")
                 names[key] = True
             children.append(index)
+        if kind == 13:
+            ref entries = self.nodes[children[0]]
+            if entries.kind != 7 or entries.nullable or len(entries.children) != 2:
+                raise Error("Arrow Map requires a non-null entries struct with two fields")
+            if self.nodes[entries.children[0]].nullable:
+                raise Error("Arrow Map keys must be non-null")
         self.nodes[position].children = children^
         return position
 
@@ -95,17 +108,22 @@ def payload_arrow_type(schema: ArrowPayloadSchema, index: Int = 0) raises -> Pyt
         var prefix = "int" if node.kind == 2 else ("uint" if node.kind == 3 else "float")
         var factory = Python.import_module("builtins").getattr(pa, PythonObject(prefix + String(node.bits)))
         return factory()
-    if node.kind == 5:
-        return pa.string()
-    if node.kind == 6:
-        return pa.large_string()
-    if node.kind == 11:
-        return pa.string_view()
+    if node.kind == 5 or node.kind == 6 or node.kind == 11:
+        var storage = pa.string() if node.kind == 5 else (pa.large_string() if node.kind == 6 else pa.string_view())
+        return pa.json_(storage) if node.extension == 1 else storage
+    if node.kind == 12:
+        return pa.large_binary()
     var fields = Python.list()
     for child in node.children:
         ref member = schema.nodes[child]
         fields.append(pa.field(PythonObject(member.name), payload_arrow_type(schema, child),
                                nullable=member.nullable, metadata=member.metadata))
+    if node.kind == 13:
+        # pa.map_ cannot represent arbitrary entries-field names/metadata. Retain
+        # the producer's canonical MapType after validating its physical child.
+        if not Bool(py=pa.types.is_map(node.map_type)) or not Bool(py=node.map_type.field(0).equals(fields[0], check_metadata=True)):
+            raise Error("Arrow Map type does not match its entries schema")
+        return node.map_type
     if node.kind == 7:
         return pa.struct(fields)
     if node.kind == 8:
@@ -160,19 +178,27 @@ def _view_u32[origin: ImmOrigin](bytes: Span[UInt8, origin], offset: Int) -> UIn
     return result
 
 
-def _read_string_view(raw: PythonObject, row: Int, mut budget: _ValueBudget) raises -> PayloadValue:
+def _read_bytes(bytes: Span[UInt8, _], extension: Int, mut budget: _ValueBudget) raises -> PayloadValue:
+    if extension == 0:
+        budget.add(bytes=len(bytes))
+        return PayloadValue.string(String(from_utf8=bytes))
+    var value = parse_jsonb_bytes(bytes) if extension == 1 else JsonbValue(bytes)
+    budget.add(nodes=value._node_count - 1, bytes=len(value._data))
+    return PayloadValue.jsonb(value^)
+
+
+def _read_string_view(raw: PythonObject, row: Int, extension: Int, mut budget: _ValueBudget) raises -> PayloadValue:
     # Arrow 58.4 byte_view.rs: inline <=12, otherwise prefix/index/offset.
     var views = from_numpy_array[DType.uint8](raw["views"])
     if row < 0 or row >= len(views) // 16:
         raise Error("Arrow StringView buffer is too short")
     var start = row * 16
     var length = Int(_view_u32(views, start))
-    budget.add(bytes=length)
     if length <= 12:
         for i in range(start + 4 + length, start + 16):
             if views[i] != 0:
                 raise Error("Arrow StringView contains nonzero inline padding")
-        return PayloadValue.string(String(from_utf8=views[start + 4:start + 4 + length]))
+        return _read_bytes(views[start + 4:start + 4 + length], extension, budget)
     var index = Int(_view_u32(views, start + 8))
     var offset = Int(_view_u32(views, start + 12))
     var buffers = raw["data_buffers"]
@@ -184,7 +210,7 @@ def _read_string_view(raw: PythonObject, row: Int, mut budget: _ValueBudget) rai
     for i in range(4):
         if views[start + 4 + i] != bytes[offset + i]:
             raise Error("Arrow StringView prefix does not match data")
-    return PayloadValue.string(String(from_utf8=bytes[offset:offset + length]))
+    return _read_bytes(bytes[offset:offset + length], extension, budget)
 
 
 def _read_value(
@@ -233,7 +259,7 @@ def _read_value(
             return _number[DType.float32](raw, row)
         return _number[DType.float64](raw, row)
     if spec.kind == 11:
-        return _read_string_view(raw, row, budget)
+        return _read_string_view(raw, row, spec.extension, budget)
     if spec.kind == 7:
         var keys = List[String](capacity=len(spec.children))
         var values = List[PayloadValue](capacity=len(spec.children))
@@ -254,15 +280,14 @@ def _read_value(
         begin = row * spec.size
         end = begin + spec.size
     else:
-        var bounds = _bounds[DType.int64](raw, row) if spec.kind == 6 or spec.kind == 9 else _bounds[DType.int32](raw, row)
+        var bounds = _bounds[DType.int64](raw, row) if spec.kind == 6 or spec.kind == 9 or spec.kind == 12 else _bounds[DType.int32](raw, row)
         begin = bounds[0]
         end = bounds[1]
-    if spec.kind == 5 or spec.kind == 6:
+    if spec.kind == 5 or spec.kind == 6 or spec.kind == 12:
         var bytes = from_numpy_array[DType.uint8](raw["values"])
         if end > len(bytes):
             raise Error("Arrow string buffer is too short")
-        budget.add(bytes=end - begin)
-        return PayloadValue.string(String(from_utf8=bytes[begin:end]))
+        return _read_bytes(bytes[begin:end], spec.extension, budget)
     var children = raw["children"]
     if len(children) != 1:
         raise Error("Arrow list child count mismatch")

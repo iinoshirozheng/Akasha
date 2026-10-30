@@ -197,7 +197,7 @@ raise `Error`. Error wording is Akasha's, not a reproduction of Rust's error
 enum. Results own their data and can use all existing JSONB payload transports.
 
 See [text parser validation](research/2026-10-30-jsonb-reader-validation.md).
-JSONB traversal/indexing and Arrow JSON are still pending.
+JSONB traversal/indexing remains pending. Arrow extension interchange is described below.
 
 ## Text output
 
@@ -250,6 +250,63 @@ parser's input bound. Use Python `.data` / Mojo `to_bytes()`, typed transport an
 for exact bytes/types rather than a text round-trip.
 
 See [writer validation](research/2026-10-30-jsonb-writer-validation.md).
+
+## Arrow JSON interchange
+
+Both `upsert_record_batch` and `upsert_point_record_batch` accept `pa.json_()`
+with string, large-string or StringView storage. They also accept a large-binary
+field with `ARROW:extension:name = lance.json`. Native Mojo converts text using
+the extended source parser; binary cells use the checked JSONB constructor.
+Plain string columns remain strings. Unknown extensions and incompatible storage
+are rejected; unmarked binary columns are outside this payload adapter.
+
+```python
+import pyarrow as pa
+from akashadb.arrow import upsert_record_batch, scan_record_batches
+
+batch = pa.record_batch([
+    pa.array([1, 2, 3], type=pa.int64()),
+    pa.array([[1.0, 2.0]] * 3, type=pa.list_(pa.float32(), 2)),
+    pa.array([None, "null", "{items:[1,,],n:NaN}"], type=pa.json_()),
+], names=["id", "vector", "payload.document"])
+upsert_record_batch(collection, batch)
+
+binary = pa.field("document", pa.large_binary(), metadata={
+    b"ARROW:extension:name": b"lance.json",
+})
+with scan_record_batches(collection, columns=(), payload_schema={"document": binary}) as scanner:
+    binary_batches = list(scanner)
+with scan_record_batches(collection, columns=(), payload_schema={"document": pa.json_(pa.string_view())}) as scanner:
+    text_batches = list(scanner)
+```
+
+The collection above has dimension 2. Storage null remains ordinary payload
+null; valid text `null` becomes a distinct `JsonbValue`. This distinction also
+holds inside struct, list, large-list, fixed-list and map children. Parent nulls
+mask semantic child parsing, matching Akasha's existing typed Arrow contract.
+Arrow's structural/UTF-8 validation still applies to incoming batches. Each
+nonempty batch validates before atomic publication; the existing empty-ingress
+rejection is unchanged. Empty collections retain the requested scanner schema.
+
+A map is stored as an ordered array of two-field entry objects. The C Data
+boundary normalizes names to `entries`/`key`/`value`, following PyArrow 21.
+Duplicate and non-string keys retain order; map entries and keys must be non-null.
+The caller's `keys_sorted` declaration is retained without sorting or deduplication.
+User field metadata and nested nullability survive requested projections. Arrow's
+registered `arrow.json` type consumes its reserved extension metadata keys;
+Lance's name/serialized metadata remain on the binary field. Like the source
+Lance adapter, recognition does not interpret serialized extension parameters.
+
+Text output uses `format_jsonb`, so the lossy projection rules above also apply
+to Arrow. Use `lance.json` for exact original body bytes, including legacy and
+noncanonical encodings. Native rendering shares the scanner's finite output
+budget and cooperatively checks cancellation/deadlines, including binary-to-hex
+expansion. All output buffers have independent C Data ownership and remain valid
+after scanner/collection close. Text conversion is not zero-copy.
+
+This does not persist the producer's table schema or implement schema evolution,
+Lance file interoperability, JSONB field-path filtering or indexes. See the
+[Arrow JSON source validation](research/2026-10-30-arrow-json-validation.md).
 
 ## Numeric dependency
 

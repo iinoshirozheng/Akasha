@@ -207,3 +207,27 @@ Continue step 6's full Arrow JSON extension ingress/export: binary/text storage,
 null slots distinct from JSON null, nested metadata, sliced arrays, ownership
 and public round trips. Full D01 and the broader product ledger remain open;
 optimization is still deferred until all functional acceptance passes.
+
+
+## Arrow extension completion: D01c3j
+
+Ordered steps 5–6 above now have the native extension boundary and regression
+proof. Both public ingestion APIs and scanner projections support `arrow.json`
+Utf8/LargeUtf8/StringView and checked `lance.json` LargeBinary, recursively through
+Struct/List/LargeList/FixedSizeList/Map. They share the original parser/writer,
+keep storage-null and JSON-null distinct, preserve metadata at the C Data
+boundary and retain existing atomicity, limits, snapshots and ownership rules.
+
+The unchanged Lance module emits 12 actual-source nested cases / 36 IPC files;
+all 40 fixture/provenance/lock files reproduce. Public paths verify 20,757 reader
+acceptance/body cases and 28,901 writer binary/text pairs. Twenty-four related
+native tests, 183 targeted Python and full Python 3,629 passed / 1 skipped;
+build and byte-for-byte reproduction pass. See the
+[validation report](../research/2026-10-30-arrow-json-validation.md) for explicit
+Map-name normalization, parent-mask, metadata and empty-batch contracts.
+
+This closes the Arrow JSON boundary work, not full D01/A03 or the product goal.
+Next inspect and port native JSONB path traversal/query/index behavior, complete
+arbitrary top-level payload keys and the remaining C/distributed value interfaces.
+All SQL, transaction, protocol, UI, cluster, security, operations and performance
+work remains in the master ledger; optimization has not begun.

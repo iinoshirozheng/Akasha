@@ -1,0 +1,50 @@
+[
+  {
+    "name": "utf8-scalar",
+    "rows": 4
+  },
+  {
+    "name": "utf8-struct",
+    "rows": 4
+  },
+  {
+    "name": "utf8-list",
+    "rows": 2
+  },
+  {
+    "name": "utf8-large-list",
+    "rows": 2
+  },
+  {
+    "name": "utf8-fixed",
+    "rows": 2
+  },
+  {
+    "name": "utf8-map",
+    "rows": 2
+  },
+  {
+    "name": "large-scalar",
+    "rows": 4
+  },
+  {
+    "name": "large-struct",
+    "rows": 4
+  },
+  {
+    "name": "large-list",
+    "rows": 2
+  },
+  {
+    "name": "large-large-list",
+    "rows": 2
+  },
+  {
+    "name": "large-fixed",
+    "rows": 2
+  },
+  {
+    "name": "large-map",
+    "rows": 2
+  }
+]

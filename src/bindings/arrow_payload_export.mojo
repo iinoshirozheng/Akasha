@@ -5,6 +5,7 @@ Arrow buffers use the same recursive C Data release implementation as vectors.
 """
 
 from akasha.api.scanner import ScanBatch
+from akasha.document.jsonb_writer import format_jsonb
 from akasha.query.control import QueryControl
 from bindings.arrow_payload import ArrowPayloadSchema
 from bindings.arrow_buffers import ArrowArrayExport, _ArrayData, _BufferBudget, _store, _set_bit, _checked_bytes
@@ -93,6 +94,42 @@ def _write_string(batch: ScanBatch, cell: _Cell, address: Int, begin: Int, contr
     if cell.node < 0:
         return _copy_string(value._string_value, address, begin, control)
     return _copy_string(value._nodes[cell.node].text, address, begin, control)
+
+
+def _json_text(batch: ScanBatch, cell: _Cell, limit: Int, control: QueryControl) raises -> String:
+    ref value = batch.entry(cell.row).fields()[cell.slot].value
+    if cell.node < 0:
+        return format_jsonb(value._jsonb_value.value(), max_bytes=limit, control=control.copy())
+    return format_jsonb(value._nodes[cell.node].jsonb.value(), max_bytes=limit, control=control.copy())
+
+
+def _byte_length(batch: ScanBatch, cell: _Cell, extension: Int, texts: List[String], row: Int) raises -> Int:
+    if extension == 1:
+        return texts[row].byte_length()
+    if extension == 2:
+        ref value = batch.entry(cell.row).fields()[cell.slot].value
+        if cell.node < 0:
+            return len(value._jsonb_value.value()._data)
+        return len(value._nodes[cell.node].jsonb.value()._data)
+    return _string_length(batch, cell)
+
+
+def _copy_bytes(bytes: Span[UInt8, _], address: Int, begin: Int, control: QueryControl) raises -> Int:
+    for i in range(len(bytes)):
+        control.checkpoint(i)
+        _store(address, begin + i, bytes[i])
+    return begin + len(bytes)
+
+
+def _write_bytes(batch: ScanBatch, cell: _Cell, extension: Int, texts: List[String], row: Int, address: Int, begin: Int, control: QueryControl) raises -> Int:
+    if extension == 1:
+        return _copy_string(texts[row], address, begin, control)
+    if extension == 2:
+        ref value = batch.entry(cell.row).fields()[cell.slot].value
+        if cell.node < 0:
+            return _copy_bytes(Span(value._jsonb_value.value()._data), address, begin, control)
+        return _copy_bytes(Span(value._nodes[cell.node].jsonb.value()._data), address, begin, control)
+    return _write_string(batch, cell, address, begin, control)
 
 
 def _numbers[dtype: DType](batch: ScanBatch, cells: List[_Cell], address: Int, control: QueryControl) raises:
@@ -185,6 +222,8 @@ def _export(
         expected = 7
     elif spec.kind >= 8:
         expected = 6
+    if spec.extension != 0:
+        expected = 9
     for row in range(rows):
         control.checkpoint(row)
         var kind = cells[row].kind(batch)
@@ -205,6 +244,20 @@ def _export(
             control.checkpoint(row)
             if cells[row].kind(batch) != 5:
                 _set_bit(validity, row)
+    # Render each JSON cell once, with a shared finite expansion budget. View
+    # inline text is bounded by its 16-byte descriptor; external text consumes
+    # the same budget as the eventual Arrow backing buffer.
+    var texts = List[String]()
+    if spec.extension == 1:
+        var remaining = budget.limit - budget.used
+        for row in range(rows):
+            control.checkpoint(row)
+            var text = String()
+            if cells[row].kind(batch) != 5:
+                text = _json_text(batch, cells[row], max(12, remaining) if spec.kind == 11 else remaining, control)
+                if spec.kind != 11 or text.byte_length() > 12:
+                    remaining -= text.byte_length()
+            texts.append(text^)
     if spec.kind == 1:
         var address = data.allocate((rows + 7) // 8, budget)
         data.buffers.append(Int64(address))
@@ -219,13 +272,13 @@ def _export(
         var address = data.allocate(_checked_bytes(rows, spec.bits // 8), budget)
         data.buffers.append(Int64(address))
         _numeric_buffer(batch, cells, spec.kind, spec.bits, address, control)
-    elif spec.kind == 5 or spec.kind == 6:
-        var wide = spec.kind == 6
+    elif spec.kind == 5 or spec.kind == 6 or spec.kind == 12:
+        var wide = spec.kind != 5
         var count = 0
         for row in range(rows):
             control.checkpoint(row)
             if cells[row].kind(batch) != 5:
-                var length = _string_length(batch, cells[row])
+                var length = _byte_length(batch, cells[row], spec.extension, texts, row)
                 if length > Int.MAX - count or (not wide and length > Int(Int32.MAX) - count):
                     raise Error("scanner string offsets overflow")
                 count += length
@@ -237,7 +290,7 @@ def _export(
         for row in range(rows):
             control.checkpoint(row)
             if cells[row].kind(batch) != 5:
-                position = _write_string(batch, cells[row], values, position, control)
+                position = _write_bytes(batch, cells[row], spec.extension, texts, row, values, position, control)
             _offset(offsets, row + 1, position, wide)
     elif spec.kind == 11:
         # Arrow byte_view.rs layout and ffi.rs variadic buffer-size trailer.
@@ -245,7 +298,7 @@ def _export(
         for row in range(rows):
             control.checkpoint(row)
             if cells[row].kind(batch) != 5:
-                var length = _string_length(batch, cells[row])
+                var length = _byte_length(batch, cells[row], spec.extension, texts, row)
                 if length > Int(UInt32.MAX):
                     raise Error("scanner StringView length overflows")
                 if length > 12:
@@ -268,14 +321,14 @@ def _export(
             ref cell = cells[row]
             if cell.kind(batch) == 5:
                 continue
-            var length = _string_length(batch, cell)
+            var length = _byte_length(batch, cell, spec.extension, texts, row)
             _store(views, row * 4, UInt32(length))
             if length <= 12:
-                _ = _write_string(batch, cell, views, row * 16 + 4, control)
+                _ = _write_bytes(batch, cell, spec.extension, texts, row, views, row * 16 + 4, control)
             else:
                 _store(views, row * 4 + 3, UInt32(position))
                 var begin = position
-                position = _write_string(batch, cell, values, position, control)
+                position = _write_bytes(batch, cell, spec.extension, texts, row, values, position, control)
                 var source = Pointer[UInt8, MutUntrackedOrigin](unsafe_from_address=values)
                 for i in range(4):
                     _store(views, row * 16 + 4 + i, source[unsafe_offset=begin + i])
@@ -298,7 +351,7 @@ def _export(
                 if cells[row].kind(batch) != 5 and length != spec.size:
                     raise Error("scanner fixed-size payload list length mismatch")
                 length = spec.size
-            if length > Int.MAX - count or (spec.kind == 8 and length > Int(Int32.MAX) - count):
+            if length > Int.MAX - count or ((spec.kind == 8 or spec.kind == 13) and length > Int(Int32.MAX) - count):
                 raise Error("scanner payload list offsets overflow")
             count += length
             lengths.append(length)

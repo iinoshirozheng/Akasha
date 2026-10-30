@@ -153,7 +153,13 @@
       "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
       "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
       "provenance": "tests/fixtures/rich-arrow/sources.json",
-      "reference_only": false
+      "reference_only": false,
+      "integrations": [
+        {
+          "port": "D01c3j-arrow-json-interop",
+          "provenance": "tests/fixtures/arrow-json/sources.json"
+        }
+      ]
     },
     {
       "name": "arrow-schema",
@@ -166,7 +172,13 @@
       "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
       "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
       "provenance": "tests/fixtures/rich-arrow/sources.json",
-      "reference_only": false
+      "reference_only": false,
+      "integrations": [
+        {
+          "port": "D01c3j-arrow-json-interop",
+          "provenance": "tests/fixtures/arrow-json/sources.json"
+        }
+      ]
     },
     {
       "name": "arrow-buffer",
@@ -332,7 +344,13 @@
         "arbitrary_precision": false
       },
       "license_file": "docs/upstream/licenses/jsonb-Apache-2.0.txt",
-      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "integrations": [
+        {
+          "port": "D01c3j-arrow-json-interop",
+          "provenance": "tests/fixtures/arrow-json/sources.json"
+        }
+      ]
     },
     {
       "name": "fast-float2",

@@ -1,6 +1,7 @@
 from akasha.document.jsonb import JsonbValue
 from akasha.document.jsonb_reader import parse_jsonb
 from akasha.document.jsonb_writer import format_jsonb
+from akasha.query.control import QueryControl, CancellationToken
 from std.python import Python
 from std.testing import assert_equal, assert_true, assert_raises, TestSuite
 
@@ -72,6 +73,35 @@ def test_checked_depth_nodes_and_expanding_output() raises:
     assert_equal(output.as_bytes()[0], UInt8(34))
     assert_equal(output.as_bytes()[1], UInt8(92))
     assert_equal(output.as_bytes()[output.byte_length() - 1], UInt8(34))
+
+
+def test_output_limit_and_cooperative_query_control() raises:
+    var value = parse_jsonb("null")
+    assert_equal(format_jsonb(value, max_bytes=4), "null")
+    for limit in [-1, 0, 3]:
+        with assert_raises():
+            _ = format_jsonb(value, max_bytes=limit)
+    var escaped = JsonbValue.string("\x01")
+    assert_equal(format_jsonb(escaped, max_bytes=8).byte_length(), 8)
+    with assert_raises():
+        _ = format_jsonb(escaped, max_bytes=7)
+    var bytes = List[UInt8](length=1024, fill=UInt8(255))
+    with assert_raises():
+        _ = format_jsonb(JsonbValue.binary(Span(bytes)), max_bytes=32)
+    var pretty = parse_jsonb("[{},[null]]")
+    var text = format_jsonb(pretty, pretty=True)
+    assert_equal(format_jsonb(pretty, pretty=True, max_bytes=text.byte_length()), text)
+    with assert_raises():
+        _ = format_jsonb(pretty, pretty=True, max_bytes=text.byte_length() - 1)
+    var token = CancellationToken()
+    var control = QueryControl(token, max_candidates=1)
+    token.cancel()
+    with assert_raises():
+        _ = format_jsonb(value, control=control.copy())
+    var active = CancellationToken()
+    var expired = QueryControl(active, max_candidates=1, deadline_ns=1)
+    with assert_raises():
+        _ = format_jsonb(value, control=expired^)
 
 
 def main() raises:

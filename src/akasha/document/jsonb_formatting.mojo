@@ -5,6 +5,7 @@ The 256-bit cast follows ethnum 1.5.3 (MIT); civil conversion and year/offset
 formatting follow jiff 0.2.28 shared/util/itime.rs and fmt printers (MIT).
 Only their JSONB-reachable operations are exposed here, not a general time API.
 """
+from akasha.query.control import QueryControl
 from std.math import pow, isfinite
 from std.memory import bitcast
 from akasha.document.jsonb import _read_be
@@ -186,12 +187,14 @@ def _interval_text(months: Int, days: Int, var micros: Int) -> String:
     return text
 
 
-def format_jsonb_extension(body: Span[UInt8, _]) raises -> String:
+def format_jsonb_extension(body: Span[UInt8, _], control: Optional[QueryControl] = None) raises -> String:
     var kind = body[0]
     if kind == 0:
         var result = List[UInt8](capacity=(len(body) - 1) * 2)
         var hex = "0123456789ABCDEF"
         for i in range(1, len(body)):
+            if control:
+                control.value().checkpoint(i - 1)
             result.append(hex.as_bytes()[Int(body[i] >> 4)])
             result.append(hex.as_bytes()[Int(body[i] & 15)])
         return String(from_utf8=Span(result))
