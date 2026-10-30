@@ -1,0 +1,238 @@
+{
+  "lance_revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+  "source": {
+    "path": "rust/lance-select/src/mask/nullable.rs",
+    "sha256": "500ecb114749dbcea6ffdf03ee42c289522038051e1cbcba1f3afa42460bd692"
+  },
+  "original_module_sha256": "cb407bd5922cf4ce28ac676eb2f9714df5de76c24277ef0d2c86d0ed3a4e26e7",
+  "adapted_module_sha256": "f2f1ae9c74fcfcaa48f39a14c6baeb10874d916b5acbea4b2a3fd079aacdca98",
+  "dependencies": [
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "checksum": "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797",
+      "files": []
+    },
+    {
+      "name": "byteorder",
+      "version": "1.5.0",
+      "checksum": "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b",
+      "files": []
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682",
+      "files": []
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98",
+      "files": []
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "checksum": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9",
+      "files": []
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "checksum": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001",
+      "files": []
+    },
+    {
+      "name": "roaring",
+      "version": "0.11.4",
+      "checksum": "1dedc5658c6ecb3bdb5ef5f3295bb9253f42dcf3fd1402c03f6b1f7659c3c4a9",
+      "files": [
+        {
+          "path": "src/bitmap/arbitrary.rs",
+          "sha256": "9f6a0b05d887053e06b73ad4759752b357d79136b268e56bd35a633a10ba1e59"
+        },
+        {
+          "path": "src/bitmap/cmp.rs",
+          "sha256": "b6baebb1264923e9005ce69ac47cf91d004a97bcef35e436453b890af4b9954c"
+        },
+        {
+          "path": "src/bitmap/container.rs",
+          "sha256": "0ecd5d6823128b47e6dc523f28a9e9397daceb24f5f7f4541ea675dd97950cb1"
+        },
+        {
+          "path": "src/bitmap/fmt.rs",
+          "sha256": "dc2fdb9a6e3d13964c84c944d2a81e59ff3ff91d41c144214c07fdae4bbdae14"
+        },
+        {
+          "path": "src/bitmap/inherent.rs",
+          "sha256": "d2bbed598f6fae15a7c6f653b998fa0dfe9169614944f6f344cd1f3c761a15c4"
+        },
+        {
+          "path": "src/bitmap/iter.rs",
+          "sha256": "3db9c58ffa295fcfa8f6291dd3051031894d692df59d4ba7458630acac12a233"
+        },
+        {
+          "path": "src/bitmap/mod.rs",
+          "sha256": "379c3c985274faea70152bf9771a7252e1e536665ec9cdcd2dd406035dc944da"
+        },
+        {
+          "path": "src/bitmap/multiops.rs",
+          "sha256": "939e61ccd06761d11a2e5c813e3671421d8e294d129508e1284805b243848874"
+        },
+        {
+          "path": "src/bitmap/ops.rs",
+          "sha256": "29791a0860bd033da934c7f468209e2e5b7a7f571e4d8328d908d2b980706374"
+        },
+        {
+          "path": "src/bitmap/ops_with_serialized.rs",
+          "sha256": "30770de7caada654cc50a23d9aba290c2535055afa9818caf793e4a6c885f1d0"
+        },
+        {
+          "path": "src/bitmap/proptests.rs",
+          "sha256": "6a8ceb26cbedeec7927dae47c354287b657d21d6e07d6aee0a4c4f875e85502b"
+        },
+        {
+          "path": "src/bitmap/serde.rs",
+          "sha256": "6aed1764a301d60d64f2394704c4a1de7ebad4aa35d8b90a70652861a2059940"
+        },
+        {
+          "path": "src/bitmap/serialization.rs",
+          "sha256": "a909a8127a7eb218d3b4c860db7cc34077cc0597631b42ad26dfeffe5d5a928c"
+        },
+        {
+          "path": "src/bitmap/statistics.rs",
+          "sha256": "bd8f7250710c1543a1708a0d32faf7be95e7a25da315fb681b9fb07c9716cd8d"
+        },
+        {
+          "path": "src/bitmap/store/array_store/mod.rs",
+          "sha256": "d7fa1b3a201c9b09dbeb33b97477be5e70bfab5c6dd49c931da813c8371e8723"
+        },
+        {
+          "path": "src/bitmap/store/array_store/scalar.rs",
+          "sha256": "0ef6dd2c9504c83cf682bbddfb1aca4a30d5bbdae6cf1361eb96821c28c90868"
+        },
+        {
+          "path": "src/bitmap/store/array_store/vector.rs",
+          "sha256": "eaf771f6e7f976bf2e7ff3faa4da6c902af5e7868d7914573dbd689fd7fbf740"
+        },
+        {
+          "path": "src/bitmap/store/array_store/visitor.rs",
+          "sha256": "7c57843862748cccc1c763fa8160c50d0c7564e7f3aefe419cad50fda1d92138"
+        },
+        {
+          "path": "src/bitmap/store/bitmap_store.rs",
+          "sha256": "d77bbfe8df991eeae93a6a9bdf3623b740f80c3797549adaffef935161e4e4d9"
+        },
+        {
+          "path": "src/bitmap/store/interval_store.rs",
+          "sha256": "5f052e2e038f4a8b3ab26e28968910741d5d9ac35269336b4ed64b0991ceb457"
+        },
+        {
+          "path": "src/bitmap/store/mod.rs",
+          "sha256": "37594e0294ab4b1fb6ce81ef19e09430f5b401a561fa044b6168143bcf0e0d91"
+        },
+        {
+          "path": "src/bitmap/util.rs",
+          "sha256": "cbb629a0b93fba1293423ffe21b6de4dd6fff44d052c8bb3c3fc1d0eb8436765"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "97222389f09dd6159e88641b227c683b879f6f06c8e491e38551815da77f8785"
+        },
+        {
+          "path": "src/treemap/arbitrary.rs",
+          "sha256": "7bbe5a08dbd5294d356650b54521450f5f47c252f28081c1f6c2196fc0cb704d"
+        },
+        {
+          "path": "src/treemap/cmp.rs",
+          "sha256": "8af1189c668fa63605bc7bec46bc8aa1f35c72c1565d4beb850d8ef8bc66eba8"
+        },
+        {
+          "path": "src/treemap/fmt.rs",
+          "sha256": "b176178416d011ab47047fc6f2b1ae23042619d759c9657d0c0252d599593340"
+        },
+        {
+          "path": "src/treemap/inherent.rs",
+          "sha256": "f83b4bc8c5e6524f0e768e7dc0bf04caa877148985834181b762b3c7ef8b3904"
+        },
+        {
+          "path": "src/treemap/iter.rs",
+          "sha256": "02133a415b59df49a58bca8ad0f6388c293cf0d6a38e9fa526fb0da1902045d6"
+        },
+        {
+          "path": "src/treemap/mod.rs",
+          "sha256": "fbc34ce5610f4a268351645dde78b4bbdea30ef0cc553d21608f4246e9988176"
+        },
+        {
+          "path": "src/treemap/multiops.rs",
+          "sha256": "73732e2500f915e1895fac67d44c8cb6d3e9bccf125d15e82a5763c92fff01ed"
+        },
+        {
+          "path": "src/treemap/ops.rs",
+          "sha256": "67d4fba14b4c78d1a93c78ea64627c4236f941a976a1a275a73d1f74a64af32e"
+        },
+        {
+          "path": "src/treemap/serde.rs",
+          "sha256": "6ab22a1b608aac9e1372e33154c48340f1baf101857e65227868e060f9cdfa2c"
+        },
+        {
+          "path": "src/treemap/serialization.rs",
+          "sha256": "869d0a2250eef7a1bf470e3664008ce22121617ef49c3c3b97a0937a41830d0c"
+        },
+        {
+          "path": "src/treemap/util.rs",
+          "sha256": "368340a98320df8324fbcb3c0400e31a35968bc976b945984a967a7054676d40"
+        }
+      ]
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+      "files": []
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "checksum": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48",
+      "files": []
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "checksum": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348",
+      "files": []
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.151",
+      "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14",
+      "files": []
+    },
+    {
+      "name": "syn",
+      "version": "3.0.9",
+      "checksum": "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b",
+      "files": []
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27",
+      "checksum": "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563",
+      "files": []
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "checksum": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b",
+      "files": []
+    }
+  ],
+  "generator_sha256": "b195786dc128ff9a9ba77bb9d8b428c0a261e4c1ad52cc7bca6a20a554d51f1c",
+  "scaffold_sha256": "383fdcaaedc663d4e0a96fa9783f939463f7c4d6adec86f33e6ba799aa0b3588",
+  "cases_sha256": "2a1e598f870f125172f5892f71973947ac3f8e39c530a33732a15550d6eac5b1",
+  "lock_sha256": "cf256d490109bafd66032c9759e2c3df93d43814f7a9a4b9a72b51b3a87a23e5",
+  "adapter": "Remove only DeepSizeOf import/derive. Original nullable methods use a materialized-row adapter backed by actual roaring::RoaringTreemap; full-fragment selections and serialization are not claimed.",
+  "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08) (Homebrew)\nbinary: rustc\ncommit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234\ncommit-date: 2025-12-08\nhost: aarch64-apple-darwin\nrelease: 1.92.0\nLLVM version: 21.1.7"
+}

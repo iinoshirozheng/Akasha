@@ -847,3 +847,21 @@ The [validation report](research/2026-10-31-lance-json-index-input-validation.md
 records source comparisons and exact scope. Target indexing, stream training,
 query matching and durable collection lifecycle remain in the
 [index plan](plans/2026-10-31-lance-json-index.md).
+
+The next native dependency is `akasha.index.roaring_rows.RoaringRowSet`:
+point `insert`/`remove` return whether the set changed; `contains`, `count`,
+ordered `values`, union/intersection/difference/XOR and owned copies operate
+on full UInt64 IDs. It preserves source array/bitmap containers and their
+4096-entry transition. Default logical state limits are 10 million IDs and
+64 MiB; `values` has a separate output-byte bound. These are logical state
+bounds, not allocator/RSS guarantees. Binary operation results use the left
+operand's limits and do not mutate inputs.
+
+`akasha.index.nullable_rows` provides `NullableRowSet(selected_rows, nulls)`
+and `NullableRowMask(rows, block)`. Nulls override raw selected rows, including
+nulls absent from selected. `negated`, `and_with` and `or_with` preserve the
+source allow/block Boolean formulas; `NullableRowSet.union_all` combines
+materialized selections. These types are for the planned scalar/SQL index
+path; they do not change existing collection filter semantics. See
+[row-set validation](research/2026-10-31-lance-rowset-validation.md) for controls,
+source comparisons and the pending run/full-fragment/serialization work.

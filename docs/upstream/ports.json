@@ -4497,6 +4497,122 @@
         "Query matching, durable index catalog/recovery and complete public integration",
         "All full-product/platform/performance gates; no optimization"
       ]
+    },
+    {
+      "id": "D01c4j-lance-materialized-rowsets",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-select/src/mask/nullable.rs",
+          "sha256": "500ecb114749dbcea6ffdf03ee42c289522038051e1cbcba1f3afa42460bd692"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/container.rs",
+          "sha256": "0ecd5d6823128b47e6dc523f28a9e9397daceb24f5f7f4541ea675dd97950cb1"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/inherent.rs",
+          "sha256": "d2bbed598f6fae15a7c6f653b998fa0dfe9169614944f6f344cd1f3c761a15c4"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/ops.rs",
+          "sha256": "29791a0860bd033da934c7f468209e2e5b7a7f571e4d8328d908d2b980706374"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/store/array_store/mod.rs",
+          "sha256": "d7fa1b3a201c9b09dbeb33b97477be5e70bfab5c6dd49c931da813c8371e8723"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/store/array_store/scalar.rs",
+          "sha256": "0ef6dd2c9504c83cf682bbddfb1aca4a30d5bbdae6cf1361eb96821c28c90868"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/store/bitmap_store.rs",
+          "sha256": "d77bbfe8df991eeae93a6a9bdf3623b740f80c3797549adaffef935161e4e4d9"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/bitmap/store/mod.rs",
+          "sha256": "37594e0294ab4b1fb6ce81ef19e09430f5b401a561fa044b6168143bcf0e0d91"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/treemap/inherent.rs",
+          "sha256": "f83b4bc8c5e6524f0e768e7dc0bf04caa877148985834181b762b3c7ef8b3904"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/treemap/iter.rs",
+          "sha256": "02133a415b59df49a58bca8ad0f6388c293cf0d6a38e9fa526fb0da1902045d6"
+        },
+        {
+          "identity": "crates.io:roaring@0.11.4",
+          "path": "src/treemap/ops.rs",
+          "sha256": "67d4fba14b4c78d1a93c78ea64627c4236f941a976a1a275a73d1f74a64af32e"
+        }
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/roaring-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "roaring point insert/remove/contains and ordered iteration",
+        "roaring array scalar merge visitors, bitmap word operations, mixed dispatch and 4096-entry store transitions",
+        "roaring 16/32/64-bit partitioning and binary set combination",
+        "Lance NullableRowAddrMask NOT/AND/OR and NullableRowAddrSet true_rows/union_all"
+      ],
+      "targets": [
+        "src/akasha/index/roaring_rows.mojo",
+        "src/akasha/index/nullable_rows.mojo"
+      ],
+      "adaptations": [
+        "Upper UInt32 map uses Mojo Dict with sorted key iteration instead of BTreeMap",
+        "Point mutation Array/Bitmap stores only; Run/range/full-fragment/serialized formats remain pending",
+        "Logical state/output bounds, mutation preflight and cooperative operation/partition/container controls",
+        "Finite-row oracle adapter delegates to actual RoaringTreemap; original nullable method bodies unchanged"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-rowset/Cargo.lock": "cf256d490109bafd66032c9759e2c3df93d43814f7a9a4b9a72b51b3a87a23e5",
+        "tests/fixtures/lance-rowset/README.md": "9d49241c3c21ea60fc6710ffb3894c9aafb19c20d88a8629762b11ea42ca81f0",
+        "tests/fixtures/lance-rowset/cases.json": "2a1e598f870f125172f5892f71973947ac3f8e39c530a33732a15550d6eac5b1",
+        "tests/fixtures/lance-rowset/sources.json": "8285ce078731a20a7cd047227c75acc689cacdd8f46f63022704987db24084e3"
+      },
+      "status": "verified_materialized_rowset_and_nullable_masks_scalar_target_pending",
+      "verification": [
+        "docs/research/2026-10-31-lance-rowset-validation.md"
+      ],
+      "results": {
+        "source_set_scenarios": 309,
+        "source_set_operations": 1236,
+        "source_insertions": 112021,
+        "source_removals": 9853,
+        "source_nullable_scenarios": 564,
+        "source_nullable_results": 2256,
+        "source_nullable_probe_states": 27072,
+        "native_tests_passed": 10,
+        "reproduced_fixture_files": 4
+      },
+      "verified_file_sha256": {
+        "src/akasha/index/roaring_rows.mojo": "41489bc30770b74197181f6c744ad4afb60988272935e01afb09805ff9d664d1",
+        "src/akasha/index/nullable_rows.mojo": "3473c27388cc583707c89752ae8aa566a6278d2dc057df61f0386d2c694090ac",
+        "tests/mojo/test_lance_rowset.mojo": "e76c47d20f9846a167615fe54372447aa21b3a7b61605b16edf14497a238cfc3",
+        "scripts/lance_rowset_reference.py": "b195786dc128ff9a9ba77bb9d8b428c0a261e4c1ad52cc7bca6a20a554d51f1c",
+        "scripts/lance_rowset_reference.rs": "383fdcaaedc663d4e0a96fa9783f939463f7c4d6adec86f33e6ba799aa0b3588"
+      },
+      "remaining": [
+        "Source scalar ordering, real bitmap target training/search/update/remap",
+        "JSON stream inference/planning/durable catalog and public collection integration",
+        "Run/range/full-fragment and portable Roaring format support",
+        "All full-product/platform/performance gates; no tuning"
+      ]
     }
   ]
 }

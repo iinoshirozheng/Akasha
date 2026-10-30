@@ -72,6 +72,32 @@ No persisted format or application execution path changes in this dependency.
 
 ## Next target source findings
 
+### Materialized row sets and nullable search results
+
+Verified dependency on 2026-10-31: native point-set operations and nullable mask
+NOT/AND/OR plus set union_all match original source. **309 set scenarios,
+1,236 set results, 112,021 inserts, 9,853 removals, 2,256 nullable results and
+27,072 probe states; 10 native tests pass.**
+[Evidence](../research/2026-10-31-lance-rowset-validation.md).
+The actual scalar target and all later index stages remain pending.
+
+The target needs arbitrary UInt64 row IDs and separate true/unknown sets.
+This dependency ports roaring 0.11.4's point-insert/remove paths, 16-bit array/bitmap
+containers (threshold 4096), 32/64-bit partitioning, ordered iteration and
+union/intersection/difference/XOR. Use Mojo's existing lower-bound helper and
+standard containers; keep the source's two-level partition and container
+dispatch. It ports Lance's actual nullable mask Boolean formulas and set union_all, including
+allow/block complements without materializing a universe. Range insertion,
+run optimization, full-fragment selections and portable serialized Roaring
+formats remain separate requirements before claiming complete compatibility.
+
+Verification executes actual original roaring crate operations and original Lance nullable
+method bodies over materialized row sets. Include dense/sparse transitions,
+duplicate insert/remove, UInt64 extrema, unknown rows outside selected rows,
+all allow/block combinations, bounded mutation failure and owned results.
+Failing native tests preceded implementation; provenance is preserved, and
+this dependency remains distinct from a completed scalar index.
+
 `scalar/bitmap.rs` requires value-sorted input even for bitmap training. Its
 `streaming_build_and_write` accumulates one equal-value run at a time and
 merge-joins old sorted keys, filtering old data before publishing new index

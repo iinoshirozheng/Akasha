@@ -1,5 +1,7 @@
 # Akasha 完整產品功能差異報告
 
+2026-10-31 最新 D01c4j：已移植 roaring-rs 的 UInt64 集合及 Lance nullable mask 的 NOT／AND／OR、set union_all，保留來源容器切換與 true／unknown 區分。309 組集合情境、1,236 組集合運算、121,874 組增刪結果、2,256 組 nullable 結果及 27,072 組探測狀態對齊，10 項 Mojo 測試通過。[驗證](2026-10-31-lance-rowset-validation.md)。這是 scalar index 所需依賴；實際索引訓練／搜尋、持久化與公開介面仍未完成，尚未優化。
+
 2026-10-31 最新 D01c4i：已移植 Lance JSON 索引的批次輸入層，包含第一個非空型別推斷、整批型別驗證及嚴格轉換；6,481 組來源情境／32,405 組轉換結果一致，8 項 Mojo 測試通過，來源產物可重現。這是索引依賴，實際 target index、串流訓練、查詢匹配及持久化／公開整合仍待完成。[驗證](2026-10-31-lance-json-index-input-validation.md)。既有公開 runtime 與完整 Python 3,752／1 的驗證版本未變，尚未優化。
 
 2026-10-31 最新 D01c4h：11 個 Lance JSON 函式可直接產生 collection scanner 計算欄位，保留來源浮點／null／二進位語義，215,780 組來源結果與完整 Python **3,752 通過／1 跳過**。專用索引、動態參數、文件計算投影、SQL 與完整協定仍待完成。見 [投影驗證](2026-10-31-jsonb-projection-validation.md)。
