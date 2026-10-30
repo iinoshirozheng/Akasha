@@ -70,7 +70,16 @@ and existing quality/platform gates remain open.
   names. Direct RecordBatch input now rejects these before capsule export.
   Nested empty keys remain valid; typed C Data cannot represent NUL in names.
   Schemaless JSON extension interop must preserve those keys inside values.
-- Steps 3–4 remain open for recursive **export**, real PyArrow projection types,
-  stable nested output schemas, numeric bounds, shared output buffer budgets,
-  cancellation and recursive release/snapshot ownership. Dynamic JSON extension,
-  durable table schema/history and the full product ledger remain open.
+- D01c2 implements recursive native **export**, real PyArrow projection types and
+  fields, stable nested schemas/metadata, numeric bounds, shared output buffers,
+  bounded null-only expansion, cancellation and recursive release/snapshot
+  ownership. The old scalar-only column kinds and export branch are removed;
+  public scalar aliases use the same typed path. The shared C Data owner is
+  extracted unchanged into `bindings/arrow_buffers.mojo`.
+- Source comparisons found four F16 midpoint differences: Arrow's half NumCast
+  passes through F32 first. Mojo folds inline F64→F32→F16 into one conversion;
+  a no-inline F32 boundary preserves the source's double rounding. Verification
+  includes an independent 2,126-row Arrow cast fixture for both output widths.
+  Dynamic JSON extension, durable table schema/history and the full product
+  ledger remain open. Typed Arrow does not encode schemaless missing/null/key
+  distinctions or claim Lance file/schema compatibility.

@@ -4,9 +4,12 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c1：巢狀 typed Arrow 匯入已移植到 Mojo，涵蓋 struct／list／UInt64／null、所有整數寬度及有限浮點，兩個 upsert API 共用原生 buffer traversal。
+- 最新 D01c2：巢狀 typed Arrow 匯出已完成，接受 PyArrow 型別／欄位、保留指定 nullability／metadata，以原生 C Data 輸出；舊純量分支已移除，共用同一匯出路徑。
+  2,126 組來源輸入各驗證 F16／F32，修正來源所需的 F32 中間捨入；55 項新增 Python、14 項相關原生及完整 Python **3,385 通過、1 跳過**。來源 fixture／metadata／lock 可逐位元重現。
+  [驗證](docs/research/2026-10-30-rich-arrow-export-validation.md)。下一步為動態 `arrow.json` extension 與 missing／null／任意鍵互通；D01、Lance schema／歷史版本與完整產品清單仍未完成，尚未優化。
+- D01c1：巢狀 typed Arrow 匯入已移植到 Mojo，涵蓋 struct／list／UInt64／null、所有整數寬度及有限浮點，兩個 upsert API 共用原生 buffer traversal。
   固定 Arrow／Lance 來源產生 88 個 cell 對照，15 項原生與完整 Python **3,330 通過、1 跳過**；82 項新增公開測試。
-  [驗證](docs/research/2026-10-30-rich-arrow-ingress-validation.md)。下一步仍是巢狀 typed Arrow 匯出與 JSON extension，D01 與完整產品清單未完成，尚未優化。
+  [驗證](docs/research/2026-10-30-rich-arrow-ingress-validation.md)。巢狀 typed Arrow 匯出已由 D01c2 補入；JSON extension、D01 與完整產品清單未完成，尚未優化。
 - D03f：已移植 Qdrant 點 ID／向量存在／固定分片條件、獨立路徑空值條件，
   以及 siphasher 的固定 SipHash-2-4；nested 範圍依來源清除點身分與向量資訊。
   搜尋／公式／掃描／條件更新、Python／Arrow／現有 HTTP 已串接。

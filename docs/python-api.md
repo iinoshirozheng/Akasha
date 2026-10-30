@@ -247,10 +247,10 @@ Native `payload_value_get`, `payload_value_set` and `payload_value_remove` opera
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array
 index does nothing, and a terminal wildcard clears its array. Collection-level
-operations below use the same source semantics. Rich Arrow schemas,
+operations below use the same source semantics. Schemaless Arrow JSON interop,
 dedicated nested/array indexes and complete REST/gRPC/C
 and distributed payload contracts remain tracked in D01–D05/A01–A03/X01–X04.
-Existing scalar Arrow projections reject incompatible rich values explicitly.
+Typed Arrow projections require an explicit compatible scalar or nested schema.
 
 ### Payload mutations
 
@@ -332,9 +332,9 @@ are not accepted by this typed JSON adapter. Payload depth/node/byte and encoded
 size limits still apply. This imports typed values without retaining the input
 table schema; it does not implement schema evolution or Lance files.
 
-Rich typed output and schemaless `arrow.json` extension interop remain separate
-pending work. Current scanner payload projections still accept the four scalar
-names below. [Source fixtures](../tests/fixtures/rich-arrow/README.md).
+Typed scalar and nested output use the scanner schema described below.
+Schemaless `arrow.json` extension interop remains pending.
+[Source fixtures](../tests/fixtures/rich-arrow/README.md).
 
 `search_record_batch(collection, request)` runs any `SearchRequest` directly into
 owned `int64` ID and `float32` score columns. It uses the same limits, filters,
@@ -389,12 +389,43 @@ all except sequence. A missing sparse field is null; present fields preserve
 their ragged lengths. The existing writer rejects empty sparse vectors.
 
 Payload remains schemaless in storage, so the caller specifies projected field
-types as `string`, `int`, `float` or `bool`. Output names use the `payload.` prefix.
+types as `string`, `int`, `float` or `bool`, or a real PyArrow `DataType` or `Field`.
+Output names use the `payload.` prefix. Supported types match typed ingress above.
+An explicit `Field` must have the same name as its mapping key; its nullability
+and metadata are retained, including nested field metadata. The input table
+schema/metadata are not persisted or inferred from stored values.
 Missing fields and explicit null become Arrow null; a present non-null value with a different type raises and
 closes the scanner. No preliminary whole-collection schema discovery occurs.
 An empty `columns` projection is supported, including zero-column batches with
 their row counts preserved. `filter` accepts the same expression dictionaries
 as `SearchRequest.filter` and runs against the captured point state.
+
+```python
+import pyarrow as pa
+
+with scan_record_batches(
+    collection, columns=("id",),
+    payload_schema={"document": pa.struct([
+        pa.field("title", pa.string(), nullable=False),
+        pa.field("tags", pa.list_(pa.string())),
+        pa.field("count", pa.uint64()),
+    ])},
+) as scanner:
+    for batch in scanner:
+        process_batch(batch)
+```
+
+A struct projection emits only its declared keys, in declaration order. A null
+parent masks its required children; an active parent with a missing/null required
+child fails. Fixed-size lists require the declared number of elements. List
+nulls, empty lists, null elements and empty structs remain distinct.
+Signed integer, unsigned integer, floating, Boolean and string families are
+strict: projection does not implicitly convert between them. Integer narrowing
+checks bounds. Floating narrowing follows the pinned Arrow cast behavior:
+F16 first rounds through F32, then to F16; F32 rounds directly from F64. Results
+that become nonfinite raise rather than returning Infinity. This finite-value
+rule is Akasha's numeric contract, not a claim that Arrow rejects Infinity.
+NUL field names, duplicate struct names and extension types are rejected.
 
 One-row dense vectors borrow their immutable native buffer and retain its read
 generation through a real Arrow C Data release callback. Multi-row vectors and
@@ -413,6 +444,13 @@ allocations; exceeding it closes the scanner with an error. Reduce batch size
 for large payloads. The byte limit excludes retained source generations,
 selection descriptors and Arrow metadata. A cursor has one consumer; separate
 cursors can retain independent snapshots.
+
+Nested buffers share the same output allocation cap. Typed payload traversal is
+also bounded to `max(1024, max_batch_bytes // 32)` logical cell descriptors per
+payload column/batch on the supported 64-bit ABI, including masked fixed-list
+children. This bounds null-only expansions even when they need no value buffer.
+Reducing batch size or the projected nesting/width reduces that work. The byte
+cap and traversal bound are not process RSS limits.
 
 `stats` counts returned rows/batches, visited slots, logical materialized buffer
 bytes (including offsets and validity, excluding allocation padding) and borrowed

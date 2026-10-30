@@ -1,31 +1,28 @@
 """Arrow C Data buffer ownership for the bounded document scanner.
 
-Only ArrowArray's stable C ABI is implemented here. PyArrow builds the schema
-and imports the array synchronously; no raw address crosses the public API.
+Column dispatch and vector materialization share the stable C ABI ownership
+implementation in arrow_buffers. No raw address crosses the public API.
 """
 
 from akasha.api.scanner import ScanBatch
 from akasha.document.record import validate_field_name
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.query.control import QueryControl
-from akasha.storage.read_generation import ReadGeneration
-from std.memory import ArcPointer, OwnedPointer
 from std.python import Python, PythonObject
 from std.sys.info import size_of
-
-
-comptime ARROW_ARRAY_SIZE = 80
-comptime ARROW_ARRAY_RELEASE_OFFSET = 64
-comptime ARROW_ARRAY_PRIVATE_OFFSET = 72
+from bindings.arrow_payload import ArrowPayloadSchema, payload_arrow_type
+from bindings.arrow_payload_export import export_payload_column
+from bindings.arrow_buffers import ArrowArrayExport, _ArrayData, _BufferBudget, _store, _set_bit, _checked_bytes
 
 
 struct ArrowColumn(Copyable, Movable):
     var name: String
-    # 1=id, 2=sequence, 3=legacy vector, 4=terms, 5=weights; 6..9=payload,
-    # 10=typed vector, 11=document sequence.
+    # 1=id, 2=sequence, 3=legacy vector, 4=terms, 5=weights;
+    # 10=typed vector, 11=document sequence, 12=typed payload.
     var kind: Int
     var payload_name: String
     var field: Optional[VectorFieldSpec]
+    var payload: Optional[ArrowPayloadSchema]
 
     def __init__(
         out self,
@@ -33,11 +30,16 @@ struct ArrowColumn(Copyable, Movable):
         kind: Int,
         var payload_name: String = String(),
         var field: Optional[VectorFieldSpec] = None,
+        var payload: Optional[ArrowPayloadSchema] = None,
     ) raises:
-        if kind < 1 or kind > 11:
+        if kind < 1 or kind > 12 or (kind >= 6 and kind <= 9):
             raise Error("unknown scanner column type")
-        if kind >= 6 and kind <= 9:
+        if kind == 12:
             validate_field_name(payload_name)
+            if not payload:
+                raise Error("typed payload column requires a schema")
+        elif payload:
+            raise Error("unexpected scanner payload schema")
         if kind == 10:
             if not field:
                 raise Error("typed scanner column requires a vector schema")
@@ -46,164 +48,7 @@ struct ArrowColumn(Copyable, Movable):
         self.kind = kind
         self.payload_name = payload_name^
         self.field = field^
-
-
-struct _BufferBudget:
-    var limit: Int
-    var used: Int
-
-    def __init__(out self, limit: Int) raises:
-        if limit <= 0:
-            raise Error("scanner buffer limit must be positive")
-        self.limit = limit
-        self.used = 0
-
-    def reserve(mut self, count: Int) raises:
-        if count < 0 or count > self.limit - self.used:
-            raise Error("scanner batch buffer resource limit exceeded")
-        self.used += count
-
-
-struct _ArrayData(Movable):
-    # Word allocations guarantee 8-byte alignment for every supported primitive.
-    var allocations: List[List[UInt64]]
-    var buffers: List[Int64]
-    var root: Optional[ArcPointer[ReadGeneration]]
-    var materialized_bytes: Int
-    var borrowed_bytes: Int
-
-    def __init__(out self):
-        self.allocations = List[List[UInt64]]()
-        self.buffers = List[Int64]()
-        self.root = Optional[ArcPointer[ReadGeneration]]()
-        self.materialized_bytes = 0
-        self.borrowed_bytes = 0
-
-    def allocate(mut self, count: Int, mut budget: _BufferBudget) raises -> Int:
-        if count < 0 or count > Int.MAX - 7:
-            raise Error("scanner buffer length overflow")
-        var words = (count + 7) // 8
-        budget.reserve(words * 8)
-        self.materialized_bytes += count
-        if count == 0:
-            return 0
-        self.allocations.append(List[UInt64](length=words, fill=UInt64(0)))
-        return Int(
-            Span(self.allocations[len(self.allocations) - 1]).unsafe_ptr()
-        )
-
-
-struct _ArrayOwner(Movable):
-    var data: _ArrayData
-    var children: List[ArrowArrayExport]
-    var child_pointers: List[Int64]
-
-    def __init__(
-        out self, var data: _ArrayData, var children: List[ArrowArrayExport]
-    ):
-        self.data = data^
-        self.children = children^
-        self.child_pointers = List[Int64](capacity=len(self.children))
-        for index in range(len(self.children)):
-            self.child_pointers.append(Int64(self.children[index].address()))
-
-
-def _release_array(array: OpaquePointer[MutUntrackedOrigin]) abi("C"):
-    """May receive a relocated parent or child, on an arbitrary consumer thread.
-    """
-    var words = array.unsafe_bitcast[Int64]()
-    if words[unsafe_offset=8] == 0:
-        return
-    var address = words[unsafe_offset=9]
-    words[unsafe_offset=8] = 0
-    words[unsafe_offset=9] = 0
-    # Destruction releases only children still owned here. A moved child has
-    # release=NULL in its old header and retains its own independent owner.
-    var owner = OwnedPointer[_ArrayOwner](
-        unsafe_from_opaque_pointer=Pointer[NoneType, MutUntrackedOrigin](
-            unsafe_from_address=Int(address)
-        )
-    )
-    _ = owner^
-
-
-struct ArrowArrayExport(Movable):
-    var _header: List[Int64]
-    var materialized_bytes: Int
-    var borrowed_bytes: Int
-
-    def __init__(
-        out self,
-        length: Int,
-        null_count: Int,
-        var data: _ArrayData,
-        var children: List[ArrowArrayExport],
-    ):
-        comptime assert (
-            size_of[OpaquePointer[MutUntrackedOrigin]]() == 8
-        ), "Arrow export requires a 64-bit ABI"
-        comptime assert (
-            size_of[type_of(_release_array)]() == 8
-        ), "Arrow export requires an 8-byte C callback"
-        self.materialized_bytes = data.materialized_bytes
-        self.borrowed_bytes = data.borrowed_bytes
-        for index in range(len(children)):
-            self.materialized_bytes += children[index].materialized_bytes
-            self.borrowed_bytes += children[index].borrowed_bytes
-        var owner = OwnedPointer(_ArrayOwner(data^, children^))
-        var allocation = owner^.unsafe_take_allocation()
-        var address = Int(allocation^.unsafe_leak())
-        var state = Pointer[_ArrayOwner, MutUntrackedOrigin](
-            unsafe_from_address=address
-        )
-        var buffers = Int(Span(state[].data.buffers).unsafe_ptr()) if len(
-            state[].data.buffers
-        ) else 0
-        var child_pointers = Int(
-            Span(state[].child_pointers).unsafe_ptr()
-        ) if len(state[].children) else 0
-        self._header = [
-            Int64(length),
-            Int64(null_count),
-            0,
-            Int64(len(state[].data.buffers)),
-            Int64(len(state[].children)),
-            Int64(buffers),
-            Int64(child_pointers),
-            0,
-            0,
-            Int64(address),
-        ]
-        Pointer[type_of(_release_array), MutUntrackedOrigin](
-            unsafe_from_address=self.address() + ARROW_ARRAY_RELEASE_OFFSET
-        )[] = _release_array
-
-    def __deinit__(deinit self):
-        _release_array(
-            Pointer[NoneType, MutUntrackedOrigin](
-                unsafe_from_address=self.address()
-            )
-        )
-
-    def address(self) -> Int:
-        return Int(Span(self._header).unsafe_ptr())
-
-
-def _store[T: TrivialRegisterPassable](address: Int, index: Int, value: T):
-    Pointer[T, MutUntrackedOrigin](unsafe_from_address=address)[
-        unsafe_offset=index
-    ] = value
-
-
-def _set_bit(address: Int, index: Int):
-    var bytes = Pointer[UInt8, MutUntrackedOrigin](unsafe_from_address=address)
-    bytes[unsafe_offset=index // 8] |= UInt8(1) << UInt8(index % 8)
-
-
-def _checked_bytes(count: Int, width: Int) raises -> Int:
-    if count < 0 or count > Int.MAX // width:
-        raise Error("scanner buffer length overflow")
-    return count * width
+        self.payload = payload^
 
 
 def scanner_schema(
@@ -221,12 +66,11 @@ def scanner_schema(
             dtype = pa.list_(pa.int64())
         elif column.kind == 5:
             dtype = pa.list_(pa.float32())
-        elif column.kind == 6:
-            dtype = pa.string()
-        elif column.kind == 8:
-            dtype = pa.float64()
-        elif column.kind == 9:
-            dtype = pa.bool_()
+        if column.kind == 12:
+            ref payload = column.payload.value()
+            fields.append(pa.field(PythonObject(column.name), payload_arrow_type(payload),
+                                   nullable=payload.nodes[0].nullable, metadata=payload.nodes[0].metadata))
+            continue
         if column.kind == 10:
             ref field = column.field.value()
             dtype = vector_arrow_type(field)
@@ -245,7 +89,7 @@ def scanner_schema(
             pa.field(
                 PythonObject(column.name),
                 dtype,
-                nullable=column.kind >= 4 and column.kind <= 9,
+                nullable=column.kind == 4 or column.kind == 5,
             )
         )
     return pa.schema(fields)
@@ -275,6 +119,8 @@ def _export_column(
     mut budget: _BufferBudget,
     control: QueryControl,
 ) raises -> ArrowArrayExport:
+    if column.kind == 12:
+        return export_payload_column(batch, column.payload_name, column.payload.value(), budget, control)
     if column.kind == 10:
         return _export_vector_column(
             batch, column.field.value(), budget, control
@@ -372,70 +218,6 @@ def _export_column(
         children.append(
             ArrowArrayExport(count, 0, values_data^, List[ArrowArrayExport]())
         )
-    else:
-        var field_slots = List[Int](capacity=rows)
-        var string_bytes = 0
-        for row in range(rows):
-            control.checkpoint(row)
-            ref fields = batch.entry(row).fields()
-            var slot = -1
-            for index in range(len(fields)):
-                if fields[index].name == column.payload_name:
-                    if fields[index].value.kind() == 5:
-                        break
-                    slot = index
-                    if Int(fields[index].value.kind()) != column.kind - 5:
-                        raise Error(
-                            "scanner payload type mismatch: "
-                            + column.payload_name
-                        )
-                    if column.kind == 6:
-                        var length = fields[
-                            index
-                        ].value._string_value.byte_length()
-                        if length > Int(Int32.MAX) - string_bytes:
-                            raise Error("scanner string offsets overflow")
-                        string_bytes += length
-                    break
-            field_slots.append(slot)
-            if slot < 0:
-                nulls += 1
-        var validity = 0
-        if nulls:
-            validity = data.allocate((rows + 7) // 8, budget)
-            data.buffers[0] = Int64(validity)
-        var offsets = 0
-        var value_bytes: Int
-        if column.kind == 6:
-            offsets = data.allocate(_checked_bytes(rows + 1, 4), budget)
-            data.buffers.append(Int64(offsets))
-            value_bytes = string_bytes
-        elif column.kind == 9:
-            value_bytes = (rows + 7) // 8
-        else:
-            value_bytes = _checked_bytes(rows, 8)
-        var values = data.allocate(value_bytes, budget)
-        data.buffers.append(Int64(values))
-        var position = 0
-        for row in range(rows):
-            control.checkpoint(row)
-            if field_slots[row] >= 0:
-                ref value = batch.entry(row).fields()[field_slots[row]].value
-                if validity:
-                    _set_bit(validity, row)
-                if column.kind == 6:
-                    for byte in value._string_value.bytes():
-                        control.checkpoint(position)
-                        _store(values, position, byte)
-                        position += 1
-                elif column.kind == 7:
-                    _store(values, row, value._int_value)
-                elif column.kind == 8:
-                    _store(values, row, value._float_value)
-                elif value._bool_value:
-                    _set_bit(values, row)
-            if column.kind == 6:
-                _store(offsets, row + 1, Int32(position))
     return ArrowArrayExport(rows, nulls, data^, children^)
 
 

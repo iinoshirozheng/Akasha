@@ -43,7 +43,7 @@ def type_descriptor(dtype: pa.DataType, *, name: str = "", nullable: bool = True
         children = [_field_descriptor(f, _depth + 1)]
     else:
         raise ValueError(f"unsupported payload Arrow type: {dtype}")
-    return dict(kind=kind, bits=bits, size=size, name=name, nullable=nullable, children=children)
+    return dict(kind=kind, bits=bits, size=size, name=name, nullable=nullable, children=children, metadata=None)
 
 
 def _field_descriptor(field: pa.Field, depth: int = 0) -> dict[str, Any]:
@@ -51,7 +51,26 @@ def _field_descriptor(field: pa.Field, depth: int = 0) -> dict[str, Any]:
     # Do not silently interpret an extension as plain JSON-compatible storage.
     if b"ARROW:extension:name" in (field.metadata or {}):
         raise ValueError("Arrow payload extension types are not yet supported")
-    return type_descriptor(field.type, name=field.name, nullable=field.nullable, _depth=depth)
+    result = type_descriptor(field.type, name=field.name, nullable=field.nullable, _depth=depth)
+    result["metadata"] = field.metadata
+    return result
+
+
+def projection_descriptor(name: str, requested: Any) -> dict[str, Any]:
+    aliases = {"string": pa.string(), "int": pa.int64(), "float": pa.float64(), "bool": pa.bool_()}
+    if isinstance(requested, str):
+        if requested not in aliases:
+            raise ValueError(f"unsupported scanner payload type: {requested!r}")
+        requested = aliases[requested]
+    if isinstance(requested, pa.Field):
+        if requested.name != name:
+            raise ValueError("payload projection field name must match its mapping key")
+        field = requested
+    elif isinstance(requested, pa.DataType):
+        field = pa.field(name, requested)
+    else:
+        raise ValueError(f"unsupported scanner payload type: {requested!r}")
+    return _field_descriptor(field)
 
 
 def validate_c_field_names(schema: pa.Schema) -> None:

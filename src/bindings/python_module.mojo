@@ -32,7 +32,7 @@ from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
 from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, json_value_from_python, _json_value
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
-from bindings.arrow_payload import arrow_payload_schemas, arrow_payload_fields
+from bindings.arrow_payload import ArrowPayloadSchema, arrow_payload_schemas, arrow_payload_fields
 from std.collections import Dict
 from akasha.index.flat import SearchResult
 from akasha.api.scanner import ReadScanner
@@ -102,6 +102,8 @@ struct BoundScanner(Movable, Writable):
         _ensure_open(collection[])
         var field_schema = collection[].inner.value().vector_fields()
         var point_mode = Bool(collection[].inner.value()._field_catalog())
+        var payload_nodes = 0
+        var payload_bytes = 0
         for column in options["columns"]:
             var name = _exact_python_string(
                 column["name"], "scanner column name"
@@ -114,6 +116,14 @@ struct BoundScanner(Movable, Writable):
                 column["payload_name"], "scanner source name"
             )
             var vector_field = Optional[VectorFieldSpec]()
+            var payload = Optional[ArrowPayloadSchema]()
+            if kind == 12:
+                var parsed = ArrowPayloadSchema(column["payload_type"])
+                if len(parsed.nodes) > PayloadValue.MAX_NODES - payload_nodes or parsed.name_bytes > PayloadValue.MAX_BYTES - payload_bytes:
+                    raise Error("scanner payload schema resource limit exceeded")
+                payload_nodes += len(parsed.nodes)
+                payload_bytes += parsed.name_bytes
+                payload = Optional(parsed^)
             if kind == 10:
                 var ordinal = _named_field_ordinal(field_schema, source_name)
                 vector_field = Optional(field_schema[ordinal].copy())
@@ -126,6 +136,7 @@ struct BoundScanner(Movable, Writable):
                     kind,
                     source_name^,
                     vector_field^,
+                    payload^,
                 )
             )
         var expression = Optional[FilterExpression]()

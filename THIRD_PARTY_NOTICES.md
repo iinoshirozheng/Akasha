@@ -292,6 +292,22 @@ uses actual Arrow IPC 58.4.0 / JSON 58.3.0 to produce fixtures. Rust remains a
 test-generation dependency only. Archive checksums, source hashes, adaptations
 and limits are recorded in `tests/fixtures/rich-arrow` and the port registry.
 
+### Typed Arrow payload export and numeric conversion
+
+`src/bindings/arrow_payload_export.mojo` follows the same Arrow/Lance nested
+array, offsets, validity and required-child rules. `arrow_buffers.mojo` extracts
+the existing C Data buffer owner without changing its ABI/release behavior.
+Numeric narrowing adapts Arrow 58.4.0 `cast_numeric_arrays`/`try_numeric_cast`/
+`num_cast`, num-traits 0.2.19 `NumCast`, and half 2.7.1's `NumCast for f16`.
+The F16 path retains the source's intermediate F32 rounding. Akasha additionally
+rejects nonfinite output and keeps its existing strict numeric type families.
+
+Arrow's Apache-2.0 license/notice are listed above. Half and num-traits are
+MIT OR Apache-2.0; the original MIT files are retained at
+`docs/upstream/licenses/half-MIT.txt` and `docs/upstream/licenses/num-traits-MIT.txt`.
+The independent Arrow cast executable and archive/source hashes are in
+`tests/fixtures/rich-arrow-export`. No Rust numeric runtime is introduced.
+
 ### Geographic point validation and formula distance
 
 `document/geo.mojo`, geographic formula integration and input conversion adapt

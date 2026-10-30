@@ -314,7 +314,7 @@ def scan_record_batches(
     batch_size: int = 1024,
     columns: Sequence[str] = ("id", "vector", "sparse_term_ids", "sparse_weights"),
     vectors: Sequence[str] = (),
-    payload_schema: Mapping[str, str] | None = None,
+    payload_schema: Mapping[str, Any] | None = None,
     filter: Mapping[str, Any] | None = None,
     cancellation: CancellationToken | None = None,
     max_candidates: int | None = None,
@@ -324,8 +324,9 @@ def scan_record_batches(
     """Capture a snapshot and export bounded batches through native Arrow C Data.
 
     Core projections accept id, sequence, vector, sparse_term_ids, sparse_weights.
-    Payload projections map names to string/int/float/bool; absent values are null,
-    present values of a different type fail the scan. Sparse absence is null;
+    Payload projections accept string/int/float/bool aliases, PyArrow DataTypes
+    or matching Fields (including nullability/metadata). Missing and explicit null
+    become Arrow null; wrong types, required nulls and numeric overflow fail. Sparse absence is null;
     present sparse vectors retain their ragged lengths. No Python row staging is used.
 
     One-row dense buffers are borrowed; multi-row vectors and other columns are
@@ -357,13 +358,12 @@ def scan_record_batches(
         if not isinstance(name, str) or not name or "\0" in name:
             raise ValueError("vector names must be nonempty strings without NUL")
         descriptors.append(dict(name=f"vectors.{name}", kind=10, payload_name=name))
-    payload_kinds = {"string": 6, "int": 7, "float": 8, "bool": 9}
+    from .arrow_payload import projection_descriptor
     for name, kind in (payload_schema or {}).items():
         if not isinstance(name, str) or not name or "\0" in name:
             raise ValueError("payload names must be nonempty strings without NUL")
-        if not isinstance(kind, str) or kind not in payload_kinds:
-            raise ValueError(f"unsupported scanner payload type: {kind!r}")
-        descriptors.append(dict(name=f"payload.{name}", kind=payload_kinds[kind], payload_name=name))
+        descriptors.append(dict(name=f"payload.{name}", kind=12, payload_name=name,
+                                payload_type=projection_descriptor(name, kind)))
     if len({item["name"] for item in descriptors}) != len(descriptors):
         raise ValueError("scanner column names must be unique")
     options = dict(batch_size=batch_size, columns=descriptors,

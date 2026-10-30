@@ -232,6 +232,64 @@
       "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
       "provenance": "tests/fixtures/rich-arrow/sources.json",
       "reference_only": true
+    },
+    {
+      "name": "arrow-cast",
+      "version": "58.4.0",
+      "checksum": "3a8a327c9649f30d8406995f27642b68df354713cca3baaaf100f076f18d5f34",
+      "revision": null,
+      "identity": "crates.io:arrow-cast@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "provenance": "tests/fixtures/rich-arrow-export/sources.json",
+      "reference_only": false,
+      "used_by": "D01c2-rich-arrow-export",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt"
+    },
+    {
+      "name": "arrow-ord",
+      "version": "58.4.0",
+      "checksum": "63a083ec750f5c043f02946b4baf05fcdbb55f4560a3277055caca5cc99f3eb0",
+      "revision": null,
+      "identity": "crates.io:arrow-ord@58.4.0",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/arrow-Apache-2.0.txt",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "provenance": "tests/fixtures/rich-arrow-export/sources.json",
+      "reference_only": true,
+      "used_by": "D01c2-rich-arrow-export",
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt"
+    },
+    {
+      "name": "half",
+      "version": "2.7.1",
+      "checksum": "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b",
+      "revision": null,
+      "identity": "crates.io:half@2.7.1",
+      "upstream": "https://github.com/VoidStarKat/half-rs",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/half-MIT.txt",
+      "license_sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+      "provenance": "tests/fixtures/rich-arrow-export/sources.json",
+      "reference_only": false,
+      "used_by": "D01c2-rich-arrow-export"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "checksum": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841",
+      "revision": null,
+      "identity": "crates.io:num-traits@0.2.19",
+      "upstream": "https://github.com/rust-num/num-traits",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/num-traits-MIT.txt",
+      "license_sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+      "provenance": "tests/fixtures/rich-arrow-export/sources.json",
+      "reference_only": false,
+      "used_by": "D01c2-rich-arrow-export"
     }
   ]
 }

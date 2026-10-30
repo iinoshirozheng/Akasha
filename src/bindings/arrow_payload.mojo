@@ -9,7 +9,7 @@ children, including arbitrary bytes in their physical storage.
 from akasha.document.value import PayloadValue
 from akasha.document.record import DocumentField, validate_field_name
 from bindings.point_arrow import _valid_bit
-from std.python import PythonObject
+from std.python import Python, PythonObject
 from std.python.numpy import from_numpy_array
 
 
@@ -23,6 +23,7 @@ struct ArrowPayloadNode(Copyable, Movable):
     var name: String
     var nullable: Bool
     var children: List[Int]
+    var metadata: PythonObject
 
 
 struct ArrowPayloadSchema(Copyable, Movable):
@@ -67,7 +68,7 @@ struct ArrowPayloadSchema(Copyable, Movable):
         if (kind < 7 and count != 0) or (kind > 7 and count != 1):
             raise Error("Arrow payload schema child count mismatch")
         var position = len(self.nodes)
-        self.nodes.append(ArrowPayloadNode(kind, bits, size, name^, Bool(py=raw["nullable"]), List[Int]()))
+        self.nodes.append(ArrowPayloadNode(kind, bits, size, name^, Bool(py=raw["nullable"]), List[Int](), raw.get("metadata", Python.none())))
         var children = List[Int](capacity=count)
         var names = Dict[String, Bool]()
         for child in raw_children:
@@ -80,6 +81,36 @@ struct ArrowPayloadSchema(Copyable, Movable):
             children.append(index)
         self.nodes[position].children = children^
         return position
+
+
+def payload_arrow_type(schema: ArrowPayloadSchema, index: Int = 0) raises -> PythonObject:
+    """Build only Arrow schema objects; no payload values cross into Python."""
+    var pa = Python.import_module("pyarrow")
+    ref node = schema.nodes[index]
+    if node.kind == 0:
+        return pa.null()
+    if node.kind == 1:
+        return pa.bool_()
+    if node.kind >= 2 and node.kind <= 4:
+        var prefix = "int" if node.kind == 2 else ("uint" if node.kind == 3 else "float")
+        var factory = Python.import_module("builtins").getattr(pa, PythonObject(prefix + String(node.bits)))
+        return factory()
+    if node.kind == 5:
+        return pa.string()
+    if node.kind == 6:
+        return pa.large_string()
+    var fields = Python.list()
+    for child in node.children:
+        ref member = schema.nodes[child]
+        fields.append(pa.field(PythonObject(member.name), payload_arrow_type(schema, child),
+                               nullable=member.nullable, metadata=member.metadata))
+    if node.kind == 7:
+        return pa.struct(fields)
+    if node.kind == 8:
+        return pa.list_(fields[0])
+    if node.kind == 9:
+        return pa.large_list(fields[0])
+    return pa.list_(fields[0], node.size)
 
 
 struct _ValueBudget:

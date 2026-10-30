@@ -2294,6 +2294,159 @@
         "scripts/rich_arrow_reference.py": "6a2fc9156ee6a980905f1f1568b27d3ea2f10dd8464e9c752938b11154ca4399",
         "scripts/rich_arrow_reference.rs": "87fe5a2e3a1797206cb0d45f5c64ca15245fa40c39adb10f0a86c6e7d4b54afe"
       }
+    },
+    {
+      "id": "D01c2-rich-arrow-export",
+      "upstream": "https://github.com/apache/arrow-rs",
+      "revision": null,
+      "version": "58.4.0",
+      "identity": "crates.io:arrow-cast@58.4.0",
+      "lance_revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/null_array.rs",
+          "sha256": "5f1ae207db27f21c3365d7771a2c1761a709dae5adb7ec13f35a8a2406404dfd"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/boolean_array.rs",
+          "sha256": "370e0872cb6beb7641745c49a78d69e833c6428f8fa823204da73fc47af1a934"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/primitive_array.rs",
+          "sha256": "d78ac867831864699353244465d577fd3b72ce620e04c9ed0c3b50265a4d49e7"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/byte_array.rs",
+          "sha256": "30a3455bde1accb8c8bf54fe419428330142db5891f99190482a872c118d53c3"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/struct_array.rs",
+          "sha256": "efdfadbdc0418538038536057c7d44c57e3d29fb5a4986fb22993c98cfafe144"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/list_array.rs",
+          "sha256": "87a46a159f0b6476c65a03ba8f73f0d5005d240733530b628e97565fc3c2f689"
+        },
+        {
+          "dependency": "arrow-array",
+          "version": "58.4.0",
+          "path": "src/array/fixed_size_list_array.rs",
+          "sha256": "827718af9c41cc838a3a8ebd0a8a327d7468573ba6d00d1be3eb1c634fa5fe50"
+        },
+        {
+          "dependency": "arrow-schema",
+          "version": "58.4.0",
+          "path": "src/field.rs",
+          "sha256": "7aea498fb386d32b1aac87d2b08a9aff591c2f7e259d4c12ed5c8667828afae1"
+        },
+        {
+          "dependency": "arrow-cast",
+          "version": "58.4.0",
+          "path": "src/cast/mod.rs",
+          "sha256": "f508d430e101bce1d98e42b0591f8b5ec2f087510eb52cb577182946cf5c3dfa"
+        },
+        {
+          "dependency": "half",
+          "version": "2.7.1",
+          "path": "src/num_traits.rs",
+          "sha256": "4ec1ab5a2ace7afabcce4e1265753a5a309c04c28144888e3ce8f181d149d973"
+        },
+        {
+          "dependency": "num-traits",
+          "version": "0.2.19",
+          "path": "src/cast.rs",
+          "sha256": "d2c9337163c3d594a701bfce21aec56571625fa0117f970f14fd82dcc4504bf6"
+        }
+      ],
+      "license": "Apache-2.0; half and num-traits MIT OR Apache-2.0",
+      "license_files": [
+        "docs/upstream/licenses/arrow-Apache-2.0.txt",
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/half-MIT.txt",
+        "docs/upstream/licenses/num-traits-MIT.txt"
+      ],
+      "notice_file": "docs/upstream/licenses/arrow-NOTICE.txt",
+      "dependency_provenance": "tests/fixtures/rich-arrow-export/sources.json",
+      "nested_array_provenance": "tests/fixtures/rich-arrow/sources.json",
+      "source_units": [
+        "Arrow primitive/boolean/UTF-8 and recursive struct/list/fixed-size-list buffers, offsets and validity",
+        "Arrow Field metadata/nullability and parent-null masking, with the pinned Lance list/struct rules from D01c1",
+        "Arrow cast_numeric_arrays / try_numeric_cast / num_cast",
+        "half 2.7.1 NumCast for f16: to_f32 then from_f32",
+        "num-traits 0.2.19 NumCast and ToPrimitive::to_f32"
+      ],
+      "targets": [
+        "src/bindings/arrow_buffers.mojo",
+        "src/bindings/arrow_payload_export.mojo",
+        "src/bindings/arrow_export.mojo",
+        "src/bindings/arrow_payload.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/arrow_payload.py",
+        "python/akashadb/arrow.py"
+      ],
+      "adaptations": [
+        "Traverse immutable native PayloadValue flat nodes without Python row staging",
+        "Native owned recursive C Data output reuses the unchanged existing aligned buffer/release owner",
+        "Explicit projection types select struct keys; missing and explicit null both map to Arrow null; masked parents suppress child required checks",
+        "Keep strict signed/unsigned/float families and reject nonfinite narrowed output under Akasha numeric policy",
+        "No-inline F32 conversion preserves the source F64-to-F32-to-F16 rounding sequence under Mojo 1.0",
+        "Share output byte cap; bound traversal cells separately including null-only fixed-list expansion",
+        "Keep existing public scalar aliases through one typed payload path; remove internal scalar-only column kinds"
+      ],
+      "oracle": "scripts/rich_arrow_export_reference.py",
+      "fixture": "tests/fixtures/rich-arrow-export/casts.json",
+      "fixture_sha256": "3e32c8755ec3b23adf9197332aa8155973fcc498035f50626ec8db6a76914862",
+      "lock_sha256": "956c1225d108af93ee03d4d7252c952ebecef8221c0ae582282737e82cce194b",
+      "status": "verified_native_typed_export_slice_dynamic_json_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-rich-arrow-export-validation.md"
+      ],
+      "results": {
+        "reference_inputs": 2126,
+        "reference_cast_outcomes": 4252,
+        "f16_finite": 1128,
+        "f16_nonfinite_rejected": 998,
+        "f32_finite": 1256,
+        "f32_nonfinite_rejected": 870,
+        "reused_ipc_cells": 88,
+        "native_tests": 14,
+        "new_python_tests": 55,
+        "full_python_passed": 3385,
+        "full_python_skipped": 1,
+        "reproducible_fixture_metadata_lock": true,
+        "unchanged_common_owner_sha256": "2e030cba5bd7cf9c4bb136051945aa8cd30ddd41ab72cb0801ff56d2de509734"
+      },
+      "remaining": [
+        "Dynamic arrow.json missing/null/key/heterogeneous-value interop",
+        "Durable table schema/history and Lance format",
+        "All other full product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/bindings/arrow_buffers.mojo": "6c1d67fe5de2b7563c74ce41e94429157bda5222f0d34267bbe60e92051f75e4",
+        "src/bindings/arrow_payload_export.mojo": "51e7ebe2f245462a9c10bc6820a1b622c5754289706fa76f74e7fbf81b4528f6",
+        "src/bindings/arrow_export.mojo": "10ef87c72bbdfcb111950c9e930541e636dd181485671a7b86255238121a14eb",
+        "src/bindings/arrow_payload.mojo": "e342ed6693cceea42a94301830e805023251cda771e0f37d2abfaf4854ed1ca0",
+        "src/bindings/python_module.mojo": "0bb56f0de7aba60c19a7589f0d3c2fcb8b218ff30ce7c4cbb098a9eef97a22e1",
+        "python/akashadb/arrow_payload.py": "4fa4a002cd212c77918be4f38e33067a2ce959eb33bb8434d7f6cd5ffd7b7e1f",
+        "python/akashadb/arrow.py": "798fd204d894124c835e60d68cb8f36a6af97889a9b9a47043d49801f46e8540",
+        "tests/mojo/test_arrow_export.mojo": "ad8c1f62a4c023db4ca03ff1d1a0176c3c69e054c5bd7fef90b191e4f58e7cb0",
+        "tests/python/test_rich_arrow_scanner.py": "ae980e3a4b613973509adb90d1aeeb2103bfe531400d074fe413b7115fe35b40",
+        "tests/python/test_arrow_export_abi.py": "e9a4b15aabe2fbdaa82821d166da0359792257f4299f860da2e4f1136efa6f14",
+        "scripts/rich_arrow_export_reference.py": "5e92c9e830a9b0de8f4ed0eced7128d95eb018963c9fe53835d6d8f11bf896b4",
+        "scripts/rich_arrow_export_reference.rs": "94994f89775a6fbfc76c79838e26730d12dfa737d32d982a3f851154625dc352"
+      }
     }
   ]
 }

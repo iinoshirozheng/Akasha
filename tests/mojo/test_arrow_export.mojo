@@ -2,6 +2,8 @@ from akasha import CollectionConfig, ReadSnapshot, PersistentCollection
 from akasha.query.control import CancellationToken, QueryControl
 from akasha.api.scanner import ScanBatch
 from akasha.document.point_state import PointField, PointState
+from akasha.document.record import DocumentField
+from akasha.document.value import PayloadValue
 from akasha.document.vector_value import VectorValue
 from akasha.document.vector_schema import legacy_vector_fields
 from akasha.storage.memtable import MemTableEntry
@@ -14,8 +16,9 @@ from bindings.arrow_export import (
     ArrowColumn,
     export_scan_batch,
     scanner_schema,
-    _release_array,
 )
+from bindings.arrow_buffers import _release_array
+from bindings.arrow_payload import ArrowPayloadSchema
 from std.memory import ArcPointer
 from std.python import Python
 from std.testing import (
@@ -50,6 +53,70 @@ def _batch(
 def _control() raises -> QueryControl:
     var token = CancellationToken()
     return QueryControl(token, max_candidates=Int.MAX)
+
+
+def _payload_batch(pins: ArcPointer[GenerationPinRegistry]) raises -> ScanBatch:
+    var strings: List[PayloadValue] = [PayloadValue.string("kept"), PayloadValue.null()]
+    var keys: List[String] = ["items"]
+    var values: List[PayloadValue] = [PayloadValue.array(strings^)]
+    var fields: List[DocumentField] = [DocumentField("data", PayloadValue.object(keys^, values^))]
+    var table = MemTable(2)
+    table.apply_document_upsert(0, 1, [Float32(1), 2.0], fields^)
+    var cache = ReadGenerationCache()
+    var snapshot = ReadSnapshot(cache.acquire(CollectionConfig.defaults(2), 0, 1, table, pins))
+    var scanner = snapshot.scanner(1)
+    var batch = scanner.next_batch()
+    snapshot.close()
+    cache.reset()
+    scanner.close()
+    return batch.take()
+
+
+def test_nested_payload_grandchild_relocation_and_parent_release() raises:
+    var pins = ArcPointer(GenerationPinRegistry())
+    var source = _payload_batch(pins)
+    var pa = Python.import_module("pyarrow")
+    var members = Python.list()
+    members.append(pa.field("items", pa.list_(pa.string())))
+    var raw = Python.import_module("akashadb.arrow_payload").projection_descriptor("data", pa.struct(members))
+    var columns: List[ArrowColumn] = [ArrowColumn("payload.data", 12, "data", None, Optional(ArrowPayloadSchema(raw)))]
+    var exported = export_scan_batch(source, columns, 1024, _control())
+    assert_equal(exported.borrowed_bytes, 0)
+    _ = source^
+    assert_equal(pins[].active_count(), 0)
+    # root -> struct payload -> list field -> string element array.
+    var address = exported.address()
+    for _ in range(3):
+        var header = Pointer[Int64, MutUntrackedOrigin](unsafe_from_address=address)
+        var children = Pointer[Int64, MutUntrackedOrigin](unsafe_from_address=Int(header[unsafe_offset=6]))
+        address = Int(children[])
+    var child = Pointer[Int64, MutUntrackedOrigin](unsafe_from_address=address)
+    var moved = List[Int64](length=10, fill=Int64(0))
+    for i in range(10):
+        moved[i] = child[unsafe_offset=i]
+    child[unsafe_offset=8] = 0
+    _release_array(Pointer[NoneType, MutUntrackedOrigin](unsafe_from_address=exported.address()))
+    _ = exported^
+    var array = pa.Array._import_from_c(Int(Span(moved).unsafe_ptr()), pa.string())
+    array.validate(full=True)
+    assert_equal(String(py=array[0].as_py()), String("kept"))
+    assert_true(array[1].as_py() is Python.none())
+    assert_equal(moved[8], Int64(0))
+
+
+def test_nested_payload_budget_failure_releases_partial_children() raises:
+    var pins = ArcPointer(GenerationPinRegistry())
+    var source = _payload_batch(pins)
+    var pa = Python.import_module("pyarrow")
+    var members = Python.list()
+    members.append(pa.field("items", pa.list_(pa.string())))
+    var raw = Python.import_module("akashadb.arrow_payload").projection_descriptor("data", pa.struct(members))
+    var columns: List[ArrowColumn] = [ArrowColumn("payload.data", 12, "data", None, Optional(ArrowPayloadSchema(raw)))]
+    with assert_raises():
+        _ = export_scan_batch(source, columns, 16, _control())
+    assert_equal(pins[].active_count(), 1)
+    _ = source^
+    assert_equal(pins[].active_count(), 0)
 
 
 def test_real_pyarrow_slice_retains_borrowed_pointer_and_last_pin() raises:

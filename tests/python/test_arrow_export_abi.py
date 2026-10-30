@@ -15,7 +15,7 @@ def test_arrow_array_layout_matches_installed_official_c_header(tmp_path):
     ], check=True)
     source = tmp_path / "arrow_abi.mojo"
     source.write_text('''
-from bindings.arrow_export import ARROW_ARRAY_SIZE, ARROW_ARRAY_RELEASE_OFFSET, ARROW_ARRAY_PRIVATE_OFFSET, _release_array
+from bindings.arrow_buffers import ARROW_ARRAY_SIZE, ARROW_ARRAY_RELEASE_OFFSET, ARROW_ARRAY_PRIVATE_OFFSET, _release_array
 from std.sys.info import size_of, align_of
 
 def main():

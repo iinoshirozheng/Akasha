@@ -24,13 +24,13 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c1 已完成巢狀 typed Arrow 匯入；15 項原生與完整 Python 3,330 通過、1 跳過。巢狀匯出與動態 JSON extension 尚未完成，見[驗證與範圍](2026-10-30-rich-arrow-ingress-validation.md)。
+最新 D01c2 已完成巢狀 typed Arrow 匯出，與 D01c1 匯入共用原生型別契約；14 項相關原生測試及完整 Python **3,385 通過、1 跳過**。4,252 組浮點轉型結果與原始 Arrow 逐位元／溢位對照通過。動態 JSON extension、持久 schema／歷史版本與 Lance 格式仍未完成，見[匯出驗證與範圍](2026-10-30-rich-arrow-export-validation.md)。
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
 | 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值、地理距離與日期的公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
-| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow 匯入 | rich Arrow 匯出／JSON extension、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
+| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式；巢狀 typed Arrow 匯入與指定型別／nullability／metadata 匯出 | 動態 Arrow JSON extension、任意頂層鍵、UUID 型別、專用日期／地理索引、完整混合批次及協定相容 |
 | 搜尋／過濾 | 布林條件、純量索引、JSON-path／巢狀同元素條件、日期範圍、地理矩形／半徑／polygon、集合／純文字條件、空值／數量、點 ID／向量存在／固定 slice、獨立路徑空值條件、snapshot scan、投影 | 全文 tokenizer／BM25／位置式 phrase、專用日期／地理／巢狀／陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |
