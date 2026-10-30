@@ -4313,6 +4313,109 @@
         "Full C/distributed/protocol exposure and SQL engine integration",
         "All 49 complete master packages, M5/M6 and deferred native Linux acceptance"
       ]
+    },
+    {
+      "id": "D01c4h-jsonb-scanner-projections",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-arrow/src/json.rs",
+          "sha256": "72d8e32d63a1e109b39a9c21f01f364d11425c4c1498487780752fea44ec7a16"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/functions/path.rs",
+          "sha256": "a37e93c5fe4049cd40a5a6782e29818f70d289f903c71a51d7f70382468eec74"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/iterator.rs",
+          "sha256": "4f1fcf4bac969da5e5b6f3d996200a6d604a78b04578ebcde77b83576a3a81e6"
+        }
+      ],
+      "reuses_ports": [
+        "D01c4f-lance-json-functions",
+        "D01c4c-jsonb-selector"
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "Existing eleven native Lance JSON operations and source result/null/type rules",
+        "Existing Arrow C Data final-buffer ownership and release helpers"
+      ],
+      "targets": [
+        "src/akasha/document/lance_json_result.mojo",
+        "src/akasha/query/jsonb_projection.mojo",
+        "src/bindings/arrow_jsonb_export.mojo",
+        "src/bindings/arrow_export.mojo",
+        "src/bindings/lance_json_python.mojo",
+        "src/bindings/python_module.mojo",
+        "src/akasha/__init__.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/akasha/query/__init__.mojo",
+        "python/akashadb/arrow.py"
+      ],
+      "adaptations": [
+        "Owned typed result preserves nonfinite Float64 independently of persisted payload values",
+        "Bounded nested unary JSONB calls over an exact stored field; only json_get returns intermediate JSONB",
+        "Constant string/null arguments, eager non-null path/configuration validation, source inner-to-outer evaluation",
+        "Native scanner computed columns; no Python row staging or SQL evaluator",
+        "Separate row/work budgets and bounded intermediate/final Arrow allocations; captured generation and owned output lifetime"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-json-functions/Cargo.lock": "4ef9b9d2c60a6a5e6e7b2b0ce6ae160eedcb82399098ea47d7b382a52d0dc0fd",
+        "tests/fixtures/lance-json-functions/README.md": "b353cdcf3722a8fbbdb38a47483f8b01acc41aa966d4898bcecc82ed88eed320",
+        "tests/fixtures/lance-json-functions/cases.json": "ad0ed75670dbc7698554771eec45ee1b2c977aa94311969c3b83157f72e51cc8",
+        "tests/fixtures/lance-json-functions/sources.json": "116f85b0b6ed82219a3f6ecacb362c8a7f3f6acc3f04f26b15f75d896bf91a72"
+      },
+      "status": "verified_native_jsonb_scanner_columns_index_sql_protocols_pending",
+      "verification": [
+        "docs/research/2026-10-31-jsonb-projection-validation.md"
+      ],
+      "results": {
+        "source_outcomes": 215780,
+        "source_successes": 202342,
+        "source_errors": 13174,
+        "source_panics_mapped": 264,
+        "native_tests_passed": 16,
+        "targeted_python_passed": 104,
+        "new_python_tests_passed": 13,
+        "full_python_passed": 3752,
+        "full_python_skipped": 1
+      },
+      "verified_file_sha256": {
+        "src/akasha/document/lance_json_result.mojo": "fccc57cf8c1b135921817e16632247bd3a7d9b835106e3397993dcea384723e6",
+        "src/akasha/query/jsonb_projection.mojo": "abe871a732812a2bbbd127fa1cc7cab8d3b4e050347651fc4a2ea2d6a451565f",
+        "src/bindings/arrow_jsonb_export.mojo": "abdeac8c5144f6040927122d1015d71f71d6a30a8de3e42fbfc31db347f4a899",
+        "src/bindings/arrow_export.mojo": "d140a176b115f148a49ad7ee89a37cd56c9bc05c6b7676b09669853949ed6baf",
+        "src/bindings/lance_json_python.mojo": "38ff9ec68900719a5b2370ea8639074ef4057bcb95046ea7060d1021a5278100",
+        "src/bindings/python_module.mojo": "17aec93eb1e4090e778ae81960d1b1f15a204954647a456248e8f23a77451697",
+        "src/akasha/__init__.mojo": "f5c1768169b0e0163aed600428f004be62f23bad7d880efb2ade50a8f5102293",
+        "src/akasha/document/__init__.mojo": "1864d14b653da2e3ce4f478b6515ee6a297bdf8e9133c3d8cd8b084cf1736c26",
+        "src/akasha/query/__init__.mojo": "cdb035cdd71756522cf105eb8ffacb4e0b65c3f9402ac2f4ff9b1ef9ff358bd7",
+        "python/akashadb/arrow.py": "e3c063bcb99d812894e415d6703041f45360334b87fa8ba6e5b77f453734bd6d",
+        "tests/mojo/test_jsonb_projection.mojo": "1656e00e6e2866804f289989bbfce8bc6f4a44817a1a680b60d50826263a0f7a",
+        "tests/python/test_jsonb_projection.py": "c623c74df81b86987c856cb475e0f1e29225113ab63da0d0828d2ac9f0956a7d"
+      },
+      "remaining": [
+        "Dedicated JSONB indexes and query matching/lifecycle",
+        "Column-valued function arguments, computed document-record projection and actual SQL execution",
+        "Complete C/distributed/protocol interfaces and all full-product/platform/performance gates"
+      ]
     }
   ]
 }

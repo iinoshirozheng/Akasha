@@ -322,8 +322,10 @@ execution. See [query modes and resource contracts](native-jsonb.md#jsonb-value-
 The strict ordinary-JSON filter/formula configuration path does not accept a
 JSONB carrier as configuration. The `kind="jsonb"` filter reads stored carriers
 using source boolean operations; see [collection JSONB filters](native-jsonb.md#collection-jsonb-filters).
-Computed JSONB projection and dedicated indexes remain
-in progress; [wire format](formats/logical-point-format.md) specifies transport.
+The scanner also accepts native JSONB computed columns through `json_columns`;
+see [computed projections](native-jsonb.md#computed-jsonb-scanner-columns).
+Dedicated indexes, computed document-record projection and SQL remain in progress;
+[wire format](formats/logical-point-format.md) specifies transport.
 
 `JsonbValue.cast(target)` provides Mojo scalar conversion to `bool`, `int64`,
 `uint64`, `float64` or `string`. Integer casts round ties away from zero; numeric

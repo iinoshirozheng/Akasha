@@ -5,6 +5,8 @@ implementation in arrow_buffers. No raw address crosses the public API.
 """
 
 from akasha.api.scanner import ScanBatch
+from akasha.query.jsonb_projection import JsonbProjection
+from bindings.arrow_jsonb_export import export_jsonb_column, jsonb_projection_type
 from akasha.document.record import validate_field_name
 from akasha.document.vector_schema import VectorFieldSpec
 from akasha.query.control import QueryControl
@@ -18,11 +20,12 @@ from bindings.arrow_buffers import ArrowArrayExport, _ArrayData, _BufferBudget, 
 struct ArrowColumn(Copyable, Movable):
     var name: String
     # 1=id, 2=sequence, 3=legacy vector, 4=terms, 5=weights;
-    # 10=typed vector, 11=document sequence, 12=typed payload.
+    # 10=typed vector, 11=document sequence, 12=typed payload, 13=JSONB expression.
     var kind: Int
     var payload_name: String
     var field: Optional[VectorFieldSpec]
     var payload: Optional[ArrowPayloadSchema]
+    var jsonb: Optional[JsonbProjection]
 
     def __init__(
         out self,
@@ -31,9 +34,14 @@ struct ArrowColumn(Copyable, Movable):
         var payload_name: String = String(),
         var field: Optional[VectorFieldSpec] = None,
         var payload: Optional[ArrowPayloadSchema] = None,
+        var jsonb: Optional[JsonbProjection] = None,
     ) raises:
-        if kind < 1 or kind > 12 or (kind >= 6 and kind <= 9):
+        if kind < 1 or kind > 13 or (kind >= 6 and kind <= 9):
             raise Error("unknown scanner column type")
+        if Bool(jsonb) != (kind == 13):
+            raise Error("JSONB scanner column requires an expression")
+        if kind == 13:
+            validate_field_name(name)
         if kind == 12:
             validate_field_name(payload_name)
             if not payload:
@@ -49,6 +57,7 @@ struct ArrowColumn(Copyable, Movable):
         self.payload_name = payload_name^
         self.field = field^
         self.payload = payload^
+        self.jsonb = jsonb^
 
 
 def scanner_schema(
@@ -66,6 +75,10 @@ def scanner_schema(
             dtype = pa.list_(pa.int64())
         elif column.kind == 5:
             dtype = pa.list_(pa.float32())
+        if column.kind == 13:
+            var op = column.jsonb.value().operation()
+            fields.append(pa.field(PythonObject(column.name), jsonb_projection_type(op), nullable=op != 2))
+            continue
         if column.kind == 12:
             ref payload = column.payload.value()
             fields.append(pa.field(PythonObject(column.name), payload_arrow_type(payload),
@@ -119,6 +132,8 @@ def _export_column(
     mut budget: _BufferBudget,
     control: QueryControl,
 ) raises -> ArrowArrayExport:
+    if column.kind == 13:
+        return export_jsonb_column(batch, column.jsonb.value(), budget, control)
     if column.kind == 12:
         return export_payload_column(batch, column.payload_name, column.payload.value(), budget, control)
     if column.kind == 10:

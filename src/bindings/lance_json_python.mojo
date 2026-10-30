@@ -3,6 +3,7 @@ from std.python import Python, PythonObject
 from akasha.document.jsonb import JsonbValue
 from akasha.document.jsonb_path import JsonbPath
 from akasha.document.lance_json import LanceJson
+from akasha.document.lance_json_result import evaluate_lance_json
 from akasha.query.control import QueryControl, CancellationToken
 from bindings.payload_python import _jsonb_bytes
 
@@ -17,31 +18,24 @@ def _null(op: Int) raises -> PythonObject:
 
 
 def _result(value: LanceJson, op: Int, key: String, needle: String) raises -> PythonObject:
-    if op == 0 or op == 1 or op == 5:
-        var result = value.json_path(key) if op == 0 else (value.extract(key) if op == 1 else value.get_string(key))
-        return PythonObject(result.value()) if result else Python.none()
+    var result = evaluate_lance_json(value, op, key, needle)
     if op == 2:
-        var result = value.extract_with_type(key)
         var out = _null(op)
-        if result:
-            out["value"] = _jsonb_bytes(result.value()[0])
-            out["type_tag"] = PythonObject(Int(result.value()[1]))
+        if result.binary:
+            out["value"] = _jsonb_bytes(result.binary.value())
+            out["type_tag"] = PythonObject(Int(result.type_tag))
         return out
-    if op == 3:
-        return PythonObject(value.exists(key))
-    if op == 4:
-        var result = value.get(key)
-        return _jsonb_bytes(result.value()) if result else Python.none()
-    if op == 6 or op == 10:
-        var result = value.get_int(key) if op == 6 else value.array_length(key)
-        return PythonObject(result.value()) if result else Python.none()
-    if op == 7:
-        var result = value.get_float(key)
-        return PythonObject(result.value()) if result else Python.none()
-    if op == 8:
-        var result = value.get_bool(key)
-        return PythonObject(result.value()) if result else Python.none()
-    return PythonObject(value.array_contains(key, needle))
+    if result.text:
+        return PythonObject(result.text.value())
+    if result.binary:
+        return _jsonb_bytes(result.binary.value())
+    if result.integer:
+        return PythonObject(result.integer.value())
+    if result.floating:
+        return PythonObject(result.floating.value())
+    if result.boolean:
+        return PythonObject(result.boolean.value())
+    return Python.none()
 
 
 def lance_json_py(bodies: PythonObject, args: PythonObject, needles: PythonObject,

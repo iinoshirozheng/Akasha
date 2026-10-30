@@ -1,3 +1,4 @@
+from akasha.query.jsonb_projection import JsonbProjection
 from akasha.query.jsonb_condition import JsonbCondition
 from .filter_ast import FilterCondition, FilterExpression
 from .control import CancellationToken, QueryControl

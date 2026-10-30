@@ -315,6 +315,7 @@ def scan_record_batches(
     columns: Sequence[str] = ("id", "vector", "sparse_term_ids", "sparse_weights"),
     vectors: Sequence[str] = (),
     payload_schema: Mapping[str, Any] | None = None,
+    json_columns: Mapping[str, Mapping[str, Any]] | None = None,
     filter: Mapping[str, Any] | None = None,
     cancellation: CancellationToken | None = None,
     max_candidates: int | None = None,
@@ -328,6 +329,10 @@ def scan_record_batches(
     or matching Fields (including nullability/metadata). Missing and explicit null
     become Arrow null; wrong types, required nulls and numeric overflow fail. Sparse absence is null;
     present sparse vectors retain their ragged lengths. No Python row staging is used.
+
+    json_columns maps output aliases to native JSONB function expressions
+    (function, input, argument, optional needle/limits). Input is an exact stored
+    field name or nested json_get expression; results retain source Arrow types.
 
     One-row dense buffers are borrowed; multi-row vectors and other columns are
     gathered into final owned buffers. The byte cap bounds aligned output buffer
@@ -364,6 +369,10 @@ def scan_record_batches(
             raise ValueError("payload names must be nonempty strings without NUL")
         descriptors.append(dict(name=f"payload.{name}", kind=12, payload_name=name,
                                 payload_type=projection_descriptor(name, kind)))
+    for name, expression in (json_columns or {}).items():
+        if not isinstance(name, str) or not name or "\0" in name:
+            raise ValueError("computed column aliases must be nonempty strings without NUL")
+        descriptors.append(dict(name=name, kind=13, payload_name="", expression=expression))
     if len({item["name"] for item in descriptors}) != len(descriptors):
         raise ValueError("scanner column names must be unique")
     options = dict(batch_size=batch_size, columns=descriptors,

@@ -1,3 +1,4 @@
+from akasha.query.jsonb_projection import JsonbProjection
 from akasha.query.jsonb_condition import JsonbCondition
 from akasha.query.payload_condition import PayloadCondition, _uint
 from akasha.query.point_condition import PointCondition
@@ -106,6 +107,7 @@ struct BoundScanner(Movable, Writable):
         var point_mode = Bool(collection[].inner.value()._field_catalog())
         var payload_nodes = 0
         var payload_bytes = 0
+        var jsonb_columns = 0
         for column in options["columns"]:
             var name = _exact_python_string(
                 column["name"], "scanner column name"
@@ -119,6 +121,13 @@ struct BoundScanner(Movable, Writable):
             )
             var vector_field = Optional[VectorFieldSpec]()
             var payload = Optional[ArrowPayloadSchema]()
+            var jsonb = Optional[JsonbProjection]()
+            if kind == 13:
+                jsonb_columns += 1
+                if jsonb_columns > 256:
+                    raise Error("JSONB projection column resource limit exceeded")
+                var spec = _json_value(column["expression"], 0, payload_nodes, payload_bytes)
+                jsonb = Optional(JsonbProjection(spec))
             if kind == 12:
                 var parsed = ArrowPayloadSchema(column["payload_type"])
                 if len(parsed.nodes) > PayloadValue.MAX_NODES - payload_nodes or parsed.name_bytes > PayloadValue.MAX_BYTES - payload_bytes:
@@ -139,6 +148,7 @@ struct BoundScanner(Movable, Writable):
                     source_name^,
                     vector_field^,
                     payload^,
+                    jsonb^,
                 )
             )
         var expression = Optional[FilterExpression]()

@@ -1,3 +1,4 @@
+from akasha.query.jsonb_projection import JsonbProjection
 from akasha.query.jsonb_condition import JsonbCondition
 from akasha.query.query_plan import QueryNode
 from akasha.query.formula import Formula, FormulaDefault, FormulaNode

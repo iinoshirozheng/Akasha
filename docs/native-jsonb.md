@@ -6,8 +6,9 @@ It can be stored in native collection payloads using `PayloadValue.jsonb(value)`
 Python/HTTP/NDJSON also transport this type as complete source bytes. Native
 and Python text parsing support the original standard and extended profiles.
 Native/Python text rendering and Arrow JSON interchange are available below.
-Native/Python JSONB value queries are available below; collection-level
-JSONB filters/projections and indexes remain pending.
+Native/Python value queries, collection JSONB filters and computed scanner
+columns are available below. Dedicated indexes, SQL and complete protocol
+integration remain pending.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -335,8 +336,8 @@ nonfinite-to-null rule above. See [formatting validation](research/2026-10-30-zm
 `JsonbPath.parse(String)` and `JsonbPath.parse_bytes(Span[UInt8])`, exported from
 `akasha.document`, build an owned bounded AST using jsonb 0.5.6's complete
 path/expression grammar. `JsonbSelector` below executes it; parsing alone does
-not execute a query. Native AST/Number Display is available below;
-collection-level JSONB filters/projections/indexes remain pending.
+not execute a query. Native AST/Number Display, collection filters and computed
+scanner columns are available below; dedicated indexes remain pending.
 
 ```mojo
 from akasha.document import JsonbPath
@@ -493,9 +494,9 @@ native execution. It does not promise Python-thread cancellation mid-call.
 Malformed mutable native ASTs, invalid inputs and exhausted limits raise errors.
 
 This value-level API also works on values read after WAL/checkpoint reopen.
-It does not yet add a collection JSONB predicate/projection, JSONB index, SQL
-UDF or C/distributed query operation. The Lance function API below separately
-provides Arrow transformations.
+The APIs below separately expose Lance Arrow transformations, collection
+predicates and computed scanner columns. JSONB indexes, SQL UDFs and complete
+C/distributed query exposure remain pending.
 
 ## Native source Display
 
@@ -670,9 +671,9 @@ Exact helpers `jsonb_get_by_name`, `jsonb_get_by_index` and `lance_json_type`
 are also exported by `akasha.document`.
 
 These functions work on values read from a collection or an Arrow scanner.
-Boolean collection predicates are described below. Computed projections,
-dedicated indexes, SQL UDF registration, and complete C/distributed query
-exposure remain separate tasks.
+Boolean collection predicates and computed scanner columns are described
+below. Dedicated indexes, SQL UDF registration, document-record computation
+and complete C/distributed query exposure remain separate tasks.
 
 ## Collection JSONB filters
 
@@ -737,3 +738,83 @@ Native callers use `FilterExpression.jsonb(JsonbCondition(...))` from
 This is an Akasha filter extension composed from source implementations. It
 does not claim a Qdrant wire condition, SQL execution, computed projection or
 dedicated JSONB indexing. See [integration validation](research/2026-10-30-jsonb-condition-validation.md).
+
+## Computed JSONB scanner columns
+
+`scan_record_batches` can evaluate the eleven [Lance functions](#lance-json-functions)
+inside the captured collection scan. Computation and final Arrow buffers are
+native; Python only transports configuration and constructs the schema.
+
+```python
+from akashadb.arrow import scan_record_batches
+
+scanner = scan_record_batches(
+    collection, columns=("id",),
+    json_columns={
+        "price": {"function": "json_get_float", "input": "data", "argument": "price"},
+        "items": {"function": "json_extract", "input": "data", "argument": "$.items[*]"},
+        "name": {
+            "function": "json_get_string", "argument": "name",
+            "input": {"function": "json_get", "input": "data", "argument": "profile"},
+        },
+    },
+)
+for batch in scanner:
+    print(batch.to_pydict())
+```
+
+`json_columns` maps unique output aliases to expressions. An expression requires
+`function`, `input` and `argument`; `json_array_contains` additionally requires
+`needle`. Arguments and needles are constant strings or null. `input` is an
+exact stored payload field name (not a Qdrant path) or another `json_get`
+expression. Intermediate inputs must return JSONB, so scalar/typed-struct
+outputs cannot be supplied as JSONB. Nesting executes from inner to outer;
+an outer null argument does not suppress errors in an evaluated inner call.
+
+Result types match the value functions: Utf8 for text, LargeBinary for JSONB,
+Boolean, Int64, Float64, or the non-null typed-extraction struct. Raw binary
+results retain their source JSONB bytes and can be wrapped in `JsonbValue`.
+Float64 preserves nonfinite values and signed zero; computed results do not
+pass through the finite-only persisted payload type. A missing/storage-null
+input yields a null output, except typed extraction's `{value: null, type_tag: 0}`
+struct. Stored JSONB null remains a real value. Ordinary non-JSONB fields are
+errors. A valid null argument yields the source null result after its input
+has been evaluated.
+
+Configuration and non-null path syntax are checked eagerly, including on empty
+scans. `json_get*` arguments are exact keys/index strings, including empty keys.
+Unknown properties, invalid types, incompatible `needle`, nonpositive limits,
+non-JSONB intermediate output, and invalid aliases are rejected. At most 256
+computed columns and 16 function steps per expression are allowed; each string
+argument/needle has a 65,536 UTF-8 byte bound. The native configuration transport
+also enforces its aggregate node/byte limits.
+
+Only the outer expression accepts `max_work=1_000_000`, `max_results=65_536`,
+and `max_bytes=64*1024*1024`. These retain the source per-call traversal/consumer
+limits for each row and step. Native cancellation/deadline checks reach the
+source functions; scanner `max_candidates` continues to count visited rows,
+separately from JSON traversal work. Python cancellation is checked between
+batches as for existing scanners.
+
+`max_batch_bytes` bounds the shared aligned final-buffer allocations across all
+columns. A separate temporary budget of that size bounds one computed column's
+fixed result cells plus owned string/binary result bytes before export. It is
+not a peak-RSS bound: retained source generations, source-call working memory
+and Arrow metadata are excluded. Output statistics count final logical buffer
+bytes, excluding padding; computed columns own their output and borrow no
+source buffers. Earlier returned batches/slices survive scanner/collection close.
+
+Filtering happens before projection. Data errors abort the current batch and
+close the scanner; no rows from a failed batch are returned. Earlier batches
+remain valid. Updates after scanner creation do not change its captured input.
+Neither projection nor its errors write WAL or advance collection sequences.
+
+Native callers use `JsonbProjection(spec: PayloadValue).evaluate(fields, control)`
+to obtain an owned `LanceJsonResult`. The result stores nullable source text,
+binary, integer, float or boolean values and the typed-extraction tag. The
+shared `evaluate_lance_json` dispatcher is also used by the scalar/Arrow value
+functions, so projection does not introduce another selector/cast algorithm.
+
+This scanner layer does not provide SQL syntax, column-valued path arguments,
+computed document-record projection or dedicated JSONB indexes. Those remain
+tracked in the full plan. See [validation](research/2026-10-31-jsonb-projection-validation.md).

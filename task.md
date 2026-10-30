@@ -4,7 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c4g：JSONB 條件已接上 collection 搜尋、掃描、公式、Arrow、現有 HTTP 與條件式 payload 更新。重用來源 predicate／exists／布林取值／陣列包含函式；111,100 組原始來源結果在直接與 metadata bitmap 路徑一致，並修正 bitmap 提前執行應被短路略過分支的錯誤。
+- 最新 D01c4h（2026-10-31）：11 個 Lance JSON 函式已接上 collection scanner 計算欄位，支援巢狀 json_get、原始 JSONB bytes、NaN／Infinity／負零與 nullable typed struct。使用原生 C Data 匯出及既有 buffer 所有權機制，scalar／Arrow 值 API 共用同一原生函式派送。
+  215,780 組來源結果、16 項 Mojo、104 項指定 Python（13 項新增）與完整 Python **3,752 通過／1 跳過**，最終模組建置通過。[驗證](docs/research/2026-10-31-jsonb-projection-validation.md)／[用法](docs/native-jsonb.md#computed-jsonb-scanner-columns)。下一步對照 Lance JSON 專用索引的型別／轉換／查詢與生命週期；完整 49 大項仍開放，尚未優化。
+
+- D01c4g：JSONB 條件已接上 collection 搜尋、掃描、公式、Arrow、現有 HTTP 與條件式 payload 更新。重用來源 predicate／exists／布林取值／陣列包含函式；111,100 組原始來源結果在直接與 metadata bitmap 路徑一致，並修正 bitmap 提前執行應被短路略過分支的錯誤。
   59 項相關 Mojo、23 項新增 Python、完整 Python **3,739 通過／1 跳過**，最終模組建置通過。[驗證](docs/research/2026-10-30-jsonb-condition-validation.md)／[用法](docs/native-jsonb.md#collection-jsonb-filters)。下一步為計算投影、專用索引及剩餘介面；完整 49 大項及效能門檻仍開放，尚未優化。
 
 - D01c4f 已完成 Lance 的 11 個 JSON 值／Arrow 操作：第一筆與多筆取值、型別標籤、exists、key/index get、nullable 轉型與陣列函式；全部由 Mojo 執行，公開 `akashadb.json_functions` 可直接使用。47,223 組情境／216,337 組來源結果對照，25 項 Mojo、18 項新增 Python、178 項邊界回歸與完整 Python **3,716 通過／1 跳過**；來源可逐 byte 重現。兩組來源包裝輸入超過既有深度限制，保留原始結果並驗證明確拒絕。
