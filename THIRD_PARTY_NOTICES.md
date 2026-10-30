@@ -227,4 +227,20 @@ JSON paths; one-level flattening, wildcard suffix, missing vs null and typed
 numeric defaults follow the source. The new oracle compiles the original parser,
 retriever and scorer together with real serde_json values. See
 `tests/fixtures/qdrant-formula-payload/README.md` and `docs/upstream/ports.json`.
-Dedicated typed-index retrievers, geo/date expressions and full protocols remain open.
+Dedicated typed-index retrievers, date expressions and full protocols remain open;
+the subsequent geographic port is described below.
+
+### Geographic point validation and formula distance
+
+`document/geo.mojo`, geographic formula integration and input conversion adapt
+Qdrant GeoPoint/GeoPointShadow validation and formula schema/parse/scoring at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+Haversine distance and the mean-radius constant are ported from GeoRust `geo`
+0.33.1, commit `5ab50b072e34a915a33eaa46c80763d51d61295e`,
+`geo/src/algorithm/line_measures/metric_spaces/haversine.rs`.
+Copyright (c) 2017 The GeoRust Project Developers. GeoRust is licensed
+MIT OR Apache-2.0; this port includes the MIT notice at
+`docs/upstream/licenses/geo-MIT.txt`. The original registry archive checksum,
+source hash and oracle Cargo.lock are recorded in `docs/upstream/ports.json`.
+The Rust oracle runs Qdrant's unchanged GeoPoint methods/retriever/scorer with
+the actual pinned geo crate. There is no runtime Rust or Python geometry engine.

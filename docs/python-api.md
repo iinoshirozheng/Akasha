@@ -893,6 +893,10 @@ The supported Qdrant numeric expression shapes are:
 - `lin_decay`, `exp_decay`, and `gauss_decay` take a dictionary containing `x`,
   optional `target` (zero), `scale` (one), and `midpoint` (0.5). Scale must be
   positive. Linear midpoint permits [0, 1]; other decays require (0, 1).
+- `{"geo_distance": {"origin": {"lon": 121.5654, "lat": 25.033}, "to": "location"}}`
+  returns the spherical distance in meters from the constant origin to a
+  GeoPoint resolved from the payload path or its default. It uses the pinned
+  Qdrant/GeoRust Haversine implementation with the 6,371,008.8-meter radius.
 - `{"condition": <Akasha filter>}` produces one or zero, using the documented
   native `condition/all/any/not` filter shape. This wrapper is not the Qdrant
   REST condition representation.
@@ -965,10 +969,48 @@ The shared native `JsonPath` type also provides canonical display, prefix and
 wildcard operations and pattern compatibility for subsequent data operations.
 Paths are bounded to 65,536 input bytes and 1024 parts. These are native resource
 limits, not a claim that Qdrant has identical limits.
-Datetime operations, geo-distance, full formula conditions, typed-index
+Datetime operations, full formula conditions, typed-index
 retrievers and Qdrant protocol exposure remain open.
 See the [formula source validation](research/2026-10-30-formula-validation.md).
 The [JSON-path validation](research/2026-10-30-json-path-validation.md) records
 the subsequent grammar and Unicode source checks.
 The [rich formula validation](research/2026-10-30-formula-payload-validation.md)
 records the subsequent payload/default retrieval port and end-to-end checks.
+
+Geo points remain ordinary JSON payload values; no new durable tag is required.
+The source accepts objects with numeric `lon`/`lat` (additional keys are ignored)
+or an array `[lon, lat]`. Both coordinates must be finite, longitude in
+[-180,180] and latitude in [-90,90]. Strings and bools are not numbers. Origins
+are validated when constructing the request, even for an empty candidate set or
+a short-circuited expression. Payload values are converted when evaluated;
+missing values may use a default, while null/wrong types/invalid coordinates fail.
+The usual payload-retriever flattening applies before GeoPoint conversion.
+The native Python expression accepts only `origin` and `to` parameters; this
+strict request wrapper is not a complete Qdrant REST schema implementation.
+
+Formula results sort descending. Use `neg` on a distance to rank nearby points
+first, or compose it with a decay to obtain a positive proximity score:
+
+```python
+nearby = QueryRequest(
+    "formula",
+    prefetch=(QueryRequest(limit=100),),
+    formula=Formula({"exp_decay": {
+        "x": {"geo_distance": {
+            "origin": {"lon": 121.5654, "lat": 25.033},
+            "to": "metadata.location",
+        }},
+        "scale": 1000,
+    }}),
+)
+# 1.0 at the origin, 0.5 at 1 km; rescoring covers the prefetched candidates.
+hits = collection.query(nearby)
+```
+
+`to` is a JSON path, not a reserved score variable; a literal `$score` payload
+key must be quoted. Native callers use `GeoPoint(lon, lat)` and
+`FormulaNode("geo_distance", key=path, origin=Optional(point))`. Distance math
+uses F64 and the final formula score follows the existing finite-F32 rule. The
+source computation is not clamped or replaced with ellipsoidal distance.
+Geo filtering/indexes and datetime expressions remain separate pending features.
+See [geo formula validation](research/2026-10-30-geo-formula-validation.md).

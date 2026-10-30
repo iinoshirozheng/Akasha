@@ -1315,6 +1315,112 @@
         "tests/python/test_formula_paths.py": "241ff941f44edc2c4961ef33ef76ef9d60e04e6350c0695e9282b17a9a0a56e3",
         "tests/python/test_formula_query.py": "3427d593c4344570136e06549825cdb9003869332eae75f3e209e13b4c81bbe3"
       }
+    },
+    {
+      "id": "Q04e-D03b-geo-formulas",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/segment/src/json_path/mod.rs": "5c34bedfa86a6ab21c295bfddb2a62fc841f11fb4e3c3c01f16c2fdfc4b1f60f",
+        "lib/segment/src/json_path/parse.rs": "727673018f576be73e2fcdfa2a3a9edda21aeda616de1a9f4e2c5459504734fa",
+        "lib/segment/src/index/query_optimization/rescore_formula/parsed_formula.rs": "a9044e924bcc875b4e5b4d37963edee83ff0f1f46e3cdd4ea29e6c9fabefa3b1",
+        "lib/segment/src/index/query_optimization/rescore_formula/formula_scorer.rs": "4522958fb70b69e4d3172735afd286afaf8bad042d3050245ff307d8700e4f42",
+        "lib/segment/src/index/struct_payload_index/read_view/value_retriever/helpers.rs": "7f0ee0b6087dcdafd7d494a433d65bfd4fee05d24da837497e81d376990eed5c",
+        "lib/segment/src/types.rs": "d3e44321025fd37bd286fb57f5f146c3e59bcd60ccc7e01fa3b1464f3e40a3b1",
+        "Cargo.lock": "ac6941c2dcf706eddda4a1926d987232a981685586b35d407cc2f72605442233",
+        "lib/shard/src/query/formula.rs": "f3f24e50fc831a1ca0581caf19c91ca905687846d803fbd85f0b069183f2bf48",
+        "lib/api/src/rest/schema.rs": "c79d738c2a6e530a11876a14d40ff91a37e8b60802f265d784927e26054dbcbe"
+      },
+      "extracted_units": {
+        "pub struct JsonPath {": "7e83c0c0f13d7bc0fcba4a05844d0bccfe75c6ac51f8ecadf98f99d0bdff6e32",
+        "pub enum JsonPathItem {": "dfae90bd56fc258716e1a403ae616ae34d5af504d9f65900cd0b1b3be38e9c01",
+        "pub fn value_get<": "cbfeaadf19427d868eec26c1b0a56a3951c9526088d5c0a075c01f25d7763b1d",
+        "pub fn has_wildcard_suffix(": "cc8288573c1573bd0069af141caecbadd818d3c9bfdeab30555a42652674855e",
+        "fn value_get<": "1406c63f49a1706210aaa71006b13a928787172dd84a026297c3276d45c21435",
+        "impl Display for JsonPath {": "f6a5db418102121f22758c6c15a15c67831dc9e0f589205ee7b2b948c58ded36",
+        "impl FromStr for VariableId {": "1f5a7be9bf370c271dae9bcf234fffffee82b0c99f4e7e0a59ee515d263f52cf",
+        "fn payload_variable_retriever<": "0c42ca8e2ef0c54357d653e2464be2348d649a6f5e0ee4a36276e195eee2c2a4",
+        "pub fn score(": "c7db160a3981d1ff20d686ed15d232a6a65779ccabc7e413a0676b932675b756",
+        "fn eval_expression(": "1b403ab39e2adc979b485b47304279b51622a15001fe2bc4ff9710ceb43c7117",
+        "fn get_payload_value(": "e85e11c9dbd7bf1cf2df452d69684a8cd8a841e60024ce4124d24017ffde140b",
+        "fn get_parsed_payload_value<": "565dd2c07a61827b59f43a189483aecc0ae61839f263d8e0297e85079b0176a6",
+        "fn exp_decay(": "6c5d957884ab35123fe437f78ccaa7e27025b9558682b75fc4921e7ca20d28cc",
+        "fn gauss_decay(": "691699a311cdead6148d315c2e6205c1a19016c35aedfb7569f1eb0622b83257",
+        "fn linear_decay(": "7c183e5b5f84b936e163d26a147a1b5255ad4532664f7f0b3def64dd249c3187",
+        "pub struct GeoPoint {": "3503ec5a299b1bbe58d684df3d4991cb4bb696a4736fd90700994b653a1c9df9",
+        "struct GeoPointShadow {": "b25fc689264c582aca63a2135d6839fb12c42fc7ddde21553dcfad858cc4f5d9",
+        "pub struct GeoPointValidationError {": "53bec197a34cec56dd23b8c494c87100e2e4e651c7dfb6edc3c194d6a3e23a0c",
+        "impl std::fmt::Display for GeoPointValidationError {": "767cbadaff4a543c271da368b28178c88f352e1467435e2d9badf38030404997",
+        "impl GeoPoint {": "dd42811f63d0edaa6316a2ea87055ded792b32d9781684c6dd669235a8d8058f",
+        "impl TryFrom<GeoPointShadow> for GeoPoint {": "f9dd1ab7cc74bd4a07c3ab426650801440880b249d2eb88ae53e1614e8db8bea",
+        "impl From<GeoPoint> for geo::Point {": "1ccbf8a1e8b1eabd33e4c0348468b59e4aaf414791f04bef6d1227f15c321e2f"
+      },
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "dependencies": [
+        {
+          "version": "0.33.1",
+          "revision": "5ab50b072e34a915a33eaa46c80763d51d61295e",
+          "crate_sha256": "30eb1fdc57c1e5cfd11826fe0caec4b9dc7901f3758263bb506228d88c8d9e9a",
+          "source": "src/algorithm/line_measures/metric_spaces/haversine.rs",
+          "source_sha256": "cda8c3e4acf0da89711497d7fdada42ff1321141d4e359134418339f13d3e4b3",
+          "license": "MIT OR Apache-2.0",
+          "name": "geo",
+          "upstream": "https://github.com/georust/geo",
+          "license_file": "docs/upstream/licenses/geo-MIT.txt",
+          "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727"
+        }
+      ],
+      "fixture": "tests/fixtures/qdrant-geo/geo.json",
+      "fixture_sha256": "4e3e74c42585d3aa62888b20a56467eaafb688ecbfeac7e206eb4c34929d8865",
+      "cargo_lock": "tests/fixtures/qdrant-geo/Cargo.lock",
+      "cargo_lock_sha256": "92cb3ff736e842acdd23e7772c1c1b9fb62888718f3fba66e497529a68da3feb",
+      "scaffold_sha256": "d6013f74d01b4459c1cfc5db7ad7981936efc7b6f35ca58f4166ff1b07990f40",
+      "reference_cases": 1890,
+      "reference_groups": {
+        "point_validation": {
+          "cases": 30,
+          "expected_errors": 23
+        },
+        "distance_f64": {
+          "cases": 796,
+          "finite": 796
+        },
+        "formula_f32": {
+          "cases": 1064,
+          "expected_errors": 178
+        }
+      },
+      "targets": [
+        "src/akasha/document/geo.mojo",
+        "src/akasha/query/formula.mojo",
+        "src/bindings/python_module.mojo",
+        "src/akasha/__init__.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Bounded owned JSON maps/sequences supply native GeoPoint coordinates using source serde conversion and inclusive finite range validation; no new durable tag",
+        "Native F64 Haversine operation order, source radius and separate scalar products retained; no clamp or Python geometry calculation",
+        "Shared source-backed payload retrieval and defaults feed geo conversion lazily; origin/path validation is eager and existing short-circuit/final-F32 rules remain",
+        "Oracle compiles original Qdrant point/retrieval/scoring with actual pinned geo crate; transport/derive/OrderedFloat/provider/counter/MultiValue adapters are documented",
+        "Native Python request wrapper accepts only origin/to; full REST/gRPC schema, geo filters/indexes, datetime and typed-index retrieval remain open"
+      ],
+      "status": "verified_native_python_arrow_geo_formulas_full_Q04_D03_pending",
+      "verification": [
+        "docs/research/2026-10-30-geo-formula-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/geo.mojo": "a298bdd6d657eaa50eb1bf947332377b79e6df8cd8594cf17ad006eb7b080172",
+        "src/akasha/query/formula.mojo": "aa1dbff9bef0b6e298a3b4270242813a63c88558e561f500e12ccbbf45968b59",
+        "src/bindings/python_module.mojo": "01bca5b54c3b2a968527c9555669f2fc312a1b2a9ebeea32847ce1e70b9e7fb9",
+        "src/akasha/__init__.mojo": "70c3d2df18b65d483b02a496ec6e8fa81dff9cd0ed896e2ed3db7b9e82be3ea6",
+        "src/akasha/document/__init__.mojo": "f0e6174180c6b880fb35c4edb76ef99037baee129b3974b670bc04f9cd4dfa37",
+        "scripts/qdrant_geo_reference.py": "4c19e5d8a0579f779c4abdc999f4aaa97e4dd88a3c7e647ae9906ab81abeb878",
+        "tests/mojo/test_geo_formula.mojo": "b4275ae4a78be6ee66f25e99befa05c25f8f4ac10ce2b28fcd67d3313c3bf2a8",
+        "tests/mojo/test_formula.mojo": "e178e58c861face46ba73534c41895f9de7475aa0ff8535ab80cd71124ccbc4b",
+        "tests/python/test_geo_formula.py": "6fae6e48f2079ad45737a8045f4cd02db095c45d2ef16526b8a5343077a442fa"
+      }
     }
   ]
 }

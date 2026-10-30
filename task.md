@@ -4,12 +4,18 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 Q04d：巢狀／陣列路徑、來源單層攤平、缺值與 null 區分、UInt64 與
+- 最新 Q04e／D03b：Qdrant 座標驗證及固定 GeoRust 來源的地理距離已接入
+  Mojo／Python／Arrow 公式，可組合路徑、預設值與衰減。30 組座標驗證、
+  796 組距離、1,064 組公式來源對照，16 項原生、979 項指定 Python 與
+  完整 Python 3,138 項通過，1 項跳過。
+  [驗證與範圍](docs/research/2026-10-30-geo-formula-validation.md)。
+  下一步持續資料／查詢整合：日期型別及公式、完整地理／巢狀條件與專用索引、
+  rich Arrow；LanceDB、SQL／交易、UI／安全／叢集與全產品清單保持未完成。
+- Q04d：巢狀／陣列路徑、來源單層攤平、缺值與 null 區分、UInt64 與
   JSON 預設值已接上 Mojo／Python／Arrow 公式查詢。1,068 組原始來源案例、
   12 項原生、933 項指定 Python 與完整 Python 3,092 項通過，1 項選配跳過。
   [驗證與範圍](docs/research/2026-10-30-formula-payload-validation.md)。
-  下一步持續資料／查詢整合：日期／地理型別及公式、完整條件與專用索引、
-  rich Arrow；LanceDB、SQL／交易、UI／安全／叢集與全產品清單保持未完成。
+  地理公式已由後續 Q04e 補入，其餘待辦見最新進度與完整清單。
 - D05a：payload set／overwrite／delete／clear 已接上 Mojo／Python／現有 HTTP，
   支援 IDs／既有條件選取與 JSON 路徑，保留所有向量；同一寫入鎖內選取與原子提交。
   1,644 組來源對照、3 項原生、完整 Python 3,078 項通過，1 項選配跳過；

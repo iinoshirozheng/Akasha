@@ -2,6 +2,8 @@ from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.document.json_path import FormulaVariable
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
+from akasha.document.geo import GeoPoint
+from bindings.payload_python import json_value_from_python
 from akasha.query.filter_ast import FilterExpression
 from std.python import Python, PythonObject
 from std.memory import bitcast
@@ -72,8 +74,14 @@ def _fixture_expression(value: PythonObject, mut nodes: List[FormulaNode]) raise
         var condition = Optional[FilterExpression]()
         var midpoint = Float32(0.5)
         var scale = Float32(1)
+        var origin = Optional[GeoPoint]()
+        var key = String()
         if kind == "condition":
             condition = Optional(FilterExpression.all([]) if Bool(py=arg) else FilterExpression.any([]))
+        elif kind == "geo_distance":
+            var value = json_value_from_python(arg["origin"])
+            origin = Optional(GeoPoint.from_payload(value))
+            key = String(py=arg["to"])
         elif kind == "sum" or kind == "mult":
             for i in range(len(arg)):
                 children.append(_fixture_expression(arg[i], nodes))
@@ -90,8 +98,8 @@ def _fixture_expression(value: PythonObject, mut nodes: List[FormulaNode]) raise
             scale = Float32(py=arg.get("scale", 1))
         else:
             children.append(_fixture_expression(arg, nodes))
-        nodes.append(FormulaNode(kind, children^, condition=condition^,
-            by_zero_default=default, midpoint=midpoint, scale=scale))
+        nodes.append(FormulaNode(kind, children^, key=key, condition=condition^,
+            by_zero_default=default, midpoint=midpoint, scale=scale, origin=origin^))
     return len(nodes) - 1
 
 

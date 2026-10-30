@@ -3,6 +3,7 @@ from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.document.json_path import JsonPath, JsonPathItem, FormulaVariable
 from akasha.document.payload_path import payload_value_get, payload_value_set, payload_value_remove
 from akasha.document.payload_update import PayloadUpdate
+from akasha.document.geo import GeoPoint
 from .api import (
     BatchMutation,
     BatchWriteResult,

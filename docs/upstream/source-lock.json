@@ -81,5 +81,18 @@
         }
       ]
     }
+  ],
+  "ported_dependencies": [
+    {
+      "name": "geo",
+      "version": "0.33.1",
+      "upstream": "https://github.com/georust/geo",
+      "revision": "5ab50b072e34a915a33eaa46c80763d51d61295e",
+      "crate_sha256": "30eb1fdc57c1e5cfd11826fe0caec4b9dc7901f3758263bb506228d88c8d9e9a",
+      "used_by": "Q04e-D03b-geo-formulas",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/geo-MIT.txt",
+      "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727"
+    }
   ]
 }

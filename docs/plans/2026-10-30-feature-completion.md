@@ -109,6 +109,20 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **Q04e / D03b geographic formulas implemented and verified for native,
+  Python and Arrow.** Qdrant GeoPoint conversion/validation and its pinned
+  GeoRust geo 0.33.1 Haversine distance now support payload paths/defaults and
+  existing arithmetic/decay formulas. The original-source oracle covers 30
+  coordinate cases, 796 exact F64 distances and 1,064 F32 formula scores/errors.
+  Sixteen native tests across four modules, 979 targeted Python and full Python
+  **3,138 passed / 1 skip**; 46 new public cases include mutations/reopen,
+  snapshots, Arrow ownership, request validation, filters and query controls.
+  [Plan](2026-10-30-geo-formula-source-port.md) /
+  [evidence](../research/2026-10-30-geo-formula-validation.md).
+  Q04/D03 remain open for datetime, geographic filters/indexes, full conditions,
+  typed-index retrieval, sampling/feedback and protocols. Rich Arrow and all
+  Lance/general DB/UI/security/cluster/operations/quality/platform rows remain
+  open; no optimization work has started.
 - **Q04d rich formula payload retrieval implemented and verified for native,
   Python and Arrow.** Full JSON paths, source single-level array flattening and
   wildcard suffix, missing/null/type behavior, UInt64 numeric conversion and
@@ -118,7 +132,8 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   cover writes/mutations/reopen, nested queries, Arrow ownership and limits.
   [Plan](2026-10-30-formula-payload-source-port.md) /
   [evidence](../research/2026-10-30-formula-payload-validation.md).
-  Q04/D03 remain open for shared geo/date types and expressions, full conditions,
+  Geo formulas subsequently landed in Q04e; Q04/D03 remain open for datetime,
+  geographic filters/indexes, full conditions,
   typed-index retrievers, sampling/feedback and protocols. Rich Arrow and every
   other product/quality/platform row remain open; optimization has not started.
 - **D05a collection payload mutations implemented and verified for native,

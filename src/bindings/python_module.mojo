@@ -1,5 +1,6 @@
 from akasha.query.query_plan import QueryNode, plan_query
 from akasha.query.formula import Formula, FormulaDefault, FormulaNode
+from akasha.document.geo import GeoPoint
 from akasha.query.field_recommendation import RecommendationExample
 from akasha.query.field_discovery import ContextPair
 from akasha import (
@@ -27,7 +28,7 @@ from akasha.document.point_state import PointMutation, FieldUpdate, PointState
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
-from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, _json_value
+from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, json_value_from_python, _json_value
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from std.collections import Dict
 from akasha.index.flat import SearchResult
@@ -1890,8 +1891,19 @@ def _formula_expression_from_python(
         var fallback = Optional[Float32]()
         var midpoint = Float32(0.5)
         var scale = Float32(1)
+        var origin = Optional[GeoPoint]()
+        var path = String()
         if kind == "condition":
             condition = Optional(_filter_expression(arg))
+        elif kind == "geo_distance":
+            if not Bool(py=builtins.type(arg) == builtins.dict):
+                raise Error("geo_distance parameters must be a dictionary")
+            for key in arg:
+                if key != PythonObject("origin") and key != PythonObject("to"):
+                    raise Error("unknown geo_distance parameter")
+            var raw_origin = json_value_from_python(arg["origin"])
+            origin = Optional(GeoPoint.from_payload(raw_origin))
+            path = _exact_python_string(arg["to"], "geo_distance payload path")
         elif kind == "sum" or kind == "mult":
             if not Bool(py=builtins.type(arg) == builtins.list) and not Bool(py=builtins.type(arg) == builtins.tuple):
                 raise Error("formula sum/mult requires a list")
@@ -1931,8 +1943,8 @@ def _formula_expression_from_python(
             children.append(_formula_expression_from_python(arg, nodes, depth + 1, count, limit))
         else:
             raise Error("unsupported formula operator")
-        nodes.append(FormulaNode(kind, children^, condition=condition^,
-            by_zero_default=fallback, midpoint=midpoint, scale=scale))
+        nodes.append(FormulaNode(kind, children^, key=path, condition=condition^,
+            by_zero_default=fallback, midpoint=midpoint, scale=scale, origin=origin^))
     else:
         raise Error("formula expression must be a number, variable or one operator")
     return len(nodes) - 1
