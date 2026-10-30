@@ -321,9 +321,9 @@
       "license": "Apache-2.0",
       "revision": null,
       "identity": "crates.io:jsonb@0.5.6",
-      "provenance": "tests/fixtures/jsonb-codec/sources.json",
+      "provenance": "tests/fixtures/jsonb-text/sources.json",
       "reference_only": false,
-      "used_by": "D01c3c-native-jsonb-codec",
+      "used_by": "D01c3g-jsonb-text-reader",
       "source_profile": {
         "features": [
           "databend"

@@ -20,7 +20,7 @@ JSON_KINDS = frozenset({"string", "int", "uint", "float", "bool", "null", "array
 class JsonbValue:
     """Immutable source JSONB bytes; Mojo validates the body before any write.
 
-    This carrier does not parse JSON text or implement binary JSONB in Python.
+    ``from_json`` delegates text parsing to Mojo; Python implements no codec.
     """
 
     data: bytes
@@ -30,6 +30,28 @@ class JsonbValue:
             raise TypeError("JSONB data must be immutable bytes")
         if len(self.data) > MAX_BYTES:
             raise ValueError("JSONB byte size exceeds limit")
+
+    @classmethod
+    def from_json(cls, text: str | bytes, *, standard: bool = False) -> "JsonbValue":
+        """Parse with pinned jsonb syntax (extended by default), in Mojo.
+
+        ``standard=True`` selects the upstream standard profile. It is distinct
+        from Python's JSON parser and Akasha's ordinary serde_json reader.
+        """
+        from .database import _kernel_module
+        from .exceptions import ValidationError, map_kernel_error
+
+        if type(text) not in (str, bytes):
+            raise ValidationError("JSONB text must be str or immutable bytes")
+        if type(standard) is not bool:
+            raise ValidationError("JSONB standard mode must be a bool")
+        if len(text) > MAX_BYTES:
+            raise ValidationError("JSONB text exceeds byte limit")
+        try:
+            data = text.encode("utf-8") if type(text) is str else text
+            return cls(_kernel_module().parse_jsonb(data, standard))
+        except Exception as error:
+            raise map_kernel_error(error) from error
 
 
 class _Budget:

@@ -24,7 +24,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c3f 已依 fast-float2 0.2.3 原始碼移植 F64 數字解析的三條轉換路徑；15,191 組完整／前綴解析與來源一致，含 801 組長尾數分支及 12,162 組強制長尾數對照。3 個相關 Mojo 模組／18 項通過，來源及查表資料可重現。這是 jsonb 文字解析的依賴，完整 grammar／serializer、Arrow JSON 與產品清單仍待完成，見[數字解析驗證](2026-10-30-fast-float-validation.md)。尚未優化。
+最新 D01c3g 已完成 Mojo jsonb 標準／擴充文字 parser 與 Python `JsonbValue.from_json`；20,757 組原始來源輸入皆符合兩種模式的 body／拒絕結果。29 項 Mojo、61 項指定 Python、完整 Python **3,472 通過／1 跳過**。來源可重現，見[文字解析驗證](2026-10-30-jsonb-reader-validation.md)。RawJsonb／serde_json 文字 serializer、完整 Arrow JSON 與其他產品工作仍待完成；尚未優化。
+
+D01c3f 已依 fast-float2 0.2.3 原始碼移植 F64 數字解析的三條轉換路徑；15,191 組完整／前綴解析與來源一致，含 801 組長尾數分支及 12,162 組強制長尾數對照。3 個相關 Mojo 模組／18 項通過，來源及查表資料可重現。這是 jsonb 文字解析的依賴，完整 grammar／serializer、Arrow JSON 與產品清單仍待完成，見[數字解析驗證](2026-10-30-fast-float-validation.md)。尚未優化。
 
 D01c3e 已接上 JSONB 的 Python／HTTP／NDJSON v3 邊界，保留舊格式讀取、普通物件鍵及兩種 null。6,331 組來源 body、46 項新增 Python、17 項相關 Mojo、120 項指定回歸通過；完整 Python **3,457 通過、1 跳過**。文字 parser／數字轉換／serializer、完整 Arrow JSON、C／分散式值介面與 JSONB 查詢／索引仍待完成，見[公開邊界驗證](2026-10-30-jsonb-boundary-validation.md)。
 

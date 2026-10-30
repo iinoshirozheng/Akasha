@@ -1,9 +1,29 @@
 """Bounded Python/JSON representation conversion; value ownership stays in Mojo."""
 from akasha.document.value import PayloadValue
 from akasha.document.jsonb import JsonbValue
+from akasha.document.jsonb_reader import parse_jsonb_bytes
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.json_path import JsonPath
 from std.python import Python, PythonObject
+
+
+def parse_jsonb_py(raw: PythonObject, standard: PythonObject) raises -> PythonObject:
+    """Transport immutable UTF-8 bytes; all text interpretation stays in Mojo."""
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(raw) == builtins.bytes):
+        raise Error("JSONB text input must be immutable bytes")
+    if not Bool(py=builtins.type(standard) == builtins.bool):
+        raise Error("JSONB standard mode must be a bool")
+    if len(raw) > JsonbValue.MAX_BYTES:
+        raise Error("JSONB text exceeds byte limit")
+    var bytes = List[UInt8](capacity=len(raw))
+    for byte in raw:
+        bytes.append(UInt8(Int(py=byte)))
+    var value = parse_jsonb_bytes(Span(bytes), standard=Bool(py=standard))
+    var output = List[PythonObject](capacity=len(value._data))
+    for byte in value._data:
+        output.append(PythonObject(Int(byte)))
+    return builtins.bytes(Python.list(Span(output)))
 
 
 def json_value_from_python(raw: PythonObject) raises -> PayloadValue:

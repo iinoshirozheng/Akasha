@@ -3130,6 +3130,116 @@
         "scripts/fast_float_reference.rs": "545d6e526b01e3b687b10630080c3458c7b12a5ec438af7775141e5dc06d0193",
         "tests/mojo/test_fast_float.mojo": "fe3cd013edd60978f996f9c63b6fb0921a6f810f84b13d9e2e785e0161f393d2"
       }
+    },
+    {
+      "id": "D01c3g-jsonb-text-reader",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "revision": null,
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "sources": [
+        {
+          "path": "src/constants.rs",
+          "sha256": "2a5391c023de1458d8e5987969ea20d5b386847922dbbde0cc6146ee712749bd"
+        },
+        {
+          "path": "src/core/databend/ser.rs",
+          "sha256": "958f273ad2e3c6fc57f348a72af0d7d825ff28a1fab4a3ea4d120195d7be7201"
+        },
+        {
+          "path": "src/parser.rs",
+          "sha256": "bf3d29cc59bb265d9c502096094361f3ed57ff73950c031fed9489694a51f663"
+        },
+        {
+          "path": "src/util.rs",
+          "sha256": "2eb98b7407498f9cfa6afcfeb9a3d2950a2e12403c1ca64970106ff5abaf6ab1"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "dependency_provenance": "tests/fixtures/jsonb-text/sources.json",
+      "source_profile": {
+        "jsonb_default_features": false,
+        "jsonb_features": [
+          "databend"
+        ],
+        "arbitrary_precision": false
+      },
+      "targets": [
+        "src/akasha/document/jsonb_reader.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/bindings/payload_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/payload.py"
+      ],
+      "source_units": [
+        "parser.rs standard and extended value/number/string/container grammar, whitespace, literals and duplicate handling",
+        "util.rs escape processing, fixed-width braced Unicode and surrogate preservation",
+        "Use D01c3f original fast-float2 F64 numerical conversion",
+        "Use D01c3c checked owned databend binary builders instead of a borrowed Rust AST"
+      ],
+      "adaptations": [
+        "Checked byte offsets and owned values; source behavior retained with native source/content/body, node and depth bounds",
+        "Profile Bool selects source function-pointer dispatch paths; arbitrary_precision remains disabled as pinned Lance",
+        "UInt64/UInt128 checked integer accumulation and Mojo integer-exponent pow adapt Rust integer parsing and hexadecimal fraction arithmetic",
+        "Python factory only validates types, encodes str as UTF-8 and transports immutable bytes; parsing remains native",
+        "Akasha Error/ValidationError instead of Rust error enum/message/position compatibility"
+      ],
+      "oracle": "scripts/jsonb_text_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-text/cases.json": "a9c7973a104f3b6a1ef43f9eb2735fb92935207d5bb60a61ebb46067639fe61a",
+        "tests/fixtures/jsonb-text/sources.json": "ad8ee8fd90b9f4f65395f5e188b597907d0c29e57bd3bb8ef278611b093718e3",
+        "tests/fixtures/jsonb-text/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8"
+      },
+      "status": "verified_jsonb_text_reader_and_python_factory_writer_Arrow_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-reader-validation.md"
+      ],
+      "results": {
+        "source_inputs": 20757,
+        "profiles": {
+          "standard": {
+            "hex": 11074,
+            "error": 9683,
+            "panic": 0
+          },
+          "extended": {
+            "hex": 16353,
+            "error": 4404,
+            "panic": 0
+          }
+        },
+        "new_native_tests": 5,
+        "related_native_modules": 5,
+        "related_native_tests": 29,
+        "new_python_tests": 15,
+        "targeted_python_tests": 61,
+        "full_python_passed": 3472,
+        "full_python_skipped": 1,
+        "module_build": true,
+        "reproduced_fixture_metadata_lock": true,
+        "raw_text_vs_display_differences": {
+          "standard": 1082,
+          "extended": 2939
+        }
+      },
+      "remaining": [
+        "Actual RawJsonb/serde_json text writer and source numeric formatting",
+        "Complete Arrow JSON extension ingress/export with nullable slots and nested metadata",
+        "C/distributed value interfaces, JSONB queries/indexes and all full product/platform/performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_reader.mojo": "6ee8d9e6a2d076f0691b5e5f6f56b57193e775dae874e715afdab77d755bc8a0",
+        "src/akasha/document/__init__.mojo": "3ff475005ffe8086d0ff60d44239529bc5bd5a81f046b88ceb9091c1815bb34d",
+        "src/bindings/payload_python.mojo": "fc16ebbaa6291d28ae0b659661c87623b28bddaad232a6601a668ee2a7a0f3ae",
+        "src/bindings/python_module.mojo": "b3a184df88e0357da8c184fbe115d2fada5daccfbcf4a3bc1504494f527cdc9f",
+        "python/akashadb/payload.py": "8efba7938120edd346f1fc42775aa42a6cc6e50d09f612a72a429b51ebbbfab2",
+        "scripts/jsonb_text_reference.py": "42a180cc4e36c01df2525f674972dffacf3ed8926befebbf5ae64ec7b7187d5e",
+        "scripts/jsonb_text_reference.rs": "d890d71a01b72695e131eebf3ada8bbba4fdc00dc77cf2928d1330a798a1cc59",
+        "tests/mojo/test_jsonb_reader.mojo": "a999367ed006d93274f71fcce6e5eb91d11b3f0afe7837466d9e318a460e4fd8",
+        "tests/python/test_jsonb_text.py": "bc9891d7fd2b93586115d5fad2007f21adad4bd018828750458ed0700bcb0925"
+      }
     }
   ]
 }

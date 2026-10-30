@@ -248,13 +248,20 @@ NDJSON v3. Reads retain payload v1/v2 compatibility; new writes use payload v3.
 `JsonbValue(data: bytes)` carries the exact jsonb 0.5.6 databend body used by
 the pinned Lance implementation. It accepts immutable bytes; Mojo validates
 the body and combined payload limits before writing. The carrier itself does
-not parse JSON text or guarantee that arbitrary supplied bytes are valid.
+not guarantee that arbitrary supplied bytes are valid. To parse text, use
+`JsonbValue.from_json(text: str | bytes, *, standard: bool = False)`, which
+delegates to the source-ported Mojo parser and returns a validated owned body.
+The default extended profile matches pinned Lance. `standard=True` selects
+jsonb's standard profile; its shared Unicode/whitespace behavior differs from
+the ordinary serde_json reader. See [the exact profiles](native-jsonb.md#text-parsing).
 
 ```python
 from akashadb import JsonbValue, PayloadField
 from akashadb.payload import encode_value
 
 json_null = JsonbValue(bytes.fromhex("2000000000000000"))
+parsed = JsonbValue.from_json("{items:[1,,],n:0x1a.b}")
+standard = JsonbValue.from_json(b'{"items":[1,null,null]}', standard=True)
 fields = [PayloadField("items", "array", [None, json_null])]
 collection.upsert(42, [1.0, 0.0], fields)
 assert collection.get(42).fields == fields
@@ -283,7 +290,7 @@ data. NDJSON v3 always uses typed fields, retaining v1/v2 reads. Ordinary nested
 integers use the `integer` wire tag; explicit field roots retain int/uint.
 
 The strict ordinary-JSON filter/formula configuration path does not accept a
-JSONB carrier. JSONB traversal/indexes, textual parsing/rendering and Arrow JSON
+JSONB carrier. JSONB traversal/indexes, text rendering and Arrow JSON
 extensions remain in progress; use [native JSONB](native-jsonb.md) for the
 available binary constructors and [wire format](formats/logical-point-format.md)
 for the transport contract.

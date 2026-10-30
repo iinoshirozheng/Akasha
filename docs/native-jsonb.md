@@ -3,8 +3,9 @@
 `akasha.document.JsonbValue` owns a checked binary JSONB value. Its encoding is
 ported from jsonb 0.5.6's databend backend, the backend used by pinned Lance.
 It can be stored in native collection payloads using `PayloadValue.jsonb(value)`.
-Python/HTTP/NDJSON also transport this type as complete source bytes. Textual
-JSONB parsing/rendering and `arrow.json` integration remain pending.
+Python/HTTP/NDJSON also transport this type as complete source bytes. Native
+and Python text parsing support the original standard and extended profiles.
+Text rendering and `arrow.json` integration remain pending.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -69,7 +70,8 @@ Python `JsonbValue` is an immutable bytes carrier, not a second binary codec.
 It checks the byte type and maximum body length; Mojo validates the complete
 JSONB body and combined depth/node/byte limits before any write. Invalid bytes
 may be held in the carrier but cannot enter the database. This API does not
-parse JSON text. `set_payload` and `overwrite_payload` accept carriers inside
+interpret JSON text in Python. `JsonbValue.from_json` delegates text parsing to
+Mojo. `set_payload` and `overwrite_payload` accept carriers inside
 ordinary dicts/lists; JSONB null remains a value while plain null follows the
 existing mutation semantics.
 
@@ -149,7 +151,55 @@ Source fixtures, old-format evidence and validation results are recorded in
 [the codec report](research/2026-10-30-jsonb-codec-validation.md).
 
 
-## Text conversion dependency
+## Text parsing
+
+```mojo
+from akasha.document import parse_jsonb, parse_jsonb_bytes
+
+def main() raises:
+    var extended = parse_jsonb("{items:[1,,],label:'中文',n:0x1a.b}")
+    var standard = parse_jsonb('{"items":[1,null,null]}', standard=True)
+    var text = String("null")
+    var json_null = parse_jsonb_bytes(text.as_bytes())
+```
+
+Python uses the same native parser:
+
+```python
+from akashadb import JsonbValue, PayloadField
+
+value = JsonbValue.from_json("{items:[1,,],n:0x1a.b}")
+plain = JsonbValue.from_json(b'{"items":[1,null,null]}', standard=True)
+collection.upsert(1, [1, 0], [PayloadField("json", "jsonb", value)])
+```
+
+`parse_jsonb` / `parse_jsonb_bytes` and `JsonbValue.from_json` default to jsonb
+0.5.6's extended profile, as pinned Lance does. Extended input allows leading
+plus/zeros, hexadecimal integers/fractions, case-insensitive literals,
+single-quoted strings, unquoted object keys, empty text as JSON null and omitted
+array elements as null. `-NaN` and duplicate object keys are rejected; object
+keys are sorted in the encoded body. Both profiles consume the entire input.
+
+`standard=True` selects **the source library's standard profile**, rather than
+the ordinary serde_json reader. Shared source string/whitespace routines still
+accept raw control characters, exactly four hex digits in `\u{XXXX}`, escaped
+whitespace outside strings and preserve unpaired surrogate escapes as literal
+`\uXXXX` text. They reject invalid UTF-8 and unknown escapes (including `\'`).
+Both modes allow exponent overflow to infinity, with source fast-float rounding.
+The APIs preserve these source behaviors instead of silently substituting a
+different JSON parser. The ordinary `parse_json` API retains its own contract.
+
+Source text and decoded content are limited to 16 MiB; parsed values have at
+most 65,536 nodes and 64 container levels. The resulting encoded body must also
+fit its 16 MiB bound. Python accepts exact `str` or immutable `bytes` and an
+exact `bool` mode; invalid text/resources raise `ValidationError`. Native APIs
+raise `Error`. Error wording is Akasha's, not a reproduction of Rust's error
+enum. Results own their data and can use all existing JSONB payload transports.
+
+See [text parser validation](research/2026-10-30-jsonb-reader-validation.md).
+Text serialization, JSONB traversal/indexing and Arrow JSON are still pending.
+
+## Numeric dependency
 
 The native `akasha.document.fast_float` module provides
 `parse_fast_float(Span[UInt8]) -> Float64` and
@@ -157,7 +207,6 @@ The native `akasha.document.fast_float` module provides
 invalid input. The latter returns a consumed byte count. These are the pinned
 fast-float2 F64 token rules, including optional plus signs, partial decimal
 forms, Inf/NaN, signed zero and overflow to infinity. They are not a JSON
-validation API and do not yet parse text into `JsonbValue`.
-The source jsonb grammar and text serializer remain the next implementation
-step; the ordinary serde_json reader keeps its separate numeric contract.
+validation API. The complete grammar above consumes these tokens to build
+`JsonbValue`; the ordinary serde_json reader keeps its separate numeric contract.
 See [numeric source validation](research/2026-10-30-fast-float-validation.md).

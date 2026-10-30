@@ -150,3 +150,22 @@ also accepts hexadecimal fractions and selects integer versus float according
 to its own rules; fast-float's token API alone does not implement that grammar.
 Then complete step 6's Arrow JSON extension integration and round trips.
 No complete D01, JSONB text/Arrow or product capability is closed by this helper.
+
+
+## Text reader update: D01c3g
+
+Step 5's standard/extended parser is now implemented through native
+`parse_jsonb`/`parse_jsonb_bytes` and Python `JsonbValue.from_json`, using the
+previously verified fast-float dependency. All 20,757 actual-source inputs match
+body bytes and rejection in both APIs; 29 native tests, 61 targeted Python and
+full Python 3,472 passed / 1 skipped. The source fixture, metadata and lock
+reproduce. Input/decoded/binary byte limits, nodes/depth, ownership and durable
+round trips are covered. [Evidence](../research/2026-10-30-jsonb-reader-validation.md).
+
+Step 5's remaining writer must follow Lance `decode_json` ->
+`RawJsonb::to_string` -> serde_json serialization. `Value::Display` is distinct
+and cannot serve as its oracle. The new fixture records both outputs explicitly
+and observes differences in 1,082 standard and 2,939 extended accepted cases.
+Continue with that writer's real numeric-formatting dependency before step 6's
+full Arrow JSON extension ingress/export. The broader product ledger remains
+unchanged and optimization remains deferred.
