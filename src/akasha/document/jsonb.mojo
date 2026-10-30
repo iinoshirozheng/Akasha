@@ -135,7 +135,7 @@ def _validate(bytes: Span[UInt8, _], depth: Int, mut nodes: Int, mut deepest: In
         raise Error("unexpected trailing JSONB bytes")
 
 
-struct JsonbValue(Movable):
+struct JsonbValue(Copyable, Movable):
     """Owned databend JSONB, with source encodings and a checked native boundary.
 
     A JsonbValue containing JSON null is valid. Use an independent nullable slot

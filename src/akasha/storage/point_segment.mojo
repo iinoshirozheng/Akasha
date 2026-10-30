@@ -80,7 +80,7 @@ def encode_point_segment(
     points: List[PointState],
     catalog: FieldCatalog,
     *,
-    payload_version: Int = 2,
+    payload_version: Int = 3,
 ) raises -> List[UInt8]:
     var writer = BinaryWriter()
     writer.write_bytes(

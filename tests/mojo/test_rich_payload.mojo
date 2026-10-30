@@ -149,7 +149,7 @@ def test_payload_v1_reader_and_v2_strict_corruption() raises:
     fields.append(DocumentField("x", _json("{\"a\": [null, -0.0, true, 18446744073709551615]}")))
     with assert_raises():
         _ = encode_payload(fields, version=1)
-    var valid = encode_payload(fields)
+    var valid = encode_payload(fields, version=2)
     var frozen = read_file_bytes("tests/fixtures/payload/v2.bin")
     assert_equal(len(valid), len(frozen))
     for i in range(len(valid)):

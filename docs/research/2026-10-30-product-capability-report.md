@@ -24,7 +24,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c3c 已移植原生 JSONB 二進位值／codec，6,246 組來源對照與 85 組舊格式、24 項相關 Mojo、模組建置及完整 Python **3,411 通過、1 跳過**。此依賴涵蓋基本 JSON、非有限浮點、Decimal／Binary／時間擴充型別，但尚未接入 collection、持久格式、Python 或 Arrow JSON，因此不能把它列為已完成的 DB 型別功能。下一步為持久型別遷移與恢復、文字解析／序列化及完整 extension，見[JSONB codec 驗證](2026-10-30-jsonb-codec-validation.md)。
+最新 D01c3d 已把 JSONB 接入原生 collection 與 payload v3，保留舊 v1／v2 讀取、混合版本恢復與原子轉寫。21 個 Mojo 模組／130 項測試通過，涵蓋全部 6,331 組來源 body、資源限制、快照／壓縮／實體備份及損毀／torn WAL。完整 Python **3,411 通過、1 跳過**，crash **9 模組／24 項**與 C ABI 通過；公開 Python／HTTP／NDJSON／Arrow JSONB 介面與來源文字轉換仍待完成，見[持久化驗證](2026-10-30-jsonb-storage-validation.md)。
+
+D01c3c 已移植原生 JSONB 二進位值／codec，6,246 組來源對照與 85 組舊格式、24 項相關 Mojo、模組建置及完整 Python **3,411 通過、1 跳過**。此依賴涵蓋基本 JSON、非有限浮點、Decimal／Binary／時間擴充型別；原生 collection／持久格式已由 D01c3d 接續。公開 Python／Arrow JSON、文字解析／序列化與完整型別操作仍待完成，見[JSONB codec 驗證](2026-10-30-jsonb-codec-validation.md)。
 
 D01c3b 已補入 StringView 原生匯入／匯出；26 項新增 Python、17 項相關 Mojo 與完整 Python **3,411 通過、1 跳過**。Lance 原始模組／jsonb 的 5,641 組來源刻畫已完成，確認數字、語法與 storage null／JSON null 差異，見[StringView 與來源驗證](2026-10-30-lance-json-stringview-validation.md)。
 

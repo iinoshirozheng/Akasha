@@ -2,6 +2,7 @@ from akasha import PersistentCollection, CollectionConfig, SparseElement
 from akasha.document.point_state import FieldUpdate, PointMutation
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
+from akasha.document import DocumentField, PayloadValue, JsonbValue
 from akasha.storage.filesystem import (
     ensure_directory,
     read_file_bytes,
@@ -13,7 +14,7 @@ from akasha.storage.manifest import load_manifest
 from std.ffi import c_int, external_call
 from std.os import listdir
 from std.python import Python
-from std.testing import assert_equal, assert_false, TestSuite
+from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 
 def _path(suffix: String) -> String:
@@ -47,6 +48,10 @@ def test_migration_and_first_point_checkpoint_recover_each_publication_boundary(
     var old_manifest = load_manifest(source, 2)
     var upgraded = PersistentCollection.open_with_fields(source, _fields())
     var identity = read_file_bytes(source + "/collection.bin")
+    var jsonb_payload: List[DocumentField] = [DocumentField("jsonb", PayloadValue.array([
+        PayloadValue.null(), PayloadValue.jsonb(JsonbValue.null()),
+        PayloadValue.jsonb(JsonbValue.timestamp_tz(-1, 28800)),
+    ]))]
     var changes: List[PointMutation] = [
         PointMutation(
             1,
@@ -57,6 +62,7 @@ def test_migration_and_first_point_checkpoint_recover_each_publication_boundary(
                     2, VectorValue.dense[DType.float16]([Float16(3)])
                 ),
             ],
+            Optional(jsonb_payload^),
         ),
         PointMutation(
             2,
@@ -124,6 +130,12 @@ def test_migration_and_first_point_checkpoint_recover_each_publication_boundary(
         )
         assert_equal(Bool(recovered.get_point(2)), boundary >= 3)
         if boundary >= 3:
+            var payload = recovered.get_point(1).value().payload()[0].value.clone()
+            assert_true(payload.get_index(0).value().is_null())
+            assert_true(payload.get_index(1).value().is_jsonb())
+            assert_equal(payload.get_index(1).value().as_jsonb().kind(), 5)
+            assert_equal(payload.get_index(2).value().as_jsonb().as_timestamp(), Int64(-1))
+            assert_equal(payload.get_index(2).value().as_jsonb().timezone_offset(), Int32(28800))
             assert_equal(
                 recovered.get_point(1)
                 .value()
@@ -141,6 +153,8 @@ def test_migration_and_first_point_checkpoint_recover_each_publication_boundary(
         var again = PersistentCollection.open(path, 2)
         assert_equal(again.last_sequence(), accepted)
         assert_equal(again.get(3).value().vector[0], Float32(5))
+        if boundary >= 3:
+            assert_equal(again.get_point(1).value().payload()[0].value.get_index(2).value().as_jsonb().as_timestamp(), Int64(-1))
         again.close()
 
 

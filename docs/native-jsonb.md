@@ -2,9 +2,10 @@
 
 `akasha.document.JsonbValue` owns a checked binary JSONB value. Its encoding is
 ported from jsonb 0.5.6's databend backend, the backend used by pinned Lance.
-It is a native dependency for JSON interop. Collection payload storage, Python
-values, textual JSONB parsing/rendering and `arrow.json` integration are still
-pending; this API does not make those features available.
+It can be stored in native collection payloads using `PayloadValue.jsonb(value)`.
+Python/HTTP/NDJSON values, textual JSONB parsing/rendering and `arrow.json`
+integration are still pending; those public boundaries do not yet accept this
+logical type.
 
 ```mojo
 from akasha.document import JsonbValue
@@ -24,6 +25,33 @@ def main() raises:
 An outer absent slot and a present JSON null are different states. Plain JSONB
 arrays contain values, including JSON null; they do not introduce an undefined
 element. The future Arrow extension boundary must preserve its own validity.
+
+## Native collection payloads
+
+```mojo
+from akasha import PersistentCollection, DocumentField, PayloadValue
+from akasha.document import JsonbValue
+
+def write(path: String) raises:
+    var collection = PersistentCollection.open(path, 2)
+    collection.upsert_document(1, [1.0, 0.0], [
+        DocumentField("json", PayloadValue.jsonb(JsonbValue.null())),
+        DocumentField("items", PayloadValue.array([
+            PayloadValue.null(), PayloadValue.jsonb(JsonbValue.string("present")),
+        ])),
+    ])
+    collection.flush()
+    collection.close()
+```
+
+`is_jsonb()` distinguishes the payload type and `as_jsonb()` returns an owned
+copy; `clone()`, child extraction and stored snapshots retain independent data.
+The native point/document APIs, WAL-only reopen, checkpoint/compaction and
+physical backup/restore preserve exact source bodies, including accepted old
+JSONB encodings. [Payload v3](formats/payload-format.md) is the default writer;
+v1/v2 payload readers remain and old values migrate when rewritten. Existing
+plain JSON paths treat the JSONB body as a leaf. Source-based JSONB traversal,
+query and typed index integration remain separate work.
 
 ## Constructors and readers
 

@@ -1,5 +1,6 @@
 from std.math import isfinite
 from std.memory import bitcast
+from akasha.document.jsonb import JsonbValue
 
 
 comptime _STRING_KIND = UInt8(1)
@@ -10,6 +11,7 @@ comptime _NULL_KIND = UInt8(5)
 comptime _ARRAY_KIND = UInt8(6)
 comptime _OBJECT_KIND = UInt8(7)
 comptime _UINT_KIND = UInt8(8)
+comptime _JSONB_KIND = UInt8(9)
 
 
 @fieldwise_init
@@ -24,6 +26,7 @@ struct _ValueNode(Copyable, Movable):
     var unsigned: UInt64
     var key: String
     var end: Int
+    var jsonb: Optional[JsonbValue]
 
 
 struct PayloadValue(Movable):
@@ -46,6 +49,7 @@ struct PayloadValue(Movable):
     var _uint_value: UInt64
     var _nodes: List[_ValueNode]
     var _depth: Int
+    var _jsonb_value: Optional[JsonbValue]
 
     def __init__(
         out self,
@@ -63,6 +67,7 @@ struct PayloadValue(Movable):
         self._uint_value = 0
         self._nodes = List[_ValueNode]()
         self._depth = 0
+        self._jsonb_value = Optional[JsonbValue]()
 
     @staticmethod
     def string(value: String) -> PayloadValue:
@@ -90,6 +95,13 @@ struct PayloadValue(Movable):
     def unsigned(value: UInt64) -> PayloadValue:
         var result = PayloadValue(_UINT_KIND, String(), 0, 0.0, False)
         result._uint_value = value
+        return result^
+
+    @staticmethod
+    def jsonb(var value: JsonbValue) -> PayloadValue:
+        var result = PayloadValue(_JSONB_KIND, String(), 0, 0.0, False)
+        result._depth = value._depth
+        result._jsonb_value = Optional(value^)
         return result^
 
     @staticmethod
@@ -125,10 +137,12 @@ struct PayloadValue(Movable):
     @staticmethod
     def _container(kind: UInt8, var keys: List[String], var values: List[PayloadValue]) raises -> PayloadValue:
         var count = 1
+        var arena_count = 1
         var depth = 1
         var content = 0
         for i in range(len(values)):
             count += values[i].node_count()
+            arena_count += len(values[i]._nodes) if values[i].is_container() else 1
             if count > Self.MAX_NODES:
                 raise Error("payload node count exceeds limit")
             depth = max(depth, 1 + values[i]._depth)
@@ -141,8 +155,8 @@ struct PayloadValue(Movable):
             raise Error("payload nesting depth exceeds limit")
         var result = PayloadValue(kind, String(), 0, 0.0, False)
         result._depth = depth
-        result._nodes.reserve(count)
-        result._nodes.append(_ValueNode(kind, String(), 0, 0.0, False, 0, String(), count))
+        result._nodes.reserve(arena_count)
+        result._nodes.append(_ValueNode(kind, String(), 0, 0.0, False, 0, String(), arena_count, Optional[JsonbValue]()))
         for i in range(len(values)):
             var offset = len(result._nodes)
             ref value = values[i]
@@ -154,7 +168,7 @@ struct PayloadValue(Movable):
             else:
                 result._nodes.append(_ValueNode(value._kind, String(copy=value._string_value),
                     value._int_value, value._float_value, value._bool_value, value._uint_value,
-                    String(), offset + 1))
+                    String(), offset + 1, value._jsonb_value.copy()))
             if kind == _OBJECT_KIND:
                 result._nodes[offset].key = String(copy=keys[i])
         return result^
@@ -186,11 +200,22 @@ struct PayloadValue(Movable):
     def is_unsigned(self) -> Bool:
         return self._kind == _UINT_KIND
 
+    def is_jsonb(self) -> Bool:
+        return self._kind == _JSONB_KIND
+
     def is_container(self) -> Bool:
         return self.is_array() or self.is_object()
 
     def node_count(self) -> Int:
-        return len(self._nodes) if self.is_container() else 1
+        if self.is_jsonb():
+            return self._jsonb_value.value()._node_count
+        if not self.is_container():
+            return 1
+        var count = len(self._nodes)
+        for node in self._nodes:
+            if node.kind == _JSONB_KIND:
+                count += node.jsonb.value()._node_count - 1
+        return count
 
     def content_bytes(self) -> Int:
         if self.is_container():
@@ -199,9 +224,13 @@ struct PayloadValue(Movable):
                 total += node.key.byte_length()
                 if node.kind == _STRING_KIND:
                     total += node.text.byte_length()
+                elif node.kind == _JSONB_KIND:
+                    total += len(node.jsonb.value()._data)
                 elif node.kind <= _BOOL_KIND or node.kind == _UINT_KIND:
                     total += 8
             return total
+        if self.is_jsonb():
+            return len(self._jsonb_value.value()._data)
         return self._string_value.byte_length() if self.is_string() else (0 if self.is_null() else 8)
 
     def children(self) raises -> List[PayloadValue]:
@@ -248,6 +277,9 @@ struct PayloadValue(Movable):
         ref node = self._nodes[index]
         var result = PayloadValue(node.kind, String(copy=node.text), node.integer, node.floating, node.boolean)
         result._uint_value = node.unsigned
+        result._jsonb_value = node.jsonb.copy()
+        if result.is_jsonb():
+            result._depth = result._jsonb_value.value()._depth
         if result.is_container():
             var ends = List[Int]()
             for i in range(index, node.end):
@@ -256,6 +288,8 @@ struct PayloadValue(Movable):
                 if self._nodes[i].kind == _ARRAY_KIND or self._nodes[i].kind == _OBJECT_KIND:
                     ends.append(self._nodes[i].end)
                     result._depth = max(result._depth, len(ends))
+                elif self._nodes[i].kind == _JSONB_KIND:
+                    result._depth = max(result._depth, len(ends) + self._nodes[i].jsonb.value()._depth)
                 var copied = self._nodes[i].copy()
                 copied.end -= index
                 result._nodes.append(copied^)
@@ -287,6 +321,11 @@ struct PayloadValue(Movable):
             raise Error("payload value is not an unsigned integer")
         return self._uint_value
 
+    def as_jsonb(self) raises -> JsonbValue:
+        if not self.is_jsonb():
+            raise Error("payload value is not JSONB")
+        return self._jsonb_value.value().copy()
+
     def clone(self) -> PayloadValue:
         var result = PayloadValue(
             self._kind,
@@ -298,6 +337,7 @@ struct PayloadValue(Movable):
         result._uint_value = self._uint_value
         result._nodes = self._nodes.copy()
         result._depth = self._depth
+        result._jsonb_value = self._jsonb_value.copy()
         return result^
 
     def same_representation(self, other: PayloadValue) -> Bool:
@@ -313,10 +353,18 @@ struct PayloadValue(Movable):
                 if (a.kind != b.kind or a.key != b.key or a.end != b.end
                     or a.text != b.text or a.integer != b.integer
                     or a.unsigned != b.unsigned or a.boolean != b.boolean
+                    or not _same_jsonb(a.jsonb, b.jsonb)
                     or bitcast[DType.uint64](a.floating) != bitcast[DType.uint64](b.floating)):
                     return False
             return True
         return (self._string_value == other._string_value
             and self._int_value == other._int_value and self._uint_value == other._uint_value
             and self._bool_value == other._bool_value
+            and _same_jsonb(self._jsonb_value, other._jsonb_value)
             and bitcast[DType.uint64](self._float_value) == bitcast[DType.uint64](other._float_value))
+
+
+def _same_jsonb(left: Optional[JsonbValue], right: Optional[JsonbValue]) -> Bool:
+    if Bool(left) != Bool(right):
+        return False
+    return not left or left.value()._data == right.value()._data

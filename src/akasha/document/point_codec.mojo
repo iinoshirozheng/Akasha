@@ -156,7 +156,7 @@ def decode_vector_value(
 
 
 def encode_point_record(
-    point: PointState, catalog: FieldCatalog, *, payload_version: Int = 2
+    point: PointState, catalog: FieldCatalog, *, payload_version: Int = 3
 ) raises -> List[UInt8]:
     point.validate(catalog)
     var payload = List[UInt8]()

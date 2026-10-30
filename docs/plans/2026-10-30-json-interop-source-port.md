@@ -87,3 +87,31 @@ and full Python 3,411 passed / 1 skip. Fixtures/metadata/lock reproduce exactly.
 Storage null stays an independent outer slot. This does not yet modify payload v1/v2 or expose JSONB through collection
 APIs; those durable integration/migration and recovery steps remain next, before
 text parsing/rendering and Arrow extension completion.
+
+
+Step 3 durable integration now has the native implementation and focused proof:
+`PayloadValue.jsonb` and payload v3 preserve complete source bodies at roots and
+inside ordinary containers. Readers retain v1/v2, and existing rewrite paths
+migrate without catalog/sequence changes. Twenty-one native modules / 130 tests
+pass, including all 6,331 current/legacy source bodies through the payload codec,
+mixed-version recovery, snapshots, compaction, physical backup, atomic rejection
+and corrupt/torn WAL handling. Full Python (3,411 passed / 1 skip), nine crash modules / 24 tests, module and
+worker builds, and C ABI also pass; see the
+[storage report](../research/2026-10-30-jsonb-storage-validation.md).
+Public value boundaries, the jsonb textual profile and Arrow JSON remain open.
+
+### Next boundary requirements
+
+- Preserve a distinct Python value for native JSONB bytes at any nesting level;
+  use an explicit value type, not a reserved ordinary-dict key that can collide
+  with valid JSON. Validate the binary body and aggregate limits in Mojo.
+- Keep strict ordinary JSON configuration/filter conversion distinct from the
+  payload conversion that will permit JSONB. Preserve explicit scalar conversion
+  protocols and existing callback/re-entry validation.
+- Define explicit typed wire representations for JSONB in HTTP and logical
+  export/import, including nested values and storage-null versus JSONB-null.
+  Retain legacy import formats with versioned decoding; do not serialize a
+  Python bytes object implicitly or silently stringify extended values.
+- Complete the source text parser/numeric/serializer before Arrow JSON text
+  conversion. Cover native `lance.json` binary cells and `arrow.json` textual
+  cells, slices/masks and UTF-8/large UTF-8/StringView storage as specified above.

@@ -1,7 +1,8 @@
-# Payload binary formats v1 and v2
+# Payload binary formats v1, v2 and v3
 
 Payload bytes are independently length-framed by the existing WAL, segment and
-point-record envelopes. All integers and floating bit patterns are little-endian.
+point-record envelopes. Outer integers and floating bit patterns are little-endian;
+the v3 JSONB body keeps its source big-endian layout.
 The enclosing envelope retains its own version, checksum and commit protocol.
 This is an Akasha durable representation, not a Qdrant storage-format import.
 
@@ -45,8 +46,8 @@ must be checked by recovery before accepting its payload.
 
 ## Migration and downgrade
 
-New writers emit v2, including scalar-only and empty payloads; empty v2 is 12
-bytes. Readers dispatch from the inner marker, so mixed v1/v2 WAL records and
+New writers emit v3, including scalar-only and empty payloads; empty v2/v3 is 12
+bytes. Readers dispatch from the inner marker, so mixed v1/v2/v3 WAL records and
 segments are supported. An old record migrates when rewritten by a mutation or
 checkpoint/compaction. No in-place file edit, new user sequence, fabricated
 mutation or schema/catalog revision is needed. WAL fsync and manifest-last
@@ -56,7 +57,40 @@ valid until their existing leases retire them.
 The outer WAL/segment layout and version do not change: their payload is already
 independently length-framed and checksummed. References to "payload-v1" in the
 older envelope documents describe the historical payload, superseded by this
-inner format version for new writes. Old binaries reject v2's impossible v1
-field count; backward execution after a v2 write requires a compatible reader
-or restoring a pre-upgrade backup. V1 encoding is retained only for explicit
-format fixtures, not as a public-writer fallback.
+inner format version for new writes. V1 binaries reject the impossible field
+count; v2 binaries reject version 3 even for scalar-only payloads. Backward
+execution after a v3 write requires a compatible reader or restoring a
+pre-upgrade backup. V1/v2 encoding is retained only for explicit format fixtures,
+not as a public-writer fallback. They reject JSONB at any nesting level.
+
+## V3 JSONB values
+
+V3 has the same header with `version:u16=3`, preserves tags 1..8 and adds:
+
+| Tag | Value | Body |
+| --- | --- | --- |
+| 9 | JSONB | `byte_length:u32, checked_jsonb:bytes` |
+
+`checked_jsonb` is the complete jsonb 0.5.6 databend body documented in
+[native JSONB](../native-jsonb.md). Its headers, compact numeric and extension
+fields retain their source endianness and exact bytes. Legacy decimal precision
+and timezone representations are read and preserved, not silently canonicalized.
+The framing is Akasha's; this does not make an Akasha segment a Lance file.
+
+Tag 9 can appear at the field root or inside ordinary payload arrays/objects.
+It remains a distinct logical value. Plain payload null (tag 5), a JSONB body
+containing JSON null (tag 9), and a missing field differ. Plain payload paths
+treat JSONB as a leaf; JSONB query/index semantics require their own source port.
+
+All source JSONB values are preserved, including NaN/infinities, Decimal,
+Binary and temporal extensions. Tags 1..8 retain their finite-float contract.
+The complete JSONB body must validate before it can enter a payload: strict
+consumption, lengths, tags, UTF-8, unique object keys and resource bounds apply.
+The inner format has no separate checksum; the enclosing WAL/segment CRC still
+detects accidental byte corruption before recovery.
+
+The 16 MiB payload limit includes the v3 header, field names, tag/length framing
+and all JSONB bodies. All JSONB value nodes count toward the same 65,536-node
+budget; the wrapper adds no extra logical node. Its internal container levels
+add to the enclosing payload's levels for the same depth-64 limit. Extracting
+and reinserting an owned subtree preserves those budgets.

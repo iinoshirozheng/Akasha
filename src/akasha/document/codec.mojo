@@ -1,5 +1,6 @@
 from akasha.document.record import DocumentField, validate_fields
 from akasha.document.value import PayloadValue
+from akasha.document.jsonb import JsonbValue
 from akasha.storage.checksum import BorrowedBinaryReader, BinaryWriter
 
 
@@ -54,7 +55,7 @@ def _encode_payload_v1(fields: List[DocumentField]) raises -> List[UInt8]:
 
 
 def decode_payload(var bytes: List[UInt8]) raises -> List[DocumentField]:
-    """Strictly decode one complete payload in legacy v1 or self-versioned v2."""
+    """Strictly decode one complete payload in v1, v2 or v3."""
     return decode_payload(Span(bytes))
 
 
@@ -66,7 +67,8 @@ def decode_payload(bytes: Span[UInt8, _]) raises -> List[DocumentField]:
     var reader = BorrowedBinaryReader(bytes)
     var marker = reader.read_u32()
     if marker == UInt32.MAX:
-        if reader.read_u16() != 2 or reader.read_u16() != 0:
+        var version = Int(reader.read_u16())
+        if (version != 2 and version != 3) or reader.read_u16() != 0:
             raise Error("unsupported payload version or flags")
         var field_count = Int(reader.read_u32())
         if field_count > MAX_PAYLOAD_FIELDS:
@@ -76,7 +78,7 @@ def decode_payload(bytes: Span[UInt8, _]) raises -> List[DocumentField]:
         for _ in range(field_count):
             var name_length = Int(reader.read_u16())
             var name = String(from_utf8=reader.read_span(name_length))
-            var value = _read_value(reader, 0, nodes)
+            var value = _read_value(reader, version, 0, nodes)
             fields.append(DocumentField(name, value^))
         if reader.remaining() != 0:
             raise Error("unexpected trailing payload bytes")
@@ -115,11 +117,11 @@ def decode_payload(bytes: Span[UInt8, _]) raises -> List[DocumentField]:
     return fields^
 
 
-def encode_payload(fields: List[DocumentField], version: Int = 2) raises -> List[UInt8]:
-    """New writes emit self-versioned v2; v1 is retained for format fixtures."""
+def encode_payload(fields: List[DocumentField], version: Int = 3) raises -> List[UInt8]:
+    """New writes emit v3; explicit v1/v2 encoders retain frozen fixtures."""
     if version == 1:
         return _encode_payload_v1(fields)
-    if version != 2:
+    if version != 2 and version != 3:
         raise Error("unsupported payload version")
     if len(fields) > MAX_PAYLOAD_FIELDS:
         raise Error("payload field count exceeds limit")
@@ -133,12 +135,12 @@ def encode_payload(fields: List[DocumentField], version: Int = 2) raises -> List
         nodes += fields[i].value.node_count()
         if nodes > PayloadValue.MAX_NODES:
             raise Error("payload node count exceeds limit")
-        size += 2 + name_bytes + _value_size(fields[i].value)
+        size += 2 + name_bytes + _value_size(fields[i].value, version)
         if size > MAX_PAYLOAD_BYTES:
             raise Error("encoded payload exceeds size limit")
     var writer = BinaryWriter()
     writer.write_u32(UInt32.MAX)
-    writer.write_u16(2)
+    writer.write_u16(UInt16(version))
     writer.write_u16(0)
     writer.write_u32(UInt32(len(fields)))
     for i in range(len(fields)):
@@ -149,7 +151,11 @@ def encode_payload(fields: List[DocumentField], version: Int = 2) raises -> List
     return writer.take_bytes()
 
 
-def _value_size(value: PayloadValue) raises -> Int:
+def _value_size(value: PayloadValue, version: Int) raises -> Int:
+    if value.is_jsonb():
+        if version < 3:
+            raise Error("JSONB requires payload version 3")
+        return 5 + len(value._jsonb_value.value()._data)
     if value.is_string():
         return 5 + value._string_value.byte_length()
     if value.is_integer() or value.is_floating() or value.is_unsigned():
@@ -166,7 +172,7 @@ def _value_size(value: PayloadValue) raises -> Int:
     for i in range(len(children)):
         if value.is_object():
             size += 4 + keys[i].byte_length()
-        size += _value_size(children[i])
+        size += _value_size(children[i], version)
         if size > MAX_PAYLOAD_BYTES:
             raise Error("encoded payload exceeds size limit")
     return size
@@ -186,6 +192,11 @@ def _write_value(mut writer: BinaryWriter, value: PayloadValue) raises:
         writer.write_u8(UInt8(value.as_bool()))
     elif value.is_unsigned():
         writer.write_u64(value.as_uint())
+    elif value.is_jsonb():
+        ref body = value._jsonb_value.value()._data
+        writer.write_u32(UInt32(len(body)))
+        for byte in body:
+            writer.write_u8(byte)
     elif value.is_container():
         var children = value.children()
         var keys = value.keys() if value.is_object() else List[String]()
@@ -198,7 +209,7 @@ def _write_value(mut writer: BinaryWriter, value: PayloadValue) raises:
             _write_value(writer, children[i])
 
 
-def _read_value[origin: ImmOrigin, //](mut reader: BorrowedBinaryReader[origin], depth: Int,
+def _read_value[origin: ImmOrigin, //](mut reader: BorrowedBinaryReader[origin], version: Int, depth: Int,
                                 mut nodes: Int) raises -> PayloadValue:
     nodes += 1
     if nodes > PayloadValue.MAX_NODES:
@@ -220,6 +231,15 @@ def _read_value[origin: ImmOrigin, //](mut reader: BorrowedBinaryReader[origin],
         return PayloadValue.null()
     if kind == 8:
         return PayloadValue.unsigned(reader.read_u64())
+    if kind == 9 and version >= 3:
+        var length = Int(reader.read_u32())
+        var value = JsonbValue(reader.read_span(length))
+        nodes += value._node_count - 1
+        if nodes > PayloadValue.MAX_NODES:
+            raise Error("payload node count exceeds limit")
+        if depth + value._depth > PayloadValue.MAX_DEPTH:
+            raise Error("payload nesting depth exceeds limit")
+        return PayloadValue.jsonb(value^)
     if kind != 6 and kind != 7:
         raise Error("unknown payload value kind")
     if depth >= PayloadValue.MAX_DEPTH:
@@ -238,7 +258,7 @@ def _read_value[origin: ImmOrigin, //](mut reader: BorrowedBinaryReader[origin],
                 raise Error("duplicate encoded payload object key")
             seen[key] = True
             keys.append(key^)
-        children.append(_read_value(reader, depth + 1, nodes))
+        children.append(_read_value(reader, version, depth + 1, nodes))
     if kind == 6:
         return PayloadValue.array(children^)
     return PayloadValue.object(keys^, children^)

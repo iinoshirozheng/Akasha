@@ -239,7 +239,7 @@ def encode_point_batch(
     mutations: List[PointMutation],
     catalog: FieldCatalog,
     *,
-    payload_version: Int = 2,
+    payload_version: Int = 3,
 ) raises -> List[UInt8]:
     var catalog_crc = field_catalog_checksum(catalog)
     _validate_range(first_sequence, len(mutations), catalog, 0)

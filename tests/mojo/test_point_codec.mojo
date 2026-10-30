@@ -55,7 +55,7 @@ def test_independent_complete_records_reencode_exactly() raises:
         assert_equal(encode_point_record(record, catalog, payload_version=1), bytes)
         # Current writers migrate the independently framed payload; vector bits,
         # record identity and sequences are unchanged. Assemble the expected
-        # scalar-only v2 record from the independently frozen v1 fixture.
+        # scalar-only v3 record from the independently frozen v1 fixture.
         var migrated = List[UInt8]()
         if record.tombstone:
             migrated = bytes.copy()
@@ -67,7 +67,7 @@ def test_independent_complete_records_reencode_exactly() raises:
             for i in range(4):
                 old_payload_size |= UInt32(bytes[36 + i]) << UInt32(8 * i)
             _u32(migrated, 36, old_payload_size + 8)
-            for byte in [UInt8(255), 255, 255, 255, 2, 0, 0, 0]:
+            for byte in [UInt8(255), 255, 255, 255, 3, 0, 0, 0]:
                 migrated.append(byte)
             for i in range(40, len(bytes)):
                 migrated.append(bytes[i])
