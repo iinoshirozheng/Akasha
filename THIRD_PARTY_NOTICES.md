@@ -332,9 +332,23 @@ Mojo preserves active null masking and uses the existing owned C Data allocator.
 
 The independent reference compiles pinned Lance `lance-arrow/src/json.rs`
 unchanged and calls jsonb 0.5.6 to record source contracts, alongside actual
-Arrow StringViewBuilder/IPC output. jsonb is reference-only at this checkpoint;
-its parser/JSONB logical type has not been ported. Pinned dependency checksums,
+Arrow StringViewBuilder/IPC output. Its text parser remains reference-only;
+the native binary-value port is described below. Pinned dependency checksums,
 licenses/upstreams and source hashes are in `tests/fixtures/lance-json/sources.json`.
+
+### Native JSONB binary values
+
+`src/akasha/document/jsonb.mojo` adapts jsonb 0.5.6 databend container/entry
+layouts, compact numeric/extension encoding and decoding, and array/object
+builders from `core/databend/{constants,jentry,ser,de,builder,util}.rs`.
+Copyright 2023 Datafuse Labs. Apache-2.0; the original license is retained at
+`docs/upstream/licenses/jsonb-Apache-2.0.txt`. Source/archive identities and the
+independent actual-crate oracle are in `tests/fixtures/jsonb-codec/sources.json`.
+Native adaptations add complete-consumption/UTF-8/bounds/resource validation
+before owning bytes, use Mojo's standard sort for ObjectBuilder's sorted keys,
+and keep outer nullability independent. Neither Rust nor Python implements the
+binary codec at runtime. Text parsing/formatting and durable integration remain
+separate work; this is not a full jsonb/LanceDB implementation.
 
 ### Geographic point validation and formula distance
 

@@ -4,7 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c3b：StringView 已依 Arrow 來源接上兩個匯入 API 與原生 C Data 匯出，涵蓋巢狀／切片／null、inline／外部 buffer、UTF-8、所有權與資源限制。
+- 最新 D01c3c：原生 `JsonbValue` 二進位值／codec 已依 jsonb 0.5.6 databend 來源移植，包含 JSON 基本型別、NaN／Infinity、三種 Decimal、Binary、日期／時間區間與容器；儲存 null 保持獨立。
+  6,246 組來源 byte／typed tree 對照與 85 組舊格式對照、24 項相關 Mojo、模組建置及完整 Python **3,411 通過、1 跳過**；fixture／metadata／lock 逐位元重現。
+  [驗證](docs/research/2026-10-30-jsonb-codec-validation.md)／[原生 API](docs/native-jsonb.md)。目前是 binary-value 依賴，尚未接入 collection、WAL／checkpoint、Python／備份或 Arrow JSON；下一步完成型別／持久格式遷移與恢復，再接文字解析／序列化。完整產品與效能清單仍開放，尚未優化。
+- D01c3b：StringView 已依 Arrow 來源接上兩個匯入 API 與原生 C Data 匯出，涵蓋巢狀／切片／null、inline／外部 buffer、UTF-8、所有權與資源限制。
   26 項新增 Python、17 項相關原生、212 項 Arrow 回歸及完整 Python **3,411 通過、1 跳過**；來源資料／IPC／metadata／lock 逐位元重現。
   Lance 原始模組與 jsonb 的 5,641 組輸入已實際執行；和 serde_json 共用的輸入有 695 組接受結果不同，也確認 storage null 與 JSON null 必須分開保存。
   [驗證](docs/research/2026-10-30-lance-json-stringview-validation.md)。下一步為獨立 JSONB 邏輯值／來源二進位 codec 與持久遷移，再完成 jsonb 解析／序列化及 Arrow JSON extension；這批來源刻畫不是 Akasha JSONB 功能驗收，完整產品與效能清單持續開放。

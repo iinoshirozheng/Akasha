@@ -78,3 +78,12 @@ inline/external view layout and C Data trailer. This is not JSONB or extension
 completion. Next is the distinct native JSONB logical type and durable codec in
 step 3, then its source numeric/grammar/serialization path and public extension
 integration. Full D01c3 and the product ledger remain in progress.
+
+Step 3 now has a verified native binary-value dependency:
+`JsonbValue` owns checked databend JSONB bytes and implements original scalar,
+number, extension and container codecs/builders. Actual-source fixtures cover
+6,246 current and 85 old-format cases; 24 related native tests, module rebuild
+and full Python 3,411 passed / 1 skip. Fixtures/metadata/lock reproduce exactly.
+Storage null stays an independent outer slot. This does not yet modify payload v1/v2 or expose JSONB through collection
+APIs; those durable integration/migration and recovery steps remain next, before
+text parsing/rendering and Arrow extension completion.

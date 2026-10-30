@@ -321,16 +321,18 @@
       "license": "Apache-2.0",
       "revision": null,
       "identity": "crates.io:jsonb@0.5.6",
-      "provenance": "tests/fixtures/lance-json/sources.json",
-      "reference_only": true,
-      "used_by": "D01c3b-stringview-lance-json-contracts",
+      "provenance": "tests/fixtures/jsonb-codec/sources.json",
+      "reference_only": false,
+      "used_by": "D01c3c-native-jsonb-codec",
       "source_profile": {
         "features": [
           "databend"
         ],
         "default_features": false,
         "arbitrary_precision": false
-      }
+      },
+      "license_file": "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
       "name": "fast-float2",

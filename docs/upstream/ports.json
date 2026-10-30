@@ -2648,6 +2648,120 @@
         "scripts/lance_json_reference.py": "cd444135e4573d17057d1ac03af1b154d54d87c3ad88466afe622b809d68d14c",
         "scripts/lance_json_reference.rs": "00af4bada8b2bf183f7bb85fefbf4db17c4bc08e5aea670b7574d93cd3ce1114"
       }
+    },
+    {
+      "id": "D01c3c-native-jsonb-codec",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "revision": null,
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "sources": [
+        {
+          "path": "src/core/databend/constants.rs",
+          "sha256": "89758ee3dfbf73987bf4e2f08db74feb9cb331432f085b8cc47eb2a53467e198"
+        },
+        {
+          "path": "src/core/databend/jentry.rs",
+          "sha256": "ece1ed0edb36e25564a67aa244f085e31d92acba7db6982eb8f475af108a6844"
+        },
+        {
+          "path": "src/core/databend/ser.rs",
+          "sha256": "958f273ad2e3c6fc57f348a72af0d7d825ff28a1fab4a3ea4d120195d7be7201"
+        },
+        {
+          "path": "src/core/databend/de.rs",
+          "sha256": "f92f51d81ea4ec43e61fa6ed5b26a2e4b3650246c30b5f71177cd693e805302d"
+        },
+        {
+          "path": "src/core/databend/util.rs",
+          "sha256": "ba395a21d65900fb3e6c7bdad328f60b82ded7efcf6dacb20468cfd3a92a0799"
+        },
+        {
+          "path": "src/core/databend/builder.rs",
+          "sha256": "84ce1581b3672dfddad42522c103cbf780fac89aee4d3992abf414a1eea8181c"
+        },
+        {
+          "path": "src/owned.rs",
+          "sha256": "bd042dc192eda942f7ecd2585446ee8e32e06381d72dadc1e75a9114f1e820f8"
+        },
+        {
+          "path": "src/value.rs",
+          "sha256": "7d6c604552cbb0e56b11b2136e7c669d08cf2f9ebdab5e4805c479c99b34c5ff"
+        },
+        {
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "path": "src/extension.rs",
+          "sha256": "9977b16d37ebee979a4348fd788fa575f9af0959c68089948cd36945483cfec6"
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+      "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "dependency_provenance": "tests/fixtures/jsonb-codec/sources.json",
+      "source_profile": {
+        "jsonb_default_features": false,
+        "jsonb_features": [
+          "databend"
+        ]
+      },
+      "source_units": [
+        "Encoder and Decoder scalar/array/object header and JEntry layout",
+        "Number compact_encode/decode, including old precision-bearing decimals",
+        "ExtensionValue compact_encode/decode, including old hour-based timezone offsets",
+        "OwnedJsonb, ArrayBuilder/ObjectBuilder raw bodies, sorted keys and duplicate rejection"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Owned native binary value independent of outer nullable slot; ordinary PayloadValue unchanged",
+        "Complete-consumption, UTF-8, tag, length and uniqueness checks replace unsafe/panicking malformed-input source behavior",
+        "Bound 16 MiB encoded bytes, 65,536 value nodes and 64 container levels before publication",
+        "Use existing standard Mojo sort for source sorted-object behavior",
+        "Preserve raw old-format bytes and expose decoded fields for canonical reconstruction",
+        "Native binary API only; no textual parser, durable database type or Arrow extension claim"
+      ],
+      "oracle": "scripts/jsonb_codec_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-codec/cases.json": "bdb1e5a8ecbf9a7b414f7bca6e0c12a8ba3c170e2c62256651866a765627b40b",
+        "tests/fixtures/jsonb-codec/sources.json": "6af7a48fd77d3f52eaf23dd1308618f09f0f2f0233a492d23291650465543551",
+        "tests/fixtures/jsonb-codec/Cargo.lock": "b1258cb907bab000061f7b394b303ccfeeeea99e3baaf315a9d15cda122e6487"
+      },
+      "status": "verified_native_binary_value_dependency_durable_JSONB_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-codec-validation.md"
+      ],
+      "results": {
+        "source_codec_cases": 6246,
+        "typed_source_inputs": 2756,
+        "text_source_inputs": 3490,
+        "legacy_cases": 85,
+        "source_files": 231,
+        "new_native_tests": 6,
+        "related_native_tests": 24,
+        "module_build": true,
+        "full_python_passed": 3411,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock": true
+      },
+      "remaining": [
+        "Native payload JSONB kind, durable version/migration and corruption/crash/reopen acceptance",
+        "Collection, Python, C/HTTP, backup/NDJSON and other value boundaries",
+        "jsonb textual grammar, fast-float conversion, serialization and full arrow.json",
+        "Decimal operations and complete data/index/query behavior",
+        "All other product, platform, quality and performance gates"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb.mojo": "1735f49dfb373be4501f3820c659486d9f1ff44f1f138fad510e382928900459",
+        "src/akasha/document/__init__.mojo": "7da2750712a7ef7647d306efe848410406aaa79c946bcf2ff534ed85f67beafb",
+        "tests/mojo/test_jsonb.mojo": "172dde398c35f00f721183d8b4f54f476fd519e6de0dc3d80474ea0b7d5cbb60",
+        "scripts/jsonb_codec_reference.py": "08c8adf970e1ef912ad3b73331ea9945dbfd790d9a07e3ba09cca90bc80d2f7b",
+        "scripts/jsonb_codec_reference.rs": "96b0f82a8cf5f0cb769131601c7883412f152b964007a4b20129692bff2593b1"
+      }
     }
   ]
 }

@@ -41,7 +41,10 @@ profile, not a claim that every build of Qdrant or Lance enables the same flags.
   discarded. These are bounded-input/value contracts, not a process RSS limit.
 
 The parser uses the existing durable value format and does not change Arrow
-behavior. Standard `arrow.json` input/output, its storage-null distinction,
-StringView support and Lance/jsonb numeric semantics remain in the
-[interop plan](plans/2026-10-30-json-interop-source-port.md). Native parse support
-alone does not implement those capabilities or an HTTP JSON parser.
+behavior. Typed StringView input/output is available separately. Standard
+`arrow.json` input/output, its storage-null distinction and Lance/jsonb textual
+numeric semantics remain in the [interop plan](plans/2026-10-30-json-interop-source-port.md).
+The separate [native JSONB binary-value API](native-jsonb.md) preserves that
+source format and extended types; it is not yet integrated with collection
+storage or Arrow JSON. Native parse support alone does not implement those
+capabilities or an HTTP JSON parser.

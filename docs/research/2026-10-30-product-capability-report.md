@@ -24,7 +24,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
-最新 D01c3b 補入 StringView 原生匯入／匯出；26 項新增 Python、17 項相關 Mojo 與完整 Python **3,411 通過、1 跳過**。Lance 原始模組／jsonb 的 5,641 組來源刻畫已完成，確認數字、語法與 storage null／JSON null 差異；這不代表 Akasha 已有 JSONB。下一步是獨立 JSONB 邏輯值、原生二進位 codec／持久遷移與完整 `arrow.json`，見[StringView 與來源驗證](2026-10-30-lance-json-stringview-validation.md)。
+最新 D01c3c 已移植原生 JSONB 二進位值／codec，6,246 組來源對照與 85 組舊格式、24 項相關 Mojo、模組建置及完整 Python **3,411 通過、1 跳過**。此依賴涵蓋基本 JSON、非有限浮點、Decimal／Binary／時間擴充型別，但尚未接入 collection、持久格式、Python 或 Arrow JSON，因此不能把它列為已完成的 DB 型別功能。下一步為持久型別遷移與恢復、文字解析／序列化及完整 extension，見[JSONB codec 驗證](2026-10-30-jsonb-codec-validation.md)。
+
+D01c3b 已補入 StringView 原生匯入／匯出；26 項新增 Python、17 項相關 Mojo 與完整 Python **3,411 通過、1 跳過**。Lance 原始模組／jsonb 的 5,641 組來源刻畫已完成，確認數字、語法與 storage null／JSON null 差異，見[StringView 與來源驗證](2026-10-30-lance-json-stringview-validation.md)。
 
 D01c3a 已補入原生 JSON 值讀取（固定 serde_json default profile），5,630 組來源案例、18 項相關 Mojo 與完整 Python **3,385 通過、1 跳過**。此 API 保持原契約，不能代替 Lance/jsonb 的解析路徑，見[JSON 讀取驗證](2026-10-30-json-reader-validation.md)。
 
