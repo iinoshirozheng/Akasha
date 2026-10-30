@@ -4,6 +4,9 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 最新 D01c4k（2026-10-31）：已移植五種 JSON target 的 scalar 排序與實際 bitmap 建立／搜尋、跨批次 value-run 合併、舊資料保留條件及 UInt64 重映射。61 組來源情境、183 組索引狀態、3,453 組比較及 98,160 組搜尋結果／錯誤一致；15 項 Mojo 測試通過，包含 JSON 轉換到真實索引的整合及 nullable dispatch 修正。
+  [驗證](docs/research/2026-10-31-lance-bitmap-validation.md)／[原生用法](docs/native-jsonb.md#native-materialized-bitmap-target)。下一步為 JSON 串流型別推斷／固定 learned type、查詢匹配及持久化公開整合；尚非 collection index，完整 49 大項仍開放，未開始優化。
+
 - 最新 D01c4j（2026-10-31）：已移植 roaring-rs UInt64 集合與 Lance nullable mask 的 NOT／AND／OR、set union_all，包含來源 Array／Bitmap 切換、增刪、四種集合運算、真值與 unknown。309 組集合情境、121,874 組增刪結果、1,236 組集合及 2,256 組 nullable 結果對齊；10 項 Mojo 測試通過。
   [驗證](docs/research/2026-10-31-lance-rowset-validation.md)／[後續索引工作](docs/plans/2026-10-31-lance-json-index.md)。下一步為 scalar 排序、value-run 訓練／合併與實際 bitmap 搜尋；完整索引及 49 大項仍開放，尚未優化。
 

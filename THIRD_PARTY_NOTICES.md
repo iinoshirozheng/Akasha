@@ -404,3 +404,24 @@ with pinned serde_json, chrono and geo crates. Akasha expression dictionaries an
 DocumentField roots replace upstream transport/storage plumbing. Index-specific
 text behavior and polygon evaluation are not claimed by this slice. See
 `tests/fixtures/qdrant-payload-filter/README.md` and `docs/upstream/ports.json`.
+
+### Lance materialized bitmap scalar target
+
+`src/akasha/index/lance_scalar.mojo` and `lance_bitmap.mojo` adapt Lance
+`scalar/btree.rs`, `scalar/bitmap.rs` and `lance-index-core/src/scalar.rs` at
+`ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e` (The Lance Authors, Apache-2.0).
+DataFusion common 54.1.0 ScalarValue equality supplies typed bitwise Float64
+identity; its Apache-2.0 license and original NOTICE are retained at
+`docs/upstream/licenses/datafusion-LICENSE.txt` and `datafusion-NOTICE.txt`.
+Rust core `f64::total_cmp` at `ded5c06cf21d2b93bffd5d884aa6e96934ee4234`
+supplies the signed-bit ordering transform (Rust Project, MIT OR Apache-2.0;
+existing `docs/upstream/licenses/rust-MIT.txt`). Existing Lance/Arrow/roaring
+notices apply to the reused source and independent oracle.
+
+The native port uses owned sorted key arrays, source-ported Roaring sets and
+bounded immutable result publication. It does not include Lance file codec,
+cache, shard merge or DataFusion execution. The Rust reference executes original
+methods with real Arrow/DataFusion/roaring and transport/store adapters only;
+these crates are test infrastructure, not new runtime dependencies. Pinned
+source/unit/archive hashes and adaptation scope are in `tests/fixtures/lance-bitmap`
+and `docs/upstream/ports.json`.

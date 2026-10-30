@@ -4613,6 +4613,104 @@
         "Run/range/full-fragment and portable Roaring format support",
         "All full-product/platform/performance gates; no tuning"
       ]
+    },
+    {
+      "id": "D01c4k-lance-materialized-bitmap",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/bitmap.rs",
+          "sha256": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/btree.rs",
+          "sha256": "1429b7b289ad2ca97f9077be03298846d2d7d95d4030e98498f4d44d9446a7fc"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-index-core/src/scalar.rs",
+          "sha256": "0464b92a76d90bc14ed1692f688d6eebdbb6fff4924460a9d28930b07cee19ed"
+        },
+        {
+          "identity": "crates.io:datafusion-common@54.1.0",
+          "path": "src/scalar/mod.rs",
+          "sha256": "0989385baf6e523df2cc9179b1508f199c0be3ade2dd95eebe20b3b368cc8104"
+        },
+        {
+          "identity": "rust@ded5c06cf21d2b93bffd5d884aa6e96934ee4234",
+          "path": "library/core/src/num/f64.rs",
+          "sha256": "12809be343b49295f9f3479495d20b0dd09964539f42412b0cedee26bf49e544"
+        }
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/datafusion-LICENSE.txt",
+        "docs/upstream/licenses/datafusion-NOTICE.txt",
+        "docs/upstream/licenses/rust-MIT.txt",
+        "docs/upstream/licenses/roaring-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "search_with_options",
+        "streaming_build_and_write",
+        "finish_run",
+        "remap_bitmap_state",
+        "retain_valid",
+        "PartialEq",
+        "PartialOrd",
+        "Ord",
+        "filter",
+        "options",
+        "DataFusion ScalarValue::eq",
+        "Rust f64::total_cmp",
+        "Arrow sort_to_indices (oracle)"
+      ],
+      "targets": [
+        "src/akasha/index/lance_scalar.mojo",
+        "src/akasha/index/lance_bitmap.mojo"
+      ],
+      "adaptations": [
+        "Five JSON target types; native mixed-type validation, not a universal scalar comparator",
+        "Sorted key arrays/binary search replace BTreeMap; source-ported Roaring materialized postings",
+        "Bounded materialized batches preserve source value-run merge; no disk-backed stream claim",
+        "Immutable updates/remaps, logical byte/row limits and cooperative controls",
+        "Oracle uses unchanged original methods with actual DataFusion/Arrow/roaring and in-memory transport/store adapters"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-bitmap/Cargo.lock": "d043014fb1a07e52606d64d212f45829ad6b0b60c9a61b8323578b67cfb99d9e",
+        "tests/fixtures/lance-bitmap/README.md": "ae0d006cc5ec279c0eef5a7bf0147439427f076b9c4c6c04e9ce517e0c70f51d",
+        "tests/fixtures/lance-bitmap/cases.json": "4ac9212130b96629ce3650741f7a90479e70e838ec4f2a284e166edd6edd642e",
+        "tests/fixtures/lance-bitmap/sources.json": "cb8f0bd21299ec6b166c51875651723a234c0db5bba540fc75239ef08a48f9a7"
+      },
+      "status": "verified_materialized_bitmap_target_json_stream_and_durable_public_integration_pending",
+      "verification": [
+        "docs/research/2026-10-31-lance-bitmap-validation.md"
+      ],
+      "results": {
+        "scenarios": 61,
+        "states": 183,
+        "comparisons": 3453,
+        "search_outcomes": 98160,
+        "search_errors": 720,
+        "native_tests_passed": 15,
+        "reproduced_fixture_files": 4
+      },
+      "verified_file_sha256": {
+        "src/akasha/index/lance_scalar.mojo": "14ffac2d6d9f10cf0d5b7eac73bbfae4357ce438692567a2016d754242a32583",
+        "src/akasha/index/lance_bitmap.mojo": "afec24a4e7b0300e3162f8891e1716918c9971861c91d815697805b685fdc1d5",
+        "tests/mojo/test_lance_bitmap.mojo": "3797379b424f5cb41b364716d315b563721c4446f7c59aa4c1c3bb178810bdb3",
+        "scripts/lance_bitmap_reference.py": "3940637aa1e1ff1fcadac4089b48f4e9ddb808bf48161cbe665ca940d1d10488",
+        "scripts/lance_bitmap_reference.rs": "cc539267dee4494c97ada3379aa03a5fbaeac7e35c962f7c7d5a9d5556c4a1a6"
+      },
+      "remaining": [
+        "JSON prefix-only inference/default Utf8, fixed learned type and actual training stream",
+        "Exact query/path matching and residual predicates",
+        "Durable catalog/migration/create/list/drop/rebuild/update/recovery and public collection APIs",
+        "Lance shard merge/file encoding/lazy IO/cache, other scalar target variants/types",
+        "All full-product/platform/performance gates; no tuning"
+      ]
     }
   ]
 }

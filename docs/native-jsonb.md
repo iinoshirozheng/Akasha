@@ -865,3 +865,44 @@ materialized selections. These types are for the planned scalar/SQL index
 path; they do not change existing collection filter semantics. See
 [row-set validation](research/2026-10-31-lance-rowset-validation.md) for controls,
 source comparisons and the pending run/full-fragment/serialization work.
+
+## Native materialized bitmap target
+
+`akasha.index.lance_scalar.LanceScalarKey` represents typed nullable Boolean,
+Int64, Float64, Utf8 and LargeBinary keys. Factories are `null(target)`,
+`boolean`, `integer`, `float_bits`, `text`, `binary` and
+`from_json_result(converted, target)`. Float64 keys preserve signed zero and
+NaN bits; `compare` rejects mixed target types.
+
+`akasha.index.lance_bitmap.LanceBitmapIndex.build(target, rows)` constructs a
+real native bitmap index from `LanceBitmapRow(key, UInt64_id)` values. It sorts
+the values with the source null-first order, groups equal-value runs and owns
+Roaring postings. `updated(rows, old_filter=...)` merges retained old postings
+with new rows; `merge_sorted(batches, ...)` accepts batches already globally
+sorted and rejects decreasing keys. Both preserve the old index. Old empty
+keys remain after filtering; the filter never removes new rows.
+
+`LanceOldRows(ids)` retains exact old IDs; `LanceOldRows(fragments,
+fragments=True)` retains rows by the UInt32 high half of their addresses.
+Use the appropriate identity scheme; fragment filters are not stable-ID filters.
+`remapped(Dict[UInt64, Optional[UInt64]])` preserves missing mappings, removes
+explicit null mappings and deduplicates colliding target IDs.
+
+`search(query, track_nulls=True)` returns owned `NullableRowSet` results.
+`LanceBitmapQuery.equals`, `is_in`, `is_null` and `range_of` supply predicates.
+A `LanceBitmapBound()` is unbounded; a bound with `Optional(key)` can be included
+or excluded. Equals(null), IN containing null and IS NULL select null rows as
+true, without unknown rows. Other predicates optionally retain unknown null
+rows. Full-text and LIKE-prefix query constructors produce the source errors.
+`keys`, `lookup` and `null_rows` return owned inspection results.
+
+`build` defaults to `max_rows=1_000_000`, `max_bytes=64*1024*1024`; update/remap
+inherit those limits. Input rows, retained key count and posting cardinalities
+are bounded; logical state and input-copy bytes are bounded separately.
+These are not peak-RSS limits. Native query controls reach copying, merge,
+search and remap operations; the standard sort checks before/after rather than
+inside its implementation. See [validation](research/2026-10-31-lance-bitmap-validation.md).
+
+This API does not yet persist collection indexes or select indexes in collection
+queries. Stream inference/default type, planner matching, durable lifecycle and
+public Python/Arrow/service index APIs remain in the index plan.

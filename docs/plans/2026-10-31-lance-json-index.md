@@ -79,7 +79,8 @@ NOT/AND/OR plus set union_all match original source. **309 set scenarios,
 1,236 set results, 112,021 inserts, 9,853 removals, 2,256 nullable results and
 27,072 probe states; 10 native tests pass.**
 [Evidence](../research/2026-10-31-lance-rowset-validation.md).
-The actual scalar target and all later index stages remain pending.
+The materialized bitmap target is now verified below; JSON stream/planner/durable
+integration and other target variants remain pending.
 
 The target needs arbitrary UInt64 row IDs and separate true/unknown sets.
 This dependency ports roaring 0.11.4's point-insert/remove paths, 16-bit array/bitmap
@@ -115,3 +116,31 @@ algorithm and its nullable result, streaming merge and lifecycle invariants.
 Lance file storage and the existing Akasha authoritative catalog/WAL cannot be
 treated as interchangeable; stage the documented durable migration before
 collection publication. These are implementation requirements, not blockers.
+
+## Verified materialized bitmap target (2026-10-31)
+
+`lance_scalar.mojo` and `lance_bitmap.mojo` supply the actual native target for
+Boolean/Int64/Float64/Utf8/LargeBinary: source null/NaN/zero ordering, value-run
+training, equality/range/IN/IS NULL searches, true/unknown sets, retained old
+row/fragment filtering, sorted old/new merge and row-ID remapping. Sorted owned
+key arrays replace BTreeMap; source-ported Roaring sets retain postings. This
+is a bounded materialized target; batch boundaries preserve equal-value runs.
+
+**61 source scenarios, 183 exact states, 3,453 comparisons and 98,160 search
+outcomes including 720 original errors** match. **15 native tests** pass,
+including actual JSON conversion-to-index integration, resource/control and
+ownership checks. Four source fixture files reproduce byte-for-byte.
+[Evidence](../research/2026-10-31-lance-bitmap-validation.md).
+
+The second required stage is still open: connect original JSON prefix-only
+inference buffering/default Utf8, fixed learned type and actual training stream.
+Do not replace the final public/durable requirement with materialized tests.
+Also retain these source target operations in the remaining index inventory:
+
+- [ ] Lance shard k-way bitmap merge and incremental disk-backed publication.
+- [ ] Lance bitmap file encoding, lazy loading/cache and all relevant options.
+- [ ] Other supported scalar targets and their types/lifecycle contracts.
+
+Next is the JSON stream wrapper, then exact query matching/residuals and the
+shared durable index catalog migration/public collection path described above.
+No application runtime/format change or optimization in this target slice.
