@@ -321,9 +321,9 @@
       "license": "Apache-2.0",
       "revision": null,
       "identity": "crates.io:jsonb@0.5.6",
-      "provenance": "tests/fixtures/jsonb-text/sources.json",
+      "provenance": "tests/fixtures/jsonb-writer/sources.json",
       "reference_only": false,
-      "used_by": "D01c3g-jsonb-text-reader",
+      "used_by": "D01c3i-jsonb-text-writer",
       "source_profile": {
         "features": [
           "databend"
@@ -362,9 +362,12 @@
       "license": "MIT OR Apache-2.0",
       "revision": null,
       "identity": "crates.io:ethnum@1.5.3",
-      "provenance": "tests/fixtures/lance-json/sources.json",
-      "reference_only": true,
-      "used_by": "D01c3b-stringview-lance-json-contracts"
+      "provenance": "tests/fixtures/jsonb-writer/sources.json",
+      "reference_only": false,
+      "used_by": "D01c3i-jsonb-text-writer",
+      "license_file": "docs/upstream/licenses/ethnum-MIT.txt",
+      "license_sha256": "6b2702e491e967c99d7e0191bb0ec6b3b91db5c703a71c3b952c9e271ba46ac2",
+      "ported_scope": "I256/U256 F64 conversion for JSONB decimals"
     },
     {
       "name": "zmij",
@@ -393,9 +396,12 @@
       "license": "Unlicense OR MIT",
       "revision": null,
       "identity": "crates.io:jiff@0.2.28",
-      "provenance": "tests/fixtures/lance-json/sources.json",
-      "reference_only": true,
-      "used_by": "D01c3b-stringview-lance-json-contracts"
+      "provenance": "tests/fixtures/jsonb-writer/sources.json",
+      "reference_only": false,
+      "used_by": "D01c3i-jsonb-text-writer",
+      "license_file": "docs/upstream/licenses/jiff-MIT.txt",
+      "license_sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f",
+      "ported_scope": "Epoch-day/timestamp civil conversion and JSONB-reachable date/strtime formatting only"
     },
     {
       "name": "ordered-float",

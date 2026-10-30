@@ -20,7 +20,7 @@ JSON_KINDS = frozenset({"string", "int", "uint", "float", "bool", "null", "array
 class JsonbValue:
     """Immutable source JSONB bytes; Mojo validates the body before any write.
 
-    ``from_json`` delegates text parsing to Mojo; Python implements no codec.
+    ``from_json`` and ``to_json`` delegate text conversion to Mojo.
     """
 
     data: bytes
@@ -50,6 +50,23 @@ class JsonbValue:
         try:
             data = text.encode("utf-8") if type(text) is str else text
             return cls(_kernel_module().parse_jsonb(data, standard))
+        except Exception as error:
+            raise map_kernel_error(error) from error
+
+    def to_json(self, *, pretty: bool = False) -> str:
+        """Write source RawJsonb compact/pretty text in Mojo.
+
+        This is a textual projection: nonfinite floats become null, decimals
+        use the source F64 conversion, and extensions become strings. Use
+        ``data`` or typed transport for lossless persistence and interchange.
+        """
+        from .database import _kernel_module
+        from .exceptions import ValidationError, map_kernel_error
+
+        if type(pretty) is not bool:
+            raise ValidationError("JSONB pretty mode must be a bool")
+        try:
+            return _kernel_module().format_jsonb(self.data, pretty)
         except Exception as error:
             raise map_kernel_error(error) from error
 

@@ -262,6 +262,8 @@ from akashadb.payload import encode_value
 json_null = JsonbValue(bytes.fromhex("2000000000000000"))
 parsed = JsonbValue.from_json("{items:[1,,],n:0x1a.b}")
 standard = JsonbValue.from_json(b'{"items":[1,null,null]}', standard=True)
+print(parsed.to_json())
+print(parsed.to_json(pretty=True))
 fields = [PayloadField("items", "array", [None, json_null])]
 collection.upsert(42, [1.0, 0.0], fields)
 assert collection.get(42).fields == fields
@@ -289,8 +291,17 @@ node. Normal JSON object keys such as `type`, `value` and `encoding` remain user
 data. NDJSON v3 always uses typed fields, retaining v1/v2 reads. Ordinary nested
 integers use the `integer` wire tag; explicit field roots retain int/uint.
 
+`JsonbValue.to_json(*, pretty: bool = False) -> str` validates the binary body
+and delegates compact/two-space pretty output to the native RawJsonb/serde
+writer. Raw object key order is retained. This is a text projection: nonfinite
+floats become null, decimals use source F64 conversion, and binary/date/time/
+interval extensions become strings. Invalid calendar/offset values raise
+`ValidationError`; formatting does not mutate the body. Escaping can expand
+output beyond 16 MiB, so use `.data` or typed transport for lossless interchange.
+See [text output contracts](native-jsonb.md#text-output).
+
 The strict ordinary-JSON filter/formula configuration path does not accept a
-JSONB carrier. JSONB traversal/indexes, text rendering and Arrow JSON
+JSONB carrier. JSONB traversal/indexes and Arrow JSON
 extensions remain in progress; use [native JSONB](native-jsonb.md) for the
 available binary constructors and [wire format](formats/logical-point-format.md)
 for the transport contract.

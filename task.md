@@ -4,7 +4,9 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c3h：已依 zmij 1.0.21 原始碼移植 F64 文字格式化，保留快速路徑、Schubfach 邊界與原始 portable BCD 寫出。70,662 組文字、70,640 組兩條中間轉換結果及 70,642 組有限值位元往返一致；4 項 Mojo 通過，來源與查表資料可重現。
+- 最新 D01c3i：完整既有 JSONB 型別已接上 Mojo `format_jsonb` 與 Python `to_json(pretty=...)`，採 RawJsonb／serde_json 路徑；含 Decimal、Binary、日期／時間／interval、舊編碼及原始鍵順序。29,003 組來源 body 的兩種輸出／錯誤一致；3 項 Mojo、74 項指定 Python、完整 Python **3,485 通過／1 跳過**。
+  [文字輸出驗證](docs/research/2026-10-30-jsonb-writer-validation.md)。下一步完成 Arrow JSON nullable slots／巢狀 metadata 的匯入匯出；JSONB 查詢／索引及完整產品／效能清單仍開放，尚未優化。
+- D01c3h：已依 zmij 1.0.21 原始碼移植 F64 文字格式化，保留快速路徑、Schubfach 邊界與原始 portable BCD 寫出。70,662 組文字、70,640 組兩條中間轉換結果及 70,642 組有限值位元往返一致；4 項 Mojo 通過，來源與查表資料可重現。
   [格式化驗證](docs/research/2026-10-30-zmij-validation.md)。這是 RawJsonb／serde_json writer 的數值依賴；完整 writer、Arrow JSON 及產品／效能清單仍開放，未開始優化。
 - D01c3g：jsonb 0.5.6 標準／擴充文字 parser 已移植至 Mojo，並提供 Python `JsonbValue.from_json`。20,757 組來源輸入在 Mojo／Python 的接受結果與二進位 body 一致；29 項相關 Mojo、61 項指定 Python 與完整 Python **3,472 通過／1 跳過**。
   [文字解析驗證](docs/research/2026-10-30-jsonb-reader-validation.md)。下一步為 Lance 實際使用的 RawJsonb／serde_json serializer 與數字格式化，再完成 Arrow JSON；完整產品清單及效能門檻維持開放，尚未優化。

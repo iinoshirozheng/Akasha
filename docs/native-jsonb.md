@@ -197,7 +197,59 @@ raise `Error`. Error wording is Akasha's, not a reproduction of Rust's error
 enum. Results own their data and can use all existing JSONB payload transports.
 
 See [text parser validation](research/2026-10-30-jsonb-reader-validation.md).
-Text serialization, JSONB traversal/indexing and Arrow JSON are still pending.
+JSONB traversal/indexing and Arrow JSON are still pending.
+
+## Text output
+
+```mojo
+from akasha.document import parse_jsonb, format_jsonb
+
+def main() raises:
+    var value = parse_jsonb("{items:[1,,],n:NaN}")
+    print(format_jsonb(value))
+    print(format_jsonb(value, pretty=True))
+```
+
+```python
+value = JsonbValue.from_json("{items:[1,,],n:NaN}")
+assert value.to_json() == '{"items":[1,null,null],"n":null}'
+print(value.to_json(pretty=True))
+```
+
+Native `format_jsonb(value, *, pretty=False)` and Python
+`JsonbValue.to_json(*, pretty=False)` use Lance's actual
+`RawJsonb::to_string`/`to_pretty_string` serde path. They preserve raw body key
+order, use serde_json string escaping and two-space pretty indentation, and
+return UTF-8 strings without an added trailing newline. Python requires an
+exact bool and validates the supplied binary body in Mojo before formatting.
+
+This text is a projection, not lossless JSONB transport:
+
+- Nonfinite floats become JSON `null`; finite F64 values use the pinned zmij
+  formatter, retaining negative zero and source notation thresholds.
+- Decimal64/128/256 convert through the source F64 cast and `10.powi(scale)`
+  division because the pinned source disables `arbitrary_precision`.
+- Binary becomes an uppercase hexadecimal JSON string. Dates, timestamps,
+  timezone timestamps and intervals also become strings using source formats.
+- Date Display uses six magnitude digits for negative years, while timestamp
+  `%Y` uses a minimum total width of four. Timestamps keep six fractional digits,
+  clamp to source bounds, and timezone text includes offset seconds when nonzero.
+- The pinned release interval formatter's signed-minimum wrapping behavior is
+  retained, including unusual minus signs; it is not silently normalized.
+
+Out-of-range calendar dates and invalid timezone offsets raise native `Error`
+or Python `ValidationError` instead of reproducing upstream's `unwrap` panic.
+These values can still be valid binary JSONB and remain unchanged in storage.
+Malformed bodies are rejected at the checked boundary; upstream's unchecked
+raw-byte fallback is not exposed by this owned-value API.
+
+Escaping and indentation can expand output beyond the 16 MiB binary-body/text-
+input limit. Valid input byte/node/depth bounds bound that growth; formatting
+does not impose a second 16 MiB output limit. Such expanded text may exceed the
+parser's input bound. Use Python `.data` / Mojo `to_bytes()`, typed transport and NDJSON
+for exact bytes/types rather than a text round-trip.
+
+See [writer validation](research/2026-10-30-jsonb-writer-validation.md).
 
 ## Numeric dependency
 
@@ -210,3 +262,8 @@ forms, Inf/NaN, signed zero and overflow to infinity. They are not a JSON
 validation API. The complete grammar above consumes these tokens to build
 `JsonbValue`; the ordinary serde_json reader keeps its separate numeric contract.
 See [numeric source validation](research/2026-10-30-fast-float-validation.md).
+
+The writer's `akasha.document.zmij` dependency ports the source F64 fast path,
+Schubfach fallback and portable digit writer. Its standalone `format_zmij`
+returns source `NaN`/`inf` tokens; the enclosing JSON serializer applies the
+nonfinite-to-null rule above. See [formatting validation](research/2026-10-30-zmij-validation.md).

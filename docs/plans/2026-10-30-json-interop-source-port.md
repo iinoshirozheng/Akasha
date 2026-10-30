@@ -186,3 +186,24 @@ extension formatting, arrays/objects preserving raw body key order, and public
 text output. Then complete step 6's Arrow JSON ingress/export. Preserve the
 source serializer's nonfinite-to-null behavior separately from zmij's standalone
 NaN/inf tokens. No complete D01/product row or performance gate is closed.
+
+## Text writer update: D01c3i
+
+Step 5's complete existing JSONB type writer is now reachable through native
+`format_jsonb` and Python `JsonbValue.to_json`. It follows RawJsonb serialization,
+the source decimal F64 conversion, ethnum wide-integer casts, jiff calendar and
+specific timestamp formats, serde_json escaping/compact/pretty output, and the
+verified zmij dependency. Raw object key order and old binary encodings remain
+intact; source panic domains become validation errors. Text is a projection,
+with nonfinite nulls, decimal precision loss and stringified extensions, not a
+replacement for lossless binary transport.
+
+All 29,003 original-source bodies match native/Python compact/pretty results or
+errors. Three native tests, 74 distinct targeted Python and full Python
+3,485 passed / 1 skipped; module build and source reproduction pass.
+[Evidence](../research/2026-10-30-jsonb-writer-validation.md).
+
+Continue step 6's full Arrow JSON extension ingress/export: binary/text storage,
+null slots distinct from JSON null, nested metadata, sliced arrays, ownership
+and public round trips. Full D01 and the broader product ledger remain open;
+optimization is still deferred until all functional acceptance passes.

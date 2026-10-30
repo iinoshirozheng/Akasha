@@ -3306,6 +3306,113 @@
         "scripts/zmij_reference_adapter.rs": "6c1c5b30a981ede274137f335de8df2f8ac728c3e2fb4457eabfb67be329b128",
         "tests/mojo/test_zmij.mojo": "287d689eeb9c764c9df58aed4b693814d5968192f1a198c1b4f4584e991e508d"
       }
+    },
+    {
+      "id": "D01c3i-jsonb-text-writer",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6 (databend; arbitrary_precision disabled)",
+      "provenance": "tests/fixtures/jsonb-writer/sources.json",
+      "dependencies": [
+        {
+          "name": "jsonb",
+          "version": "0.5.6",
+          "checksum": "eb98fb29636087c40ad0d1274d9a30c0c1e83e03ae93f6e7e89247b37fcc6953"
+        },
+        {
+          "name": "fast-float2",
+          "version": "0.2.3",
+          "checksum": "f8eb564c5c7423d25c886fb561d1e4ee69f72354d16918afa32c08811f6b6a55"
+        },
+        {
+          "name": "ethnum",
+          "version": "1.5.3",
+          "checksum": "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
+        },
+        {
+          "name": "zmij",
+          "version": "1.0.21",
+          "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+        },
+        {
+          "name": "jiff",
+          "version": "0.2.28",
+          "checksum": "4603d3033e49e2b0e31229fcab20a5d40089c607d975cd9c80551dc69eed9102"
+        },
+        {
+          "name": "ordered-float",
+          "version": "5.3.0",
+          "checksum": "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e"
+        },
+        {
+          "name": "serde_json",
+          "version": "1.0.151",
+          "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+        }
+      ],
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/serde-json-MIT.txt",
+        "docs/upstream/licenses/ethnum-MIT.txt",
+        "docs/upstream/licenses/jiff-MIT.txt",
+        "docs/upstream/licenses/zmij-MIT.txt"
+      ],
+      "source_units": [
+        "jsonb core/databend/ser.rs RawJsonb serialization and raw.rs compact/pretty entry points",
+        "jsonb number.rs Number::serialize without arbitrary_precision and extension.rs Display",
+        "serde_json ser.rs serialize_f64, string escaping and CompactFormatter/PrettyFormatter punctuation",
+        "ethnum int.rs I256::as_f64/unsigned_abs and uint.rs U256::as_f64",
+        "jiff shared/util/itime.rs IEpochDay::to_date/ITimestamp::to_datetime and JSONB-reachable fmt temporal/strtime printers",
+        "Use previously verified D01c3h zmij F64 formatting"
+      ],
+      "adaptations": [
+        "Bounded validated owned binary body and byte offsets replace borrowed RawJsonb pointers; raw key order retained",
+        "Python transports exact bytes/bool and strings; interpretation and formatting remain native",
+        "Mojo integer formatting and integer-exponent pow adapt source runtime primitives, verified by actual-source outputs",
+        "UInt128 pair operations adapt ethnum magnitude conversion; signed division and overflow retain pinned release behavior",
+        "Coalesce inverse signed-duration normalizations between jsonb and jiff before the source civil conversion",
+        "Akasha Error/ValidationError replaces source calendar/offset unwrap panics; malformed raw fallback not exposed",
+        "Output growth follows existing input byte/node/depth bounds, allowing escaping beyond the input byte cap"
+      ],
+      "oracle": "scripts/jsonb_writer_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-writer/cases.json": "710e8fc4c988c7f6a74f5568f8722e7ee5466241939cf296e226d6b4572a586d",
+        "tests/fixtures/jsonb-writer/sources.json": "3916390fe8bc0d6963c84cd0407345a6eca367350b0e3d5d5335c5ce6f2e209e",
+        "tests/fixtures/jsonb-writer/Cargo.lock": "2987fca61a5df9b3bd2c6ab0775217a8e7a7ebbb288d06bf421700aa1463955e"
+      },
+      "status": "verified_native_python_jsonb_compact_pretty_writer_Arrow_and_full_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-writer-validation.md"
+      ],
+      "results": {
+        "source_bodies": 29003,
+        "successful_output_pairs": 28901,
+        "source_panics_mapped_to_errors": 102,
+        "native_tests_passed": 3,
+        "new_python_tests": 13,
+        "targeted_python_distinct_passed": 74,
+        "full_python_passed": 3485,
+        "full_python_skipped": 1,
+        "module_build": true,
+        "reproduced_fixture_metadata_lock_licenses": true
+      },
+      "remaining": [
+        "Complete Arrow JSON extension ingress/export with distinct nullable storage slots and nested metadata",
+        "C/distributed value interfaces and JSONB queries/indexes",
+        "All remaining full-product/platform/performance gates; no optimization yet"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_formatting.mojo": "504868bcd012d6ad1f7981778a78edd59543a5eebdea4dad5fa36654ef144e2b",
+        "src/akasha/document/jsonb_writer.mojo": "d442a46561f3ff0a196b9fd8df7ad2bf57994cfd9d30256a7f15979a33e56107",
+        "src/akasha/document/__init__.mojo": "d055c94130723df6d06e6ae8863e82fdd10b57359afe2da338ebe46ffbe67e38",
+        "src/bindings/payload_python.mojo": "8974c5ff774e1e63fea4ebac6d98424d9664e7ff08f2ee1f1a725c0a75842d43",
+        "src/bindings/python_module.mojo": "f32f6e66296462ead1a32cc9006f73a5cad8d8116969551eadaa79b3b37d86b7",
+        "python/akashadb/payload.py": "c1ead20323f20961817cf1beb967bbdde1dd20ba0dd21bf57b9574019e15869f",
+        "scripts/jsonb_writer_reference.py": "a2dbf707b57648b97fd545abcb67081af8496c0e23fb630531591df8bd4038d6",
+        "scripts/jsonb_writer_reference.rs": "7a45b27a8afa4f40bb96f957872899f701f4559f20aab8571809daab0acdfa6e",
+        "tests/mojo/test_jsonb_writer.mojo": "077f9b6f5d67a616a52859868503d478dbb722c54002ad1e30ba753e5d9ddba1",
+        "tests/python/test_jsonb_writer.py": "979811a39cb0128fb8db9c9bfb53eb40a316f392d8eb66e10114868e0fec5bfd"
+      }
     }
   ]
 }

@@ -2,6 +2,7 @@
 from akasha.document.value import PayloadValue
 from akasha.document.jsonb import JsonbValue
 from akasha.document.jsonb_reader import parse_jsonb_bytes
+from akasha.document.jsonb_writer import format_jsonb
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.json_path import JsonPath
 from std.python import Python, PythonObject
@@ -24,6 +25,22 @@ def parse_jsonb_py(raw: PythonObject, standard: PythonObject) raises -> PythonOb
     for byte in value._data:
         output.append(PythonObject(Int(byte)))
     return builtins.bytes(Python.list(Span(output)))
+
+
+def format_jsonb_py(raw: PythonObject, pretty: PythonObject) raises -> PythonObject:
+    """Validate immutable source bytes and delegate all formatting to Mojo."""
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(raw) == builtins.bytes):
+        raise Error("JSONB formatting input must be immutable bytes")
+    if not Bool(py=builtins.type(pretty) == builtins.bool):
+        raise Error("JSONB pretty mode must be a bool")
+    if len(raw) > JsonbValue.MAX_BYTES:
+        raise Error("JSONB byte size exceeds limit")
+    var bytes = List[UInt8](capacity=len(raw))
+    for byte in raw:
+        bytes.append(UInt8(Int(py=byte)))
+    var value = JsonbValue(Span(bytes))
+    return PythonObject(format_jsonb(value, pretty=Bool(py=pretty)))
 
 
 def json_value_from_python(raw: PythonObject) raises -> PayloadValue:
