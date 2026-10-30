@@ -130,7 +130,7 @@ def test_formula_shared_budget_bounds_and_cancellation(db):
     {"gauss_decay": {"x": 1, "scale": 0}}, {"exp_decay": {"x": 1, "midpoint": 1}},
     {"lin_decay": {"x": 1, "midpoint": -0.1}}, {"exp_decay": {"x": 1, "scale": True}},
     float("nan"), 1e100, "$unknown", "$score[]", "$score[-1]", "$score[1][2]",
-    {"datetime": "2026-01-01"}, {"geo_distance": {"to": "position"}},
+    {"geo_distance": {"to": "position"}},
 ])
 def test_formula_rejects_invalid_or_unimplemented_expressions(db, expression):
     with pytest.raises(ValidationError):

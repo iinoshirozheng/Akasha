@@ -897,6 +897,10 @@ The supported Qdrant numeric expression shapes are:
   returns the spherical distance in meters from the constant origin to a
   GeoPoint resolved from the payload path or its default. It uses the pinned
   Qdrant/GeoRust Haversine implementation with the 6,371,008.8-meter radius.
+- `{"datetime": "2025-03-19T00:00:00Z"}` converts a constant datetime to epoch
+  seconds. `{"datetime_key": "metadata.created_at"}` converts a string retrieved
+  from a payload JSON path or its default. Both follow the pinned Qdrant/chrono
+  parser and convert integer microseconds through F64 before final F32 scoring.
 - `{"condition": <Akasha filter>}` produces one or zero, using the documented
   native `condition/all/any/not` filter shape. This wrapper is not the Qdrant
   REST condition representation.
@@ -969,8 +973,8 @@ The shared native `JsonPath` type also provides canonical display, prefix and
 wildcard operations and pattern compatibility for subsequent data operations.
 Paths are bounded to 65,536 input bytes and 1024 parts. These are native resource
 limits, not a claim that Qdrant has identical limits.
-Datetime operations, full formula conditions, typed-index
-retrievers and Qdrant protocol exposure remain open.
+Full formula conditions, typed-index retrievers and Qdrant protocol exposure
+remain open.
 See the [formula source validation](research/2026-10-30-formula-validation.md).
 The [JSON-path validation](research/2026-10-30-json-path-validation.md) records
 the subsequent grammar and Unicode source checks.
@@ -1012,5 +1016,47 @@ key must be quoted. Native callers use `GeoPoint(lon, lat)` and
 `FormulaNode("geo_distance", key=path, origin=Optional(point))`. Distance math
 uses F64 and the final formula score follows the existing finite-F32 rule. The
 source computation is not clamped or replaced with ellipsoidal distance.
-Geo filtering/indexes and datetime expressions remain separate pending features.
+Geo filtering/indexes remain separate pending features.
 See [geo formula validation](research/2026-10-30-geo-formula-validation.md).
+
+Datetime inputs are strings. A missing timezone means UTC; date-only inputs mean
+midnight UTC. Qdrant's parser also accepts naive date/time through minutes or
+seconds, RFC3339 and chrono's relaxed forms (including signed extended years,
+some whitespace and timezone offsets without a colon). Calendar validation,
+leap seconds, fractional seconds and timezone conversion use the pinned chrono
+0.4.45 source port. The supported calendar years are -262143 through 262142;
+converting an offset must also leave UTC within the source range. Parsing keeps
+nanoseconds, discards digits after nine and truncates to whole microseconds for
+formula conversion. Inputs are bounded to 65,536 UTF-8 bytes per datetime.
+
+Constants are parsed during request construction, including empty queries and
+short-circuited operands. `datetime_key` parses payloads lazily, after the usual
+path/flattening/default retrieval. Missing values can use defaults; explicit
+null, invalid dates and non-strings fail when evaluated. Defaults must be valid
+date strings, not numeric epoch timestamps. Paths are not score variables; quote
+a literal `$score` payload key as with geographic formulas.
+
+```python
+recent = QueryRequest(
+    "formula",
+    prefetch=(QueryRequest(limit=100),),
+    formula=Formula({"exp_decay": {
+        "x": {"datetime_key": "metadata.created_at"},
+        "target": {"datetime": "2025-03-19T00:00:00Z"},
+        "scale": 86400,
+    }}),
+)
+# 1.0 at the target time, 0.5 one day away, using the existing symmetric decay.
+hits = collection.query(recent)
+```
+
+Raw datetime scores sort descending and undergo the source final F32 conversion,
+so they do not preserve every microsecond. Date arithmetic and decay occur in
+F64 before that final conversion. Native callers can use `DateTimeValue.parse`,
+`DateTimeValue.from_timestamp` (microseconds), and `.timestamp()` (microseconds),
+or construct `FormulaNode("datetime", key=date_string)` /
+`FormulaNode("datetime_key", key=payload_path)`. The native type preserves the
+source seconds/nanoseconds leap-second representation; invalid construction or
+out-of-range timestamps raise. Stored payloads remain their original strings.
+Datetime range filters/indexes, full typed-index retrieval and protocol exposure
+are still pending. See [datetime validation](research/2026-10-30-datetime-validation.md).

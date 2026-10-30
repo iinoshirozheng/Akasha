@@ -26,9 +26,9 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 | 領域 | 已有實作 | 缺口／限制 |
 | --- | --- | --- |
-| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值與地理距離的數值公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
+| 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與支援巢狀 payload／JSON 預設值、地理距離與日期的公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
-| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint 驗證與地理公式 | rich Arrow、任意頂層鍵、日期／UUID 型別、完整地理條件／索引、完整混合批次及協定相容 |
+| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取；依 IDs／既有條件選取的 payload set／overwrite／delete／clear 與路徑更新；原生 GeoPoint／DateTimeValue 驗證及地理／日期公式 | rich Arrow、任意頂層鍵、UUID 型別、完整日期／地理條件／索引、完整混合批次及協定相容 |
 | 搜尋／過濾 | 布林條件、純量索引、單層陣列條件、null 排除、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、專用陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |
@@ -104,7 +104,7 @@ Q04a 原生通用查詢樹已接上 Mojo／Python／Arrow，包含來源 prefetc
 
 Q04b 數值公式已接上 Mojo／Python／Arrow，包含來源短路求值、缺值預設、
 純量條件與三種衰減函數，對 prefetch 候選聯集重排。309 組來源案例與完整
-Python 測試已驗證；當時完整 JSON-path、日期、地理與 rich defaults 尚未完成；路徑、rich 值與地理距離已由後續 D01a／Q04d／Q04e 補入，日期仍待實作，
+Python 測試已驗證；當時完整 JSON-path、日期、地理與 rich defaults 尚未完成；路徑、rich 值、地理距離與日期已由後續 D01a／Q04d／Q04e／Q04f 補入，
 不能列為完整公式相容。見[公式驗證](2026-10-30-formula-validation.md)。
 
 D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 分類，
@@ -113,15 +113,18 @@ D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 �
 後續 D01b 已加入物件／陣列／null／UInt64 持久化及來源對照的 owned-value
 get/set/remove；Python、現有 HTTP、備份與 NDJSON v2 可保存巢狀資料。
 後續 D05a 已將 collection 路徑更新接上 Mojo／Python／現有 HTTP，保留所有向量，
-在同一寫入鎖下選取、轉換並原子提交。rich Arrow、nested filter、日期公式、地理過濾及專用索引仍未完成。
+在同一寫入鎖下選取、轉換並原子提交。rich Arrow、nested filter、日期／地理過濾及專用索引仍未完成。
 見[rich payload 驗證與範圍](2026-10-30-rich-payload-validation.md)。
 Q04d 已將來源 payload retriever 的路徑取值、單層陣列攤平、缺值／null 分別處理、
 UInt64 與 rich defaults 接入 Mojo／Python／Arrow 公式查詢；這不包含
-專用 typed-index retriever 或日期公式；地理公式由後續 Q04e 補入。見
+專用 typed-index retriever；地理／日期公式由後續 Q04e／Q04f 補入。見
 [rich formula 驗證](2026-10-30-formula-payload-validation.md)。
 Q04e／D03b 已移植 Qdrant GeoPoint 驗證及其固定 geo 0.33.1 的 Haversine 距離，
 接入 Mojo／Python／Arrow 的地理公式、路徑／預設值與衰減組合。地理過濾／索引、
-日期型別及公式仍未完成，見[地理公式驗證](2026-10-30-geo-formula-validation.md)。
+日期型別及公式由後續 Q04f 補入，見[地理公式驗證](2026-10-30-geo-formula-validation.md)。
+Q04f／D03c 已移植 Qdrant／chrono 0.4.45 日期解析、UTC／閏秒與微秒時間戳，
+日期常數、payload 日期及衰減公式可經 Mojo／Python／Arrow 使用。日期範圍條件／
+索引及完整協定仍未完成，見[日期驗證](2026-10-30-datetime-validation.md)。
 更新操作與 native／Qdrant 提交語義邊界另見
 [payload mutation 驗證](2026-10-30-payload-mutations-validation.md)。
 
@@ -146,6 +149,8 @@ HNSW，含同 collection ID 排除、外部 lookup 與 snapshot。來源對照�
 
 地理距離另外固定 GeoRust geo 0.33.1（`5ab50b072e34a915a33eaa46c80763d51d61295e`），
 使用 Qdrant Cargo.lock 對應的 crate checksum；來源與 MIT 通知已登錄 port registry。
+日期另外固定 chrono 0.4.45（`170338250e836976a211e64728ec956e45e78a39`），
+原始 license、calendar/scanner 來源與 Rust whitespace 表的來源版本均分別登錄。
 
 每次移植登錄檔案、commit、函式、原檔 hash、license/NOTICE、Mojo 對應檔、
 改寫範圍及 differential test。原始碼內保留來源與授權註記，隨專案保存必要通知。

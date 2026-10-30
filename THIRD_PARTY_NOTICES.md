@@ -244,3 +244,26 @@ MIT OR Apache-2.0; this port includes the MIT notice at
 source hash and oracle Cargo.lock are recorded in `docs/upstream/ports.json`.
 The Rust oracle runs Qdrant's unchanged GeoPoint methods/retriever/scorer with
 the actual pinned geo crate. There is no runtime Rust or Python geometry engine.
+
+### Datetime parsing and formula expressions
+
+`document/datetime.mojo` and the datetime formula/binding integration adapt
+Qdrant's DateTimeWrapper parsing/timestamp and formula behavior from
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+The native parser's fixed format modes specialize chrono 0.4.45's reachable
+`format/{parse,scan,parsed}.rs` branches. Calendar validation, ordinal tables,
+epoch/timestamp and UTC conversion follow `naive/` and `datetime/` source at
+`170338250e836976a211e64728ec956e45e78a39`. Copyright (c) 2014--2026 Kang
+Seonghoon and contributors; parsing portions copyright (c) 2015 John Nagle.
+Chrono is MIT OR Apache-2.0; its original license file is retained at
+`docs/upstream/licenses/chrono-LICENSE.txt`.
+
+`chrono_tables.mojo` is generated from chrono's literal calendar tables and
+Rust's `core/src/unicode/unicode_data.rs::white_space` lookup/table. The latter
+uses the Rust Project's MIT/Apache-2.0 license; the retained MIT notice is
+`docs/upstream/licenses/rust-MIT.txt`. The source-unit hash is pinned and its
+classification was compared with the oracle compiler over every Unicode scalar.
+The port registry records source/archive/table hashes and the actual compiler
+and source-toolchain versions separately. Python generates source fixtures and
+literal tables only; it does not parse or score dates at runtime. The oracle
+executes Qdrant's original wrapper/retriever/scorer with the actual chrono crate.

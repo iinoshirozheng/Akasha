@@ -78,6 +78,8 @@ def _fixture_expression(value: PythonObject, mut nodes: List[FormulaNode]) raise
         var key = String()
         if kind == "condition":
             condition = Optional(FilterExpression.all([]) if Bool(py=arg) else FilterExpression.any([]))
+        elif kind == "datetime" or kind == "datetime_key":
+            key = String(py=arg)
         elif kind == "geo_distance":
             var value = json_value_from_python(arg["origin"])
             origin = Optional(GeoPoint.from_payload(value))

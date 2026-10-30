@@ -93,6 +93,31 @@
       "license": "MIT OR Apache-2.0",
       "license_file": "docs/upstream/licenses/geo-MIT.txt",
       "license_sha256": "2f8267b247fd81e9555a2e196e119a5b341bcae21011cd93985c312f1312f727"
+    },
+    {
+      "name": "chrono",
+      "version": "0.4.45",
+      "upstream": "https://github.com/chronotope/chrono",
+      "revision": "170338250e836976a211e64728ec956e45e78a39",
+      "crate_sha256": "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/chrono-LICENSE.txt",
+      "license_sha256": "946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831",
+      "used_by": "Q04f-D03c-datetime"
+    },
+    {
+      "name": "rust-unicode-whitespace",
+      "version": "1.72.0",
+      "upstream": "https://github.com/rust-lang/rust",
+      "revision": "5680fa18feaa87f3ff04063800aec256c3d4b4be",
+      "source": "library/core/src/unicode/unicode_data.rs",
+      "source_sha256": "7bd5d5196f6ae054231e731b3bc99a9b82626c25ccf0fec5fbf3134202fa819b",
+      "unit": "pub mod white_space {",
+      "unit_sha256": "293f2b689c275703ee9716f8a3479e9a9acbc2e712cdf1916cb3d823a1d08926",
+      "license": "MIT OR Apache-2.0",
+      "license_file": "docs/upstream/licenses/rust-MIT.txt",
+      "license_sha256": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+      "used_by": "Q04f-D03c-datetime"
     }
   ]
 }

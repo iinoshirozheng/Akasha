@@ -109,6 +109,20 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **Q04f / D03c datetime parsing and formulas implemented and verified for
+  native, Python and Arrow.** Original Qdrant DateTimeWrapper and chrono 0.4.45
+  scanners/calendar/timestamps support the complete ordered parser formats,
+  eager `datetime` constants and lazy `datetime_key` paths/defaults. The source
+  oracle covers 20,861 date inputs, 315 microsecond timestamps and 3,624 formula
+  scores/errors, including calendar/UTC bounds, leap seconds and negative time.
+  Twenty-one native tests across five modules, 1,013 targeted Python and full
+  Python **3,172 passed / 1 skip**; 35 new public cases cover writes, filtering,
+  decay, mutations/reopen, snapshots, Arrow ownership and query controls.
+  [Plan](2026-10-30-datetime-source-port.md) /
+  [evidence](../research/2026-10-30-datetime-validation.md).
+  Q04/D03 remain open for datetime/geographic/nested filtering and indexes, full
+  conditions, typed-index retrieval, sampling/feedback and protocols. Rich Arrow
+  and all remaining product/platform/quality tasks stay open; no optimization.
 - **Q04e / D03b geographic formulas implemented and verified for native,
   Python and Arrow.** Qdrant GeoPoint conversion/validation and its pinned
   GeoRust geo 0.33.1 Haversine distance now support payload paths/defaults and
@@ -119,7 +133,8 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   snapshots, Arrow ownership, request validation, filters and query controls.
   [Plan](2026-10-30-geo-formula-source-port.md) /
   [evidence](../research/2026-10-30-geo-formula-validation.md).
-  Q04/D03 remain open for datetime, geographic filters/indexes, full conditions,
+  Datetime formulas subsequently landed in Q04f; Q04/D03 remain open for
+  datetime/geographic filters/indexes, full conditions,
   typed-index retrieval, sampling/feedback and protocols. Rich Arrow and all
   Lance/general DB/UI/security/cluster/operations/quality/platform rows remain
   open; no optimization work has started.
@@ -132,8 +147,8 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
   cover writes/mutations/reopen, nested queries, Arrow ownership and limits.
   [Plan](2026-10-30-formula-payload-source-port.md) /
   [evidence](../research/2026-10-30-formula-payload-validation.md).
-  Geo formulas subsequently landed in Q04e; Q04/D03 remain open for datetime,
-  geographic filters/indexes, full conditions,
+  Geo/datetime formulas subsequently landed in Q04e/Q04f; Q04/D03 remain open
+  for datetime/geographic filters/indexes, full conditions,
   typed-index retrievers, sampling/feedback and protocols. Rich Arrow and every
   other product/quality/platform row remain open; optimization has not started.
 - **D05a collection payload mutations implemented and verified for native,

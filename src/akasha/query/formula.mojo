@@ -8,6 +8,7 @@ from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
 from akasha.document.json_path import FormulaVariable, JsonPath
 from akasha.document.geo import GeoPoint, haversine_distance
+from akasha.document.datetime import DateTimeValue
 from akasha.query.control import QueryControl
 from akasha.query.evaluator import matches_expression
 from akasha.query.filter_ast import FilterExpression
@@ -45,6 +46,7 @@ struct FormulaNode(Movable):
     var by_zero_default: Optional[Float64]
     var lambda_value: Float64
     var origin: Optional[GeoPoint]
+    var datetime: Optional[DateTimeValue]
 
     def __init__(
         out self, kind: String, var children: List[Int] = [], *, value: Float32 = 0,
@@ -60,12 +62,15 @@ struct FormulaNode(Movable):
         self.by_zero_default = None
         self.lambda_value = 0
         self.origin = origin^
+        self.datetime = None
         if kind == "variable":
             var parsed = FormulaVariable.parse(key)
             self.variable = Optional(parsed^)
-        if kind == "geo_distance":
+        if kind == "geo_distance" or kind == "datetime_key":
             self.variable = Optional(FormulaVariable(None, Optional(JsonPath.parse(key))))
-        elif self.origin:
+        if kind == "datetime":
+            self.datetime = Optional(DateTimeValue.parse(key))
+        if kind != "geo_distance" and self.origin:
             raise Error("formula origin requires geo_distance")
         if by_zero_default:
             self.by_zero_default = Optional(Float64(by_zero_default.value()))
@@ -117,7 +122,7 @@ struct Formula(Movable):
             ref node = self.nodes[i]
             var count = len(node.children)
             var kind = node.kind
-            if kind == "constant" or kind == "variable" or kind == "condition" or kind == "geo_distance":
+            if kind == "constant" or kind == "variable" or kind == "condition" or kind == "geo_distance" or kind == "datetime" or kind == "datetime_key":
                 if count:
                     raise Error("formula terminal cannot have children")
                 if kind == "constant" and not isfinite(node.value):
@@ -130,6 +135,12 @@ struct Formula(Movable):
                     if not node.variable or not node.variable.value().path or not node.origin:
                         raise Error("geo_distance requires an origin and payload path")
                     node.origin.value().validate()
+                if kind == "datetime":
+                    if not node.datetime:
+                        raise Error("datetime constant is missing")
+                    node.datetime.value().validate()
+                if kind == "datetime_key" and (not node.variable or not node.variable.value().path):
+                    raise Error("datetime_key requires a payload path")
             elif kind == "sum" or kind == "mult":
                 pass
             elif kind == "div" or kind == "pow":
@@ -147,6 +158,8 @@ struct Formula(Movable):
                 node.condition.value().validate()
             if node.origin and kind != "geo_distance":
                 raise Error("formula origin requires geo_distance")
+            if node.datetime and kind != "datetime":
+                raise Error("formula datetime value requires datetime")
             if node.by_zero_default and (kind != "div" or not isfinite(node.by_zero_default.value())):
                 raise Error("formula division default must be finite and requires div")
             var depth = 0
@@ -217,6 +230,11 @@ struct Formula(Movable):
         if kind == "geo_distance":
             var value = self._payload_value(node.variable.value(), fields)
             return haversine_distance(node.origin.value(), GeoPoint.from_payload(value))
+        if kind == "datetime":
+            return Float64(node.datetime.value().timestamp()) / Float64(1_000_000)
+        if kind == "datetime_key":
+            var value = self._payload_value(node.variable.value(), fields)
+            return Float64(DateTimeValue.from_payload(value).timestamp()) / Float64(1_000_000)
         if kind == "condition":
             return Float64(1 if matches_expression(fields, node.condition.value()) else 0)
         if kind == "sum" or kind == "mult":

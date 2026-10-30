@@ -1895,6 +1895,8 @@ def _formula_expression_from_python(
         var path = String()
         if kind == "condition":
             condition = Optional(_filter_expression(arg))
+        elif kind == "datetime" or kind == "datetime_key":
+            path = _exact_python_string(arg, "datetime expression")
         elif kind == "geo_distance":
             if not Bool(py=builtins.type(arg) == builtins.dict):
                 raise Error("geo_distance parameters must be a dictionary")
