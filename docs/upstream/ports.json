@@ -3240,6 +3240,72 @@
         "tests/mojo/test_jsonb_reader.mojo": "a999367ed006d93274f71fcce6e5eb91d11b3f0afe7837466d9e318a460e4fd8",
         "tests/python/test_jsonb_text.py": "bc9891d7fd2b93586115d5fad2007f21adad4bd018828750458ed0700bcb0925"
       }
+    },
+    {
+      "id": "D01c3h-zmij-f64-formatting",
+      "upstream": "https://github.com/dtolnay/zmij",
+      "version": "1.0.21",
+      "identity": "crates.io:zmij@1.0.21",
+      "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa",
+      "license": "MIT",
+      "license_file": "docs/upstream/licenses/zmij-MIT.txt",
+      "provenance": "tests/fixtures/zmij/sources.json",
+      "targets": [
+        "src/akasha/document/zmij.mojo",
+        "src/akasha/document/zmij_tables.mojo"
+      ],
+      "source_units": [
+        "lib.rs UInt128/UInt192 products and inexact rounding to odd",
+        "lib.rs yy fast conversion with both original boundary checks and Schubfach fallback",
+        "lib.rs irregular/subnormal normalization, portable BCD significand writer and fixed/scientific output",
+        "lib.rs original const-generated powers of ten and exponent-shift tables",
+        "traits.rs F64 constants and lib.rs signed-zero/nonfinite formatting"
+      ],
+      "adaptations": [
+        "Mojo UInt128 replaces Rust u128; bounded byte arrays replace pointer writes and overlapping copies",
+        "Original portable exponent math and portable BCD writer on all architectures; no assembly/SIMD specialization",
+        "Explicit byte packing normalizes source endian conversions",
+        "Original compiled Rust const functions emit tables; Python packages entries without recomputing powers",
+        "format_zmij_finite rejects nonfinite inputs whose upstream output is unspecified; general formatter preserves source tokens",
+        "Rust oracle only: unchanged copied source prefix plus appended internal observations, cross-checked with original public crate"
+      ],
+      "oracle": "scripts/zmij_reference.py",
+      "fixtures": {
+        "tests/fixtures/zmij/cases.json": "5be11327887bb7d2423763817a03674c22a46ff26e78a4432589584ad9302ea2",
+        "tests/fixtures/zmij/sources.json": "59bbb389dd58932b86efc5adaa87fc390aeb7bfd5c3b1e5a3e29ee754a1b64c5",
+        "tests/fixtures/zmij/Cargo.lock": "ee814728f27a94c8f9b9b03e3610ca3388b9a40532500b29b602f7610cf2e7da"
+      },
+      "status": "verified_standalone_f64_dependency_full_JSONB_writer_Arrow_and_D01_pending",
+      "verification": [
+        "docs/research/2026-10-30-zmij-validation.md"
+      ],
+      "results": {
+        "source_inputs": 70662,
+        "input_classes": {
+          "zero": 2,
+          "subnormal": 2328,
+          "irregular": 4092,
+          "regular": 64220,
+          "special": 20
+        },
+        "both_intermediate_conversions": 70640,
+        "finite_native_round_trips": 70642,
+        "native_tests_passed": 4,
+        "reproduced_fixture_metadata_lock_license_tables": true
+      },
+      "remaining": [
+        "Complete actual RawJsonb/serde_json writer including decimal/extension formatting and public API",
+        "Full Arrow JSON ingress/export",
+        "C/distributed value interfaces, JSONB queries/indexes and every remaining full-product/platform/performance gate"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/zmij.mojo": "b9b642ec05c31b4ee4ed97dbbb5f533da20e63c2032848a6c357dfd279e7466e",
+        "src/akasha/document/zmij_tables.mojo": "dfa47d9fac1a2bcb51fa0148bb8b42a402529b228c9617df3304e197979123dc",
+        "scripts/zmij_reference.py": "6799fd0fa4002456c2c588de9fc9e8b57b09a4bcd2181caa09b49b308be2b05a",
+        "scripts/zmij_reference.rs": "6e4343db9cc34fc90dcd1d86a3a44f1995de52e7691302e2ce016082eb84705d",
+        "scripts/zmij_reference_adapter.rs": "6c1c5b30a981ede274137f335de8df2f8ac728c3e2fb4457eabfb67be329b128",
+        "tests/mojo/test_zmij.mojo": "287d689eeb9c764c9df58aed4b693814d5968192f1a198c1b4f4584e991e508d"
+      }
     }
   ]
 }

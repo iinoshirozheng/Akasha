@@ -1,0 +1,76 @@
+{
+  "dependencies": [
+    {
+      "name": "zmij",
+      "version": "1.0.21",
+      "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa",
+      "license": "MIT",
+      "upstream": "https://github.com/dtolnay/zmij",
+      "files": [
+        {
+          "path": "Cargo.toml",
+          "sha256": "08f0f39b8b92d1a11c99d7dcf149455d8430f850cdd67d9b19091b919ca59c85"
+        },
+        {
+          "path": "LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "path": "benches/bench.rs",
+          "sha256": "28d23a29046c4d50c73a19fd81ad80cc97e474af6d8c30f81dcc8c9621065cca"
+        },
+        {
+          "path": "build.rs",
+          "sha256": "13201b550236a9ff2186b5303c77341d3b0874989fdaf39613a7452e4ce57817"
+        },
+        {
+          "path": "src/hint.rs",
+          "sha256": "7e03e3c031b7c20127517b794a4b641b3efb6ccd4c7b1aae1b7b6f28b9968052"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "d843c3c1c8a41a8cdaead2ee3a223a204bf2ed047c3f2892719248a0f10d9bef"
+        },
+        {
+          "path": "src/stdarch_x86.rs",
+          "sha256": "b19b4c54f0c08c92f96d18c152f796d85cc17f9e6195f3e7d5612f05f28836fb"
+        },
+        {
+          "path": "src/tests.rs",
+          "sha256": "cd2726e2af3d111236dcd00a3b584270979a84ef0dc59e9162774b09824993a6"
+        },
+        {
+          "path": "src/traits.rs",
+          "sha256": "d289ade8d66f03096349f1cf2d4e68fad792e7b089bc956410cf700d9aad67e1"
+        },
+        {
+          "path": "tests/exhaustive.rs",
+          "sha256": "3d5c1036dcb391bfd038fcb9feb03380b467a184ed9e0463d52f35b521684029"
+        },
+        {
+          "path": "tests/ryu_comparison.rs",
+          "sha256": "8bd55e9fe7a3121f124180983c319412ce87b886354f3f998da4789f9260fa06"
+        },
+        {
+          "path": "tests/test.rs",
+          "sha256": "0f5efa4354a932d767ed561ddee411a10dd71faafa202372f3c00d81b88d1381"
+        }
+      ]
+    }
+  ],
+  "profile": "F64; original public crate cross-checked with unchanged source prefix plus appended test adapter",
+  "generator_sha256": "6799fd0fa4002456c2c588de9fc9e8b57b09a4bcd2181caa09b49b308be2b05a",
+  "scaffold_sha256": "6e4343db9cc34fc90dcd1d86a3a44f1995de52e7691302e2ce016082eb84705d",
+  "adapter_sha256": "6c1c5b30a981ede274137f335de8df2f8ac728c3e2fb4457eabfb67be329b128",
+  "input_fixture_sha256": "2beaeb6ff9ecff26bb7220fd1851a469d7b2729f1586b1f30feb500fe69838e8",
+  "fixture_sha256": "5be11327887bb7d2423763817a03674c22a46ff26e78a4432589584ad9302ea2",
+  "lock_sha256": "ee814728f27a94c8f9b9b03e3610ca3388b9a40532500b29b602f7610cf2e7da",
+  "tables_sha256": "dfa47d9fac1a2bcb51fa0148bb8b42a402529b228c9617df3304e197979123dc",
+  "counts": {
+    "zero": 2,
+    "subnormal": 2328,
+    "irregular": 4092,
+    "regular": 64220,
+    "special": 20
+  }
+}

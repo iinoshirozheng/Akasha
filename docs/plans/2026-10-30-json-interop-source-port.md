@@ -169,3 +169,20 @@ and observes differences in 1,082 standard and 2,939 extended accepted cases.
 Continue with that writer's real numeric-formatting dependency before step 6's
 full Arrow JSON extension ingress/export. The broader product ledger remains
 unchanged and optimization remains deferred.
+
+## Text number formatting update: D01c3h
+
+Step 5's F64 output dependency now ports zmij 1.0.21's fast path, Schubfach
+fallback, portable BCD output and notation rules. All 70,662 source outputs
+match, with both original intermediate conversions checked on 70,640 nonzero
+finite inputs and bit-exact parsing round trips on all 70,642 finite outputs.
+Four native tests pass; fixture, metadata, lock, license and tables emitted by
+the original Rust const functions reproduce. See the
+[report](../research/2026-10-30-zmij-validation.md).
+
+This helper does not close the complete writer. Continue the actual
+RawJsonb/serde_json path: number/decimal serialization, JSON string escaping,
+extension formatting, arrays/objects preserving raw body key order, and public
+text output. Then complete step 6's Arrow JSON ingress/export. Preserve the
+source serializer's nonfinite-to-null behavior separately from zmij's standalone
+NaN/inf tokens. No complete D01/product row or performance gate is closed.

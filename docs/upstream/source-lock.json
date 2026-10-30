@@ -374,9 +374,16 @@
       "license": "MIT",
       "revision": null,
       "identity": "crates.io:zmij@1.0.21",
-      "provenance": "tests/fixtures/lance-json/sources.json",
-      "reference_only": true,
-      "used_by": "D01c3b-stringview-lance-json-contracts"
+      "provenance": "tests/fixtures/zmij/sources.json",
+      "reference_only": false,
+      "used_by": "D01c3h-zmij-f64-formatting",
+      "license_file": "docs/upstream/licenses/zmij-MIT.txt",
+      "license_sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "source_profile": {
+        "float": "f64",
+        "portable_exponent_math": true,
+        "portable_significand_writer": true
+      }
     },
     {
       "name": "jiff",
