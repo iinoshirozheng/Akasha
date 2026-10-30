@@ -8,8 +8,8 @@ from akasha.index.bitmap import Bitmap
 from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
 from akasha.query.filter_ast import FilterCondition
+from akasha.query.evaluator import _matches_condition
 from std.collections import Dict
-from std.memory import bitcast
 from akasha.storage.checksum import BinaryReader, BinaryReaderSource, BinaryWriter
 
 
@@ -22,6 +22,7 @@ struct MetadataIndex:
     var _live: Bitmap
     var _keywords: KeywordIndex
     var _numbers: SortedBlockIndex
+    var _rich: Bitmap
     var _bulk_loading: Bool
 
     def __init__(out self) raises:
@@ -31,6 +32,7 @@ struct MetadataIndex:
         self._live = Bitmap()
         self._keywords = KeywordIndex()
         self._numbers = SortedBlockIndex()
+        self._rich = Bitmap()
         self._bulk_loading = False
 
     def slot_count(self) -> Int:
@@ -85,8 +87,11 @@ struct MetadataIndex:
         else:
             self._remove_fields(ordinal)
 
+        self._rich.clear(ordinal)
         for index in range(len(fields)):
             self._add_field(ordinal, fields[index])
+            if fields[index].value.kind() >= 5:
+                self._rich.set(ordinal)
         self._fields[ordinal] = fields^
         self._live.set(ordinal)
 
@@ -98,6 +103,7 @@ struct MetadataIndex:
         self._remove_fields(ordinal)
         self._fields[ordinal] = List[DocumentField]()
         self._live.clear(ordinal)
+        self._rich.clear(ordinal)
 
     def evaluate_condition(self, condition: FilterCondition) raises -> Bitmap:
         condition.validate()
@@ -113,6 +119,14 @@ struct MetadataIndex:
                 candidates = candidates.union_with(self._numbers.present(condition.name))
             elif condition.value.is_integer():
                 candidates = candidates.union_with(self._keywords.present(condition.name))
+        # Rich values do not enter scalar-only derived indexes. Evaluate these
+        # rows with the same source-derived checker used by direct scans.
+        # D03 adds dedicated nested/array indexes; this is an exact plain path.
+        for ordinal in self._rich.set_ordinals():
+            if _matches_condition(self._fields[ordinal], condition):
+                candidates.set(ordinal)
+            else:
+                candidates.clear(ordinal)
         return self._live.intersection(candidates)
 
     def contains_id(self, candidates: Bitmap, id: Int) raises -> Bool:
@@ -184,12 +198,13 @@ struct MetadataIndex:
         self._live.resize(size)
         self._keywords.resize(size)
         self._numbers.resize(size)
+        self._rich.resize(size)
         return ordinal
 
     def _add_field(mut self, ordinal: Int, field: DocumentField) raises:
         if field.value.is_string() or field.value.is_boolean():
             self._keywords.add(field.name, field.value, ordinal)
-        else:
+        elif field.value.is_integer() or field.value.is_floating():
             self._numbers.add(field.name, field.value, ordinal)
 
     def _remove_fields(mut self, ordinal: Int) raises:
@@ -203,7 +218,8 @@ struct MetadataIndex:
                     self._fields[ordinal][index].value,
                     ordinal,
                 )
-            else:
+            elif (self._fields[ordinal][index].value.is_integer()
+                  or self._fields[ordinal][index].value.is_floating()):
                 self._numbers.remove(
                     self._fields[ordinal][index].name,
                     self._fields[ordinal][index].value,
@@ -226,21 +242,7 @@ def _same_fields(
         ref b = right[index].value
         if left[index].name != right[index].name or a.kind() != b.kind():
             return False
-        if a.is_string():
-            if a.as_string() != b.as_string():
-                return False
-        elif a.is_integer():
-            if a.as_int() != b.as_int():
-                return False
-        elif a.is_floating():
-            if bitcast[DType.uint64](a.as_float()) != bitcast[DType.uint64](
-                b.as_float()
-            ):
-                return False
-        elif a.is_boolean():
-            if a.as_bool() != b.as_bool():
-                return False
-        else:
+        if not a.same_representation(b):
             return False
     return True
 

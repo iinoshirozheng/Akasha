@@ -6,8 +6,9 @@ from typing import Any, Literal, TypeAlias
 
 Metric: TypeAlias = Literal["dot", "l2", "cosine"]
 ScalarKind: TypeAlias = Literal["f32", "bf16", "f16", "i8"]
-PayloadKind: TypeAlias = Literal["string", "int", "float", "bool"]
-PayloadScalar: TypeAlias = str | int | float | bool
+PayloadKind: TypeAlias = Literal["string", "int", "float", "bool", "null", "array", "object", "uint"]
+PayloadScalar: TypeAlias = str | int | float | bool | None
+PayloadJSON: TypeAlias = PayloadScalar | list["PayloadJSON"] | dict[str, "PayloadJSON"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +156,7 @@ class SearchStats:
 class PayloadField:
     name: str
     type: PayloadKind
-    value: PayloadScalar
+    value: PayloadJSON
 
     def to_kernel(self) -> dict[str, object]:
         return {"name": self.name, "type": self.type, "value": self.value}

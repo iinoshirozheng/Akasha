@@ -62,7 +62,7 @@ def test_wal_fixture_decodes_atomic_combined_patches_and_repeated_ids() raises:
     assert_equal(batch.format_version, 4)
     bytes[4] = 5
     _crc(bytes)
-    assert_equal(encode_point_batch(batch.first_sequence, batch.mutations, catalog), bytes)
+    assert_equal(encode_point_batch(batch.first_sequence, batch.mutations, catalog, payload_version=1), bytes)
     bytes.clear()
     var initial = apply_point_mutation(
         Optional[PointState](), batch.mutations[0], 8, catalog
@@ -105,6 +105,7 @@ def test_segment_v4_golden_records_migrate_without_body_changes() raises:
                 segment.last_sequence,
                 segment.points,
                 catalog,
+                payload_version=1,
             ),
             bytes,
         )
@@ -205,7 +206,7 @@ def test_wal_sequence_cutover_overflow_and_count_limits() raises:
     bytes[4] = 5
     _crc(bytes)
     assert_equal(
-        encode_point_batch(batch.first_sequence, batch.mutations, max_catalog),
+        encode_point_batch(batch.first_sequence, batch.mutations, max_catalog, payload_version=1),
         bytes,
     )
     var mutations = List[PointMutation]()

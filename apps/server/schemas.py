@@ -72,8 +72,8 @@ class OpenCollectionRequest(BaseModel):
 
 class PayloadFieldRequest(BaseModel):
     name: str = Field(min_length=1)
-    type: Literal["string", "int", "float", "bool"]
-    value: str | int | float | bool
+    type: Literal["string", "int", "float", "bool", "null", "array", "object", "uint"]
+    value: Any
 
 
 class SparseElementRequest(BaseModel):

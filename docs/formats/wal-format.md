@@ -28,8 +28,9 @@ Version 2 appends these fields before the final CRC32:
 | variable | Typed payload bytes; empty for delete |
 | 4 | CRC32 of bytes `[4, final 4)` |
 
-New vector-only upserts contain the four-byte empty payload encoding. New
-document upserts contain the payload format documented by the document codec.
+Current vector-only upserts contain the 12-byte empty payload v2 encoding;
+historical payload v1 uses four bytes. Document upserts contain the independently
+versioned [payload format](payload-format.md); both inner versions remain readable.
 A v2 delete has a zero payload length and is 40 bytes. Single-mutation writes
 use version 2; recovered version 1 upserts have an empty field list.
 

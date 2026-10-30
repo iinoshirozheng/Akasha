@@ -2,7 +2,7 @@ from akasha.document.value import PayloadValue
 
 
 struct DocumentField(Movable):
-    """One named, flat typed payload field."""
+    """One named typed payload field, including owned JSON containers."""
 
     var name: String
     var value: PayloadValue
@@ -119,15 +119,12 @@ def clone_fields(fields: List[DocumentField]) raises -> List[DocumentField]:
 
 
 def field_content_bytes(fields: List[DocumentField]) -> Int:
-    """Logical owned payload bytes: names plus string bytes or 8-byte scalars.
+    """Logical owned payload bytes, including nested keys and scalar contents.
     """
     var total = 0
     for index in range(len(fields)):
         total += fields[index].name.byte_length()
-        if fields[index].value.is_string():
-            total += fields[index].value._string_value.byte_length()
-        else:
-            total += 8
+        total += fields[index].value.content_bytes()
     return total
 
 

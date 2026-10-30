@@ -52,7 +52,26 @@ def test_independent_complete_records_reencode_exactly() raises:
         var catalog = _catalog(index >= 4)
         var bytes = _fixture(names[index])
         var record = decode_point_record(Span(bytes), catalog)
-        assert_equal(encode_point_record(record, catalog), bytes)
+        assert_equal(encode_point_record(record, catalog, payload_version=1), bytes)
+        # Current writers migrate the independently framed payload; vector bits,
+        # record identity and sequences are unchanged. Assemble the expected
+        # scalar-only v2 record from the independently frozen v1 fixture.
+        var migrated = List[UInt8]()
+        if record.tombstone:
+            migrated = bytes.copy()
+        else:
+            for i in range(40):
+                migrated.append(bytes[i])
+            _u32(migrated, 0, UInt32(len(bytes) + 8))
+            var old_payload_size = UInt32(0)
+            for i in range(4):
+                old_payload_size |= UInt32(bytes[36 + i]) << UInt32(8 * i)
+            _u32(migrated, 36, old_payload_size + 8)
+            for byte in [UInt8(255), 255, 255, 255, 2, 0, 0, 0]:
+                migrated.append(byte)
+            for i in range(40, len(bytes)):
+                migrated.append(bytes[i])
+        assert_equal(encode_point_record(record, catalog), migrated)
     var catalog = _catalog()
     var record = decode_point_record(_fixture("default-and-named.bin"), catalog)
     assert_equal(record.id, -42)
@@ -104,7 +123,7 @@ def test_native_scalar_bits_and_empty_multi_survive_borrowed_source() raises:
         Float32(-3),
     )
     assert_equal(
-        encode_point_record(record, catalog), _fixture("type-matrix.bin")
+        encode_point_record(record, catalog, payload_version=1), _fixture("type-matrix.bin")
     )
     var empty = decode_point_record(_fixture("empty-multivector.bin"), catalog)
     assert_equal(empty.sequence, UInt64.MAX)

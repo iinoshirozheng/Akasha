@@ -109,6 +109,22 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D01b rich payload / D03a scalar-condition coexistence implemented.**
+  [Source-port plan](2026-10-30-rich-payload-source-port.md) adds owned native
+  objects/arrays/null/UInt64, source get/set/remove/merge operations, independently
+  versioned payload v2 with v1 migration, Python/existing HTTP/backup/NDJSON v2,
+  and one-level array/null/MatchExcept checks alongside scalar indexes.
+  2,088 value and 110 filter source cases, 171 tests across 27 native modules,
+  and full Python **3,060 passed / 1 optional skip**; 26 new Python cases.
+  Nine crash modules / 24 tests and the rebuilt C ABI checks also pass.
+  Recovery/ABI results and initial compatibility failures are retained in the
+  [validation report](../research/2026-10-30-rich-payload-validation.md).
+  D01/D03 remain in progress: rich Arrow with missing/null semantics, collection
+  path mutation APIs, top-level arbitrary keys, nested formula/filter values,
+  dedicated indexes and full C/distributed/REST/gRPC contracts remain. Next
+  shared-data work connects these public paths before Lance/SQL layers; all
+  other master-ledger tasks and existing quality/platform gates stay open.
+  No optimization phase has started.
 - 2026-10-30: report and full work ledger created. Read clean source pins, installed
   compiler and live query/SDK paths. No performance experiment resumed.
 - F00: in progress. `docs/upstream/source-lock.json` records 7 clean source pins;

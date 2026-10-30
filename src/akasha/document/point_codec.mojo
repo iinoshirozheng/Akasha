@@ -156,12 +156,12 @@ def decode_vector_value(
 
 
 def encode_point_record(
-    point: PointState, catalog: FieldCatalog
+    point: PointState, catalog: FieldCatalog, *, payload_version: Int = 2
 ) raises -> List[UInt8]:
     point.validate(catalog)
     var payload = List[UInt8]()
     if not point.tombstone:
-        payload = encode_payload(point.payload())
+        payload = encode_payload(point.payload(), version=payload_version)
     var total = _POINT_HEADER_BYTES + len(payload)
     for ordinal in range(point.field_count()):
         ref field = point.field_at(ordinal)

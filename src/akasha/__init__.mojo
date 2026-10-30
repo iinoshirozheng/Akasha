@@ -1,6 +1,7 @@
 from akasha.query.query_plan import QueryNode
 from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.document.json_path import JsonPath, JsonPathItem, FormulaVariable
+from akasha.document.payload_path import payload_value_get, payload_value_set, payload_value_remove
 from .api import (
     BatchMutation,
     BatchWriteResult,

@@ -28,7 +28,7 @@ def test_mapped_point_segments_preserve_frozen_and_current_owned_values() raises
             expected[4] = 5
             _crc(expected)
             assert_equal(encode_point_segment(actual.kind, actual.min_sequence,
-                actual.last_sequence, actual.points, catalog), expected)
+                actual.last_sequence, actual.points, catalog, payload_version=1), expected)
     remove_file_if_exists(path)
 
 

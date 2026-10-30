@@ -72,11 +72,56 @@ each dictionary uses the same bounded condition/all/any/negate shape as
 `SearchRequest.filter`. Result lists remain aligned to input vectors.
 
 A condition's `type` describes its query literal. Integer and string `eq` match
-only that stored type; `ne` also includes other present scalar types, following
-Qdrant MatchExcept. Numeric ranges and floating-literal comparisons include both
-integer and float values after Float64 conversion, so integers above 2^53 may
+their corresponding JSON scalar values; unsigned values fitting Int64 can match
+integer literals. `ne` follows Qdrant MatchExcept, including other present types
+but excluding null. Arrays use one-level any-element evaluation; nested arrays
+are not recursively flattened. Numeric ranges and floating-literal comparisons
+include signed/unsigned integers and float values after Float64 conversion, so integers above 2^53 may
 round in range comparisons. Boolean conditions match only booleans. Missing
-fields fail field conditions; an outer `negate` includes those missing fields.
+and null fields fail field conditions; an outer `negate` includes those fields.
+
+### Rich document values
+
+`PayloadField` now accepts `null`, `array`, `object` and `uint` in addition to
+`string`, `int`, `float` and `bool`. Explicit scalar fields retain the existing
+Python scalar conversion protocols, including integer input for `float`.
+Nested container contents use strict JSON types; strings and booleans there
+remain distinct from numbers. Mojo validates the new declared container types:
+
+```python
+collection.upsert(42, [1.0, 0.0], fields=[
+    PayloadField("metadata", "object", {
+        "authors": [{"name": "王", "verified": True}],
+        "optional": None,
+        "scores": [1, 2.5, None],
+    }),
+    PayloadField("reviewed", "null", None),
+    PayloadField("counter", "uint", 2**64 - 1),
+])
+metadata = collection.get(42).fields[0].value
+```
+
+Reads return independent Python dict/list values; mutating the input or returned
+containers cannot mutate stored data. Nested keys preserve insertion order and
+may contain empty strings, NUL and Unicode. Top-level names remain nonempty,
+NUL-free and unique. Native map construction replaces duplicate keys in their
+original slot; Python dicts already have that property.
+
+Payloads retain the 16 MiB encoded and 1,024 top-level-field limits, with at most
+65,536 value nodes and 64 container levels per field. Cycles, excessive nesting,
+nonfinite numbers, non-string object keys and integers outside Int64/UInt64 are
+rejected before WAL append. Null differs from an absent field and from an empty
+container. Rich values survive WAL-only reopen, checkpoint, physical backup and
+NDJSON v2. Reads retain payload v1 compatibility; new writes use payload v2.
+
+Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
+on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
+merge null deletes a key, indexed writes never grow an array, deleting an array
+index does nothing, and a terminal wildcard clears its array. These helpers do
+not yet expose collection-level partial payload path updates. Rich Arrow schemas,
+dedicated nested/array indexes, nested formula values and complete REST/gRPC/C
+and distributed payload contracts remain tracked in D01–D05/A01–A03/X01–X04.
+Existing scalar Arrow projections reject incompatible rich values explicitly.
 
 `upsert_columns` validates column-shaped Python data and copies it through
 Python values. It is not a zero-copy Arrow C Data interface.

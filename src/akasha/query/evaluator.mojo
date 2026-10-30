@@ -1,3 +1,5 @@
+# Array/null/MatchExcept checks port Qdrant condition_checker.rs (Apache-2.0),
+# revision 74f3e85b9473c62560006c043e13737ce6b48412. See THIRD_PARTY_NOTICES.md.
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
 from akasha.query.filter_ast import FilterCondition, FilterExpression
@@ -76,7 +78,16 @@ def _matches_condition(
     for field_index in range(len(fields)):
         if fields[field_index].name != condition.name:
             continue
-        return _matches_value(fields[field_index].value, condition)
+        ref value = fields[field_index].value
+        # Qdrant ValueChecker::_check examines one array level. Nested arrays
+        # are passed to check_match unchanged, never recursively flattened.
+        if value.is_array():
+            var children = value.children()
+            for i in range(len(children)):
+                if _matches_value(children[i], condition):
+                    return True
+            return False
+        return _matches_value(value, condition)
     return False
 
 
@@ -84,6 +95,13 @@ def _matches_value(
     stored: PayloadValue, condition: FilterCondition
 ) raises -> Bool:
     var operator_kind = condition.operator_kind()
+    if stored.is_null():
+        return False
+    if stored.is_unsigned() and condition.value.is_integer() and (
+        operator_kind == FilterCondition.EQUAL or operator_kind == FilterCondition.NOT_EQUAL
+    ):
+        var equal = condition.value.as_int() >= 0 and stored.as_uint() == UInt64(condition.value.as_int())
+        return equal if operator_kind == FilterCondition.EQUAL else not equal
     # Qdrant MatchExcept excludes only matching values of the literal type;
     # other present scalar types still match. Missing fields are handled above.
     if operator_kind == FilterCondition.NOT_EQUAL:
@@ -96,9 +114,10 @@ def _matches_value(
     if condition.value.is_floating() or (
         condition.value.is_integer() and operator_kind != FilterCondition.EQUAL
     ):
-        if not (stored.is_integer() or stored.is_floating()):
+        if not (stored.is_integer() or stored.is_floating() or stored.is_unsigned()):
             return False
-        var left = Float64(stored.as_int()) if stored.is_integer() else stored.as_float()
+        var left = (Float64(stored.as_int()) if stored.is_integer() else
+                    Float64(stored.as_uint()) if stored.is_unsigned() else stored.as_float())
         var right = Float64(condition.value.as_int()) if condition.value.is_integer() else condition.value.as_float()
         return _compare_floats(left, right, operator_kind)
     if stored.kind() != condition.value.kind():

@@ -1,4 +1,4 @@
-# Logical point NDJSON, version 1
+# Logical point NDJSON, versions 1 and 2
 
 Field-aware collections export one UTF-8 JSON header line followed by exactly
 `count` complete point lines, in ascending signed point ID order. Every line is
@@ -11,7 +11,7 @@ The header has exactly these keys:
 | Key | Meaning |
 |---|---|
 | `format` | Exactly `"akashadb.points"` |
-| `version` | Integer `1` |
+| `version` | Integer `2` for new exports; frozen version `1` remains readable |
 | `config` | Default collection identity, as listed below |
 | `vectors` | Named field name to schema object |
 | `count` | Nonnegative integer number of following point records |
@@ -41,6 +41,14 @@ sparse fields use the same element objects. Binary values use exactly
 `{ "encoding": "hex", "data": "0101" }`: two hexadecimal characters per
 packed byte, with the schema's bit dimension and zero high padding bits.
 `fields` is the complete typed payload array of `{ "name", "type", "value" }`.
+V1 restricts field types to string/int/float/bool. V2 also permits null/array/object/
+uint. Arrays and objects contain ordinary recursive JSON values; keys retain
+insertion order and may be empty or contain escaped NUL. Null is a present field,
+not field absence. The root `uint` tag retains unsigned identity; nested JSON
+numbers retain their value and signed floating zero, while JSON itself does not
+label small positive integers as signed vs unsigned. Native integer range and
+value depth/node/byte limits are validated before any batch commit. A v1 header
+containing v2 field tags is rejected, not silently upgraded.
 
 Numeric values retain native precision: the exporter expands finite native
 scalars to exact Python numbers and the importer applies the destination's

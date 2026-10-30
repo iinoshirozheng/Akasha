@@ -46,15 +46,16 @@ historical mutation sequence is invented or stored.
 | 24 | u64 | Legacy document sequence |
 | 32 | u32 | Present vector-field count, at most 1,024 |
 | 36 | u32 | Payload byte length |
-| 40 | bytes | Existing payload-v1 encoding, followed by vector entries |
+| 40 | bytes | Independently versioned payload encoding, followed by vector entries |
 
 Each vector entry is `field_id:u32, body_length:u32, body:bytes`. IDs must be
 known to the catalog, unique and strictly increasing. Gaps are permitted.
 No bytes may trail the final field body. Record size is bounded to 256 MiB;
 an enclosing WAL additionally bounds the sum of its mutations and overhead.
 
-Live payload uses the existing payload-v1 rules, including its 16 MiB limit.
-An empty payload has a four-byte zero field count. A tombstone has no fields
+Live payload uses [payload v1/v2](payload-format.md), including its 16 MiB limit.
+New writes use v2, including a 12-byte empty payload; historical v1's empty
+payload has a four-byte zero field count. A tombstone has no fields
 or payload bytes, zero document sequence, and exactly 40 bytes. A tombstone in
 a base segment will be rejected by the segment layer; complete delta segments
 retain it until compaction can prove older states are no longer visible.

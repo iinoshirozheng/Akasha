@@ -11,7 +11,7 @@ from .vectors import PointMutation, VectorField
 
 
 FORMAT = "akashadb.points"
-VERSION = 1
+VERSION = 2
 _CONFIG_KEYS = {"dimension", "ann_metric", "scalar_kind", "m", "m0", "ef_construction",
                 "default_ef_search", "max_ef_search", "max_level", "rebuild_inactive_percent",
                 "delta_max_points", "level_seed"}
@@ -60,7 +60,7 @@ def _integer(value: Any, low: int, high: int, label: str) -> int:
 
 def decode_header(header: dict[str, Any]) -> tuple[CollectionConfig, dict[str, VectorField]]:
     _object(header, _HEADER_KEYS, "point export header")
-    if header["format"] != FORMAT or type(header["version"]) is not int or header["version"] != VERSION:
+    if header["format"] != FORMAT or type(header["version"]) is not int or header["version"] not in (1, VERSION):
         raise ValueError("unsupported logical point export version")
     _integer(header["count"], 0, (1 << 63) - 1, "point count")
     _integer(header["source_sequence"], 0, (1 << 64) - 1, "source sequence")
@@ -171,6 +171,8 @@ def decode_points(header: dict[str, Any], rows: list[dict[str, Any]],
             raise ValueError("payload fields must be a list")
         payload = [PayloadField(**_object(item, {"name", "type", "value"}, "payload"))
                    for item in row["fields"]]
+        if header["version"] == 1 and any(field.type not in {"string", "int", "float", "bool"} for field in payload):
+            raise ValueError("logical point v1 supports only scalar payload fields")
         result.append(PointMutation.upsert(point_id, vector=row["vector"],
                                           sparse=_sparse(row["sparse"]),
                                           vectors=updates, fields=payload))

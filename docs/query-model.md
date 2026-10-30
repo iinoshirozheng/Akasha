@@ -11,7 +11,7 @@ tie-break.
 
 Search results intentionally contain only a point ID and score. Use
 `PersistentCollection.get(result.id)` to retrieve an owned `DocumentRecord`
-with its latest vector, sequence, and flat typed fields. This keeps scoring
+with its latest vector, sequence, and typed fields (including owned JSON values). This keeps scoring
 independent of payload size while supporting text chunks, image references, and
 scalar metadata. Vector-only `upsert` replaces the record with empty fields;
 `upsert_document` atomically replaces both vector and payload; delete makes

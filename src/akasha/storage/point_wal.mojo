@@ -190,13 +190,13 @@ def _validate_range(
 
 
 def _encode_mutation(
-    mutation: PointMutation, catalog: FieldCatalog
+    mutation: PointMutation, catalog: FieldCatalog, payload_version: Int
 ) raises -> List[UInt8]:
     mutation.validate(catalog)
     var payload = List[UInt8]()
     var length = 0
     if mutation.replaces_payload():
-        payload = encode_payload(mutation.payload())
+        payload = encode_payload(mutation.payload(), version=payload_version)
         length = 4 + len(payload)
     for index in range(mutation.field_count()):
         ref field = mutation.field_at(index)
@@ -238,13 +238,15 @@ def encode_point_batch(
     first_sequence: UInt64,
     mutations: List[PointMutation],
     catalog: FieldCatalog,
+    *,
+    payload_version: Int = 2,
 ) raises -> List[UInt8]:
     var catalog_crc = field_catalog_checksum(catalog)
     _validate_range(first_sequence, len(mutations), catalog, 0)
     var bodies = List[List[UInt8]](capacity=len(mutations))
     var total = 44
     for index in range(len(mutations)):
-        var body = _encode_mutation(mutations[index], catalog)
+        var body = _encode_mutation(mutations[index], catalog, payload_version)
         if len(body) > MAX_POINT_BATCH_BYTES - total:
             raise Error("field-aware WAL batch exceeds envelope limit")
         total += len(body)

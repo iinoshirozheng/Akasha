@@ -27,6 +27,7 @@ from akasha.document.point_state import PointMutation, FieldUpdate, PointState
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
+from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from std.collections import Dict
 from akasha.index.flat import SearchResult
@@ -1808,29 +1809,21 @@ def _sparse_vector(value: PythonObject) raises -> List[SparseElement]:
 
 
 def _document_fields(value: PythonObject) raises -> List[DocumentField]:
+    if len(value) > 1024:
+        raise Error("payload field count exceeds limit")
     var result = List[DocumentField](capacity=len(value))
+    var nodes = 0
+    var content = 0
     for item in value:
         var name = String(py=item["name"])
         var kind = String(py=item["type"])
         var raw = item["value"]
-        if kind == "string":
-            result.append(
-                DocumentField(name, PayloadValue.string(String(py=raw)))
-            )
-        elif kind == "int":
-            result.append(
-                DocumentField(name, PayloadValue.integer(Int64(py=raw)))
-            )
-        elif kind == "float":
-            result.append(
-                DocumentField(name, PayloadValue.floating(Float64(py=raw)))
-            )
-        elif kind == "bool":
-            result.append(
-                DocumentField(name, PayloadValue.boolean(Bool(py=raw)))
-            )
-        else:
-            raise Error("unknown payload value type")
+        var parsed = payload_value_from_python(kind, raw)
+        nodes += parsed.node_count()
+        content += name.byte_length() + parsed.content_bytes()
+        if nodes > PayloadValue.MAX_NODES or content > PayloadValue.MAX_BYTES:
+            raise Error("payload node count or content exceeds limit")
+        result.append(DocumentField(name, parsed^))
     return result^
 
 
@@ -1987,36 +1980,16 @@ def _bounded_filter_expression(value: PythonObject, depth: Int, mut count: Int) 
 
 
 def _payload_value(kind: String, raw: PythonObject) raises -> PayloadValue:
-    if kind == "string":
-        return PayloadValue.string(String(py=raw))
-    if kind == "int":
-        return PayloadValue.integer(Int64(py=raw))
-    if kind == "float":
-        return PayloadValue.floating(Float64(py=raw))
-    if kind == "bool":
-        return PayloadValue.boolean(Bool(py=raw))
-    raise Error("unknown payload value type")
+    if kind != "string" and kind != "int" and kind != "float" and kind != "bool":
+        raise Error("unknown filter value type")
+    return payload_value_from_python(kind, raw)
 
 
 def _field_to_python(field: DocumentField) raises -> PythonObject:
-    var kind: String
-    var value: PythonObject
-    if field.value.is_string():
-        kind = "string"
-        value = PythonObject(field.value.as_string())
-    elif field.value.is_integer():
-        kind = "int"
-        value = PythonObject(field.value.as_int())
-    elif field.value.is_floating():
-        kind = "float"
-        value = PythonObject(field.value.as_float())
-    else:
-        kind = "bool"
-        value = PythonObject(field.value.as_bool())
     return Python.dict(
         name=PythonObject(field.name),
-        type=PythonObject(kind),
-        value=value,
+        type=PythonObject(payload_kind_name(field.value)),
+        value=payload_value_to_python(field.value),
     )
 
 

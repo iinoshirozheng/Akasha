@@ -49,7 +49,7 @@ probe also checks the mmap ABI against Mojo's layout constants, and macOS runs
 the mapping tests with a generic ARM64 CPU target without AMX. GPU validation
 remains the separate `pixi run test-gpu` gate on actual GPU hardware.
 
-Store a vector with a flat typed document payload, then retrieve the complete
+Store a vector with a typed document payload, then retrieve the complete
 document through a search result ID:
 
 ```mojo
@@ -86,15 +86,20 @@ var chunk = document.value().get_field("chunk_text").value().as_string()
 
 `upsert(id, vector)` remains available for vector-only records. The document
 API accepts at most 1,024 unique, non-empty field names and a 16 MiB encoded
-payload. Values are explicitly tagged as `String`, `Int64`, finite `Float64`,
-or `Bool`. `get(id)` returns an owned record containing its vector, sequence,
+payload. Values support `String`, `Int64`, finite `Float64`, `Bool`, `UInt64`,
+null, arrays and ordered objects. Containers are bounded to 64 levels and 65,536
+value nodes across a payload. Nested object keys may be empty or contain NUL;
+top-level field names retain their existing constraints. The independently
+versioned [payload codec](docs/formats/payload-format.md) reads old v1 data and
+emits v2 on new writes/checkpoints. `get(id)` returns an owned record containing its vector, sequence,
 and fields; deleted or unknown IDs return `None`.
 
 Typed metadata filters are available for dot-product, squared-L2, and cosine
 search through `search_*_filtered`. Conditions are combined with AND and run
 before vector scoring. String and Bool support `==` and `!=`; Int64 and finite
-Float64 additionally support `<`, `<=`, `>`, and `>=`. Missing fields and type
-mismatches do not match, including inequality. Phase 4.2 performs a linear
+Float64 additionally support `<`, `<=`, `>`, and `>=`. Missing/null fields do not
+match. Arrays use one-level any-element evaluation; string/integer inequality
+follows Qdrant MatchExcept, including other present types. Phase 4.2 performs a linear
 migration-compatible API; Phase 9 evaluates it through the derived metadata
 index.
 

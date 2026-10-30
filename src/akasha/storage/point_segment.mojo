@@ -79,6 +79,8 @@ def encode_point_segment(
     last_sequence: UInt64,
     points: List[PointState],
     catalog: FieldCatalog,
+    *,
+    payload_version: Int = 2,
 ) raises -> List[UInt8]:
     var writer = BinaryWriter()
     writer.write_bytes(
@@ -93,7 +95,7 @@ def encode_point_segment(
             raise Error("point segment IDs must strictly increase")
         previous_id = point.id
         _validate_point(point, kind, min_sequence, last_sequence)
-        writer.write_bytes(encode_point_record(point, catalog))
+        writer.write_bytes(encode_point_record(point, catalog, payload_version=payload_version))
     var bytes = writer.take_bytes()
     var checksum = crc32_range(bytes, 4, len(bytes))
     for shift in range(0, 32, 8):

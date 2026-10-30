@@ -158,9 +158,14 @@ WAL writers emit version 2 records and incremental segment writers emit version
 3 base/delta records that store vectors and encoded payloads as one checksummed
 unit. Readers also accept Phase 3 Segment v1/v2 vector-only or snapshot records;
 a later flush upgrades them into the current generation model. Payloads are
-flat ordered fields with unique,
-non-empty names. Supported values are String, Int64, finite Float64, and Bool,
-with a maximum of 1,024 fields and 16 MiB encoded payload per document.
+ordered top-level fields with unique, non-empty names. Values include String,
+Int64, finite Float64, Bool, UInt64, null, arrays and ordered nested objects.
+Limits are 1,024 fields, 65,536 value nodes, 64 container levels per field and
+16 MiB encoded payload. New writes use the independently versioned
+[payload v2](formats/payload-format.md); v1 remains readable. Scalar values stay
+inline; containers use an owned preorder arena. Scalar indexes retain their
+existing layouts; rows with rich values are checked by the native source-derived
+plain condition evaluator until D03's dedicated indexes are implemented.
 
 The first point checkpoint publishes a complete-state base; later flushes append
 only the latest changed states as L0 deltas. Recovery validates and applies

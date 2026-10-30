@@ -189,3 +189,18 @@ Rust 1.97.1, licensed MIT OR Apache-2.0. The MIT license is retained at
 and native artifact hashes are recorded in `docs/upstream/ports.json` and the
 JSON-path fixture. There is no runtime Rust/nom/Python classification dependency.
 The reference-only Cargo dependency graph is pinned in the fixture's Cargo.lock.
+
+### Rich payload value access and mutation
+
+`document/payload_path.mojo` ports the JSON value get/set/remove routines from
+Qdrant `lib/segment/src/json_path/mod.rs` and `merge_map` from
+`lib/segment/src/common/utils.rs` at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0).
+Bounded owned Mojo arenas adapt serde_json trees; map ordering and swap removal
+follow Qdrant's `preserve_order` configuration. Payload binary v2 is Akasha's
+versioned durable representation, not Qdrant's on-disk codec. The oracle compiles
+unchanged source bodies; see `tests/fixtures/qdrant-payload-values/README.md`.
+`query/evaluator.mojo` also ports one-level array and null/MatchExcept checks
+from `lib/segment/src/payload_storage/condition_checker.rs` at the same revision.
+Rich values without a dedicated field index use this check in the metadata
+index; the source oracle compares both direct and indexed results.

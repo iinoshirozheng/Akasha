@@ -9,7 +9,8 @@ not part of this format. New catalogs require a separately specified migration.
 All fields are little-endian. The final u32 is CRC-32/ISO-HDLC over bytes
 `[4, end-4)`, excluding magic and the checksum itself. Magic is checked separately.
 Validate the entire envelope, catalog binding and all contained records before
-returning anything for publication. Payload uses payload-v1; vector bodies and
+returning anything for publication. Payload uses independently versioned
+[payload v1/v2](payload-format.md); vector bodies and
 complete point records use [the point contract](point-record-format.md).
 
 ## WAL v5 (with frozen v4 reader)
@@ -43,8 +44,9 @@ v5 replacement semantics. New writes always use v5. The wire layouts otherwise
 match, and the version participates in the checksum.
 
 Payload action is absent=0 or replace=1. Replace starts the body with
-`payload_length:u32, payload:bytes`; replacement by empty is a four-byte zero
-payload field count, not a zero-length payload. Absent contains no payload bytes.
+`payload_length:u32, payload:bytes`; replacement by empty is the 12-byte v2
+payload header (historically the four-byte zero v1 field count), not a zero-length
+payload. Absent contains no payload bytes.
 
 Next are exactly field_count actions, in strictly increasing known field-ID order:
 `field_id:u32, action:u8, flags:u8, reserved:u16, body_length:u32, body:bytes`.

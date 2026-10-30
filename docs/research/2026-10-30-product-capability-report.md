@@ -28,8 +28,8 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 | --- | --- | --- |
 | 向量 | dense/sparse/named/MaxSim、Dot/L2/cosine、HNSW、RRF／加權 RRF／DBSF、SQ8/PQ、IVF、同型別點 ID 查詢與跨 collection lookup、三種 exact 與 dense HNSW 推薦策略、來源對照的稀疏推薦執行、nearest MMR、原生 discovery/context 與 dense 兩階段 HNSW、nested prefetch 查詢樹、來源 MMR 階段與數值公式 | 完整 Query API、其他 metric、multivector HNSW、稀疏設定／IDF與完整來源 planner 對齊、探索批次與完整協定、完整公式／抽樣／feedback、完整跨型別與儲存前處理對照等；推薦重複向量召回缺口保留，所有邊界尚未暴露完整核心 |
 | 原生資料型別 | F32/F16/BF16/I8/U8、packed Hamming/Jaccard | Qdrant 不同 datatype／quantization 需逐項對照，不能把 raw storage 當量化等價 |
-| 文件 | 平面 string/int/float/bool、部分更新、整筆取代 | nested JSON、陣列、null、日期／UUID／geo、完整 payload 操作 |
-| 搜尋／過濾 | 布林條件、純量索引、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、排序／分組／通用聚合 |
+| 文件 | string/int/float/bool、物件／陣列／null／UInt64、部分更新、整筆取代；payload v2 與舊格式讀取 | rich Arrow、collection 路徑更新、任意頂層鍵、日期／UUID／geo、完整 payload 操作 |
+| 搜尋／過濾 | 布林條件、純量索引、單層陣列條件、null 排除、snapshot scan、投影 | 全文 tokenizer／BM25／phrase、nested／geo、專用陣列索引、排序／分組／通用聚合 |
 | 儲存 | WAL、原子點批次、manifest、compaction、mmap、恢復 | 歷史版本、time travel、動態 schema、Lance 相容、物件儲存、Blob 管理 |
 | 交易 | 單 collection 原子批次、固定讀視圖、序列化 writer | BEGIN/COMMIT/ROLLBACK、隔離與衝突規則、跨 collection 原子性、約束 |
 | 邊界 | Python、C ABI、Arrow、部分 FastAPI 路由 | Qdrant REST/gRPC 相容、完整 CRUD 管理與批次功能、SDK 生態 |
@@ -56,6 +56,38 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 不計算無分母的完成百分比。細項以可驗收的任務與來源清單追蹤。
 
+### 如何理解「比 Qdrant 多多少」
+
+可以列出三組額外向量選擇，但不能據此說產品總功能比較多：
+
+| Akasha 的額外選擇 | 實際能力及限制 |
+| --- | --- |
+| IVF 候選搜尋 | 已有原生查詢路徑；尚未實現 LanceDB 全套持久 IVF 組合索引 |
+| 原生 BF16／signed I8 | 儲存和計分型別；不等同 Qdrant 的 uint8 或量化模式 |
+| 原生 packed binary Hamming／Jaccard | 可直接處理二進位向量；與浮點向量的 binary quantization 是不同契約 |
+
+C ABI、Arrow C Data 和 GPU exact batch 是整合／執行選擇，也不宜把每個介面
+名稱算作獨立的產品優勢。Qdrant 已有 Edge 嵌入式產品和 GPU 索引能力，不能
+泛稱嵌入式或 GPU 為 Akasha 獨有。此比較以固定來源盤點及當日官方
+[向量文件](https://qdrant.tech/documentation/manage-data/vectors/)、
+[索引文件](https://qdrant.tech/documentation/manage-data/indexing/) 和
+[Edge 文件](https://qdrant.tech/documentation/edge/) 為依據。
+
+### 一般 DB 功能的可用邊界
+
+| 能力 | Akasha 當前狀態 |
+| --- | --- |
+| CRUD、依 ID 讀取、條件過濾、欄位投影、批次掃描 | 已有，支援範圍依原生／Python API |
+| 純量索引、WAL、重啟恢復、compaction、備份還原 | 已有；不能推論所有部署和事故情境已驗收 |
+| 單 collection 原子批次、保留固定讀視圖 | 已有；不是任意歷史版本查詢或可組合交易 |
+| SQL、JOIN、通用 GROUP BY／聚合、CTE、window | 尚未實作 |
+| BEGIN／COMMIT／ROLLBACK、跨 collection 交易 | 尚未實作 |
+| UNIQUE／外鍵等約束、view、trigger、procedure | 尚未實作 |
+
+LanceDB 的 [table versioning](https://docs.lancedb.com/tables/versioning) 與
+[schema evolution](https://docs.lancedb.com/tables/schema) 是另外的持久資料能力，
+Akasha 的 Arrow 邊界與讀快照尚不能取代它們。
+
 Dense HNSW 推薦的實作、對照及品質限制見
 [推薦 ANN 驗證](2026-10-30-recommendation-ann-validation.md)。能執行這個路徑
 不等於完整 Qdrant Query API、整體品質或效能達標。
@@ -77,8 +109,11 @@ Python 測試已驗證；完整 JSON-path、日期、地理與 rich defaults 仍
 
 D01a／Q04c 已移植共用 JSON-path 語法、路徑操作與 Rust Unicode 17 分類，
 公式可讀取加引號的字面欄位、Unicode 名稱並接受完整 UInt64 分數索引。
-這不代表物件／陣列／null 已可持久化；巢狀值讀寫及遷移仍待完成。
-見[路徑驗證](2026-10-30-json-path-validation.md)。
+此階段只有路徑語法，見[路徑驗證](2026-10-30-json-path-validation.md)。
+後續 D01b 已加入物件／陣列／null／UInt64 持久化及來源對照的 owned-value
+get/set/remove；Python、現有 HTTP、備份與 NDJSON v2 可保存巢狀資料。
+完整路徑更新 API、rich Arrow、nested formula／filter 及專用索引仍未完成。
+見[rich payload 驗證與範圍](2026-10-30-rich-payload-validation.md)。
 
 探索／context 已接上 Mojo／Python／Arrow 的 exact、稀疏完整計分與 dense 兩階段
 HNSW，含同 collection ID 排除、外部 lookup 與 snapshot。來源對照也修正了

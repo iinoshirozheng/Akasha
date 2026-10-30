@@ -1083,6 +1083,101 @@
         "tests/mojo/test_formula.mojo": "1385307be2994f17c6ae759ca05a1ac4368bfd79ca7384282850a3ee27627813",
         "tests/python/test_formula_paths.py": "f0e89479def7704d935a6de501f2e936300fe226ae10ccd7cc16ce5d38b5b71b"
       }
+    },
+    {
+      "id": "D01b-D03a-rich-payload",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/segment/src/json_path/mod.rs": "5c34bedfa86a6ab21c295bfddb2a62fc841f11fb4e3c3c01f16c2fdfc4b1f60f",
+        "lib/segment/src/json_path/parse.rs": "727673018f576be73e2fcdfa2a3a9edda21aeda616de1a9f4e2c5459504734fa",
+        "lib/segment/src/common/utils.rs": "d90c74eae87bf01794767eff923951309764395ef30ab1c4fb4c8c5a24153e53",
+        "lib/segment/src/payload_storage/condition_checker.rs": "1976c780204582ed87b51a882543245e5f2673c3dbec8b2ddd7f39aa2531ca30",
+        "Cargo.toml": "118c4b78ceba23d873ca87078f2fed94f01ec1eb69396d0f1145c869280175bf"
+      },
+      "oracle_units": {
+        "pub struct JsonPath {": "7e83c0c0f13d7bc0fcba4a05844d0bccfe75c6ac51f8ecadf98f99d0bdff6e32",
+        "pub enum JsonPathItem {": "dfae90bd56fc258716e1a403ae616ae34d5af504d9f65900cd0b1b3be38e9c01",
+        "pub fn value_get<": "cbfeaadf19427d868eec26c1b0a56a3951c9526088d5c0a075c01f25d7763b1d",
+        "pub fn value_set<": "0dfd24e8d79a3a93ac211adde39e32cf3cb2ab442988898256091023ff4f33b1",
+        "pub fn value_remove(": "fbefc9e63e0e46a4bac41701086737d37a62e7041bcc9e97b4b3c5794a554c69",
+        "fn value_get<": "1406c63f49a1706210aaa71006b13a928787172dd84a026297c3276d45c21435",
+        "fn value_set(": "b41fbe91ee805b0c915eacc9d3bfb0ac99dc77af013086d12f9578dc248740e3",
+        "fn value_set_map(": "51485c4d98f9bd45f2948f580c8d4e05895d40b6ae80342cdf8da2e42b58d1f2",
+        "fn value_remove(": "ac2f9134d1836865c2727aff46a09383c2a86398fb954c2c674f7997136bf486",
+        "pub fn merge_map(": "9d489e64b516e96b6a0c635c1c0f0dc9351bdbe78890e0f77c551aa4def43c16",
+        "pub trait ValueChecker {": "2221f452ffe013631fcc9a683479938191e370f205a37b36332cf37040db7751",
+        "impl ValueChecker for Match {": "2d1e36318695e07ae74baef59b9e722b811a6f6531f2b47f658494b0f3751ba8"
+      },
+      "scaffold_sha256": "bb4e5c61e5465d718c75883b522536689b3b0acb74b44c158c207a95a75971e0",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/document/value.mojo",
+        "src/akasha/document/payload_path.mojo",
+        "src/akasha/document/codec.mojo",
+        "src/akasha/document/record.mojo",
+        "src/akasha/document/point_codec.mojo",
+        "src/akasha/storage/point_segment.mojo",
+        "src/akasha/storage/point_wal.mojo",
+        "src/akasha/index/metadata.mojo",
+        "src/akasha/query/evaluator.mojo",
+        "src/bindings/payload_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/models.py",
+        "python/akashadb/logical_points.py",
+        "apps/server/schemas.py",
+        "src/akasha/document/__init__.mojo",
+        "src/akasha/__init__.mojo"
+      ],
+      "fixture": "tests/fixtures/qdrant-payload-values/values.json",
+      "fixture_sha256": "881e5d475d90733d04c9d7abc163b1a20ec3f8f797e32f4761a4c11caabc726b",
+      "cargo_lock": "tests/fixtures/qdrant-payload-values/Cargo.lock",
+      "cargo_lock_sha256": "ac0b60ab562939df8d98c2ac94d1b28386af131e9a3135217b4755d56fd8b598",
+      "reference_value_cases": 2088,
+      "reference_filter_cases": 110,
+      "adaptations": [
+        "Bounded owned preorder Mojo arenas replace recursive serde_json trees; scalar values remain inline",
+        "Original get/set/remove/merge semantics, preserve_order map replacement and swap removal; owned atomic replacement",
+        "Akasha self-versioned payload v2 and legacy v1 readers within existing checksummed envelopes; no Qdrant disk-format compatibility claim",
+        "Explicit scalar Python conversion protocols preserved; strict nested JSON, owned round trips and exact UInt64 transport",
+        "One-level array/null/MatchExcept and UInt64 predicates shared between direct and unindexed rich-row metadata evaluation",
+        "Reference MultiValue uses Vec; single-literal Match membership uses HashSet adapter; unrelated derives omitted",
+        "Original parser with nom 8.0.0 and serde_json 1.0.151 preserve_order; Cargo.lock fixes reference-only dependencies",
+        "NDJSON v2 with v1 reads; native small nested UInt64 labels cannot survive JSON numeric type erasure",
+        "Collection path mutations, rich Arrow, dedicated nested indexes, complete protocol/distributed boundaries remain open"
+      ],
+      "status": "verified_rich_storage_python_http_owned_paths_full_D01_D03_pending",
+      "verification": [
+        "docs/research/2026-10-30-rich-payload-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/value.mojo": "47cfb57159e2fd3488966f0a6de7c779509093185c8f15d4ceba22c392e13421",
+        "src/akasha/document/payload_path.mojo": "13a6047efcc2ad35ccffed847708a5cb64d90b6df563fb894f030d2af2f66dc2",
+        "src/akasha/document/codec.mojo": "9fa707047f25f78aa5d5d80f8d148733b5a3d13b5ad5b282064fcc4e00c52410",
+        "src/akasha/document/record.mojo": "5b3138cdf2ff06955ac88f31c2f99918da404f339c8bb644b84d4f72afdd7b9d",
+        "src/akasha/document/point_codec.mojo": "f57a37f6e38095d620174433697833af3a8e2006d5f06a9716b8a064507798ea",
+        "src/akasha/storage/point_segment.mojo": "5119f1fdb6fd99fb1099c1e1463055670b75fc6c750ee55da9dda9839bf80467",
+        "src/akasha/storage/point_wal.mojo": "e382302f212e0cd88cf0a6eb0a7286270e5504cfbc069c82b38e458c9617af84",
+        "src/akasha/index/metadata.mojo": "84140f1a879ca702c8b04ce29db678701289026f0da90a7ef0e3b5fe9f24a013",
+        "src/akasha/query/evaluator.mojo": "c1e0cb08a489b00e82cd1a05f0d8fa67fac4955145cab3a5af27513caaf1ed3b",
+        "src/bindings/payload_python.mojo": "3efe84a7c9a08d0cdc9584df27d1ec3b9c64858b16617e2c44337561be33d713",
+        "src/bindings/python_module.mojo": "2d18f9773ebec39132eed9c6faa635e0214b4674067dbf3103939a3e6f22ee31",
+        "python/akashadb/models.py": "dc8d91c9f981e0b77d8571b648262bf759f956597b528e8d017ff3143e433bf3",
+        "python/akashadb/logical_points.py": "3733c01d1899caf3ba8c95d2f9119d54bfa3904545c55304fc21df74a53c0cd4",
+        "apps/server/schemas.py": "a4ab8c0cfb8e6df6facf4d3371b986205e47ac45a6e8ac1718e9ae18c6b8a03e",
+        "src/akasha/document/__init__.mojo": "e3261664d18ab4823598b5edfc969bd246c821e7840872c387e6507a0bd19701",
+        "src/akasha/__init__.mojo": "ced007b872de442a4b5f2614defac6eaf557f251f80822ee386760867402ec74",
+        "scripts/qdrant_payload_reference.py": "2128c76a46192640755b4deea1e66c20c71676de1a09b87873ddeb0d559d10fe",
+        "tests/mojo/test_rich_payload.mojo": "782f631e86a43e4c069e45b729193bb221825e8d408f4ffd5959562191261881",
+        "tests/mojo/test_point_codec.mojo": "fd82134ccc5bcb1dbc904fd8e76c57326e0b7bacdf39018d8eb61f54fc88e0d0",
+        "tests/mojo/test_field_envelopes.mojo": "72f349fb0904548da4e97b0750e9576514d634a7d43b6721892649cbe77fa8fd",
+        "tests/mojo/test_point_segment_mapped.mojo": "4387a9f8a4af70f1b47890070d8e9dfc32df278b66c1266df405943391d4cedc",
+        "tests/python/test_rich_payload.py": "f827ee2658b4fc2eb86ec06163bf31630b7b9450b3ec493b11afb98451581d43",
+        "tests/fixtures/payload/v1.bin": "ed4867ea9168f4bb82d43652a4ba507c34caacc6026b8403afd9bce1ec34d954",
+        "tests/fixtures/payload/v2.bin": "8b04ea0d95701c804ae80d24adcbd57a1455260f6fc42d9736b09e85562ff7e6"
+      }
     }
   ]
 }
