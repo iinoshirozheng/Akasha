@@ -409,6 +409,14 @@ arithmetic NaNs are compared by classification because their payload/sign are
 not a portable arithmetic guarantee. This API is a native selector dependency,
 and backs the selector below. See [numeric validation](research/2026-10-30-jsonb-number-validation.md).
 
+Exact Number conversions `as_i64()` and `as_u64()` return `Optional` and reject
+fractional values. Rounded `to_i128()`, `to_i64()` and `to_u64()` follow source
+nearest-integer rounding with ties away from zero, returning absence on overflow
+or nonfinite input. Decimal conversion uses fixed-width integer arithmetic;
+it does not pass through Float64. Float target checks use half-open bounds.
+Scale-zero, scales beyond representable powers, negative zero, signed minima and
+unsigned maxima retain the original Number contract.
+
 ## JSONB value queries
 
 Python `JsonbValue.query(path: str | bytes, *, mode="values", max_work=1_000_000,
@@ -530,3 +538,40 @@ repeated DAG children consume work on each visit. Native QueryControl applies
 cancellation, deadlines and candidate budgets. Both formatters reject nonpositive
 limits; Number formatting has fixed bounded internal output before its byte
 limit check. These are native helpers, with no new Python/protocol API.
+
+## Source scalar casts
+
+Python `JsonbValue.cast(target)` delegates the original RawJsonb scalar
+conversion to Mojo. Targets are `bool`, `int64`, `uint64`, `float64`, and `string`.
+Invalid targets or conversions raise `ValidationError`; the existing carrier
+constructor retains its `TypeError`/`ValueError` checks for type/size violations.
+
+```python
+from akashadb import JsonbValue
+
+assert JsonbValue.from_json('1.5').cast('int64') == 2
+assert JsonbValue.from_json('-1.5').cast('int64') == -2
+assert JsonbValue.from_json('"18446744073709551615"').cast('uint64') == 2**64 - 1
+assert JsonbValue.from_json('"YeS"').cast('bool') is True
+assert JsonbValue.from_json('"hello"').cast('string') == 'hello'
+```
+
+Native equivalents, exported by `akasha.document`, are `jsonb_to_bool`,
+`jsonb_to_i64`, `jsonb_to_u64`, `jsonb_to_f64`, and `jsonb_to_str`.
+
+- Boolean casts accept booleans or ASCII-case-insensitive `true`, `false`, `yes`,
+  `no` strings. Numeric 0/1 and strings `"0"`/`"1"` are rejected.
+- Integer casts convert booleans to 0/1 and round numeric values using Number's
+  source rules. Strings try exact signed/unsigned integer parsing first, then
+  float parsing and rounding. They do not trim whitespace.
+- Float casts accept numbers, booleans and source-compatible numeric strings,
+  including nonfinite values. Exact IEEE bits are checked against Rust parsing.
+- String casts return an existing string unquoted, booleans as lowercase text,
+  and numbers through Number Display, including Decimal scale and source quirks.
+
+Null, arrays, objects and extension values reject these raw casts. This differs
+from Lance's nullable get functions, which must check null/missing before
+casting. Those consumers remain a separate integration step. It also differs
+from `to_json()`, which serializes complete containers and quotes strings.
+Cast failures do not mutate stored values, and returned strings own their bytes.
+Existing binary input bounds apply; no durable format or query contract changes.

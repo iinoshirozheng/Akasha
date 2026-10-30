@@ -1,12 +1,13 @@
 """jsonb 0.5.6 Number arithmetic/comparison (Datafuse Labs, Apache-2.0).
 
-Fixed-width multiplication uses ethnum 1.5.3's native umulddi3/mul3 (MIT)
-and Arrow 58.4.0's checked signed i256 multiplication (Apache-2.0).
-The latter avoids importing division solely to detect multiplication overflow.
+Fixed-width multiplication and unsigned division use ethnum 1.5.3's native
+primitives (MIT); checked signed multiplication follows Arrow 58.4.0
+(Apache-2.0). Source exact/rounded conversions share these fixed-width words.
 No number is serialized between expression operations: variant and zero sign
 are part of the source contract, unlike canonical binary JSONB zero encoding.
 """
-from std.math import isnan
+from std.math import isnan, isfinite
+from std.bit import count_leading_zeros
 from std.ffi import external_call
 from std.memory import bitcast
 from akasha.document.jsonb import JsonbValue, _read_be
@@ -103,6 +104,160 @@ def _umul128(a: UInt128, b: UInt128) -> _Wide:
     high += t >> 64
     high += (a >> 64) * (b >> 64)
     return _Wide(high, low)
+
+
+def _udiv256_128(high: UInt128, low: UInt128, var divisor: UInt128) -> Tuple[UInt128, UInt128]:
+    # ethnum: caller guarantees 0 <= high < divisor. Normalize into base 2^64.
+    var base = UInt128(1) << 64
+    var shift = Int(count_leading_zeros(divisor))
+    var top = high
+    var bottom = low
+    if shift > 0:
+        divisor <<= UInt128(shift)
+        top = (high << UInt128(shift)) | (low >> UInt128(128 - shift))
+        bottom = low << UInt128(shift)
+    var divisor_high = divisor >> 64
+    var divisor_low = divisor & UInt128(UInt64.MAX)
+    var bottom_high = bottom >> 64
+    var bottom_low = bottom & UInt128(UInt64.MAX)
+    var q1 = top // divisor_high
+    var remainder = top - q1 * divisor_high
+    while q1 >= base or q1 * divisor_low > base * remainder + bottom_high:
+        q1 -= 1
+        remainder += divisor_high
+        if remainder >= base:
+            break
+    var middle = top * base + bottom_high - q1 * divisor
+    var q0 = middle // divisor_high
+    remainder = middle - q0 * divisor_high
+    while q0 >= base or q0 * divisor_low > base * remainder + bottom_low:
+        q0 -= 1
+        remainder += divisor_high
+        if remainder >= base:
+            break
+    remainder = (middle * base + bottom_low - q0 * divisor) >> UInt128(shift)
+    return (q1 * base + q0, remainder)
+
+
+def _wide_div128(value: _Wide, divisor: UInt128) raises -> Tuple[_Wide, UInt128]:
+    if divisor == 0:
+        raise Error("wide division by zero")
+    if value.high == 0:
+        return (_Wide(0, value.low // divisor), value.low % divisor)
+    # ethnum udivmod4: high-word division before the two-digit primitive.
+    var high = value.high // divisor
+    var low, remainder = _udiv256_128(value.high % divisor, value.low, divisor)
+    return (_Wide(high, low), remainder)
+
+
+def _unsigned_cmp(a: _Wide, b: _Wide) -> Int:
+    if a.high != b.high:
+        return -1 if a.high < b.high else 1
+    return -1 if a.low < b.low else (1 if a.low > b.low else 0)
+
+
+def _sub_carry(a: UInt128, b: UInt128, carry: Bool) -> Tuple[UInt128, Bool]:
+    var right = b + UInt128(carry)
+    return (a - right, right < b or a < right)
+
+
+def _add_carry(a: UInt128, b: UInt128, carry: Bool) -> Tuple[UInt128, Bool]:
+    var right = b + UInt128(carry)
+    var result = a + right
+    return (result, right < b or result < a)
+
+
+def _unsigned_sub(a: _Wide, b: _Wide) -> _Wide:
+    return _Wide(a.high - b.high - UInt128(a.low < b.low), a.low - b.low)
+
+
+def _wide_divmod(value: _Wide, divisor: _Wide) raises -> Tuple[_Wide, _Wide]:
+    """ethnum udivmod4/div_mod_knuth, with unsigned two-word inputs."""
+    if divisor.zero():
+        raise Error("wide division by zero")
+    if _unsigned_cmp(value, divisor) < 0:
+        return (_Wide(0, 0), value)
+    if divisor.high == 0:
+        var quotient, remainder = _wide_div128(value, divisor.low)
+        return (quotient, _Wide(0, remainder))
+    # D1: normalize into a three-word dividend and a two-word divisor.
+    var shift = Int(count_leading_zeros(divisor.high))
+    var v0 = divisor.low
+    var v1 = divisor.high
+    var u0 = value.low
+    var u1 = value.high
+    var u2 = UInt128(0)
+    if shift > 0:
+        v0 = divisor.low << UInt128(shift)
+        v1 = (divisor.high << UInt128(shift)) | (divisor.low >> UInt128(128 - shift))
+        u0 = value.low << UInt128(shift)
+        u1 = (value.high << UInt128(shift)) | (value.low >> UInt128(128 - shift))
+        u2 = value.high >> UInt128(128 - shift)
+    # D3: estimate/correct the only possible quotient digit.
+    var q = UInt128.MAX
+    if u2 < v1:
+        var r: UInt128
+        q, r = _udiv256_128(u2, u1, v1)
+        while True:
+            var product = _umul128(q, v0)
+            if product.high < r or (product.high == r and product.low <= u0):
+                break
+            q -= 1
+            var previous = r
+            r += v1
+            if r < previous:
+                break
+    # D4: fullmul_u256_u128 and three-word subtraction with borrow.
+    var lower = _umul128(v0, q)
+    var upper = _umul128(v1, q)
+    var p1 = lower.high + upper.low
+    var p2 = upper.high + UInt128(p1 < lower.high)
+    var carry = False
+    u0, carry = _sub_carry(u0, lower.low, carry)
+    u1, carry = _sub_carry(u1, p1, carry)
+    u2, carry = _sub_carry(u2, p2, carry)
+    # D6: retain the source's rare estimate-too-large correction.
+    if carry:
+        q -= 1
+        carry = False
+        u0, carry = _add_carry(u0, v0, carry)
+        u1, carry = _add_carry(u1, v1, carry)
+        u2 += UInt128(carry)
+    # D8: denormalize the remainder without a shift by the word width.
+    var remainder = _Wide(u1, u0)
+    if shift > 0:
+        remainder.low = (u0 >> UInt128(shift)) | (u1 << UInt128(128 - shift))
+        remainder.high = (u1 >> UInt128(shift)) | (u2 << UInt128(128 - shift))
+    return (_Wide(0, q), remainder)
+
+
+def _decimal_integer(value: _Wide, scale: Int, width: Int, exact: Bool) raises -> Optional[_Wide]:
+    # jsonb exact_decimal_i128/i256 and round_decimal_i128/i256.
+    if scale == 0:
+        return value
+    if scale > (77 if width == 256 else 38):
+        return _Wide(0, 0) if not exact or value.zero() else Optional[_Wide]()
+    var divisor = _Wide(0, 10).pow(scale)
+    var negative = value.negative()
+    var magnitude = value.neg() if negative else value
+    var quotient, remainder = _wide_divmod(magnitude, divisor)
+    if exact:
+        if not remainder.zero():
+            return None
+    elif _unsigned_cmp(remainder, _unsigned_sub(divisor, remainder)) >= 0:
+        var low = quotient.low + 1
+        var high = quotient.high + UInt128(low == 0)
+        if high < quotient.high:
+            return None
+        quotient = _Wide(high, low)
+    # Original signed_i256_from_abs checks magnitude before applying the sign.
+    if quotient.negative():
+        return None
+    return quotient.neg() if negative else quotient
+
+
+def _fits_i128(value: _Wide) -> Bool:
+    return value.high == (UInt128.MAX if bitcast[DType.int128](value.low) < 0 else UInt128(0))
 
 
 def _ordered_float_cmp(a: Float64, b: Float64) -> Int:
@@ -214,6 +369,64 @@ struct JsonbNumber(ImplicitlyCopyable):
             bytes.append(byte)
         bytes.append(self.scale)
         return _decimal_float(Span(bytes))
+
+    def _integer(self, exact: Bool) raises -> Optional[_Wide]:
+        if self.kind == 0 or self.kind == 1:
+            return self.value
+        if self.kind == 2:
+            var value = self.as_f64()
+            if not isfinite(value):
+                return None
+            if exact:
+                if external_call["trunc", Float64](value) != value:
+                    return None
+            else:
+                # Rust round() and libm round use ties away from zero.
+                value = external_call["round", Float64](value)
+            var lower = Float64(Int128.MIN)
+            if value < lower or value >= -lower:
+                return None
+            return _Wide.signed(Int128(value))
+        if self.kind >= 3 and self.kind <= 5:
+            return _decimal_integer(self.value, Int(self.scale), 256 if self.kind == 5 else 128, exact)
+        raise Error("invalid JSONB Number kind")
+
+    def as_i64(self) raises -> Optional[Int64]:
+        """Exact source i64 conversion; fractional values are absent."""
+        var value = self._integer(True)
+        if not value:
+            return None
+        var integer = bitcast[DType.int64](UInt64(value.value().low))
+        var expected = _Wide.signed(Int128(integer))
+        if value.value().high != expected.high or value.value().low != expected.low:
+            return None
+        return integer
+
+    def as_u64(self) raises -> Optional[UInt64]:
+        """Exact source u64 conversion, rejecting negative/fractional values."""
+        var value = self._integer(True)
+        if not value or value.value().high != 0 or value.value().low > UInt128(UInt64.MAX):
+            return None
+        return UInt64(value.value().low)
+
+    def to_i128(self) raises -> Optional[Int128]:
+        """Source rounding to nearest integer, ties away from zero."""
+        var value = self._integer(False)
+        if not value or not _fits_i128(value.value()):
+            return None
+        return bitcast[DType.int128](value.value().low)
+
+    def to_i64(self) raises -> Optional[Int64]:
+        var value = self.to_i128()
+        if not value or value.value() < Int128(Int64.MIN) or value.value() > Int128(Int64.MAX):
+            return None
+        return Int64(value.value())
+
+    def to_u64(self) raises -> Optional[UInt64]:
+        var value = self.to_i128()
+        if not value or value.value() < 0 or value.value() > Int128(UInt64.MAX):
+            return None
+        return UInt64(value.value())
 
     def cmp(self, other: Self) raises -> Int:
         if self.kind == 2 or other.kind == 2:

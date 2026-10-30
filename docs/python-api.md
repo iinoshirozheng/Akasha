@@ -323,6 +323,23 @@ The strict ordinary-JSON filter/formula configuration path does not accept a
 JSONB carrier. Collection-level JSONB filtering/projection and indexes remain
 in progress; [wire format](formats/logical-point-format.md) specifies transport.
 
+`JsonbValue.cast(target)` provides Mojo scalar conversion to `bool`, `int64`,
+`uint64`, `float64` or `string`. Integer casts round ties away from zero; numeric
+strings try exact integer parsing before floating conversion. Boolean casts
+accept booleans and true/false/yes/no strings (ASCII case-insensitive), while
+numeric 0/1 are invalid. String casts return unquoted text and use exact source
+Number Display for numbers. Null, containers, extensions and invalid inputs
+raise `ValidationError`; this is separate from nullable Lance get operations.
+
+```python
+assert JsonbValue.from_json('-1.5').cast('int64') == -2
+assert JsonbValue.from_json('"YES"').cast('bool') is True
+assert JsonbValue.from_json('"hello"').cast('string') == 'hello'
+```
+
+See [scalar cast contracts](native-jsonb.md#source-scalar-casts), including exact
+integer limits, nonfinite values and differences from `to_json()`.
+
 Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array

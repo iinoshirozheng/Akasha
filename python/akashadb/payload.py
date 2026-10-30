@@ -73,6 +73,24 @@ class JsonbValue:
         except Exception as error:
             raise map_kernel_error(error) from error
 
+    def cast(self, target: str) -> bool | int | float | str:
+        """Apply source JSONB scalar conversion in Mojo.
+
+        Targets: bool, int64, uint64, float64, string. Integer casts round
+        ties away from zero. Null/containers and invalid casts raise; string
+        conversion returns unquoted text and uses exact Number Display.
+        """
+        from .database import _kernel_module
+        from .exceptions import ValidationError, map_kernel_error
+
+        targets = {"bool": 0, "int64": 1, "uint64": 2, "float64": 3, "string": 4}
+        if type(target) is not str or target not in targets:
+            raise ValidationError("unknown JSONB cast target")
+        try:
+            return _kernel_module().cast_jsonb(self.data, targets[target])
+        except Exception as error:
+            raise map_kernel_error(error) from error
+
     def query(
         self, path: str | bytes, *, mode: str = "values",
         max_work: int = 1_000_000, max_results: int = 65_536,

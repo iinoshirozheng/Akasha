@@ -30,7 +30,7 @@ from akasha.document.point_state import PointMutation, FieldUpdate, PointState
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
-from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, json_value_from_python, _json_value, parse_jsonb_py, format_jsonb_py, query_jsonb_py
+from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python, json_value_from_python, _json_value, parse_jsonb_py, format_jsonb_py, query_jsonb_py, cast_jsonb_py
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from bindings.arrow_payload import ArrowPayloadSchema, arrow_payload_schemas, arrow_payload_fields
 from std.collections import Dict
@@ -2281,6 +2281,7 @@ def PyInit__kernel() abi("C") -> PythonObject:
         module.def_function[parse_jsonb_py]("parse_jsonb")
         module.def_function[format_jsonb_py]("format_jsonb")
         module.def_function[query_jsonb_py]("query_jsonb")
+        module.def_function[cast_jsonb_py]("cast_jsonb")
         module.def_function[validate_collection_config_py](
             "validate_collection_config"
         )

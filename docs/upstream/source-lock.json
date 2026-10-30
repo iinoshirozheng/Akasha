@@ -387,6 +387,14 @@
             "src/number.rs",
             "src/jsonpath/path.rs"
           ]
+        },
+        {
+          "port": "D01c4e-jsonb-scalar-casts",
+          "provenance": "tests/fixtures/jsonb-cast/sources.json",
+          "source_units": [
+            "src/number.rs",
+            "src/functions/scalar.rs"
+          ]
         }
       ]
     },
@@ -423,7 +431,7 @@
       "used_by": "D01c3i-jsonb-text-writer",
       "license_file": "docs/upstream/licenses/ethnum-MIT.txt",
       "license_sha256": "6b2702e491e967c99d7e0191bb0ec6b3b91db5c703a71c3b952c9e271ba46ac2",
-      "ported_scope": "I256/U256 F64 conversion, fixed-word multiply/power and unsigned 256/128 division for JSONB numbers",
+      "ported_scope": "I256/U256 F64 conversion, fixed-word multiply/power and full unsigned 256-bit division for JSONB numbers",
       "integrations": [
         {
           "port": "D01c4b-jsonb-number",
@@ -436,6 +444,13 @@
         {
           "port": "D01c4d-jsonb-display",
           "provenance": "tests/fixtures/jsonb-display/sources.json",
+          "source_units": [
+            "src/intrinsics/native/divmod.rs"
+          ]
+        },
+        {
+          "port": "D01c4e-jsonb-scalar-casts",
+          "provenance": "tests/fixtures/jsonb-cast/sources.json",
           "source_units": [
             "src/intrinsics/native/divmod.rs"
           ]
@@ -514,6 +529,22 @@
       "reference_only": false,
       "scope": "JSONB path-reachable byte whitespace, integer/float recognition, alternative/list/cut semantics; not the complete nom library",
       "used_by": "D01c4a-jsonb-path-parser"
+    },
+    {
+      "name": "rust-core-num",
+      "version": "1.92.0",
+      "revision": "ded5c06cf21d2b93bffd5d884aa6e96934ee4234",
+      "source": "library/core/src/num/mod.rs",
+      "source_sha256": "e10e3021435c63df4d2ae366874631e27a25a39c6cdc2227a9507a80565d5245",
+      "unit": "from_ascii_radix radix-10 checked integer accumulation",
+      "license_file": "docs/upstream/licenses/rust-MIT.txt",
+      "license_sha256": "b71bd43a069ca0641a9ecfe585ca7b3c53b5cc1608f8b68321168698e28b5ea1",
+      "upstream": "https://github.com/rust-lang/rust",
+      "license": "MIT OR Apache-2.0",
+      "used_by": "D01c4e-jsonb-scalar-casts",
+      "provenance": "tests/fixtures/jsonb-cast/sources.json",
+      "reference_only": false,
+      "scope": "Radix-10 checked integer parsing for source JSONB scalar casts; not the complete Rust numeric library"
     }
   ]
 }

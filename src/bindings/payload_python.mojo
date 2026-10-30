@@ -5,6 +5,7 @@ from akasha.document.jsonb_reader import parse_jsonb_bytes
 from akasha.document.jsonb_writer import format_jsonb
 from akasha.document.jsonb_path import JsonbPath
 from akasha.document.jsonb_selector import JsonbSelector
+from akasha.document.jsonb_cast import jsonb_to_bool, jsonb_to_i64, jsonb_to_u64, jsonb_to_f64, jsonb_to_str
 from akasha.query.control import QueryControl, CancellationToken
 from akasha.document.payload_update import PayloadUpdate
 from akasha.document.json_path import JsonPath
@@ -52,6 +53,30 @@ def _jsonb_bytes(value: JsonbValue) raises -> PythonObject:
     for byte in value._data:
         bytes.append(PythonObject(Int(byte)))
     return builtins.bytes(Python.list(Span(bytes)))
+
+
+def cast_jsonb_py(raw: PythonObject, target: PythonObject) raises -> PythonObject:
+    var builtins = Python.import_module("builtins")
+    if not Bool(py=builtins.type(raw) == builtins.bytes) or not Bool(py=builtins.type(target) == builtins.int):
+        raise Error("JSONB cast requires immutable bytes and an integer target")
+    var mode = Int(py=target)
+    if mode < 0 or mode > 4:
+        raise Error("unknown JSONB cast target")
+    if len(raw) > JsonbValue.MAX_BYTES:
+        raise Error("JSONB cast input exceeds byte resource limit")
+    var bytes = List[UInt8](capacity=len(raw))
+    for byte in raw:
+        bytes.append(UInt8(Int(py=byte)))
+    var value = JsonbValue(Span(bytes))
+    if mode == 0:
+        return PythonObject(jsonb_to_bool(value))
+    if mode == 1:
+        return PythonObject(jsonb_to_i64(value))
+    if mode == 2:
+        return PythonObject(jsonb_to_u64(value))
+    if mode == 3:
+        return PythonObject(jsonb_to_f64(value))
+    return PythonObject(jsonb_to_str(value))
 
 
 def query_jsonb_py(raw: PythonObject, raw_path: PythonObject, mode: PythonObject, options: PythonObject) raises -> PythonObject:

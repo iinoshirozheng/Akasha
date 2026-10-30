@@ -1,61 +1,16 @@
 """jsonb 0.5.6 Number/JsonPath Display (Datafuse Labs, Apache-2.0).
 
 Decimal splitting follows number.rs, including its checked panic boundaries
-and release i128 negation behavior. Wide division ports ethnum 1.5.3's native
-udiv256_by_128_to_128 and udivmod4 single-word branch (MIT, LLVM-derived).
+and release i128 negation behavior. Wide division reuses the Number module's
+ethnum 1.5.3 native division port (MIT, LLVM-derived).
 Display is distinct from RawJsonb JSON serialization and is not a round-trip
 path encoder: source strings and field names are deliberately unescaped.
 """
-from std.bit import count_leading_zeros
 from std.memory import bitcast
-from akasha.document.jsonb_number import JsonbNumber, _Wide
+from akasha.document.jsonb_number import JsonbNumber, _Wide, _wide_div128
 from akasha.document.jsonb_path import JsonbPath, _validate_path
 from akasha.document.zmij import format_zmij
 from akasha.query.control import QueryControl
-
-
-def _udiv256_128(high: UInt128, low: UInt128, var divisor: UInt128) -> Tuple[UInt128, UInt128]:
-    # ethnum: caller guarantees 0 <= high < divisor. Normalize into base 2^64.
-    var base = UInt128(1) << 64
-    var shift = Int(count_leading_zeros(divisor))
-    var top = high
-    var bottom = low
-    if shift > 0:
-        divisor <<= UInt128(shift)
-        top = (high << UInt128(shift)) | (low >> UInt128(128 - shift))
-        bottom = low << UInt128(shift)
-    var divisor_high = divisor >> 64
-    var divisor_low = divisor & UInt128(UInt64.MAX)
-    var bottom_high = bottom >> 64
-    var bottom_low = bottom & UInt128(UInt64.MAX)
-    var q1 = top // divisor_high
-    var remainder = top - q1 * divisor_high
-    while q1 >= base or q1 * divisor_low > base * remainder + bottom_high:
-        q1 -= 1
-        remainder += divisor_high
-        if remainder >= base:
-            break
-    var middle = top * base + bottom_high - q1 * divisor
-    var q0 = middle // divisor_high
-    remainder = middle - q0 * divisor_high
-    while q0 >= base or q0 * divisor_low > base * remainder + bottom_low:
-        q0 -= 1
-        remainder += divisor_high
-        if remainder >= base:
-            break
-    remainder = (middle * base + bottom_low - q0 * divisor) >> UInt128(shift)
-    return (q1 * base + q0, remainder)
-
-
-def _wide_div128(value: _Wide, divisor: UInt128) raises -> Tuple[_Wide, UInt128]:
-    if divisor == 0:
-        raise Error("wide division by zero")
-    if value.high == 0:
-        return (_Wide(0, value.low // divisor), value.low % divisor)
-    # ethnum udivmod4: high-word division before the two-digit primitive.
-    var high = value.high // divisor
-    var low, remainder = _udiv256_128(value.high % divisor, value.low, divisor)
-    return (_Wide(high, low), remainder)
 
 
 def _display_error() -> Error:

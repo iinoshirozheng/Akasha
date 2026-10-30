@@ -3978,6 +3978,128 @@
         "scripts/jsonb_display_reference.py": "bfefabdb72df115caa8abbddf0c0fbf06bf060cc1a26f83fbbad9eed81cdac7f",
         "scripts/jsonb_display_reference.rs": "9c0b6b177b94b14c0f2961e32db5f6382410f1f29951bd77419a56ffd7772d38"
       }
+    },
+    {
+      "id": "D01c4e-jsonb-scalar-casts",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false,
+        "rust_profile": "release",
+        "rust_compiler_revision": "ded5c06cf21d2b93bffd5d884aa6e96934ee4234"
+      },
+      "sources": [
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/number.rs",
+          "sha256": "9daf8bfd7dcd07dd14144a16ea830d73d9b4487656f996a81502a624b5d7c0f3"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/functions/scalar.rs",
+          "sha256": "227f012da7a2f6b6a1313bfec5861f7cff5e8adb4ad80d75c08d1f3db374aa95"
+        },
+        {
+          "identity": "crates.io:ethnum@1.5.3",
+          "path": "src/intrinsics/native/divmod.rs",
+          "sha256": "1c4ff2ab9ab6d2e883358a902a70af3e70776c71f06f9ad4149fcc64ec3d210b"
+        },
+        {
+          "identity": "rust-lang/rust@ded5c06cf21d2b93bffd5d884aa6e96934ee4234",
+          "path": "library/core/src/num/mod.rs",
+          "sha256": "e10e3021435c63df4d2ae366874631e27a25a39c6cdc2227a9507a80565d5245"
+        }
+      ],
+      "dependency_provenance": "tests/fixtures/jsonb-cast/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/ethnum-MIT.txt",
+        "docs/upstream/licenses/rust-MIT.txt"
+      ],
+      "source_units": [
+        "Number::as_i64/as_u64/to_i128/to_i64/to_u64 and exact/rounded decimal/float helpers",
+        "RawJsonb::to_bool/to_i64/to_u64/to_f64/to_str and integer-string cast dispatch",
+        "ethnum native udivmod4/div_mod_knuth and carry/product/normalization helpers",
+        "Rust core num::from_ascii_radix checked decimal accumulation"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb_number.mojo",
+        "src/akasha/document/jsonb_display.mojo",
+        "src/akasha/document/jsonb_cast.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/bindings/payload_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/payload.py"
+      ],
+      "reuses_ports": [
+        "D01c3f-fast-float-f64",
+        "D01c4b-jsonb-number",
+        "D01c4d-jsonb-display"
+      ],
+      "adaptations": [
+        "Mojo optional integer results preserve exact versus rounded conversion and source target ranges",
+        "Unsigned fixed two-word division and decimal magnitude arithmetic preserve source signed outcomes",
+        "Source decimal Display panics become native errors; successful cast outputs retained exactly",
+        "Existing fast-float2 port is compared to original Rust string parsing, not claimed as a new Rust parser port",
+        "Rust checked integer accumulation uses an Int128 intermediate bounded to the signed/unsigned 64-bit target",
+        "Python target/options/type/result transport stays thin; native casts validate complete binary bodies",
+        "Existing carrier TypeError/ValueError size/type contract retained before native cast errors"
+      ],
+      "oracle": "scripts/jsonb_cast_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-cast/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-cast/README.md": "9da7120b90c800f6c3439062813a21946c1fb88e2b2812faec5aa3b228633277",
+        "tests/fixtures/jsonb-cast/cases.json": "d2585e65a3453cf27aacaf3f149627487ae569afcdf91315301199357b6d3f4e",
+        "tests/fixtures/jsonb-cast/sources.json": "c7c083b46044cd86934ffc55e81d75cc390a09f9ef8163bc06ce1f462aee2b83"
+      },
+      "status": "verified_native_number_conversions_and_python_scalar_casts_lance_consumers_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-cast-validation.md"
+      ],
+      "results": {
+        "numbers": 96744,
+        "casts": 19975,
+        "cast_errors": 48416,
+        "cast_panics": 50,
+        "divisions": 22188,
+        "number_outcomes": 483720,
+        "cast_outcomes": 99875,
+        "cast_successes": 51409,
+        "float_bit_patterns": 71175,
+        "wide_divisors": 10433,
+        "new_native_tests": 4,
+        "native_tests_passed": 25,
+        "new_python_tests_passed": 17,
+        "full_python_passed": 3698,
+        "full_python_skipped": 1,
+        "reproduced_fixture_metadata_lock": true
+      },
+      "remaining": [
+        "Actual Lance nullable first-text/multi-match/typed/get/array consumer operations and Arrow row semantics",
+        "Exact key/index lookup and source type tags; collection JSONB filters/projections/indexes",
+        "Remaining C/distributed query contracts and SQL UDFs with real SQL engine",
+        "All remaining full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_number.mojo": "47e86fc61a444e3dea6769e20e81f3cd4d0fe0301d97bab297f7e09570a7eee4",
+        "src/akasha/document/jsonb_display.mojo": "2bffa251d1fbbc6975140a1d40f10b489001763ccca8286492c652f1cff27124",
+        "src/akasha/document/jsonb_cast.mojo": "528bc4ac9b93e2843eaaf863db0df2bf66398e5b79fd3fd89bc27df0fd6733ca",
+        "src/akasha/document/__init__.mojo": "323a71108145aceda9b5275f3306fa9938dc975ef92caa5c1fb65510183a7768",
+        "src/bindings/payload_python.mojo": "adeebd4b8cdb295adb5e96905cd4d8ce5b15eac1c3d72feb5dcd6272b2fe47ec",
+        "src/bindings/python_module.mojo": "6866f440afacaee4204074b3c9a421cc809b87e0307d3a2f0cbe2b9cfe9a7960",
+        "python/akashadb/payload.py": "a5d4acae4ade042c12bf5caf1aba3e068b494a06f70469b4e1490ede02a6e337",
+        "tests/mojo/test_jsonb_cast.mojo": "4becb977eb99a8981a074cc6605b868f2be59f57e8ab54e7afa125e609b50ff3",
+        "tests/mojo/test_jsonb_display.mojo": "d9bda5fad094a1fd2d6f79c03458cbff5da2e2d11c398fc86c0339978cc541c0",
+        "tests/python/test_jsonb_cast.py": "66d4756027b99082eb91ca808c4bf6a53fe00db4f0460caaea89812f4c75d19f",
+        "scripts/jsonb_cast_reference.py": "a1096f4b31cd09867d7d596e9204ff4714928a0f8e6b9d8ce13f9bae03d065ea",
+        "scripts/jsonb_cast_reference.rs": "0b001c3f0b0d28236b08bd1b6813363b946c06a731c8f44f1baa6edba5ad4a97"
+      },
+      "post_validation_whitespace_only": "Removed extra blank lines at EOF in tests/mojo/test_jsonb_cast.mojo; test statements unchanged."
     }
   ]
 }

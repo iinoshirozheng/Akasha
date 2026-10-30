@@ -4,7 +4,11 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c4d：Number／完整已解析 JSONB AST 的原生 Display 已依 jsonb／ethnum 來源移植，保留精確 Decimal 文字、路徑原始輸出規則與上游邊界行為；查詢及格式化共用 AST 驗證。
+- 最新 D01c4e：jsonb Number 的五種精確／四捨五入轉型、RawJsonb 五種 scalar cast 及 ethnum 完整無號 256 位除法已移植；Python 可用 `JsonbValue.cast(...)`，所有轉型由 Mojo 執行。
+  96,744 組數值、19,975 組 JSONB 值與 22,188 組來源除法對照通過；25 項相關 Mojo、17 項新增 Python、完整 Python **3,698 通過／1 跳過**，來源產物可重現。
+  [驗證](docs/research/2026-10-30-jsonb-cast-validation.md)／[Lance 整合計畫](docs/plans/2026-10-30-lance-json-functions-source-port.md)。下一步為實際 Lance 取值／型別／nullable Arrow consumer，再接 collection 過濾／投影／索引；完整 49 大項與效能門檻仍開放，尚未優化。
+
+- D01c4d：Number／完整已解析 JSONB AST 的原生 Display 已依 jsonb／ethnum 來源移植，保留精確 Decimal 文字、路徑原始輸出規則與上游邊界行為；查詢及格式化共用 AST 驗證。
   88,716 組數值、8,525 組路徑與 11,692 組來源除法對照通過；21 項相關 Mojo、重建 Python 模組與完整 Python **3,681 通過／1 跳過**，來源產物可重現。
   [驗證](docs/research/2026-10-30-jsonb-display-validation.md)／[用法](docs/native-jsonb.md#native-source-display)。下一步為 Lance consumer、完整轉型與 collection 過濾／投影／索引整合；完整 49 大項與效能門檻仍開放，尚未優化。
 

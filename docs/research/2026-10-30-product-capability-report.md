@@ -24,6 +24,8 @@ Cloud／Enterprise 功能列在產品工作包，不能因開源參考缺少服�
 
 ## 當前狀態
 
+最新 D01c4e 已完成原生 Number 精確／四捨五入轉型與 Python `JsonbValue.cast` 的五種轉型，依 jsonb／ethnum／Rust 來源保留 Decimal、溢位、字串與非有限浮點行為。96,744 組數值、19,975 組 JSONB 值及 22,188 組除法對照、25 項 Mojo、17 項新增 Python 與完整 Python **3,698 通過／1 跳過**；來源產物可重現。見[轉型驗證](2026-10-30-jsonb-cast-validation.md)。實際 Lance consumer、collection 過濾／投影／索引及完整產品工作仍開放，尚未優化。
+
 最新 D01c4d 已完成原生 Number／完整已解析 JSONB AST 的來源 Display；依 jsonb／ethnum 保留 Decimal 文字、特殊邊界與路徑輸出規則。88,716 組數值、8,525 組路徑及 11,692 組來源除法對照、21 項相關 Mojo 與完整 Python **3,681 通過／1 跳過**；重建模組與來源重現通過。見[Display 驗證](2026-10-30-jsonb-display-validation.md)。這是原生 API，Lance consumer、完整轉型、collection 過濾／投影／索引及所有完整產品工作仍開放，尚未優化。
 
 最新 D01c4c 已完成 Mojo JSONB selector 六種模式與 Python `JsonbValue.query`。64,856 組來源案例涵蓋 389,100 組模式結果；保留來源輸出，另明確拒絕 1 組超過既有深度限制的結果。22 項相關 Mojo、52 項新增 Python、完整 Python **3,681 通過／1 跳過**，來源產物可逐 byte 重現。見[查詢驗證](2026-10-30-jsonb-selector-validation.md)。這是值層級查詢；來源 Display、Lance consumer、collection 過濾／投影／索引及其他完整產品工作仍開放，尚未優化。

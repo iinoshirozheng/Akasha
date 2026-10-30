@@ -106,3 +106,13 @@ typed extraction, key lookup and scalar conversions have additional contracts
 in `lance-datafusion/src/udf/json.rs`; port them with source execution evidence
 instead of conflating the two consumers. Complete step 5 indexes/protocols and
 remaining Number conversions without declaring D01 or the full product finished.
+
+## Source conversion checkpoint: D01c4e
+
+Number exact i64/u64 and rounded i128/i64/u64 conversions, full unsigned wide
+division and RawJsonb bool/integer/float/string casts are now native. Python
+`JsonbValue.cast` exposes the scalar operations. Original-source matrices,
+25 native tests, 17 new Python tests and full Python **3,698 passed / 1 skip**
+pass; fixtures reproduce. Continue the
+[Lance consumer integration plan](2026-10-30-lance-json-functions-source-port.md),
+then collection/filter/projection/index and remaining protocol/SQL boundaries.

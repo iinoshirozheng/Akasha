@@ -1,7 +1,6 @@
 from akasha.document import JsonbPath, JsonbNumber, format_jsonb_path, format_jsonb_number_display
 from akasha.document.jsonb import _read_be
-from akasha.document.jsonb_number import _Wide
-from akasha.document.jsonb_display import _wide_div128
+from akasha.document.jsonb_number import _Wide, _wide_div128
 from akasha.document.jsonb_formatting import _read128
 from akasha.query.control import CancellationToken, QueryControl
 from std.memory import bitcast
