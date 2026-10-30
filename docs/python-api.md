@@ -78,7 +78,71 @@ but excluding null. Arrays use one-level any-element evaluation; nested arrays
 are not recursively flattened. Numeric ranges and floating-literal comparisons
 include signed/unsigned integers and float values after Float64 conversion, so integers above 2^53 may
 round in range comparisons. Boolean conditions match only booleans. Missing
-and null fields fail field conditions; an outer `negate` includes those fields.
+and null fields fail these scalar comparisons; an outer `not` includes those fields.
+
+### JSON-path payload filters
+
+`condition.name` keeps its literal field-name meaning. `field.key` uses Qdrant
+JSON paths, including quoted keys, array indexes and `[]` traversal:
+
+```python
+predicate = {
+    "kind": "nested", "key": "items",
+    "filter": {"kind": "all", "children": [
+        {"kind": "field", "key": "color", "match": {"value": "red"}},
+        {"kind": "field", "key": "stock", "range": {"gt": 0}},
+    ]},
+}
+hits = collection.search(SearchRequest("cosine", 10, vector=query, filter=predicate))
+collection.set_payload({"available": True}, filter=predicate)
+```
+
+`nested` appends `[]` unless already present and accepts only object elements.
+Its entire child filter must match the same element; separate array elements
+cannot satisfy different parts. Paths inside the child are relative to that
+object. Nested objects retain support for empty and NUL-containing quoted keys.
+`{"kind": "at_least", "min_count": 2, "children": [...]}` requires that many
+matching children. Zero matches every point; a count above the number of children
+matches none. These nodes compose with existing `all`, `any`, `not` and literal
+`condition` nodes under the same 16-level/256-node limits.
+
+Supported `field` properties:
+
+| Property | Native behavior |
+| --- | --- |
+| `match.value` | Exact string, bool or Int64 match; `2.0` does not match integer `2` |
+| `match.any` / `match.except` | Homogeneous string or Int64 lists; source MatchExcept type/null rules |
+| `match.text` / `match.phrase` | Case-sensitive substring check in the plain payload evaluator |
+| `match.text_any` | Any substring token, split with Rust Unicode whitespace rules |
+| `match.prefix` | Case-sensitive string prefix |
+| `range` | Optional `lt`, `gt`, `lte`, `gte`; all supplied bounds apply |
+| `values_count` | Same bounds with UInt64 counts: missing/null=0, array=length, other values=1 |
+| `is_empty` | Boolean: missing/null/empty array are empty; empty string/object are not |
+| `is_null` | Boolean: explicit null or an array containing null; missing matches only `false` |
+| `geo_bounding_box` | `top_left`/`bottom_right` coordinates; strict borders and antimeridian handling |
+| `geo_radius` | `center` and numeric `radius` in meters; strict distance less than radius |
+
+Numeric ranges convert JSON numbers to Float64. A string range bound selects
+datetime parsing for every bound; invalid query dates are rejected, invalid stored
+dates do not match. Comparisons retain seconds and nanoseconds, including the
+source leap-second representation; they do not use rounded formula scores.
+Geo query coordinates are validated; stored points must be objects containing
+numeric `lon` and `lat`, with the source's unchecked-coordinate evaluation.
+Coordinate arrays are accepted for query points, not as stored geo objects.
+
+Within a single field node, source precedence is `values_count`, then `is_empty`,
+then `is_null`; these override other properties. Otherwise match/range/geo checks
+are alternatives. Use `all` to require multiple independent predicates. Ordinary
+arrays use one-level any-element evaluation. Missing paths use the count/empty/null
+rules above; they fail ordinary match/range/geo predicates.
+
+These filters reach existing Python search/batches, named queries, universal
+prefetch/formula conditions, Arrow queries/scans and HTTP search/payload updates.
+Native callers construct `PayloadCondition(spec: PayloadValue)` and use
+`FilterExpression.field`, `.nested` and `.at_least`. New predicates currently
+evaluate authoritative payloads; dedicated typed indexes, polygon geometry,
+tokenizer/BM25/position-aware phrase search and full Qdrant REST/gRPC schemas remain
+open. Unsupported properties and ambiguous match variants are rejected explicitly.
 
 ### Rich document values
 

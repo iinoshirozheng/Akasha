@@ -267,3 +267,20 @@ The port registry records source/archive/table hashes and the actual compiler
 and source-toolchain versions separately. Python generates source fixtures and
 literal tables only; it does not parse or score dates at runtime. The oracle
 executes Qdrant's original wrapper/retriever/scorer with the actual chrono crate.
+
+### Plain payload predicates and nested filters
+
+`query/payload_condition.mojo`, `query/evaluator.mojo`, `query/filter_ast.mojo`
+and metadata integration adapt Qdrant `payload_storage/condition_checker.rs`,
+`payload_storage/query_checker.rs`, `types.rs` and `json_path/mod.rs` at
+`74f3e85b9473c62560006c043e13737ce6b48412` (Apache-2.0). Field match/set/plain-text,
+range, count, empty/null, geographic predicates, nested object scope and minimum
+matches follow these sources. DateTime and geographic arithmetic reuse the
+chrono/GeoRust ports described above. Text-any splitting reuses the pinned Rust
+Unicode whitespace table.
+
+The oracle compiles original checker methods, Boolean combinators and JSON paths
+with pinned serde_json, chrono and geo crates. Akasha expression dictionaries and
+DocumentField roots replace upstream transport/storage plumbing. Index-specific
+text behavior and polygon evaluation are not claimed by this slice. See
+`tests/fixtures/qdrant-payload-filter/README.md` and `docs/upstream/ports.json`.

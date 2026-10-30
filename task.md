@@ -4,13 +4,20 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 Q04f／D03c：Qdrant／chrono 日期解析、微秒時間戳及日期常數／payload
+- 最新 D03d：已接入來源對照的 JSON-path／巢狀同元素／至少 N 條件、集合與
+  純文字比對、數值／日期範圍、空值／數量、地理矩形／半徑過濾，可用於
+  Mojo／Python／Arrow 搜尋、現有 HTTP 與條件式 payload 更新。
+  10,781 組來源案例、101 項原生與完整 Python 3,188 項通過，1 項既有跳過。
+  [驗證與範圍](docs/research/2026-10-30-payload-filter-validation.md)。
+  下一步持續 polygon 與專用日期／地理／巢狀／全文索引、剩餘條件、rich Arrow；
+  LanceDB、SQL／交易、UI／安全／叢集與全產品清單仍未完成，尚未進入優化。
+- Q04f／D03c：Qdrant／chrono 日期解析、微秒時間戳及日期常數／payload
   日期公式已接入 Mojo／Python／Arrow，保留時區、負年份、閏秒與來源格式行為。
   20,861 組日期、315 組時間戳、3,624 組公式對照，21 項原生、1,013 項指定
   Python 與完整 Python 3,172 項通過，1 項跳過。
   [驗證與範圍](docs/research/2026-10-30-datetime-validation.md)。
-  下一步持續資料／查詢整合：完整日期／地理／巢狀條件與專用索引、rich Arrow；
-  LanceDB、SQL／交易、UI／安全／叢集與全產品清單保持未完成。
+  日期範圍、地理矩形／半徑與巢狀條件由後續 D03d 補入；專用索引與其餘完整
+  產品待辦見最新進度，LanceDB、SQL／交易、UI／安全／叢集仍未完成。
 - Q04e／D03b：Qdrant 座標驗證及固定 GeoRust 來源的地理距離已接入
   Mojo／Python／Arrow 公式，可組合路徑、預設值與衰減。30 組座標驗證、
   796 組距離、1,064 組公式來源對照，16 項原生、979 項指定 Python 與

@@ -109,6 +109,21 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D03d plain payload predicates and scoped filters implemented and verified.**
+  Native/Python/Arrow and existing HTTP routes now support source-backed field
+  JSON paths, same-object nested conditions, minimum matches, match/set/plain text,
+  numeric/datetime ranges, count/empty/null, geographic boxes and radii. Shared
+  authoritative-payload evaluation reaches search and atomic payload mutations.
+  The original Rust oracle covers 10,781 cases (10 expected parse errors), with
+  101 native tests across 16 modules and full Python **3,188 passed / 1 skip**.
+  Sixteen new public tests cover source outcomes, Arrow, snapshots/reopen, HNSW,
+  prefetch/formulas, full-depth payloads, batches, limits, ownership and HTTP.
+  [Plan](2026-10-30-payload-filter-source-port.md) /
+  [evidence](../research/2026-10-30-payload-filter-validation.md).
+  D03/Q04 remain open for polygon geometry, dedicated typed/array/nested/date/geo/
+  text indexes, indexed tokenizer/BM25/phrase behavior, remaining conditions,
+  typed-index retrieval and full protocols. Rich Arrow, Lance/general DB/UI/
+  security/cluster/operations/platform/quality scope is unchanged; no optimization.
 - **Q04f / D03c datetime parsing and formulas implemented and verified for
   native, Python and Arrow.** Original Qdrant DateTimeWrapper and chrono 0.4.45
   scanners/calendar/timestamps support the complete ordered parser formats,

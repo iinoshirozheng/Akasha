@@ -56,12 +56,17 @@ def _product(left: Float64, right: Float64) -> Float64:
 
 
 def haversine_distance(origin: GeoPoint, destination: GeoPoint) -> Float64:
+    return haversine_coordinates(origin.lon, origin.lat, destination.lon, destination.lat)
+
+
+def haversine_coordinates(lon1: Float64, lat1: Float64, lon2: Float64, lat2: Float64) -> Float64:
+    """Source distance also accepts unchecked stored payload coordinates."""
     # geo::HaversineMeasure::GRS80_MEAN_RADIUS and f64::to_radians.
     var radians = Float64(3.141592653589793) / Float64(180)
-    var theta1 = origin.lat * radians
-    var theta2 = destination.lat * radians
-    var delta_theta = (destination.lat - origin.lat) * radians
-    var delta_lambda = (destination.lon - origin.lon) * radians
+    var theta1 = lat1 * radians
+    var theta2 = lat2 * radians
+    var delta_theta = (lat2 - lat1) * radians
+    var delta_lambda = (lon2 - lon1) * radians
     var lat_sine = sin(delta_theta / Float64(2))
     var lon_sine = sin(delta_lambda / Float64(2))
     var a = _product(lat_sine, lat_sine) + _product(

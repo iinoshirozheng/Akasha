@@ -1,5 +1,7 @@
 from akasha.document.record import validate_field_name
 from akasha.document.value import PayloadValue
+from akasha.document.json_path import JsonPath
+from akasha.query.payload_condition import PayloadCondition
 
 
 struct FilterCondition(Movable):
@@ -101,16 +103,25 @@ struct _FilterNode(Movable):
     var kind: UInt8
     var condition: Optional[FilterCondition]
     var children: List[Int]
+    var payload: Optional[PayloadCondition]
+    var path: Optional[JsonPath]
+    var min_count: UInt64
 
     def __init__(
         out self,
         kind: UInt8,
         var condition: Optional[FilterCondition],
         var children: List[Int],
+        var payload: Optional[PayloadCondition] = None,
+        var path: Optional[JsonPath] = None,
+        min_count: UInt64 = 0,
     ):
         self.kind = kind
         self.condition = condition^
         self.children = children^
+        self.payload = payload^
+        self.path = path^
+        self.min_count = min_count
 
     def clone_with_offset(self, offset: Int) raises -> _FilterNode:
         var condition = Optional[FilterCondition]()
@@ -120,7 +131,10 @@ struct _FilterNode(Movable):
         var children = List[Int](capacity=len(self.children))
         for index in range(len(self.children)):
             children.append(self.children[index] + offset)
-        return _FilterNode(self.kind, condition^, children^)
+        var payload = Optional[PayloadCondition]()
+        if self.payload:
+            payload = Optional(self.payload.value().clone())
+        return _FilterNode(self.kind, condition^, children^, payload^, self.path.copy(), self.min_count)
 
 
 struct FilterExpression(Movable):
@@ -130,6 +144,9 @@ struct FilterExpression(Movable):
     comptime ALL = UInt8(2)
     comptime ANY = UInt8(3)
     comptime NEGATE = UInt8(4)
+    comptime FIELD = UInt8(5)
+    comptime NESTED = UInt8(6)
+    comptime AT_LEAST = UInt8(7)
     comptime MAX_DEPTH = 16
     comptime MAX_NODES = 256
 
@@ -141,8 +158,11 @@ struct FilterExpression(Movable):
         kind: UInt8,
         var condition: Optional[FilterCondition],
         var children: List[FilterExpression],
+        *,
+        var payload: Optional[PayloadCondition] = None,
+        var path: Optional[JsonPath] = None,
+        min_count: UInt64 = 0,
     ) raises:
-        _validate_requested_shape(kind, condition, children)
         self._nodes = List[_FilterNode]()
         var root_children = List[Int](capacity=len(children))
         for index in range(len(children)):
@@ -152,7 +172,7 @@ struct FilterExpression(Movable):
                     children[index]._nodes[node_index].clone_with_offset(offset)
                 )
             root_children.append(children[index]._root + offset)
-        self._nodes.append(_FilterNode(kind, condition^, root_children^))
+        self._nodes.append(_FilterNode(kind, condition^, root_children^, payload^, path^, min_count))
         self._root = len(self._nodes) - 1
         self.validate()
 
@@ -184,6 +204,21 @@ struct FilterExpression(Movable):
         children.append(child^)
         var condition = Optional[FilterCondition]()
         return FilterExpression(Self.NEGATE, condition^, children^)
+
+    @staticmethod
+    def field(var condition: PayloadCondition) raises -> FilterExpression:
+        return FilterExpression(Self.FIELD, None, [], payload=Optional(condition^))
+
+    @staticmethod
+    def nested(key: String, var child: FilterExpression) raises -> FilterExpression:
+        var path = JsonPath.parse(key).array_key()
+        var children = List[FilterExpression]()
+        children.append(child^)
+        return FilterExpression(Self.NESTED, None, children^, path=Optional(path^))
+
+    @staticmethod
+    def at_least(var children: List[FilterExpression], min_count: UInt64) raises -> FilterExpression:
+        return FilterExpression(Self.AT_LEAST, None, children^, min_count=min_count)
 
     def kind(self) -> UInt8:
         return self._nodes[self._root].kind
@@ -273,24 +308,6 @@ struct FilterExpression(Movable):
         return self._get_node_condition(node_index)
 
 
-def _validate_requested_shape(
-    kind: UInt8,
-    condition: Optional[FilterCondition],
-    children: List[FilterExpression],
-) raises:
-    if kind < FilterExpression.CONDITION or kind > FilterExpression.NEGATE:
-        raise Error("unknown filter expression kind")
-    if kind == FilterExpression.CONDITION:
-        if not Bool(condition) or len(children) != 0:
-            raise Error("condition expression has invalid shape")
-        condition.value().validate()
-        return
-    if Bool(condition):
-        raise Error("Boolean expression cannot contain a direct condition")
-    if kind == FilterExpression.NEGATE and len(children) != 1:
-        raise Error("negate expression requires exactly one child")
-
-
 def _validate_expression_node(
     expression: FilterExpression, node_index: Int
 ) raises:
@@ -299,8 +316,19 @@ def _validate_expression_node(
     var kind = expression._node_kind(node_index)
     var child_count = expression._node_child_count(node_index)
     var condition = expression._get_node_condition(node_index)
-    if kind < FilterExpression.CONDITION or kind > FilterExpression.NEGATE:
+    if kind < FilterExpression.CONDITION or kind > FilterExpression.AT_LEAST:
         raise Error("unknown filter expression kind")
+    ref node = expression._nodes[node_index]
+    if Bool(node.payload) != (kind == FilterExpression.FIELD):
+        raise Error("field expression has invalid payload condition")
+    if Bool(node.path) != (kind == FilterExpression.NESTED):
+        raise Error("nested expression has invalid path")
+    if kind != FilterExpression.AT_LEAST and node.min_count != 0:
+        raise Error("minimum match count requires at_least")
+    if kind == FilterExpression.FIELD and child_count != 0:
+        raise Error("field expression cannot have children")
+    if kind == FilterExpression.NESTED and child_count != 1:
+        raise Error("nested expression requires exactly one child")
     if kind == FilterExpression.CONDITION:
         if not Bool(condition) or child_count != 0:
             raise Error("condition expression has invalid shape")

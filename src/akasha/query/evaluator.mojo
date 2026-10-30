@@ -1,7 +1,10 @@
-# Array/null/MatchExcept checks port Qdrant condition_checker.rs (Apache-2.0),
+# Field/array/null/MatchExcept and scoped Boolean checks port Qdrant
+# condition_checker.rs and query_checker.rs (Apache-2.0),
 # revision 74f3e85b9473c62560006c043e13737ce6b48412. See THIRD_PARTY_NOTICES.md.
 from akasha.document.record import DocumentField
 from akasha.document.value import PayloadValue
+from akasha.document.json_path import JsonPath
+from akasha.document.payload_path import _value_get, payload_value_get
 from akasha.query.filter_ast import FilterCondition, FilterExpression
 
 
@@ -20,56 +23,65 @@ def matches_expression(
 ) raises -> Bool:
     """Evaluate a bounded expression with deterministic short-circuiting."""
     expression.validate()
-    var node_stack = List[Int]()
-    var child_positions = List[Int]()
-    node_stack.append(expression.root_index())
-    child_positions.append(0)
-    var has_result = False
-    var result = False
+    return matches_node(fields, expression, expression.root_index())
 
-    while len(node_stack) > 0:
-        var stack_index = len(node_stack) - 1
-        var node_index = node_stack[stack_index]
-        var kind = expression.node_kind(node_index)
 
-        if has_result:
-            if kind == FilterExpression.NEGATE:
-                _ = node_stack.pop()
-                _ = child_positions.pop()
-                result = not result
-                continue
-            if kind == FilterExpression.ALL and not result:
-                _ = node_stack.pop()
-                _ = child_positions.pop()
-                continue
-            if kind == FilterExpression.ANY and result:
-                _ = node_stack.pop()
-                _ = child_positions.pop()
-                continue
-            child_positions[stack_index] += 1
-            has_result = False
-            continue
+def _path_values(fields: List[DocumentField], path: JsonPath, scope: Optional[PayloadValue]) raises -> List[PayloadValue]:
+    if scope:
+        return payload_value_get(scope.value(), path)
+    # Do not wrap top-level fields in another container: a valid field may
+    # already use the full payload depth limit.
+    var values = List[PayloadValue]()
+    for i in range(len(fields)):
+        if fields[i].name == path.first_key:
+            _value_get(path.rest, 0, fields[i].value, values)
+            break
+    return values^
 
-        if kind == FilterExpression.CONDITION:
-            var condition = expression.node_condition(node_index)
-            result = _matches_condition(fields, condition.value())
-            _ = node_stack.pop()
-            _ = child_positions.pop()
-            has_result = True
-            continue
 
-        var child_position = child_positions[stack_index]
-        if child_position >= expression.node_child_count(node_index):
-            result = kind == FilterExpression.ALL
-            _ = node_stack.pop()
-            _ = child_positions.pop()
-            has_result = True
-            continue
-
-        node_stack.append(expression.node_child(node_index, child_position))
-        child_positions.append(0)
-
-    return result
+def matches_node(fields: List[DocumentField], expression: FilterExpression, node_index: Int,
+                 scope: Optional[PayloadValue] = None) raises -> Bool:
+    """Bounded source Boolean traversal; nested children use the same object."""
+    ref node = expression._nodes[node_index]
+    var kind = node.kind
+    if kind == FilterExpression.CONDITION:
+        if not scope:
+            return _matches_condition(fields, node.condition.value())
+        var value = scope.value().get_key(node.condition.value().name)
+        return _matches_condition_value(value.value(), node.condition.value()) if value else False
+    if kind == FilterExpression.FIELD:
+        ref condition = node.payload.value()
+        var values = _path_values(fields, condition.key, scope)
+        if len(values) == 0:
+            return condition.check_empty()
+        for i in range(len(values)):
+            if condition.check(values[i]):
+                return True
+        return False
+    if kind == FilterExpression.NESTED:
+        var values = _path_values(fields, node.path.value(), scope)
+        for i in range(len(values)):
+            if values[i].is_object():
+                var object_scope = Optional(values[i].clone())
+                if matches_node(fields, expression, node.children[0], object_scope):
+                    return True
+        return False
+    if kind == FilterExpression.NEGATE:
+        return not matches_node(fields, expression, node.children[0], scope)
+    if kind == FilterExpression.AT_LEAST and node.min_count == 0:
+        return True
+    var count = UInt64(0)
+    for child in node.children:
+        var result = matches_node(fields, expression, child, scope)
+        if kind == FilterExpression.ALL and not result:
+            return False
+        if kind == FilterExpression.ANY and result:
+            return True
+        if kind == FilterExpression.AT_LEAST and result:
+            count += 1
+            if count == node.min_count:
+                return True
+    return kind == FilterExpression.ALL
 
 
 def _matches_condition(
@@ -78,17 +90,19 @@ def _matches_condition(
     for field_index in range(len(fields)):
         if fields[field_index].name != condition.name:
             continue
-        ref value = fields[field_index].value
-        # Qdrant ValueChecker::_check examines one array level. Nested arrays
-        # are passed to check_match unchanged, never recursively flattened.
-        if value.is_array():
-            var children = value.children()
-            for i in range(len(children)):
-                if _matches_value(children[i], condition):
-                    return True
-            return False
-        return _matches_value(value, condition)
+        return _matches_condition_value(fields[field_index].value, condition)
     return False
+
+
+def _matches_condition_value(value: PayloadValue, condition: FilterCondition) raises -> Bool:
+    # Qdrant checks one array level, without recursively flattening arrays.
+    if value.is_array():
+        var children = value.children()
+        for i in range(len(children)):
+            if _matches_value(children[i], condition):
+                return True
+        return False
+    return _matches_value(value, condition)
 
 
 def _matches_value(

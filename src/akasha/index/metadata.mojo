@@ -7,8 +7,8 @@ from akasha.document.codec import decode_payload, encode_payload
 from akasha.index.bitmap import Bitmap
 from akasha.index.keyword import KeywordIndex
 from akasha.index.sorted_block import SortedBlockIndex
-from akasha.query.filter_ast import FilterCondition
-from akasha.query.evaluator import _matches_condition
+from akasha.query.filter_ast import FilterCondition, FilterExpression
+from akasha.query.evaluator import _matches_condition, matches_node
 from std.collections import Dict
 from akasha.storage.checksum import BinaryReader, BinaryReaderSource, BinaryWriter
 
@@ -104,6 +104,13 @@ struct MetadataIndex:
         self._fields[ordinal] = List[DocumentField]()
         self._live.clear(ordinal)
         self._rich.clear(ordinal)
+
+    def evaluate_payload_node(self, expression: FilterExpression, node_index: Int) raises -> Bitmap:
+        var result = Bitmap(self.slot_count())
+        for ordinal in range(self.slot_count()):
+            if self._live.contains(ordinal) and matches_node(self._fields[ordinal], expression, node_index):
+                result.set(ordinal)
+        return result^
 
     def evaluate_condition(self, condition: FilterCondition) raises -> Bitmap:
         condition.validate()

@@ -1,3 +1,4 @@
+from akasha.query.payload_condition import PayloadCondition, _uint
 from akasha.query.query_plan import QueryNode, plan_query
 from akasha.query.formula import Formula, FormulaDefault, FormulaNode
 from akasha.document.geo import GeoPoint
@@ -2007,13 +2008,25 @@ def _bounded_filter_expression(value: PythonObject, depth: Int, mut count: Int) 
             String(py=value["name"]), operator_kind, payload^
         )
         return FilterExpression.condition(condition^)
+    if kind == "field":
+        var spec = json_value_from_python(value)
+        return FilterExpression.field(PayloadCondition(spec))
+    if kind == "nested":
+        var key = json_value_from_python(value["key"])
+        if not key.is_string():
+            raise Error("nested key requires a JSON path string")
+        var child = _bounded_filter_expression(value["filter"], depth + 1, count)
+        return FilterExpression.nested(key.as_string(), child^)
     if kind == "not":
         var child = _bounded_filter_expression(value["child"], depth + 1, count)
         return FilterExpression.negate(child^)
-    if kind == "all" or kind == "any":
+    if kind == "all" or kind == "any" or kind == "at_least":
         var children = List[FilterExpression]()
         for item in value["children"]:
             children.append(_bounded_filter_expression(item, depth + 1, count))
+        if kind == "at_least":
+            var minimum = json_value_from_python(value["min_count"])
+            return FilterExpression.at_least(children^, _uint(minimum))
         if kind == "all":
             return FilterExpression.all(children^)
         return FilterExpression.any(children^)

@@ -20,30 +20,28 @@ def evaluate_all(
 def evaluate_expression(
     index: MetadataIndex, expression: FilterExpression
 ) raises -> Bitmap:
-    """Evaluate a post-order flat filter arena into one candidate bitmap."""
+    """Compose indexed predicates, evaluating nested scopes as one predicate."""
     expression.validate()
-    var results = List[Bitmap](capacity=expression.node_count())
-    for node_index in range(expression.node_count()):
-        var kind = expression.node_kind(node_index)
-        var result: Bitmap
-        if kind == FilterExpression.CONDITION:
-            var condition = expression.node_condition(node_index)
-            result = index.evaluate_condition(condition.value())
-        elif kind == FilterExpression.ALL:
-            result = index.live_universe()
-            for child_index in range(expression.node_child_count(node_index)):
-                var child = expression.node_child(node_index, child_index)
-                result = result.intersection(results[child])
-                if result.count() == 0:
-                    break
-        elif kind == FilterExpression.ANY:
-            result = Bitmap(index.slot_count())
-            for child_index in range(expression.node_child_count(node_index)):
-                var child = expression.node_child(node_index, child_index)
-                result = result.union_with(results[child])
+    return _evaluate_node(index, expression, expression.root_index())
+
+
+def _evaluate_node(index: MetadataIndex, expression: FilterExpression, node_index: Int) raises -> Bitmap:
+    var kind = expression.node_kind(node_index)
+    if kind == FilterExpression.CONDITION:
+        return index.evaluate_condition(expression._nodes[node_index].condition.value())
+    if kind == FilterExpression.FIELD or kind == FilterExpression.NESTED or kind == FilterExpression.AT_LEAST:
+        return index.evaluate_payload_node(expression, node_index)
+    if kind == FilterExpression.NEGATE:
+        var live = index.live_universe()
+        var child = _evaluate_node(index, expression, expression.node_child(node_index, 0))
+        return live.difference(child)
+    var result = index.live_universe() if kind == FilterExpression.ALL else Bitmap(index.slot_count())
+    for i in range(expression.node_child_count(node_index)):
+        var child = _evaluate_node(index, expression, expression.node_child(node_index, i))
+        if kind == FilterExpression.ALL:
+            result = result.intersection(child)
+            if result.count() == 0:
+                break
         else:
-            var child = expression.node_child(node_index, 0)
-            var live = index.live_universe()
-            result = live.difference(results[child])
-        results.append(result^)
-    return results[expression.root_index()].clone()
+            result = result.union_with(child)
+    return result^
