@@ -4,6 +4,12 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 最新 D05a：payload set／overwrite／delete／clear 已接上 Mojo／Python／現有 HTTP，
+  支援 IDs／既有條件選取與 JSON 路徑，保留所有向量；同一寫入鎖內選取與原子提交。
+  1,644 組來源對照、3 項原生、完整 Python 3,078 項通過，1 項選配跳過；
+  18 項新增公開 API 測試涵蓋恢復、快照、限制與轉換重入。
+  [驗證與語義邊界](docs/research/2026-10-30-payload-mutations-validation.md)。
+  rich Arrow、任意頂層鍵、巢狀索引／公式、混合批次與完整產品清單仍未完成。
 - 最新 D01b：物件／陣列／null／UInt64 已接上原生持久化、Python、現有 HTTP、
   備份與 NDJSON v2，保留 payload v1 讀取與原子遷移。依 Qdrant 原始碼移植
   owned-value 路徑 get/set/remove/merge 與單層陣列／null 條件行為。

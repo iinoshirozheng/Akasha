@@ -1,5 +1,7 @@
 """Bounded Python/JSON representation conversion; value ownership stays in Mojo."""
 from akasha.document.value import PayloadValue
+from akasha.document.payload_update import PayloadUpdate
+from akasha.document.json_path import JsonPath
 from std.python import Python, PythonObject
 
 
@@ -7,6 +9,59 @@ def json_value_from_python(raw: PythonObject) raises -> PayloadValue:
     var nodes = 0
     var content = 0
     return _json_value(raw, 0, nodes, content)
+
+
+def payload_update_from_python(kind: String, raw: PythonObject,
+                               key: PythonObject, raw_keys: PythonObject) raises -> PayloadUpdate:
+    var builtins = Python.import_module("builtins")
+    var path = Optional[JsonPath]()
+    if not (key is Python.none()):
+        if not Bool(py=builtins.type(key) == builtins.str):
+            raise Error("payload path must be a string")
+        path = Optional(JsonPath.parse(String(py=key)))
+    var paths = List[JsonPath]()
+    if not Bool(py=builtins.isinstance(raw_keys, builtins.list)):
+        raise Error("payload deletion paths must be a list")
+    if len(raw_keys) > 1024:
+        raise Error("payload deletion path count exceeds limit")
+    for item in raw_keys:
+        if len(paths) == 1024:
+            raise Error("payload deletion path count exceeds limit")
+        if not Bool(py=builtins.type(item) == builtins.str):
+            raise Error("payload deletion paths must be strings")
+        paths.append(JsonPath.parse(String(py=item)))
+    var names = List[String]()
+    var values = List[PayloadValue]()
+    if kind == "set" or kind == "overwrite":
+        if not Bool(py=builtins.type(raw) == builtins.dict):
+            raise Error("payload update requires a JSON object")
+        if len(raw) > 1024:
+            raise Error("payload update field count exceeds limit")
+        var nodes = 0
+        var content = 0
+        for name in raw:
+            if not Bool(py=builtins.type(name) == builtins.str):
+                raise Error("payload object keys must be strings")
+            var converted = String(py=name)
+            content += converted.byte_length()
+            if content > PayloadValue.MAX_BYTES:
+                raise Error("payload content exceeds size limit")
+            names.append(converted^)
+            values.append(_json_value(raw[name], 0, nodes, content))
+    elif not (raw is Python.none()):
+        raise Error("payload delete/clear cannot contain values")
+    var operation: UInt8
+    if kind == "set":
+        operation = 1
+    elif kind == "overwrite":
+        operation = 2
+    elif kind == "delete":
+        operation = 3
+    elif kind == "clear":
+        operation = 4
+    else:
+        raise Error("unknown payload update operation")
+    return PayloadUpdate(operation, names^, values^, path^, paths^)
 
 
 def _json_value(raw: PythonObject, depth: Int, mut nodes: Int, mut content: Int) raises -> PayloadValue:

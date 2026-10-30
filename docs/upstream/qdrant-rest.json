@@ -210,7 +210,10 @@
       "operation_id": "set_payload",
       "summary": "Set payload",
       "status": "compatibility_unverified",
-      "evidence": []
+      "evidence": [
+        "docs/research/2026-10-30-payload-mutations-validation.md"
+      ],
+      "native_mapping": "Current HTTP route and Mojo payload mutation exist; Akasha filter schema, atomic batch result, IDs and acknowledgment semantics are not full Qdrant compatibility."
     },
     {
       "method": "PUT",
@@ -218,7 +221,10 @@
       "operation_id": "overwrite_payload",
       "summary": "Overwrite payload",
       "status": "compatibility_unverified",
-      "evidence": []
+      "evidence": [
+        "docs/research/2026-10-30-payload-mutations-validation.md"
+      ],
+      "native_mapping": "Current HTTP route and Mojo payload mutation exist; Akasha filter schema, atomic batch result, IDs and acknowledgment semantics are not full Qdrant compatibility."
     },
     {
       "method": "POST",
@@ -226,7 +232,10 @@
       "operation_id": "clear_payload",
       "summary": "Clear payload",
       "status": "compatibility_unverified",
-      "evidence": []
+      "evidence": [
+        "docs/research/2026-10-30-payload-mutations-validation.md"
+      ],
+      "native_mapping": "Current HTTP route and Mojo payload mutation exist; Akasha filter schema, atomic batch result, IDs and acknowledgment semantics are not full Qdrant compatibility."
     },
     {
       "method": "POST",
@@ -234,7 +243,10 @@
       "operation_id": "delete_payload",
       "summary": "Delete payload",
       "status": "compatibility_unverified",
-      "evidence": []
+      "evidence": [
+        "docs/research/2026-10-30-payload-mutations-validation.md"
+      ],
+      "native_mapping": "Current HTTP route and Mojo payload mutation exist; Akasha filter schema, atomic batch result, IDs and acknowledgment semantics are not full Qdrant compatibility."
     },
     {
       "method": "POST",

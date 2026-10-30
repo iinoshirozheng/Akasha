@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from akashadb import CollectionConfig
 
@@ -74,6 +74,24 @@ class PayloadFieldRequest(BaseModel):
     name: str = Field(min_length=1)
     type: Literal["string", "int", "float", "bool", "null", "array", "object", "uint"]
     value: Any
+
+
+class PayloadSelectorRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    points: list[StrictInt] | None = Field(default=None, max_length=65_536)
+    filter: dict[str, Any] | None = None
+
+
+class OverwritePayloadRequest(PayloadSelectorRequest):
+    payload: dict[str, Any]
+
+
+class SetPayloadRequest(OverwritePayloadRequest):
+    key: StrictStr | None = None
+
+
+class DeletePayloadRequest(PayloadSelectorRequest):
+    keys: list[StrictStr] = Field(max_length=1024)
 
 
 class SparseElementRequest(BaseModel):

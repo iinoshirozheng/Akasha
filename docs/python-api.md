@@ -117,11 +117,63 @@ NDJSON v2. Reads retain payload v1 compatibility; new writes use payload v2.
 Native `payload_value_get`, `payload_value_set` and `payload_value_remove` operate
 on owned `PayloadValue` objects with `JsonPath`. They follow Qdrant source:
 merge null deletes a key, indexed writes never grow an array, deleting an array
-index does nothing, and a terminal wildcard clears its array. These helpers do
-not yet expose collection-level partial payload path updates. Rich Arrow schemas,
+index does nothing, and a terminal wildcard clears its array. Collection-level
+operations below use the same source semantics. Rich Arrow schemas,
 dedicated nested/array indexes, nested formula values and complete REST/gRPC/C
 and distributed payload contracts remain tracked in D01–D05/A01–A03/X01–X04.
 Existing scalar Arrow projections reject incompatible rich values explicitly.
+
+### Payload mutations
+
+`set_payload`, `overwrite_payload`, `delete_payload` and `clear_payload` modify
+existing points without replacing any default, sparse or named vectors:
+
+```python
+collection.set_payload({"status": "reviewed"}, points=[42, 43])
+collection.set_payload({"verified": True}, points=[42], key="metadata.authors[]")
+collection.delete_payload(["metadata.obsolete", "metadata.authors[].draft"], points=[42])
+collection.overwrite_payload({"reviewed": None}, points=[43])  # retains null
+collection.clear_payload(filter={"kind": "condition", "name": "expired",
+                                 "operator": "eq", "type": "bool", "value": True})
+```
+
+`set_payload` shallow-merges at the root or optional `key` JSON path; a source
+null removes that map member. Overwrite replaces the entire payload and retains
+null. Delete applies its paths in order; array index deletion remains a no-op,
+while terminal `[]` empties that array. Quoted keys and wildcard traversal use
+the shared source parser. Nested map patches allow empty/NUL keys; persisted
+top-level keys retain their existing constraints. Document roots do not consume
+one of the 64 allowed container levels per field.
+
+Provide `points` or the existing native `filter` expression. When both are
+provided, `points` takes precedence, including an empty list. Duplicate explicit
+IDs select a point once; filter-selected points are ordered by ID. Missing or
+deleted explicit IDs fail the whole operation. Selection, reading, modification
+and commit share one native writer lock, so concurrent writes cannot land
+between those stages. Existing snapshots retain their prior data.
+
+Each call returns `BatchWriteResult`. `count` is selected unique points,
+including existing points whose values did not change. A nonempty selection
+commits one atomic point batch. An empty selection returns `first_sequence=0`,
+unchanged `last_sequence` and `count=0`, without appending to the WAL. Both input
+ID count and selected count are bounded by `min(limits.max_batch_rows, 65536)`;
+delete accepts at most 1,024 paths. Resulting payload and WAL size limits still
+apply, and validation finishes before append. Validation failures leave all
+targets unchanged. I/O or post-commit publication failures require reopening
+and recovery; an error after append is not proof that the batch was rolled back.
+
+The native entry point is `PersistentCollection.apply_payload_update`, with
+`PayloadUpdate.set(names, values, path)`, `.overwrite(names, values)`,
+`.delete(paths)` or `.clear()`, and optional IDs or native filter. Python only
+serializes these inputs. Native atomicity and row-sequence results differ from
+Qdrant's internal chunk execution and operation acknowledgments; these methods
+do not claim full Qdrant protocol compatibility.
+
+The current HTTP service exposes POST/PUT `/collections/{name}/points/payload`
+for set/overwrite, plus POST `.../payload/delete` and `.../payload/clear`.
+Bodies use `payload`, `points`/`filter`, optional set `key`, or delete `keys`.
+Responses are native batch results; filters use Akasha's existing expression
+schema. Combined mixed-operation batches and full Qdrant REST/gRPC remain open.
 
 `upsert_columns` validates column-shaped Python data and copies it through
 Python values. It is not a zero-copy Arrow C Data interface.

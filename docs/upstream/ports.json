@@ -1178,6 +1178,76 @@
         "tests/fixtures/payload/v1.bin": "ed4867ea9168f4bb82d43652a4ba507c34caacc6026b8403afd9bce1ec34d954",
         "tests/fixtures/payload/v2.bin": "8b04ea0d95701c804ae80d24adcbd57a1455260f6fc42d9736b09e85562ff7e6"
       }
+    },
+    {
+      "id": "D05a-payload-mutations",
+      "upstream": "https://github.com/qdrant/qdrant",
+      "revision": "74f3e85b9473c62560006c043e13737ce6b48412",
+      "sources": {
+        "lib/shard/src/update/payload.rs": "e20cacd0cf4175b4504a9b882ec34167e82cdef964947d7ba7873bfbdd3a8bc8",
+        "lib/shard/src/update/mod.rs": "bd54402285f9d62731f4daa25ef54ea34fa54c6b3404b556c5080a3bef65fe26",
+        "lib/shard/src/update/helpers.rs": "0bb379af026eda0ade6b1d9faf20e579c57535d1eb9a945e4ac1bce02e7f360f",
+        "lib/shard/src/operations/payload_ops.rs": "a6c86325dd6568f18895b0429089389232747a74f352e7f31e9243d747936808",
+        "lib/segment/src/segment/entry.rs": "78ad8293cb91af8bb314edabe7713fb4b2a91319705370880e64ca258448c367",
+        "lib/segment/src/json_path/mod.rs": "5c34bedfa86a6ab21c295bfddb2a62fc841f11fb4e3c3c01f16c2fdfc4b1f60f",
+        "lib/segment/src/common/utils.rs": "d90c74eae87bf01794767eff923951309764395ef30ab1c4fb4c8c5a24153e53"
+      },
+      "source_reviewed_operations": [
+        "set_payload / set_payload_by_filter",
+        "overwrite_payload / overwrite_payload_by_filter",
+        "delete_payload / delete_payload_by_filter",
+        "clear_payload / clear_payload_by_filter",
+        "process_payload_operation",
+        "points_by_filter / check_unprocessed_points",
+        "Segment set_full_payload / set_payload / delete_payload / clear_payload"
+      ],
+      "reused_oracle_port": "D01b-D03a-rich-payload",
+      "fixture": "tests/fixtures/qdrant-payload-values/values.json",
+      "fixture_sha256": "881e5d475d90733d04c9d7abc163b1a20ec3f8f797e32f4761a4c11caabc726b",
+      "reference_mutation_cases": 1644,
+      "reference_read_cases_not_mutations": 238,
+      "reference_top_level_key_cases_pending_D02": 206,
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/qdrant-Apache-2.0.txt",
+      "upstream_notice_present": false,
+      "targets": [
+        "src/akasha/document/payload_update.mojo",
+        "src/akasha/storage/payload_update.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/__init__.mojo",
+        "src/akasha/document/__init__.mojo",
+        "src/bindings/payload_python.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/database.py",
+        "apps/server/routes/points.py",
+        "apps/server/schemas.py"
+      ],
+      "adaptations": [
+        "Ordered DocumentField root map excludes the implicit document root from per-field depth limits; nested edits reuse the existing source port",
+        "Source selector precedence and missing-point behavior with native filter evaluation on current authoritative rows",
+        "One native writer exclusion and complete payload replacement atomic WAL batch instead of Qdrant segment chunks; no durable format change",
+        "Native unique-ID count, stable filter order and row sequences; empty selection performs no write, unlike Qdrant operation acknowledgment version bumps",
+        "Python and current HTTP serialize operations only; bounded input iteration and owner recheck before borrow",
+        "Full Qdrant filter/protocol response compatibility, mixed-operation batches and general key/ID support remain open"
+      ],
+      "status": "verified_native_python_http_mutations_full_D05_pending",
+      "verification": [
+        "docs/research/2026-10-30-payload-mutations-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/payload_update.mojo": "866c7071aea45815a09f5f3717b295c444dca1977f92cff79acb53d0c4a206e5",
+        "src/akasha/storage/payload_update.mojo": "bb62197bc0b02ef4e3a235e8f468d388a71033007cffdcfbab49f7c5d2bd5a13",
+        "src/akasha/api/collection.mojo": "b80d838c87e66ecdadba04ca24867ef0468da20caaa382ecf839e26a21ec940c",
+        "src/akasha/__init__.mojo": "537965d627b98bc6c92447ba36a9a52b29088252d279eb5e48f99395ff96d526",
+        "src/akasha/document/__init__.mojo": "90c4bc26afc24fc17f2e03e6cd4ad430d52ee64501527df03b217cc75d47df76",
+        "src/bindings/payload_python.mojo": "d2ae6af6a348bbb5c70feda5736cc18bf0b2bcd220e61716bc4d70507fe5510e",
+        "src/bindings/python_module.mojo": "348d348bb83d5f6039898b17dd9c59259304d740c2f9b66997edc3e1ba8760ca",
+        "python/akashadb/database.py": "53521d95234856aafe9e2b382872d1eeab8e641a24ce1316cf7b867880cda0d7",
+        "apps/server/routes/points.py": "3bdbcf6afdff7cf9a100d560cbcb05d7a6fa9294fd1285a1678d7aa00a8ae06c",
+        "apps/server/schemas.py": "b6f708b83937858a54600a378bbb95786c55528e130970970650e04640368ca2",
+        "tests/mojo/test_payload_updates.mojo": "6256a4a786671c3df5062bb2a2744cf1827d123c14cf766e59f2ed111d1a3b07",
+        "tests/python/test_payload_updates.py": "d989833b1a195d5dd5b65be365cd45f2a7bf9874e8e92ddb12ae7c49e26fba7b"
+      }
     }
   ]
 }

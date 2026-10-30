@@ -3,6 +3,8 @@ from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
 from akasha.query.field_discovery import ContextPair
 from akasha.document.point_state import FieldUpdate, PointMutation, PointState
+from akasha.document.payload_update import PayloadUpdate
+from akasha.storage.payload_update import prepare_payload_mutations
 from akasha.document.vector_schema import (
     FieldCatalog,
     VectorFieldSpec,
@@ -530,6 +532,25 @@ struct PersistentCollection:
                         committed.last_sequence,
                         committed.mutation_count,
                     )
+            waited = True
+            sleep(_BACKPRESSURE_SLEEP_SECONDS)
+
+    def apply_payload_update(
+        mut self, update: PayloadUpdate, *, points: Optional[List[Int]] = None,
+        expression: Optional[FilterExpression] = None, max_points: Int = 65_536,
+    ) raises -> BatchWriteResult:
+        """Select, transform and commit payloads under one writer exclusion."""
+        var waited = False
+        while True:
+            with BlockingScopedLock(self._writer_lock[]):
+                if self._write_admitted(waited):
+                    var mutations = prepare_payload_mutations(
+                        self._point_store._table, update, points, expression, max_points)
+                    if len(mutations) == 0:
+                        return BatchWriteResult(0, self._last_sequence, 0)
+                    var committed = self._apply_point_batch_unlocked(mutations)
+                    return BatchWriteResult(committed.first_sequence,
+                                            committed.last_sequence, committed.mutation_count)
             waited = True
             sleep(_BACKPRESSURE_SLEEP_SECONDS)
 

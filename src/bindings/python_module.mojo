@@ -27,7 +27,7 @@ from akasha.document.point_state import PointMutation, FieldUpdate, PointState
 from akasha.document.vector_schema import VectorFieldSpec, legacy_vector_fields
 from akasha.document.vector_value import VectorValue
 from bindings.point_values import vector_from_python, vector_to_python
-from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name
+from bindings.payload_python import payload_value_from_python, payload_value_to_python, payload_kind_name, payload_update_from_python
 from bindings.point_arrow import arrow_vector_is_valid, vector_from_arrow
 from std.collections import Dict
 from akasha.index.flat import SearchResult
@@ -371,6 +371,40 @@ struct BoundCollection(Movable, Writable):
         for field in fields:
             output.append(_vector_field_to_python(field))
         return Python.list(Span(output))
+
+    @staticmethod
+    def apply_payload_update(py_self: PythonObject, options: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var max_points = _exact_python_int(options["max_points"], "payload point limit")
+        if max_points <= 0 or max_points > 65_536:
+            raise Error("payload update point limit must be in 1..65536")
+        var operation = payload_update_from_python(
+            _exact_python_string(options["operation"], "payload operation"),
+            options["payload"], options["key"], options["keys"])
+        var points = Optional[List[Int]]()
+        var raw_points = options["points"]
+        if not _is_python_none(raw_points):
+            var builtins = Python.import_module("builtins")
+            if not Bool(py=builtins.isinstance(raw_points, builtins.list)):
+                raise Error("payload point IDs must be a list")
+            if len(raw_points) > max_points:
+                raise Error("payload update point count exceeds resource limit")
+            var ids = List[Int]()
+            for id in raw_points:
+                if len(ids) == max_points:
+                    raise Error("payload update point count exceeds resource limit")
+                ids.append(_exact_python_int(id, "point ID"))
+            points = Optional(ids^)
+        var expression = Optional[FilterExpression]()
+        if not _is_python_none(options["filter"]):
+            expression = Optional(_filter_expression(options["filter"]))
+        _ensure_open(self[])
+        var committed = self[].inner.value().apply_payload_update(
+            operation, points=points, expression=expression, max_points=max_points)
+        return Python.dict(first_sequence=PythonObject(committed.first_sequence),
+                           last_sequence=PythonObject(committed.last_sequence),
+                           count=PythonObject(committed.count))
 
     @staticmethod
     def apply_point_batch(
@@ -2140,6 +2174,7 @@ def PyInit__kernel() abi("C") -> PythonObject:
             .def_method[BoundCollection.apply_batch]("apply_batch")
             .def_method[BoundCollection.vector_fields]("vector_fields")
             .def_method[BoundCollection.apply_point_batch]("apply_point_batch")
+            .def_method[BoundCollection.apply_payload_update]("apply_payload_update")
             .def_method[BoundCollection.apply_point_arrow_batch](
                 "apply_point_arrow_batch"
             )

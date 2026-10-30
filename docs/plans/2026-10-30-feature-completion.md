@@ -109,6 +109,18 @@ unchecked work after this slice; do not mark Q01 complete from DBSF helpers alon
 
 ## Progress
 
+- **D05a collection payload mutations implemented and verified for native,
+  Python and current HTTP.** Source-derived set/overwrite/delete/clear supports
+  IDs or existing filters, JSON paths, wildcard edits, source null/order rules,
+  unchanged vectors and atomic publication under the writer lock. The document
+  root preserves depth-64 field values. 1,644 original-source mutation cases,
+  3 native tests and full Python **3,078 passed / 1 optional skip**, including
+  18 new public tests. [Plan](2026-10-30-payload-mutations-source-port.md) /
+  [evidence and native/Qdrant boundaries](../research/2026-10-30-payload-mutations-validation.md).
+  D05 remains open for mixed-operation batches, remaining vector/filter CRUD
+  and complete REST/gRPC; D01 rich Arrow and D02/D03/Q04 data integration remain
+  the next shared-data work. All other ledger rows and quality/platform gates
+  remain open; no optimization phase has started.
 - **D01b rich payload / D03a scalar-condition coexistence implemented.**
   [Source-port plan](2026-10-30-rich-payload-source-port.md) adds owned native
   objects/arrays/null/UInt64, source get/set/remove/merge operations, independently

@@ -204,3 +204,14 @@ unchanged source bodies; see `tests/fixtures/qdrant-payload-values/README.md`.
 from `lib/segment/src/payload_storage/condition_checker.rs` at the same revision.
 Rich values without a dedicated field index use this check in the metadata
 index; the source oracle compares both direct and indexed results.
+
+### Collection payload mutations
+
+`document/payload_update.mojo` and `storage/payload_update.mojo` adapt Qdrant
+`lib/shard/src/update/payload.rs`, `update/helpers.rs`, `update/mod.rs`, `operations/payload_ops.rs`
+and `lib/segment/src/segment/entry.rs` at the same Apache-2.0 revision. They reuse
+the ported JSON-path/map operations and native filter evaluator. Ordered top-level
+DocumentField lists preserve Akasha's per-field depth limits. The existing
+writer lock and atomic replacement WAL batch replace Qdrant's segment/chunk
+plumbing; native row sequences and acknowledgment results remain distinct.
+See `docs/research/2026-10-30-payload-mutations-validation.md` and the port registry.

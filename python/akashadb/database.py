@@ -31,6 +31,7 @@ class KernelCollection(Protocol):
     def last_search_stats(self) -> dict[str, Any]: ...
     def vector_fields(self) -> list[dict[str, Any]]: ...
     def apply_point_batch(self, mutations: list[dict[str, Any]]) -> dict[str, int]: ...
+    def apply_payload_update(self, options: dict[str, Any]) -> dict[str, int]: ...
     def get_point(self, id: int) -> dict[str, Any] | None: ...
     def search_field(
         self, name: str, vector: Any, k: int, options: dict[str, Any],
@@ -247,6 +248,36 @@ class Collection:
         if len(mutations) > self.limits.max_batch_rows:
             raise ValidationError("mutation batch resource limit exceeded")
         raw = self._call("apply_point_batch", [item.to_kernel() for item in mutations])
+        return BatchWriteResult(**raw)
+
+    def set_payload(self, payload: dict[str, Any], *, points: list[int] | None = None,
+                    filter: Mapping[str, Any] | None = None, key: str | None = None) -> BatchWriteResult:
+        """Merge payload at the root or a JSON path on existing selected points."""
+        return self._payload_update("set", payload, points=points, filter=filter, key=key)
+
+    def overwrite_payload(self, payload: dict[str, Any], *, points: list[int] | None = None,
+                          filter: Mapping[str, Any] | None = None) -> BatchWriteResult:
+        """Replace the complete payload while retaining every vector field."""
+        return self._payload_update("overwrite", payload, points=points, filter=filter)
+
+    def delete_payload(self, keys: list[str], *, points: list[int] | None = None,
+                       filter: Mapping[str, Any] | None = None) -> BatchWriteResult:
+        """Remove JSON paths, in order, from existing selected points."""
+        return self._payload_update("delete", None, points=points, filter=filter, keys=keys)
+
+    def clear_payload(self, *, points: list[int] | None = None,
+                      filter: Mapping[str, Any] | None = None) -> BatchWriteResult:
+        """Remove all payload fields while retaining the points and vectors."""
+        return self._payload_update("clear", None, points=points, filter=filter)
+
+    def _payload_update(self, operation: str, payload: dict[str, Any] | None, *,
+                        points: list[int] | None, filter: Mapping[str, Any] | None,
+                        key: str | None = None, keys: list[str] | None = None) -> BatchWriteResult:
+        raw = self._call("apply_payload_update", {
+            "operation": operation, "payload": payload, "points": points, "filter": filter,
+            "key": key, "keys": [] if keys is None else keys,
+            "max_points": min(self.limits.max_batch_rows, 65_536),
+        })
         return BatchWriteResult(**raw)
 
     def get_point(self, id: int) -> Point | None:

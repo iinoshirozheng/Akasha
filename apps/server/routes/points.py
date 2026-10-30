@@ -1,13 +1,39 @@
 """Point mutation, lookup, and search routes."""
 
 from fastapi import APIRouter, HTTPException, Request
+from dataclasses import asdict
 from starlette.concurrency import run_in_threadpool
 
 from akashadb import PayloadField, SearchRequest, SparseElement
-from apps.server.schemas import SearchRequestBody, UpsertRequest
+from apps.server.schemas import (SearchRequestBody, UpsertRequest, SetPayloadRequest,
+                                OverwritePayloadRequest, DeletePayloadRequest, PayloadSelectorRequest)
 
 
 router = APIRouter(prefix="/collections", tags=["points"])
+
+
+@router.post("/{name}/points/payload")
+def set_payload(name: str, body: SetPayloadRequest, request: Request) -> dict[str, int]:
+    collection = request.app.state.database.collection(name)
+    return asdict(collection.set_payload(body.payload, points=body.points, filter=body.filter, key=body.key))
+
+
+@router.put("/{name}/points/payload")
+def overwrite_payload(name: str, body: OverwritePayloadRequest, request: Request) -> dict[str, int]:
+    collection = request.app.state.database.collection(name)
+    return asdict(collection.overwrite_payload(body.payload, points=body.points, filter=body.filter))
+
+
+@router.post("/{name}/points/payload/delete")
+def delete_payload(name: str, body: DeletePayloadRequest, request: Request) -> dict[str, int]:
+    collection = request.app.state.database.collection(name)
+    return asdict(collection.delete_payload(body.keys, points=body.points, filter=body.filter))
+
+
+@router.post("/{name}/points/payload/clear")
+def clear_payload(name: str, body: PayloadSelectorRequest, request: Request) -> dict[str, int]:
+    collection = request.app.state.database.collection(name)
+    return asdict(collection.clear_payload(points=body.points, filter=body.filter))
 
 
 @router.post("/{name}/points")
