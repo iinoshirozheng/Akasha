@@ -3541,6 +3541,114 @@
         "scripts/arrow_json_reference.py": "23c20ea8cd545693ee443ce95c114c26fcf9a7819b70f09b1fcfe49138f8b2bc",
         "scripts/arrow_json_reference.rs": "aae6afeef045e78dd6a517d712d70bfac80ef258bbc3c4a0c9200f60e1889bcb"
       }
+    },
+    {
+      "id": "D01c4a-jsonb-path-parser",
+      "upstream": "https://github.com/databendlabs/jsonb",
+      "version": "0.5.6",
+      "identity": "crates.io:jsonb@0.5.6",
+      "source_profile": {
+        "features": [
+          "databend"
+        ],
+        "default_features": false,
+        "arbitrary_precision": false
+      },
+      "sources": [
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/jsonpath/parser.rs",
+          "sha256": "4244c1ca6293122257678065171bf7bdd116136ae7b1c101c05973ea5428fbba"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/jsonpath/path.rs",
+          "sha256": "9d6e537588a476863c0c7ea264af204d84e97146d304034921ea701c3accf421"
+        },
+        {
+          "identity": "crates.io:nom@8.0.0",
+          "path": "src/character/complete.rs",
+          "sha256": "1d0c6a7f9cfc97164f17c87e9125981c2a0814904d0de2a7ba6f4019d3d30ca0"
+        },
+        {
+          "identity": "crates.io:nom@8.0.0",
+          "path": "src/number/complete.rs",
+          "sha256": "63ad29969e4f20dcfd7acc6fc08e60f9e3d90b1c3e574267ef274f56468464d7"
+        },
+        {
+          "identity": "crates.io:nom@8.0.0",
+          "path": "src/branch/mod.rs",
+          "sha256": "f99d29c4b001b500cc5226ccff5c13a250da06cc7428e76b3bc61125fb11c5d1"
+        },
+        {
+          "identity": "crates.io:nom@8.0.0",
+          "path": "src/multi/mod.rs",
+          "sha256": "6426717e34019ef32c00cc86d8b2683f7c4510e2c056e7762cce7595dab14bce"
+        },
+        {
+          "identity": "crates.io:nom@8.0.0",
+          "path": "src/combinator/mod.rs",
+          "sha256": "a75359d9f86a2494c850d64e7b4dcc4550509ec1fae2dfb49aba5edc9c62e2ab"
+        }
+      ],
+      "dependency_provenance": "tests/fixtures/jsonb-path/sources.json",
+      "license_files": [
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/nom-MIT.txt"
+      ],
+      "source_units": [
+        "Complete jsonpath parser, AST variants and is_predicate",
+        "nom byte whitespace, integer prefix/overflow, float recognizer/cut and combinator backtracking"
+      ],
+      "targets": [
+        "src/akasha/document/jsonb_path.mojo",
+        "src/akasha/document/__init__.mojo"
+      ],
+      "adaptations": [
+        "Owned flat Mojo arena/child indices replace recursive borrowed Rust enums",
+        "Explicit byte/node/depth/parse-step bounds and Error replace unbounded input and quoted-string out-of-bounds panics",
+        "Existing source JSONB escape decoder and fast-float2 conversion reused; actual original AST numeric variants/bits checked",
+        "Separate JSONB and Qdrant path contracts, with source alternative order and quirks retained"
+      ],
+      "oracle": "scripts/jsonb_path_reference.py",
+      "fixtures": {
+        "tests/fixtures/jsonb-path/Cargo.lock": "24546080729006dca06e4cad5d6a55eafaedad40859cf0fb305c4c151bc494e8",
+        "tests/fixtures/jsonb-path/README.md": "7a7a358b8e31167ea9bc9eb0af53e0d3e76acd402d28a2b8bdc7ef153cb3dcc4",
+        "tests/fixtures/jsonb-path/cases.json": "ffe252f0e4cac43569917374b94e0aba4eddb4d1952fdca83077421ca2af9a93",
+        "tests/fixtures/jsonb-path/sources.json": "e1595fa8bcc44cfbaa2bc6fe1f0605e4da856a396428b210e47b576e21cb7ddf"
+      },
+      "status": "verified_complete_native_parser_dependency_selector_public_queries_pending",
+      "verification": [
+        "docs/research/2026-10-30-jsonb-path-parser-validation.md"
+      ],
+      "results": {
+        "source_cases": 8525,
+        "accepted": 4238,
+        "rejected": 4275,
+        "source_panics": 12,
+        "ast_nodes": 23609,
+        "ast_node_kinds": 18,
+        "binary_operators": 14,
+        "unary_operators": 2,
+        "literal_categories": 6,
+        "float_literal_patterns": 594,
+        "native_tests_passed": 7,
+        "new_native_tests": 3,
+        "reproduced_fixture_metadata_lock_license": true
+      },
+      "remaining": [
+        "Complete Number comparison/arithmetic, including all Decimal widths and source overflow rules",
+        "Complete selector values/array/first/value/exists/predicate_match plus source Display helpers",
+        "Native/Python/collection/filter/projection/index and remaining C/distributed query boundaries",
+        "All remaining full-product/platform/performance gates; no optimization"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/document/jsonb_path.mojo": "5e98db7d3af503c859c52f45cac65b67df9d2be5678178f6e95a5a36dd1f94c9",
+        "src/akasha/document/__init__.mojo": "e46d4a721ba5379e2188894fe7723129c418bd3dc60a5136e211d96afb8398a0",
+        "tests/mojo/test_jsonb_path.mojo": "f164ef63f2e06d0933d784d807ecb1c40603246a16c3172b19ef40454ea20241",
+        "scripts/jsonb_path_reference.py": "f0cfd723421e143f603fc3e2500053ba446a345f6c485f6b0fdedf2c0d0f5f80",
+        "scripts/jsonb_path_reference.rs": "9dcc78e883ff3f7e7fccbf9afc3a851c387fc0f3dab751650f853d6c1647f905"
+      }
     }
   ]
 }

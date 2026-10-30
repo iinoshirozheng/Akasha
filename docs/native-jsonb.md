@@ -324,3 +324,42 @@ The writer's `akasha.document.zmij` dependency ports the source F64 fast path,
 Schubfach fallback and portable digit writer. Its standalone `format_zmij`
 returns source `NaN`/`inf` tokens; the enclosing JSON serializer applies the
 nonfinite-to-null rule above. See [formatting validation](research/2026-10-30-zmij-validation.md).
+
+
+## Native JSONB path grammar
+
+`JsonbPath.parse(String)` and `JsonbPath.parse_bytes(Span[UInt8])`, exported from
+`akasha.document`, build an owned bounded AST using jsonb 0.5.6's complete
+path/expression grammar. This is a native query dependency: **selection,
+predicate evaluation, source Display and Python/collection query APIs are still
+pending**. Parsing a path does not execute it against a document.
+
+```mojo
+from akasha.document import JsonbPath
+
+def main() raises:
+    var selection = JsonbPath.parse("$.book[*]?(@.price < 10)")
+    var predicate = JsonbPath.parse("$.price < 10")
+    print(selection.is_predicate())  # False: a selection chain
+    print(predicate.is_predicate())  # True: one root expression
+```
+
+The parser accepts dot/colon/quoted fields, array/index/range/last-relative
+selectors, recursive levels, filters, exists, unary/binary arithmetic,
+comparisons/starts-with and and/or expressions. Integer and floating literals
+retain their source variants and bits. It is separate from the existing Qdrant
+`JsonPath`, not a replacement or a union of two syntaxes.
+
+Source quirks are intentional: empty paths are legal, quoted empty fields are
+rejected, raw fields can include tab/newline/ampersand, and integer alternatives
+precede the float recognizer. For example, `1.0` alone is a two-field path while
+`$.x == 1.0` is rejected; `$.x == .5` reaches the float branch. Arithmetic atoms
+have the source's restricted structure, not a general expression precedence
+parser. `is_predicate()` tests for a single root Expr, including arithmetic.
+Unterminated quoted-string source panics become native errors.
+
+Limits are 65,536 input bytes, 65,536 AST nodes, 64 syntax/AST levels and
+1,000,000 parser steps. The AST retains no input-buffer references. These are
+resource adaptations, not claims about unbounded upstream inputs. See
+[path grammar validation](research/2026-10-30-jsonb-path-parser-validation.md)
+and the [complete query implementation plan](plans/2026-10-30-jsonb-path-source-port.md).

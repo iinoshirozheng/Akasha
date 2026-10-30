@@ -1,0 +1,63 @@
+# JSONB path/query source port
+
+Continue from `a96ed47`; keep the full product ledger and feature-before-tuning
+order. Existing Qdrant `JsonPath` stays a separate grammar/contract.
+
+Source: jsonb 0.5.6 (`databend`, no arbitrary precision), `jsonpath/{parser,path,
+selector}.rs`, `number.rs`, nom 8.0.0 numeric/string combinators; Lance's
+`lance-arrow/src/json.rs` and `lance-datafusion/src/udf/json.rs` consumers.
+
+1. Port the **complete** path/expression grammar into an owned bounded Mojo AST:
+   root/current, dot/colon/quoted fields, both wildcards, recursive levels,
+   index lists and inclusive ranges, last-relative signed indices, filters,
+   unary/binary arithmetic, comparison/starts-with, and/or/exists. Preserve
+   alternative order, whitespace/escape behavior and literal numeric types.
+   Differential tests compare complete ASTs against the actual crate, including
+   every truncation, malformed UTF-8 and upstream parser panics. Native parser
+   completion is a dependency, not public query completion.
+2. Port the source Number arithmetic and comparison contracts for Int64/UInt64/
+   Float64/Decimal64/128/256, including checked/wrapping edge cases, ordered NaN,
+   scale adjustment and the actual source float fallback. Use existing numeric
+   conversion code where equivalent; port required ethnum operations from source.
+3. Port the full selector queue/recursion/expression behavior, including all six
+   output modes: values, array, first, value, exists and predicate_match.
+   Include source path/number Display helpers separately from JSON serialization. Preserve
+   first-vs-single cardinality, ordering/duplicates, lax wildcard behavior,
+   unknown comparison, missing/null, extension values and complete errors.
+   Add finite candidate/output/depth limits and cooperative query control.
+4. Expose native/Python JSONB selection and the Lance consumer contracts, then
+   integrate native document/query/filter/projection boundaries. Cover WAL and
+   checkpoint reopen, snapshot ownership, failures without writes and full
+   regression. Keep first-text Lance Arrow helper distinct from DataFusion's
+   single-value semantics; do not silently conflate them.
+5. Complete JSONB indexing and remaining C/distributed boundaries as tracked in
+   D01/D03/A03. Full SQL UDF integration follows the real SQL execution layer.
+
+Observed source details to retain: empty paths are valid; quoted empty keys are
+rejected by this parser; unterminated nonempty quoted strings can panic; raw
+field delimiters omit ampersand and ASCII tab/newline; integer alternatives
+precede float parsing and may consume prefixes; arithmetic atoms do not implement
+a general precedence parser; duplicate index groups can return duplicates.
+Source panic becomes an Akasha error, never a process crash. Resource limits are
+explicit adaptations. No partial grammar may stand in for full JSONPath.
+
+Additional selector/numeric findings to preserve in the subsequent ports:
+`eval_compare` returns unknown immediately on the first incomparable pair;
+and/or evaluate both operands and propagate unknown. A scalar/object bracket
+wildcard is lax, while named-object wildcard is object-only. Array index groups
+are processed independently, so overlapping groups duplicate results in order.
+The source `ArrayIndex::to_indices` casts a negative range end to usize and may
+attempt an enormous set; bound actual selection work and isolate such source
+oracle cases rather than exhausting the host. Decimal scale adjustment uses the
+pinned release integer-power/wrapping behavior before checked multiplication.
+
+
+## Grammar dependency checkpoint: D01c4a
+
+Step 1's complete parser/owned AST is native and verified: 8,525 actual-source
+cases, 4,238 accepted ASTs, 4,275 parse errors and 12 mapped source panics; seven
+native tests pass and fixture/metadata/lock/license reproduce byte-for-byte.
+All 18 AST node kinds, all operators and literal categories are exercised,
+including 594 distinct literal Float64 bit patterns. This is not step 2–5 or
+public query completion. Continue Number semantics and the complete selector;
+do not substitute a restricted path-only executor for the documented scope.

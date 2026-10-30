@@ -432,6 +432,21 @@
       "provenance": "tests/fixtures/lance-json/sources.json",
       "reference_only": true,
       "used_by": "D01c3b-stringview-lance-json-contracts"
+    },
+    {
+      "name": "nom",
+      "version": "8.0.0",
+      "checksum": "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405",
+      "upstream": "https://github.com/rust-bakery/nom",
+      "identity": "crates.io:nom@8.0.0",
+      "revision": null,
+      "license": "MIT",
+      "license_file": "docs/upstream/licenses/nom-MIT.txt",
+      "license_sha256": "4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0",
+      "provenance": "tests/fixtures/jsonb-path/sources.json",
+      "reference_only": false,
+      "scope": "JSONB path-reachable byte whitespace, integer/float recognition, alternative/list/cut semantics; not the complete nom library",
+      "used_by": "D01c4a-jsonb-path-parser"
     }
   ]
 }

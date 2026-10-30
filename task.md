@@ -4,7 +4,9 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
-- 最新 D01c3j：`arrow.json`／`lance.json` 已接上兩種 Arrow 匯入與原生 C Data scanner，包含 StringView、Map、巢狀／切片、metadata，以及 storage null／JSON null 區分。20,757 組來源文字、28,901 組 binary／text 與 12 組 Lance 原始碼巢狀轉換對照通過；來源產物逐 byte 可重現。
+- 最新 D01c4a：已依 jsonb／nom 原始碼移植完整 JSONB 路徑／運算式語法與 owned AST，與 Qdrant 路徑分開。8,525 組原始來源案例包含 4,238 組 AST、4,275 組拒絕與 12 組來源 panic，Mojo 皆一致；7 項相關原生測試通過，來源可重現。
+  [驗證](docs/research/2026-10-30-jsonb-path-parser-validation.md)／[完整執行計畫](docs/plans/2026-10-30-jsonb-path-source-port.md)。這是原生 parser 依賴，尚未完成選取執行／數值運算／公開 query／索引；下一步依來源補齊 Number 與完整 selector。完整 49 大項範圍不變，尚未優化。
+- D01c3j：`arrow.json`／`lance.json` 已接上兩種 Arrow 匯入與原生 C Data scanner，包含 StringView、Map、巢狀／切片、metadata，以及 storage null／JSON null 區分。20,757 組來源文字、28,901 組 binary／text 與 12 組 Lance 原始碼巢狀轉換對照通過；來源產物逐 byte 可重現。
   24 項相關 Mojo、183 項指定 Python、完整 Python **3,629 通過／1 跳過**。[驗證與範圍](docs/research/2026-10-30-arrow-json-validation.md)／[用法](docs/native-jsonb.md#arrow-json-interchange)。下一步為 JSONB 路徑查詢／索引、任意頂層鍵與剩餘 C／分散式值邊界；完整產品與 M5/M6 仍未完成，尚未優化。
 - D01c3i：完整既有 JSONB 型別已接上 Mojo `format_jsonb` 與 Python `to_json(pretty=...)`，採 RawJsonb／serde_json 路徑；含 Decimal、Binary、日期／時間／interval、舊編碼及原始鍵順序。29,003 組來源 body 的兩種輸出／錯誤一致；3 項 Mojo、74 項指定 Python、完整 Python **3,485 通過／1 跳過**。
   [文字輸出驗證](docs/research/2026-10-30-jsonb-writer-validation.md)。下一步完成 Arrow JSON nullable slots／巢狀 metadata 的匯入匯出；JSONB 查詢／索引及完整產品／效能清單仍開放，尚未優化。
