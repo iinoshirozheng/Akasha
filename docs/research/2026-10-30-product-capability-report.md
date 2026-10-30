@@ -1,5 +1,7 @@
 # Akasha 完整產品功能差異報告
 
+2026-10-31 最新 D01c4i：已移植 Lance JSON 索引的批次輸入層，包含第一個非空型別推斷、整批型別驗證及嚴格轉換；6,481 組來源情境／32,405 組轉換結果一致，8 項 Mojo 測試通過，來源產物可重現。這是索引依賴，實際 target index、串流訓練、查詢匹配及持久化／公開整合仍待完成。[驗證](2026-10-31-lance-json-index-input-validation.md)。既有公開 runtime 與完整 Python 3,752／1 的驗證版本未變，尚未優化。
+
 2026-10-31 最新 D01c4h：11 個 Lance JSON 函式可直接產生 collection scanner 計算欄位，保留來源浮點／null／二進位語義，215,780 組來源結果與完整 Python **3,752 通過／1 跳過**。專用索引、動態參數、文件計算投影、SQL 與完整協定仍待完成。見 [投影驗證](2026-10-31-jsonb-projection-validation.md)。
 
 最新 D01c4g 已將來源 JSONB 布林函式接上 collection 過濾、搜尋、掃描、公式及條件更新；111,100 組來源結果、59 項 Mojo、完整 Python **3,739 通過／1 跳過**。計算投影、專用索引、SQL 與完整協定仍待完成。見 [整合驗證](2026-10-30-jsonb-condition-validation.md)。

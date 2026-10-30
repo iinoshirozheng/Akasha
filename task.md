@@ -4,6 +4,9 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 最新 D01c4i（2026-10-31）：Lance JSON 索引批次輸入層已移植，保留第一個非空型別、不自動拓寬、整批驗證優先及嚴格反序列化。6,481 組來源情境／32,405 組轉換結果、8 項 Mojo 測試通過，fixture／metadata／lock／README 可重現。
+  [驗證](docs/research/2026-10-31-lance-json-index-input-validation.md)／[完整索引計畫](docs/plans/2026-10-31-lance-json-index.md)。下一步為來源 scalar target、串流訓練、nullable 搜尋結果及持久化整合；這批依賴尚不構成可建立的 collection index。完整 49 大項仍開放，尚未優化。
+
 - 最新 D01c4h（2026-10-31）：11 個 Lance JSON 函式已接上 collection scanner 計算欄位，支援巢狀 json_get、原始 JSONB bytes、NaN／Infinity／負零與 nullable typed struct。使用原生 C Data 匯出及既有 buffer 所有權機制，scalar／Arrow 值 API 共用同一原生函式派送。
   215,780 組來源結果、16 項 Mojo、104 項指定 Python（13 項新增）與完整 Python **3,752 通過／1 跳過**，最終模組建置通過。[驗證](docs/research/2026-10-31-jsonb-projection-validation.md)／[用法](docs/native-jsonb.md#computed-jsonb-scanner-columns)。下一步對照 Lance JSON 專用索引的型別／轉換／查詢與生命週期；完整 49 大項仍開放，尚未優化。
 

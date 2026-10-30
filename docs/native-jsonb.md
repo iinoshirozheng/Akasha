@@ -818,3 +818,32 @@ functions, so projection does not introduce another selector/cast algorithm.
 This scanner layer does not provide SQL syntax, column-valued path arguments,
 computed document-record projection or dedicated JSONB indexes. Those remain
 tracked in the full plan. See [validation](research/2026-10-31-jsonb-projection-validation.md).
+
+## Native JSON index input dependency
+
+`akasha.index.lance_json_input` supplies source-backed batch preprocessing for
+the planned JSON index. It does not yet expose collection create-index/search.
+
+- `extract_json_index_batch(values, path)` accepts owned nullable `JsonbValue`
+  slots and returns owned `JsonIndexValue(value, tag)` entries in row order.
+- `infer_json_index_type(batch, path)` reads the first non-null type tag. It
+  returns none for an all-null batch; the future stream trainer must choose
+  Utf8 only after exhausting the entire input, not after an empty/null prefix.
+- `convert_json_index_batch(batch, target, path)` validates all tags before
+  strict deserialization and returns owned nullable `LanceJsonResult` values.
+
+Target tags are 1 Boolean, 2 Int64, 3 Float64, 4 Utf8 and 5 LargeBinary.
+The same chosen target must be retained on subsequent batches. Float64 accepts
+both numeric tags; Int64 does not accept Float64/Decimal deserialization merely
+because a value can be rounded or represented as an integer. These are Lance
+index rules, separate from the permissive public `JsonbValue.cast` operations.
+
+Batches have a 65,536-row cap; extraction/conversion accept `max_bytes`
+(default 64 MiB) and optional native `QueryControl`. Output cells and owned
+text/binary bytes count toward that allocation bound. Binary-null and tag-null
+are preserved independently. Source nonfinite F64 values remain representable.
+
+The [validation report](research/2026-10-31-lance-json-index-input-validation.md)
+records source comparisons and exact scope. Target indexing, stream training,
+query matching and durable collection lifecycle remain in the
+[index plan](plans/2026-10-31-lance-json-index.md).

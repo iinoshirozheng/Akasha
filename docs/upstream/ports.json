@@ -4416,6 +4416,87 @@
         "Column-valued function arguments, computed document-record projection and actual SQL execution",
         "Complete C/distributed/protocol interfaces and all full-product/platform/performance gates"
       ]
+    },
+    {
+      "id": "D01c4i-lance-json-index-input",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/json.rs",
+          "sha256": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        },
+        {
+          "identity": "crates.io:jsonb@0.5.6",
+          "path": "src/core/databend/de.rs",
+          "sha256": "f92f51d81ea4ec43e61fa6ed5b26a2e4b3650246c30b5f71177cd693e805302d"
+        }
+      ],
+      "reuses_ports": [
+        "D01c4f-lance-json-functions",
+        "D01c4b-jsonb-number",
+        "D01c3i-jsonb-text-writer"
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt"
+      ],
+      "source_units": [
+        "infer_type_from_batch",
+        "validate_json_types",
+        "convert_batch_by_type",
+        "execution_error",
+        "parse_json_path",
+        "extract_json_path_with_type",
+        "jsonb Deserializer::read_bool/read_integer/read_float/read_string"
+      ],
+      "targets": [
+        "src/akasha/index/lance_json_input.mojo"
+      ],
+      "adaptations": [
+        "Native owned nullable JSONB/tag input and typed results instead of Arrow RecordBatch storage",
+        "Original batch validation precedes strict conversion; no permissive cast replacement",
+        "Bounded rows/owned bytes, cooperative controls, source panics mapped to native errors",
+        "Only batch input layer; stream training, target index, planner and durable lifecycle remain pending"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-json-index/Cargo.lock": "8ba5518a84bd2b0b74f953a48bd774f96455e6da674418050794ac69bd8d0bde",
+        "tests/fixtures/lance-json-index/README.md": "0621ed664f3427654112570112153eec8dbd9e4fdff634dc4e65a5b0b5535911",
+        "tests/fixtures/lance-json-index/cases.json": "a87278204c5e9b8097b94cc28b13b765533e367bb1a2cdf618dd526c997d4ee4",
+        "tests/fixtures/lance-json-index/sources.json": "47b90faf5816262db1459a319477b24e36073ffe92f11acb6501e1cdb947c64e"
+      },
+      "status": "verified_native_json_index_batch_input_target_and_collection_pending",
+      "verification": [
+        "docs/research/2026-10-31-lance-json-index-input-validation.md"
+      ],
+      "results": {
+        "source_scenarios": 6481,
+        "source_conversion_outcomes": 32405,
+        "source_conversion_successes": 7767,
+        "source_conversion_errors": 24616,
+        "source_conversion_panics_mapped": 22,
+        "source_inference_successes": 6456,
+        "source_inference_errors": 25,
+        "native_tests_passed": 8,
+        "reproduced_fixture_files": 4
+      },
+      "verified_file_sha256": {
+        "src/akasha/index/lance_json_input.mojo": "3e08b5d3368d66de2ff8a914f468c60833c629fe8a3bc7f1843646a368b25d1b",
+        "tests/mojo/test_lance_json_index_input.mojo": "a94cf7ba823b9ba3e1eb3083dad8f54e4fe93be567e3321451d4a98bb0521806",
+        "scripts/lance_json_index_reference.py": "d9585f24cf19223184829c8c7d9ffabf4a427fe239fdb8d2b7d5e587ace2a338",
+        "scripts/lance_json_index_reference.rs": "280ff20df1c6c38119fc79787d53fee8e96e04f625e2fd8d0dbe7bc202a4a65f"
+      },
+      "remaining": [
+        "Streaming inference/default type, sorting and actual scalar target training/search/update/remap",
+        "Query matching, durable index catalog/recovery and complete public integration",
+        "All full-product/platform/performance gates; no optimization"
+      ]
     }
   ]
 }
