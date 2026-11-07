@@ -1,3 +1,5 @@
+from akasha.query.json_snapshot import PreparedJsonQuery
+from akasha.query.json_expression_spec import parse_json_expression
 from akasha.query.jsonb_projection import JsonbProjection
 from akasha.query.jsonb_condition import JsonbCondition
 from akasha.query.payload_condition import PayloadCondition, _uint
@@ -50,6 +52,67 @@ from std.os import abort
 from std.python import Python, PythonObject
 from std.python.bindings import PythonModuleBuilder
 from std.python.numpy import from_numpy_array
+
+
+struct BoundJsonQuery(Movable, Writable):
+    var inner: Optional[PreparedJsonQuery]
+    var max_candidates: Int
+
+    def __init__(out self):
+        self.inner = Optional[PreparedJsonQuery]()
+        self.max_candidates = 1
+
+    def write_to(self, mut writer: Some[Writer]):
+        writer.write("AkashaPreparedJsonQuery")
+
+    def write_repr_to(self, mut writer: Some[Writer]):
+        writer.write("AkashaPreparedJsonQuery()")
+
+    @staticmethod
+    def py_init(out self: BoundJsonQuery, args: PythonObject, kwargs: PythonObject) raises:
+        self = BoundJsonQuery()
+        if len(args) != 4:
+            raise Error("PreparedJsonQuery requires collection, expression, indexes and options")
+        var collection = args[0].downcast_value_ptr[BoundCollection]()
+        _ensure_open(collection[])
+        var names = args[2]
+        if len(names) > 256:
+            raise Error("JSON query index count limit exceeded")
+        var indexes = List[String]()
+        for name in names:
+            indexes.append(_exact_python_string(name, "index name"))
+        var options = args[3]
+        self.max_candidates = _exact_python_int(options["max_candidates"], "JSON candidate limit")
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = QueryControl(token, max_candidates=self.max_candidates,
+            deadline_ns=_exact_python_int(options["deadline_ns"], "JSON deadline"))
+        var bound = parse_json_expression(json_value_from_python(args[1]))
+        var snapshot = collection[].inner.value().snapshot()
+        self.inner = Optional(snapshot.prepare_json_catalog(bound^, indexes, control=Optional(control.copy())))
+        snapshot.close()
+
+    @staticmethod
+    def close(py_self: PythonObject) raises -> PythonObject:
+        py_self.downcast_value_ptr[BoundJsonQuery]()[].inner = Optional[PreparedJsonQuery]()
+        return Python.none()
+
+    @staticmethod
+    def execute(py_self: PythonObject, options: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundJsonQuery]()
+        if not self[].inner:
+            raise Error("prepared JSON query is closed")
+        var token = CancellationToken()
+        if Bool(py=options["cancelled"]):
+            token.cancel()
+        var control = QueryControl(token, max_candidates=self[].max_candidates,
+            deadline_ns=_exact_python_int(options["deadline_ns"], "JSON deadline"))
+        var ids = self[].inner.value().execute(Optional(control.copy()))
+        var output = List[PythonObject]()
+        for id in ids:
+            output.append(PythonObject(id))
+        return Python.list(Span(output))
 
 
 struct BoundScanner(Movable, Writable):
@@ -1072,6 +1135,54 @@ struct BoundCollection(Movable, Writable):
             output.append(record)
         snapshot.close()
         return Python.list(Span(output))
+
+    @staticmethod
+    def create_json_index(py_self: PythonObject, name: PythonObject,
+                          column: PythonObject, path: PythonObject) raises:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        self[].inner.value().create_json_index(_exact_python_string(name, "index name"),
+            _exact_python_string(column, "index column"), _exact_python_string(path, "index path"))
+
+    @staticmethod
+    def drop_json_index(py_self: PythonObject, name: PythonObject) raises:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        self[].inner.value().drop_json_index(_exact_python_string(name, "index name"))
+
+    @staticmethod
+    def json_indexes(py_self: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        var output = List[PythonObject]()
+        for definition in self[].inner.value().json_indexes():
+            var item = Python.dict()
+            _set_output_item(item, PythonObject("name"), PythonObject(definition.name))
+            _set_output_item(item, PythonObject("column"), PythonObject(definition.column))
+            _set_output_item(item, PythonObject("path"), PythonObject(definition.path))
+            _set_output_item(item, PythonObject("target"), PythonObject(Int(definition.target)))
+            output.append(item)
+        return Python.list(Span(output))
+
+    @staticmethod
+    def query_json(py_self: PythonObject, expression: PythonObject,
+                   names: PythonObject, options: PythonObject) raises -> PythonObject:
+        var prepared = Python.import_module("akashadb._kernel").PreparedJsonQuery(
+            py_self, expression, names, options)
+        return prepared.execute(options)
+
+    @staticmethod
+    def rebuild_json_index(py_self: PythonObject, name: PythonObject) raises -> PythonObject:
+        var self = py_self.downcast_value_ptr[BoundCollection]()
+        _ensure_open(self[])
+        self[].inner.value().rebuild_json_index(_exact_python_string(name, "index name"))
+        return Python.none()
+
+    @staticmethod
+    def prepare_json(py_self: PythonObject, expression: PythonObject,
+                     names: PythonObject, options: PythonObject) raises -> PythonObject:
+        return Python.import_module("akashadb._kernel").PreparedJsonQuery(
+            py_self, expression, names, options)
 
     @staticmethod
     def scanner(
@@ -2194,6 +2305,12 @@ def PyInit__kernel() abi("C") -> PythonObject:
     try:
         var module = PythonModuleBuilder("_kernel")
         _ = (
+            module.add_type[BoundJsonQuery]("PreparedJsonQuery")
+            .def_py_init[BoundJsonQuery.py_init]()
+            .def_method[BoundJsonQuery.execute]("execute")
+            .def_method[BoundJsonQuery.close]("close")
+        )
+        _ = (
             module.add_type[BoundScanner]("Scanner")
             .def_py_init[BoundScanner.py_init]()
             .def_method[BoundScanner.schema]("schema")
@@ -2243,6 +2360,12 @@ def PyInit__kernel() abi("C") -> PythonObject:
                 "is_point_collection"
             )
             .def_method[BoundCollection.scanner]("scanner")
+            .def_method[BoundCollection.create_json_index]("create_json_index")
+            .def_method[BoundCollection.drop_json_index]("drop_json_index")
+            .def_method[BoundCollection.json_indexes]("json_indexes")
+            .def_method[BoundCollection.query_json]("query_json")
+            .def_method[BoundCollection.rebuild_json_index]("rebuild_json_index")
+            .def_method[BoundCollection.prepare_json]("prepare_json")
             .def_method[BoundCollection.search_controlled]("search_controlled")
             .def_method[BoundCollection.get]("get")
             .def_method[BoundCollection.get_projected]("get_projected")

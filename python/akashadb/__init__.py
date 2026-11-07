@@ -4,7 +4,7 @@ from .payload import JsonbValue
 
 from .query import Formula, QueryRequest
 from .vectors import ContextPair, FieldQuery, IvfOptions, MmrOptions, Point, PointMutation, VectorField
-from .database import CancellationToken, Collection, LocalDatabase
+from .database import CancellationToken, Collection, LocalDatabase, PreparedJsonQuery
 from .arrow import (
     ArrowBatchLease,
     ArrowScanner,
@@ -56,6 +56,7 @@ __all__ = [
     "BatchWriteResult",
     "StorageReport",
     "Collection",
+    "PreparedJsonQuery",
     "CollectionConfig",
     "CancellationToken",
     "CollectionAlreadyOpenError",

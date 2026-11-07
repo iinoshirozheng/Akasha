@@ -4896,6 +4896,102 @@
         "External sort/spill, shard/file/cache support and other scalar targets",
         "All full-product/platform/performance gates; no tuning"
       ]
+    },
+    {
+      "id": "D01c4n-json-expression-snapshot",
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "status": "verified_native_expression_residual_snapshot",
+      "sources": {
+        "rust/lance-datafusion/src/expr.rs": "c515cfffe079f0e37f9b5739f8a2bec9b719955bc6ff62238b8e48912d3adda3",
+        "rust/lance-index/src/scalar/expression.rs": "45023e39a3ced71b1f7664d24ab0d34184f02f4408ddf12433c2ac7d2b33f904",
+        "rust/lance-index/src/scalar/json.rs": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+      },
+      "native_files": [
+        "src/akasha/query/json_expression.mojo",
+        "src/akasha/query/json_truth.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/api/snapshot.mojo"
+      ],
+      "adaptation": [
+        "Native five-scalar-type literal binding; source-supported nonnull Int64 to Float64 conversion, other mismatches rejected",
+        "Akasha ordered nullable expression executor, preserving per-row short circuit and residual errors; not a full DataFusion planner port",
+        "Explicit snapshot-local materialized index preparation with immutable read-root ownership and ordinal postings",
+        "Existing guarded source-verified leaf matcher and scalar target reused; native execution compared with identical all-residual trees"
+      ],
+      "verification": [
+        "docs/research/2026-11-07-json-expression-snapshot-validation.md"
+      ],
+      "remaining": [
+        "Durable index catalog and Python/Arrow/HTTP prepared-query exposure remain separate index stages"
+      ],
+      "results": {
+        "integration_tests": 9,
+        "related_mojo_tests": 26,
+        "python_build": "passed",
+        "targeted_python_tests": 109
+      },
+      "verified_file_sha256": {
+        "src/akasha/query/json_expression.mojo": "0400d100a8d63a955c56c7e81065c1a376826c0c5eee29d2fc8dfb1237ef747c",
+        "src/akasha/query/json_truth.mojo": "5acee37a382d977233b63586ef3eec5296a2831ecbea9c17a646bd9afaace6d1",
+        "src/akasha/query/json_snapshot.mojo": "a8061ca4286ccc46aac6f1b3ff9665e2e573310da95b4fa1a78e06969eb1ba55",
+        "src/akasha/api/snapshot.mojo": "413003f48247bc6a5f014b3242ebc83d37f01643e8867997dca724ef655fd1cf",
+        "tests/mojo/test_json_expression_snapshot.mojo": "434bf2b52e0bcd2de97a4b4f2c57e7aeba440cc18ec14c79cfc3f235c9f08bb4",
+        "tests/mojo/test_json_truth.mojo": "95a626eff71f5278d7044012e109286101bbd8ae0dfcf962285f8d195dda1a87"
+      }
+    },
+    {
+      "id": "D01c4o-json-catalog-public-api",
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "status": "verified_catalog_python_http_integration",
+      "sources": {
+        "rust/lance-datafusion/src/expr.rs": "c515cfffe079f0e37f9b5739f8a2bec9b719955bc6ff62238b8e48912d3adda3",
+        "rust/lance-index/src/scalar/expression.rs": "45023e39a3ced71b1f7664d24ab0d34184f02f4408ddf12433c2ac7d2b33f904",
+        "rust/lance-index/src/scalar/json.rs": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+      },
+      "native_files": [
+        "src/akasha/index/json_catalog.mojo",
+        "src/akasha/index/json_artifacts.mojo",
+        "src/akasha/query/json_expression_spec.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/akasha/storage/manifest.mojo",
+        "src/akasha/storage/point_store.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/database.py",
+        "apps/server/routes/collections.py"
+      ],
+      "adaptation": [
+        "Akasha-owned manifest v6 catalog, publication and recovery; not a Lance storage-format port",
+        "Reuses source-verified Lance scalar/bitmap semantics from D01c4n; no new upstream algorithms copied",
+        "Root-owned bounded artifact reuse and fixed-type rebuild using existing Akasha ArtifactState",
+        "Native public expression parser, owned Python prepared queries and thin HTTP index/query routes"
+      ],
+      "verification": [
+        "docs/research/2026-11-08-json-catalog-api-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/json_catalog.mojo": "e289472bb5183a3409e209883e14d7d4109b8b86019cfc2054baf691796021c6",
+        "src/akasha/index/json_artifacts.mojo": "8f063c16c7ea6d83228e8d3c573c00c05d8cb36857a672205d91c25bec3b336b",
+        "src/akasha/query/json_expression_spec.mojo": "225fe69ee879ec0f5416b5f3264ebc6e04f9cfbaeae189eb8abb93831002bde4",
+        "src/akasha/query/json_snapshot.mojo": "bd4b2d560c5557cd611aeacdf68ff0a0a9dcc64bb4ae86e05083679b5a0ddbde",
+        "src/akasha/api/collection.mojo": "ce3241c6dc49ab0f589c80ad9dcbe7d9413d761bea393fc76b8be17c2e7a23b2",
+        "src/akasha/api/snapshot.mojo": "fbed2bc7172aa3e7aa14938dd785c5fd8f579022aefb5c0e424216321dbef1e4",
+        "src/akasha/storage/manifest.mojo": "1a515ba06f10aa925f93233fc20093e41d38490887e90bb513f34fed6ce4b1f3",
+        "src/akasha/storage/point_store.mojo": "fe5d12866fd47233b0a1584ba131dadd2bfb3a34ea606da5279060e5e5366963",
+        "src/bindings/python_module.mojo": "8c84242cca519b6220836cbd1517c70dd248b1106161a27857cbf6640ed68364",
+        "python/akashadb/database.py": "875fb4e9d945d363187d703deb2b4574b52962759542da3546ca5fda5b43680c",
+        "apps/server/routes/collections.py": "73a1a3e0023dff50b24f43c354f49076abb16439a5b284faeb8a8a99f35c8ee5"
+      },
+      "remaining": [
+        "Arrow-specific prepared-query exposure, broader scalar/index stages and full product/performance gates are separate work"
+      ]
     }
   ]
 }

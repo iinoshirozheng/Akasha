@@ -200,3 +200,27 @@ residual composition and snapshot-aware selection, retaining per-row short
 circuit/error behavior. Broader function-aware index definitions must establish
 value equivalence before replacing predicates. Then complete the authoritative
 catalog migration and durable public collection lifecycle. No optimization.
+
+## Canonical typed comparison binding (2026-11-07)
+
+`try_compare` now maps the six canonical typed comparison operators to the
+existing guarded execution path, following the pinned
+`SargableQueryParser::visit_comparison`. `ne` applies the caller-side negation;
+range endpoints preserve source inclusion/exclusion. Null/wrong-type literals
+and unsupported operators remain unhandled. No implicit coercion or operand
+reordering is introduced. Two native tests cover all six operators at lower,
+equal, upper and null rows, rejection and cancellation. Full source planner
+execution, literal coercion and expression/residual integration remain open;
+this addition does not close the third required stage.
+
+## Native expression/residual/snapshot integration (2026-11-07)
+
+Completed the native typed expression binding, nullable ordered residual
+execution and snapshot-owned index selection via `ReadSnapshot.prepare_json`.
+Prepared queries retain the exact read root through writes, deletion, compaction
+and close. Mixed masks/residuals preserve short circuit and unknowns.
+Nine integration tests, 26 related Mojo tests, Python build and 109 targeted
+Python boundary tests pass. [Evidence](../research/2026-11-07-json-expression-snapshot-validation.md).
+This supersedes the earlier native-expression pending notes above. Full SQL/
+DataFusion planning, broader function-aware index coverage, durable catalog and
+public collection index management remain separate open capabilities.

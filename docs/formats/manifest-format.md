@@ -156,6 +156,18 @@ V1–v4 bytes and validation contracts are unchanged: v4 still rejects any base
 sequence different from its checkpoint sequence. Readers accept v5 before writers
 emit it. A checkpoint without an HNSW reference continues to use v2.
 
+## Version 6: durable JSON index catalog
+
+V6 preserves the v5 header, descriptors and HNSW base/overlay rules. After the
+descriptors, before the final CRC, it appends a little-endian u32 catalog byte
+length and the [catalog section v1](json-index-catalog-format.md). The outer CRC
+covers the length and section. The section is required even for an empty catalog.
+Catalog publication increments manifest generation and catalog revision; point
+sequence is unchanged by catalog-only operations. Flush, compaction and HNSW
+publication retain the section. V1–v5 decode with an empty revision-zero catalog;
+their byte layouts remain unchanged. Downgrading a nonzero catalog revision to
+an older manifest encoding is rejected. V6 may have no HNSW reference.
+
 ## Validation and authority
 
 Dense, sparse, and HNSW names pass the same filename validator. Strict mode

@@ -1,3 +1,6 @@
+from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition
+from akasha.query.json_expression import JsonExpression
+from akasha.query.json_snapshot import PreparedJsonQuery, JsonIndexRequest
 from akasha.query.query_plan import QueryNode
 from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
@@ -77,6 +80,7 @@ struct _RootSlot(Movable):
 struct ReadSnapshot(Movable):
     """An immutable, owned collection view at one accepted sequence."""
 
+    var _json_catalog: JsonIndexCatalog
     var _config: CollectionConfig
     var _dimension: Int
     var _generation: UInt64
@@ -84,7 +88,8 @@ struct ReadSnapshot(Movable):
     # Shared behind a pointer so close can race queries on one handle.
     var _slot: ArcPointer[_RootSlot]
 
-    def __init__(out self, var root: ArcPointer[ReadGeneration]):
+    def __init__(out self, var root: ArcPointer[ReadGeneration], var json_catalog: JsonIndexCatalog = JsonIndexCatalog()):
+        self._json_catalog = json_catalog^
         self._config = root[].config.copy()
         self._dimension = root[].config.dimension
         self._generation = root[].generation
@@ -407,6 +412,45 @@ struct ReadSnapshot(Movable):
             ):
                 records.append(self._record_at(view, location))
         return records^
+
+    def json_indexes(self) raises -> List[JsonIndexDefinition]:
+        var root = self._acquire()
+        return self._json_catalog.definitions.copy()
+
+    def rebuild_json_index(self, name: String,
+                           control: Optional[QueryControl] = None) raises:
+        from akasha.query.json_snapshot import snapshot_json_artifact
+        var root = self._acquire()
+        for definition in self._json_catalog.definitions:
+            if definition.name == name:
+                var locations = root[].id_ordered_locations()
+                _ = snapshot_json_artifact(root[], locations,
+                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)),
+                    control, rebuild=True)
+                return
+        raise Error("unknown JSON index name")
+
+    def prepare_json_catalog(self, var expression: JsonExpression,
+                             names: List[String], *,
+                             control: Optional[QueryControl] = None) raises -> PreparedJsonQuery:
+        var root = self._acquire()
+        var requests = List[JsonIndexRequest]()
+        for name in names:
+            var found = False
+            for definition in self._json_catalog.definitions:
+                if definition.name == name:
+                    requests.append(JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)))
+                    found = True
+                    break
+            if not found:
+                raise Error("unknown JSON index name")
+        return PreparedJsonQuery(root^, expression^, requests, control)
+
+    def prepare_json(self, var expression: JsonExpression,
+                     indexes: List[JsonIndexRequest], *,
+                     control: Optional[QueryControl] = None) raises -> PreparedJsonQuery:
+        """Prepare an owned JSON query on this exact immutable read root."""
+        return PreparedJsonQuery(self._acquire(), expression^, indexes, control)
 
     def scanner(
         self,

@@ -200,10 +200,10 @@ def test_manifest_v3_hnsw_name_must_match_checkpoint_sequence() raises:
         _ = decode_manifest_bytes(corrupt^, 3)
 
 
-def test_manifest_file_limit_matches_maximum_encoded_v3_size() raises:
+def test_manifest_file_limit_matches_maximum_encoded_v6_size() raises:
     # Bounded-read exact/one-extra behavior is covered by test_filesystem.
     # Pin the manifest-specific limit to the documented format maximum here.
-    assert_equal(_MAX_MANIFEST_BYTES, 134_318_143)
+    assert_equal(_MAX_MANIFEST_BYTES, 134_318_143 + 4 + 16 * 1024 * 1024)
 
 
 def test_manifest_v3_without_hnsw_round_trips_but_normal_publish_stays_v2() raises:

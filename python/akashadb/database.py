@@ -25,6 +25,14 @@ from .models import (
 
 
 class KernelCollection(Protocol):
+    def create_json_index(self, name: str, column: str, path: str) -> None: ...
+    def drop_json_index(self, name: str) -> None: ...
+    def rebuild_json_index(self, name: str) -> None: ...
+    def json_indexes(self) -> list[dict[str, Any]]: ...
+    def query_json(self, expression: dict[str, Any], indexes: list[str],
+                   options: dict[str, Any]) -> list[int]: ...
+    def prepare_json(self, expression: dict[str, Any], indexes: list[str],
+                     options: dict[str, Any]) -> Any: ...
     def close(self) -> None: ...
     def last_sequence(self) -> int: ...
     def collection_config(self) -> dict[str, Any]: ...
@@ -176,6 +184,40 @@ class Collection:
         duration = perf_counter_ns() - started
         self._record_operation(method, duration, "ok", None)
         return result
+
+    def create_json_index(self, name: str, column: str, path: str) -> None:
+        """Persist a bitmap definition after native type inference and validation."""
+        self._call("create_json_index", name, column, path)
+
+    def json_indexes(self) -> list[dict[str, Any]]:
+        """Return owned catalog definitions with fixed learned target types."""
+        return self._call("json_indexes")
+
+    def drop_json_index(self, name: str) -> None:
+        self._call("drop_json_index", name)
+
+    def rebuild_json_index(self, name: str) -> None:
+        """Rebuild this captured root's bitmap while preserving its learned type."""
+        self._call("rebuild_json_index", name)
+
+    def query_json(self, expression: Mapping[str, Any], *, indexes: list[str] | None = None,
+                   timeout_ns: int | None = None,
+                   cancellation: "CancellationToken | None" = None) -> list[int]:
+        """Execute a native nullable expression on one captured read snapshot."""
+        options = _json_query_options(timeout_ns, cancellation)
+        options["max_candidates"] = self.limits.max_candidates
+        _validate_json_arguments(expression, indexes)
+        return self._call("query_json", dict(expression), [] if indexes is None else indexes, options)
+
+    def prepare_json(self, expression: Mapping[str, Any], *, indexes: list[str] | None = None,
+                     timeout_ns: int | None = None,
+                     cancellation: "CancellationToken | None" = None) -> "PreparedJsonQuery":
+        """Capture an owned query snapshot, independent of this collection's lifetime."""
+        options = _json_query_options(timeout_ns, cancellation)
+        options["max_candidates"] = self.limits.max_candidates
+        _validate_json_arguments(expression, indexes)
+        return PreparedJsonQuery(self._call("prepare_json", dict(expression),
+                                           [] if indexes is None else indexes, options))
 
     def _record_operation(
         self, method: str, duration_ns: int, status: str, error: str | None
@@ -761,6 +803,47 @@ class CancellationToken:
     @property
     def cancelled(self) -> bool:
         return self._event.is_set()
+
+
+def _json_query_options(timeout_ns, cancellation):
+    if timeout_ns is not None and (type(timeout_ns) is not int or timeout_ns <= 0):
+        raise ValidationError("timeout_ns must be a positive integer")
+    return {"deadline_ns": 0 if timeout_ns is None else monotonic_ns() + timeout_ns,
+            "cancelled": bool(cancellation and cancellation.cancelled)}
+
+
+def _validate_json_arguments(expression, indexes):
+    if not isinstance(expression, Mapping):
+        raise ValidationError("expression must be a mapping")
+    if indexes is not None and (not isinstance(indexes, list) or any(type(name) is not str for name in indexes)):
+        raise ValidationError("indexes must be a list of index names")
+
+
+class PreparedJsonQuery:
+    """Owned native snapshot; close explicitly or use as a context manager.
+
+    Cancellation is checked at call entry; timeout applies to each execution.
+    """
+
+    def __init__(self, kernel):
+        self._kernel = kernel
+
+    def execute(self, *, timeout_ns: int | None = None,
+                cancellation: CancellationToken | None = None) -> list[int]:
+        options = _json_query_options(timeout_ns, cancellation)
+        try:
+            return self._kernel.execute(options)
+        except Exception as error:
+            raise map_kernel_error(error) from error
+
+    def close(self) -> None:
+        self._kernel.close()
+
+    def __enter__(self) -> "PreparedJsonQuery":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
 
 class LocalDatabase:

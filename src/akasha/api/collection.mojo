@@ -1,3 +1,5 @@
+from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition
+from akasha.query.json_snapshot import JsonIndexRequest, build_snapshot_json_index
 from akasha.query.query_plan import QueryNode
 from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
@@ -776,6 +778,68 @@ struct PersistentCollection:
                 return 0
             return self._hnsw_id_lookup.value().incremental_append_count()
 
+    def _json_catalog_unlocked(self) -> JsonIndexCatalog:
+        if self._point_store._manifest:
+            return self._point_store._manifest.value().json_catalog.copy()
+        return JsonIndexCatalog()
+
+    def json_indexes(self) raises -> List[JsonIndexDefinition]:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            return self._json_catalog_unlocked().definitions.copy()
+
+    def create_json_index(mut self, name: String, column: String, path: String,
+                          control: Optional[QueryControl] = None) raises:
+        # Build outside writer exclusion; publish only against the captured state.
+        var snapshot = self.snapshot()
+        var catalog = snapshot._json_catalog.copy()
+        for definition in catalog.definitions:
+            if definition.name == name:
+                raise Error("JSON index name already exists")
+        var definition = JsonIndexDefinition(name.copy(), column.copy(), path.copy(), 1)
+        definition.validate()
+        var root = snapshot._acquire()
+        var locations = root[].id_ordered_locations()
+        var index = build_snapshot_json_index(root[], locations, JsonIndexRequest(column.copy(), path.copy()), control)
+        definition.target = index.target()
+        if catalog.revision == UInt64.MAX:
+            raise Error("JSON catalog revision exhausted")
+        catalog.definitions.append(definition^)
+        var expected = catalog.revision
+        catalog.revision += 1
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            if self._last_sequence != snapshot.last_sequence() or self._json_catalog_unlocked().revision != expected:
+                raise Error("collection changed during JSON index creation; retry")
+            if control:
+                control.value().checkpoint(0)
+            var generation = self._point_store.publish_json_catalog(catalog^, expected)
+            self._read_generations[].publish(generation)
+
+    def rebuild_json_index(mut self, name: String,
+                           control: Optional[QueryControl] = None) raises:
+        var captured = self.snapshot()
+        captured.rebuild_json_index(name, control)
+
+    def drop_json_index(mut self, name: String) raises:
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            var old = self._json_catalog_unlocked()
+            var catalog = JsonIndexCatalog()
+            var found = False
+            for definition in old.definitions:
+                if definition.name == name:
+                    found = True
+                else:
+                    catalog.definitions.append(definition.copy())
+            if not found:
+                raise Error("unknown JSON index name")
+            if old.revision == UInt64.MAX:
+                raise Error("JSON catalog revision exhausted")
+            catalog.revision = old.revision + 1
+            var generation = self._point_store.publish_json_catalog(catalog^, old.revision)
+            self._read_generations[].publish(generation)
+
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
         with BlockingScopedLock(self._writer_lock[]):
@@ -792,7 +856,8 @@ struct PersistentCollection:
                 self._memtable,
                 self._pins,
                 self._field_catalog(),
-            )
+            ),
+            self._json_catalog_unlocked(),
         )
 
     def upsert(mut self, id: Int, var values: List[Float32]) raises:
@@ -2566,7 +2631,7 @@ def _load_or_rebuild_hnsw(
                 manifest.hnsw_config_fingerprint.value() == config.fingerprint()
                 and (
                     point_projection
-                    or manifest.format_version == 5
+                    or manifest.format_version >= 5
                     or manifest.hnsw_point_count.value()
                     == UInt64(len(checkpoint_live_ids))
                 )
@@ -2599,7 +2664,7 @@ def _load_or_rebuild_hnsw(
                         segmented = SegmentedHnsw.from_owned(owned.take())
                         compatible = True
                 if compatible and (
-                    point_projection or manifest.format_version == 5
+                    point_projection or manifest.format_version >= 5
                 ):
                     try:
                         var cached_delta = load_hnsw_overlay_cache(

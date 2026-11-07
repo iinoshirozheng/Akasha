@@ -1,3 +1,4 @@
+from akasha.index.json_catalog import JsonIndexCatalog, encode_json_catalog, decode_json_catalog
 from akasha.storage.checksum import (
     BinaryReader,
     BinaryWriter,
@@ -21,6 +22,7 @@ comptime _VERSION_V2 = UInt16(2)
 comptime _VERSION_V3 = UInt16(3)
 comptime _VERSION_V4 = UInt16(4)
 comptime _VERSION_V5 = UInt16(5)
+comptime _VERSION_V6 = UInt16(6)
 comptime _FIXED_SIZE_V1 = 32
 comptime _FIXED_SIZE_V2 = 40
 comptime _FIXED_SIZE_V3 = 40
@@ -37,6 +39,7 @@ comptime _MAX_MANIFEST_BYTES = (
     + _HNSW_DESCRIPTOR_FIXED_SIZE
     + _MAX_NAME_BYTES
     + 4
+    + 4 + 16 * 1024 * 1024  # v6 embedded catalog section
 )
 comptime _MANIFEST_NAME = "manifest.bin"
 comptime _TEMP_NAME = "manifest.bin.tmp"
@@ -123,6 +126,7 @@ struct Manifest(Movable):
     var segment_checksum: UInt32
     var segment_name: String
     var format_version: Int
+    var json_catalog: JsonIndexCatalog
     var segments: List[SegmentDescriptor]
     var hnsw_name: Optional[String]
     var hnsw_checksum: Optional[UInt32]
@@ -153,6 +157,7 @@ struct Manifest(Movable):
         self.segment_checksum = segment_checksum
         self.segment_name = String(copy=segment_name)
         self.format_version = 1
+        self.json_catalog = JsonIndexCatalog()
         self.segments = List[SegmentDescriptor]()
         self.segments.append(descriptor^)
         self.hnsw_name = Optional[String]()
@@ -186,6 +191,12 @@ struct Manifest(Movable):
         manifest.segments = segments^
         return manifest^
 
+    def retain_json_catalog(mut self, previous: Self):
+        """Carry catalog authority into a replacement generation."""
+        if previous.format_version == 6:
+            self.json_catalog = previous.json_catalog.copy()
+            self.format_version = 6
+
     @staticmethod
     def with_hnsw(
         dimension: Int,
@@ -199,7 +210,7 @@ struct Manifest(Movable):
         *,
         format_version: Int = 3,
     ) raises -> Manifest:
-        if format_version < 3 or format_version > 5:
+        if format_version < 3 or format_version > 6:
             raise Error("unsupported HNSW manifest version")
         _validate_safe_filename(hnsw_name)
         var manifest = Manifest.with_segments(
@@ -266,12 +277,17 @@ def encode_manifest_v5(manifest: Manifest) raises -> List[UInt8]:
     return _encode_multi_manifest(manifest, _VERSION_V5, has_hnsw, True)
 
 
+def encode_manifest_v6(manifest: Manifest) raises -> List[UInt8]:
+    var has_hnsw = _validate_hnsw_reference(manifest, 6)
+    return _encode_multi_manifest(manifest, _VERSION_V6, has_hnsw, True)
+
+
 def hnsw_base_sequence(manifest: Manifest) raises -> UInt64:
     """Sequence represented by the referenced immutable graph, not its overlay.
     """
     if not _validate_hnsw_reference(manifest, manifest.format_version):
         raise Error("manifest has no HNSW base")
-    if manifest.format_version == 5:
+    if manifest.format_version >= 5:
         return parse_hnsw_job_name(manifest.hnsw_name.value())[0]
     return manifest.last_sequence
 
@@ -282,6 +298,8 @@ def _encode_multi_manifest(
     has_hnsw: Bool,
     strict_names: Bool,
 ) raises -> List[UInt8]:
+    if version < _VERSION_V6 and (manifest.json_catalog.revision != 0 or len(manifest.json_catalog.definitions) != 0):
+        raise Error("legacy manifest encoding would discard JSON catalog")
     if manifest.dimension <= 0:
         raise Error("manifest dimension must be positive")
     if manifest.generation == 0:
@@ -338,6 +356,10 @@ def _encode_multi_manifest(
         writer.write_u64(manifest.hnsw_point_count.value())
         for byte in hnsw_name.bytes():
             writer.write_u8(byte)
+    if version == _VERSION_V6:
+        var catalog_bytes = encode_json_catalog(manifest.json_catalog)
+        writer.write_u32(UInt32(len(catalog_bytes)))
+        writer.write_bytes(catalog_bytes)
     return _finish_manifest(writer^)
 
 
@@ -364,7 +386,7 @@ def decode_manifest_bytes(
         minimum_size = _FIXED_SIZE_V2
     elif version == _VERSION_V3:
         minimum_size = _FIXED_SIZE_V3
-    elif version == _VERSION_V4 or version == _VERSION_V5:
+    elif version == _VERSION_V4 or version == _VERSION_V5 or version == _VERSION_V6:
         minimum_size = _FIXED_SIZE_V4
     else:
         raise Error("unsupported manifest version")
@@ -408,8 +430,12 @@ def decode_manifest_bytes(
 
 def publish_manifest(directory: String, manifest: Manifest) raises:
     _validate_manifest_names(manifest, True)
+    if manifest.format_version < 6 and (manifest.json_catalog.revision != 0 or len(manifest.json_catalog.definitions) != 0):
+        raise Error("legacy manifest publication would discard JSON catalog")
     var bytes: List[UInt8]
-    if _validate_hnsw_reference(manifest, manifest.format_version):
+    if manifest.format_version == 6:
+        bytes = encode_manifest_v6(manifest)
+    elif _validate_hnsw_reference(manifest, manifest.format_version):
         if manifest.format_version == 5:
             bytes = encode_manifest_v5(manifest)
         elif manifest.format_version == 4:
@@ -568,11 +594,18 @@ def _decode_manifest_multi(
             raise Error("unsupported manifest HNSW reserved field")
         hnsw_config_fingerprint = Optional(reader.read_u64())
         hnsw_point_count = Optional(reader.read_u64())
-        if reader.remaining() != hnsw_name_length + 4:
+        if (version < _VERSION_V6 and reader.remaining() != hnsw_name_length + 4) or reader.remaining() < hnsw_name_length + 4:
             raise Error("manifest HNSW reference length mismatch")
         var hnsw_name_bytes = reader.read_bytes(hnsw_name_length)
         hnsw_name = Optional(String(from_utf8=hnsw_name_bytes))
 
+    var catalog = JsonIndexCatalog()
+    if version == _VERSION_V6:
+        var catalog_size = Int(reader.read_u32())
+        if catalog_size < 12 or catalog_size > 16 * 1024 * 1024 or catalog_size != reader.remaining() - 4:
+            raise Error("manifest catalog length mismatch")
+        var catalog_bytes = reader.read_bytes(catalog_size)
+        catalog = decode_json_catalog(Span(catalog_bytes))
     _ = reader.read_u32()
     if reader.remaining() != 0:
         raise Error("unexpected manifest payload")
@@ -580,6 +613,7 @@ def _decode_manifest_multi(
         dimension, generation, last_sequence, segments^, strict_names
     )
     manifest.format_version = Int(version)
+    manifest.json_catalog = catalog^
     if has_hnsw:
         _validate_safe_filename(hnsw_name.value())
         manifest.hnsw_name = hnsw_name^
@@ -649,7 +683,7 @@ def _validate_hnsw_reference(manifest: Manifest, version: Int) raises -> Bool:
         if version == 3:
             if hnsw_name != "hnsw-" + String(manifest.last_sequence) + ".bin":
                 raise Error("manifest HNSW name must match checkpoint sequence")
-        elif version == 4 or version == 5:
+        elif version == 4 or version == 5 or version == 6:
             var identity = parse_hnsw_job_name(hnsw_name)
             if (
                 version == 4 and identity[0] != manifest.last_sequence

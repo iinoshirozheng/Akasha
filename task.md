@@ -4,6 +4,12 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 2026-11-08：持久化 JSON catalog 與 Python／HTTP API 已完成驗收。Manifest v6、建立／列出／刪除／重建、root-local bitmap 重用、owned prepared query、備份／恢復與 HNSW 遷移皆已接通；完整 Python 3,764 passed／1 skipped，最終 catalog 邊界與 fsync 補測 34 passed，另有針對性原生測試。詳見[逐項驗收](docs/research/2026-11-08-json-catalog-api-validation.md)。Arrow-specific prepared output、其他索引與效能門檻仍為獨立工作。
+
+- 2026-11-07：原生 expression／residual／snapshot 整合已完成：`ReadSnapshot.prepare_json` 持有一致讀取 root，混用 guarded bitmap 與有序 residual，保留三值邏輯、短路、取消與快照壽命。9 項整合＋26 項相關 Mojo、Python build 與 109 項指定 Python 通過；[驗收](docs/research/2026-11-07-json-expression-snapshot-validation.md)。持久化 catalog 與新 API 的 Python／Arrow／HTTP 暴露仍屬後續階段。
+
+- 2026-11-07：新增原生 `try_compare`，把六種已綁定型別的比較接入 guarded JSON bitmap 搜尋，保留 `ne` 的 unknown、範圍端點與未處理條件；兩項新增原生測試通過。完整 expression／coercion／residual 與 catalog 整合仍待完成。
+
 - 最新 D01c4m（2026-11-07）：JSON 索引已加入原生 typed leaf 匹配與實際搜尋派送。1,344 組原始碼對照確認五類來源匹配可能選到不同值的情況，新增等價檢查並保留未涵蓋的原條件；NOT 保留 unknown，取消控制已接通。14 項 Mojo 測試與四份來源產物逐位元重現通過。
   [驗證](docs/research/2026-11-07-lance-json-matcher-validation.md)／[原生用法](docs/native-jsonb.md#native-json-bitmap-predicate-matching)。接續完整運算式綁定／轉型／residual、snapshot 選擇及 catalog 持久化公開整合；這批尚未接入公開 collection planner，完整 49 大項與效能門檻仍開放，未優化。
 

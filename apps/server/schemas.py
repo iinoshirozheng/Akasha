@@ -123,3 +123,16 @@ class SearchRequestBody(BaseModel):
 class SearchResultResponse(BaseModel):
     id: int
     score: float
+
+
+class JsonIndexRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    column: StrictStr
+    path: StrictStr
+
+
+class JsonExpressionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expression: dict[str, Any]
+    indexes: list[StrictStr] = Field(default_factory=list, max_length=256)
+    timeout_ns: StrictInt | None = Field(default=None, gt=0)

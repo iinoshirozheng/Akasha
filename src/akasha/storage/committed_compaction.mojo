@@ -396,6 +396,7 @@ def publish_compaction_output(
             current.last_sequence,
             descriptors^,
         )
+    compacted.retain_json_catalog(current)
     publish_manifest(directory, compacted)
     return current.generation
 

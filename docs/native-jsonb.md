@@ -986,3 +986,123 @@ See [source counterexamples and validation](research/2026-11-07-lance-json-match
 Whole-expression planning, coercion, residual execution, durable index management
 and public collection APIs remain unfinished. This native API does not change
 the existing collection JSONB filter's missing/null and short-circuit behavior.
+
+### Canonical typed JSON comparisons
+
+`LanceJsonBitmapIndex.try_compare(function, argument, operator, literal)` binds
+`eq`, `ne`, `lt`, `le`, `gt`, and `ge` to the existing guarded bitmap path.
+The function must be the left operand and the `LanceScalarKey` literal must
+already have the learned target type. It returns `Optional[NullableRowMask]`;
+`None` leaves the original predicate unhandled, including null literals,
+wrong types, unsupported operators and non-equivalent function references.
+`ne` negates the equality mask while preserving unknown rows. All masks must
+be used inside the matching live-row snapshot, including negated masks.
+
+This native API follows the pinned Lance scalar target's comparison semantics.
+It does not supply SQL type coercion, expression parsing, residual execution,
+index snapshot selection or durable collection index management. Cancellation
+is checked even for unhandled comparisons.
+
+### Snapshot-owned JSON expressions
+
+Native callers can compose `JsonExpression.all`, `any`, and `negate` around
+`JsonExpression(JsonbProjection(spec), LanceBitmapQuery...)` leaves, then call
+`snapshot.prepare_json(expression, [JsonIndexRequest(column, path)])`.
+The returned `PreparedJsonQuery.execute()` returns ascending signed point IDs.
+Pass an empty index list to execute the identical tree entirely as residuals.
+`indexed_leaf_count()` reports how many leaves actually use an index mask.
+
+Preparation explicitly builds bounded in-memory indexes on that snapshot. A
+requested index whose data cannot be trained reports a construction error;
+it is not silently ignored. After successful preparation, unsupported leaves
+remain residual and are evaluated in tree order, with three-valued AND/OR/NOT
+and short circuiting. Null does not pass the filter. Empty IN is false even
+for null inputs. SQL-null equality and IN containing null remain residual.
+Custom JSON work limits also retain residual evaluation so masks cannot suppress
+requested resource errors. All index masks are confined to the owned root's
+visible rows. Negative point IDs are preserved using local ordinal postings.
+
+The prepared query owns the read root independently of the snapshot handle and
+collection. Later updates, deletes, compaction, close and replacement writers do
+not change its view. New preparation on a closed snapshot raises. Cancellation,
+deadlines and row budgets can be passed at preparation and execution separately.
+
+Literal binding uses the function's result type. Within the native five scalar
+types, the pinned Lance coercion allows nonnull Int64 to Float64 (including
+rounding at large magnitudes); other mismatched types raise at construction.
+This is a native typed expression API, not SQL parsing. Scalar ordering follows
+the existing Lance target, including its Float64 bit/NaN ordering. Durable index
+catalogs and Python/Arrow/HTTP exposure of this new prepared API remain separate.
+
+```mojo
+from akasha.query.json_expression import JsonExpression
+from akasha.query.json_snapshot import JsonIndexRequest
+from akasha.query.jsonb_projection import JsonbProjection
+from akasha.document.json_reader import parse_json
+from akasha.index.lance_bitmap import LanceBitmapQuery
+from akasha.index.lance_scalar import LanceScalarKey
+
+var projection = JsonbProjection(parse_json(
+    "{\"function\":\"json_get_int\",\"input\":\"data\",\"argument\":\"v\"}"
+))
+var expression = JsonExpression(
+    projection^, LanceBitmapQuery.equals(LanceScalarKey.integer(2))
+)
+var snapshot = collection.snapshot()
+var prepared = snapshot.prepare_json(expression^, [JsonIndexRequest("data", "v")])
+snapshot.close()
+var ids = prepared.execute()
+```
+# Durable catalog and Python snapshot queries
+
+Create a named bitmap definition with
+`collection.create_json_index("value", "data", "$.v")`; `json_indexes()` returns
+its name, column, path and learned scalar target. `drop_json_index("value")`
+removes the definition for future snapshots. Definitions survive flush,
+compaction, reopen and physical backup/restore. Later incompatible payloads are
+accepted as data, but preparing an index query reports the type mismatch.
+
+```python
+expression = {
+    "kind": "predicate",
+    "projection": {"function": "json_get_int", "input": "data", "argument": "v"},
+    "operator": "ge",
+    "value": 2,
+}
+ids = collection.query_json(expression, indexes=["value"])
+with collection.prepare_json(expression, indexes=["value"]) as prepared:
+    collection.close()
+    ids = prepared.execute()  # owns the captured data and catalog view
+```
+
+Omitting `indexes` runs the residual expression on the captured snapshot.
+`query_json`, `prepare_json` and prepared `execute` accept `timeout_ns` and a
+`CancellationToken`; cancellation is sampled at call entry. An execution timeout
+does not close the prepared query. Call `close()` or use a context manager to
+release it explicitly.
+
+Queries on the same immutable read root share bitmap artifacts keyed by column,
+exact path and learned type (at most 256 distinct keys per root). A changed root
+builds from its own visible rows; artifacts never cross snapshot identities.
+`collection.rebuild_json_index("value")` rebuilds the captured root using the
+catalog's existing type. It changes no durable definition or manifest bytes.
+A failed rebuild preserves an existing ready artifact; acquired prepared queries
+retain their results. Concurrent writes may advance the collection after capture,
+so rebuild is a snapshot operation rather than a write barrier.
+
+HTTP exposes `PUT /collections/{name}/json-indexes/{index_name}` with
+`{"column":"data","path":"$.v"}`, GET on `/json-indexes`, DELETE on the named
+index, and `POST /collections/{name}/json-query` with `expression`, optional
+`indexes` and `timeout_ns`. The query response is `{"ids":[...]}`.
+`POST /collections/{name}/json-indexes/{index_name}/rebuild` rebuilds the named
+index on a captured root and returns `{"rebuilt":true}`.
+
+Public expression nodes use `kind`: `all`/`any` with `children`, `not` with
+`child`, or `predicate` with `projection` and `operator`. Predicates accept
+`eq`, `ne`, `lt`, `le`, `gt`, `ge` with `value`; `in` with `values`; `is_null`
+without an operand; or `between` with optional `lower`, `upper`, `include_lower`
+and `include_upper` (inclusive by default). Unknown keys are rejected. Literal
+values are null, Boolean, Int64, Float64 or string; exact Float64 bits use
+`{"float_bits":"4000000000000000"}` and binary bytes use `{"binary":"00ff"}`.
+Expressions are limited to depth 16 and 256 nodes, including implicit negation
+for `ne`. Null comparisons retain unknown truth; only true rows are returned.

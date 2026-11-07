@@ -228,7 +228,7 @@ def _checked_live_points(
             expected_dimension
         )
         if manifest.hnsw_config_fingerprint.value() != config.fingerprint() or (
-            manifest.format_version != 5
+            manifest.format_version < 5
             and manifest.hnsw_point_count.value() != UInt64(dense_count)
         ):
             raise Error(
@@ -243,7 +243,7 @@ def _checked_live_points(
         )
         if not loaded.hit():
             raise Error("manifest HNSW sidecar is missing or stale")
-        if manifest.format_version == 5:
+        if manifest.format_version >= 5:
             var index = SegmentedHnsw.from_mapped(loaded.take_view())
             _ = restore_hnsw_overlay(
                 index, memtable, hnsw_base_sequence(manifest)

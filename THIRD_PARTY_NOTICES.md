@@ -458,3 +458,15 @@ Sargable leaf methods were inspected, not executed by that oracle. Existing
 dependency notices apply. The fixture and `docs/upstream/ports.json` record
 original file/method/crate hashes and the explicit adaptation. No SQL executor
 or durable collection planner is included in this dependency.
+
+### Snapshot JSON expression integration
+
+`src/akasha/query/json_expression.mojo` adapts the native five-type subset of
+Lance `lance-datafusion/src/expr.rs::safe_coerce_scalar`, and the JSON wrapper's
+`try_compare` adapts `SargableQueryParser::visit_comparison`, at the existing
+pinned Lance revision `ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e` (The Lance
+Authors, Apache-2.0). Existing Lance license applies. `json_truth.mojo` and
+`json_snapshot.mojo` compose the existing source-backed scalar/JSON consumers
+with Akasha's immutable read roots and ordered short-circuit expression trees;
+this is an Akasha executor, not a port of DataFusion's full planner. Existing
+nullable bitmap and JSON consumer source notices apply.

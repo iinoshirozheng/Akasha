@@ -16,6 +16,7 @@ from akasha.document.record import clone_fields
 from akasha.index.artifact_state import ArtifactState, PqArtifacts
 from akasha.index.field_ivf import FieldIvfArtifacts
 from akasha.index.field_artifacts import FieldArtifacts
+from akasha.index.json_artifacts import JsonArtifacts
 from akasha.index.field_hnsw import FieldHnswIndex
 from akasha.index.field_sparse import FieldSparseIndex
 from akasha.index.bitmap import Bitmap
@@ -155,6 +156,7 @@ struct ReadGeneration(Movable):
     var pq_cosine: ArcPointer[PqArtifacts]
     var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
     var field_ivf: ArcPointer[FieldIvfArtifacts]
+    var json_indexes: ArcPointer[JsonArtifacts]
     var _pins: ArcPointer[GenerationPinRegistry]
 
     def __init__(
@@ -184,6 +186,7 @@ struct ReadGeneration(Movable):
         self.pq_cosine = ArcPointer(PqArtifacts())
         self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
         self.field_ivf = ArcPointer(FieldIvfArtifacts())
+        self.json_indexes = ArcPointer(JsonArtifacts())
         self._pins = pins^
         self._pins[].pin(generation)
 

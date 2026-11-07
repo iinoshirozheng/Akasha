@@ -10,7 +10,7 @@ from std.sys import size_of
 from akasha.document.jsonb import JsonbValue
 from akasha.index.lance_json_input import JsonIndexValue, extract_json_index_batch, infer_json_index_type, convert_json_index_batch
 from akasha.index.lance_scalar import LanceScalarKey
-from akasha.index.lance_bitmap import LanceBitmapIndex, LanceBitmapRow, LanceBitmapQuery, LanceOldRows
+from akasha.index.lance_bitmap import LanceBitmapIndex, LanceBitmapRow, LanceBitmapQuery, LanceBitmapBound, LanceOldRows
 from akasha.index.nullable_rows import NullableRowSet, NullableRowMask
 from akasha.index.lance_json_matcher import json_bitmap_reference_supported, json_bitmap_query_supported
 from akasha.query.control import QueryControl
@@ -59,6 +59,33 @@ struct LanceJsonBitmapIndex(Copyable, Movable):
             return None
         var rows = self._bitmap.search(query, track_nulls=True, control=control.copy())
         return Optional(NullableRowMask(rows^, negated))
+
+    def try_compare(self, function: String, argument: Optional[String],
+                    operator: String, literal: LanceScalarKey, *,
+                    control: Optional[QueryControl] = None) raises -> Optional[NullableRowMask]:
+        """Bind a canonical typed comparison; None retains the original leaf.
+
+        Ports SargableQueryParser::visit_comparison. The function is the left
+        operand, and the caller must have bound the column and literal type.
+        No implicit casts, operand reversal or SQL expression parsing occurs.
+        """
+        if control:
+            control.value().checkpoint(0)
+        if literal.is_null or literal.target != self.target():
+            return None
+        var query: LanceBitmapQuery
+        if operator == "eq" or operator == "ne":
+            query = LanceBitmapQuery.equals(literal.copy())
+        elif operator == "lt" or operator == "le":
+            query = LanceBitmapQuery.range_of(LanceBitmapBound(),
+                LanceBitmapBound(Optional(literal.copy()), operator == "le"))
+        elif operator == "gt" or operator == "ge":
+            query = LanceBitmapQuery.range_of(
+                LanceBitmapBound(Optional(literal.copy()), operator == "ge"), LanceBitmapBound())
+        else:
+            return None
+        return self.try_search(function, argument, query, negated=operator == "ne",
+                               control=control.copy())
 
     def remapped(self, mapping: Dict[UInt64, Optional[UInt64]], *,
                  control: Optional[QueryControl] = None) raises -> Self:

@@ -1,3 +1,4 @@
+from akasha.index.json_catalog import JsonIndexCatalog
 from akasha.common.config import CollectionConfig
 from akasha.document.point_state import PointMutation, PointState
 from akasha.document.vector_value import VectorValue
@@ -274,6 +275,7 @@ struct PointStore(Movable):
                     if self._manifest.value().hnsw_name:
                         retired.append(self._path + "/" + self._manifest.value().hnsw_name.value())
                     self._io_failed = True
+                    updated.retain_json_catalog(self._manifest.value())
                     publish_manifest(self._path, updated)
                     self._manifest = Optional(updated^)
                     self._hnsw_reference_valid = Bool(hnsw)
@@ -392,6 +394,8 @@ struct PointStore(Movable):
                 sequence,
                 descriptors^,
             )
+        if self._manifest:
+            manifest.retain_json_catalog(self._manifest.value())
         publish_manifest(self._path, manifest)
         self._manifest = Optional(manifest^)
         self._point_checkpoint = True
@@ -400,6 +404,34 @@ struct PointStore(Movable):
         rotate_sparse_wal(self._path)
         self._retired.retire_or_reclaim(self._path, retired)
         self._io_failed = False
+
+    def publish_json_catalog(mut self, var catalog: JsonIndexCatalog, expected_revision: UInt64) raises -> UInt64:
+        """Publish under the owning collection's writer lock; fail closed on I/O."""
+        self._ensure_writable()
+        catalog.validate()
+        if expected_revision == UInt64.MAX or catalog.revision != expected_revision + 1:
+            raise Error("JSON catalog revision must advance exactly once")
+        self._checkpoint(False)
+        var manifest = load_manifest(self._path, self._catalog[].field_at(0).dimension)
+        if manifest.json_catalog.revision != expected_revision:
+            raise Error("JSON catalog changed during preparation")
+        if manifest.generation == UInt64.MAX:
+            raise Error("manifest generation exhausted")
+        var retired = List[String]()
+        self._io_failed = True
+        if manifest.format_version == 3 and manifest.hnsw_name:
+            var old_name = manifest.hnsw_name.value().copy()
+            manifest.hnsw_name = Optional(migrate_hnsw_base_name(self._path, manifest, manifest.generation + 1))
+            retired.append(self._path + "/" + old_name)
+        manifest.generation += 1
+        manifest.format_version = 6
+        manifest.json_catalog = catalog^
+        publish_manifest(self._path, manifest)
+        var generation = manifest.generation
+        self._manifest = Optional(manifest^)
+        self._retired.retire_or_reclaim(self._path, retired)
+        self._io_failed = False
+        return generation
 
     def _ensure_open(self) raises:
         if not self._lock:
