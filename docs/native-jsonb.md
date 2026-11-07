@@ -953,3 +953,36 @@ or a peak-memory guarantee. See [validation](research/2026-10-31-lance-json-stre
 Collection index definitions, planner selection, durable lifecycle and public
 Python/Arrow/service management remain unfinished. Generic Arrow passthrough
 columns and external sort/spill are also separate from this native bitmap API.
+
+## Native JSON bitmap predicate matching
+
+`index.try_search(function, argument, query, negated=False, control=None)` returns
+an optional `NullableRowMask` for a typed, already-bound function predicate.
+For example, an index trained at the bare path `price` can serve
+`json_get_float(column, 'price')` with a Float64 comparison if its learned target
+is Float64. The caller must already have selected this index's column and the
+matching live-row snapshot. This is not SQL parsing or collection index selection.
+
+The method uses the original Lance reference rules plus a value-equivalence
+guard. Only exact bare field names with matching learned/return types are covered.
+JSONPath forms such as `$.price`, numeric keys that also address array elements,
+`json_extract` stringification and getter coercions across target types retain
+their original predicate. No path normalization is performed.
+
+Utf8 also requires the trainer's proof that nonnull inputs were actual strings.
+JSONB extensions can be indexed as formatted strings while `json_get_string`
+raises an error, so indexes containing those values remain unhandled. Updates
+combine old/new provenance, and removal/remap retain a false flag conservatively.
+A complete rebuild can establish string-only input again.
+
+`None` means **unhandled**: evaluate the original condition. It never means no
+matching rows. Nullable equality/IN/range literals, wrong typed literals, prefix
+and full-text queries are also unhandled. Covered equality/range/IN/IS NULL
+delegate to the real bitmap target. Negation preserves unknown rows, and block
+masks must be applied only within the selected live-row snapshot. Cancellation
+is checked before matching and during target search.
+
+See [source counterexamples and validation](research/2026-11-07-lance-json-matcher-validation.md).
+Whole-expression planning, coercion, residual execution, durable index management
+and public collection APIs remain unfinished. This native API does not change
+the existing collection JSONB filter's missing/null and short-circuit behavior.

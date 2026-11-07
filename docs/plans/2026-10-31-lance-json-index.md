@@ -27,6 +27,8 @@ ports. No replacement indexing algorithm or Python computation.
 - [ ] Port exact function/path query matching and target query delegation;
   preserve residual predicates, snapshot identity, cancellation and errors.
   An index must not evaluate branches masked by per-row short circuiting.
+  Native guarded typed-leaf matching is verified below; full expression binding,
+  residual planning and snapshot-aware collection selection remain open.
 - [ ] Add durable index definitions and learned type, following the existing
   collection writer lock and authoritative publication/recovery rules. Specify
   migrations before changing formats. Do not publish ad-hoc sidecar authority.
@@ -132,8 +134,9 @@ including actual JSON conversion-to-index integration, resource/control and
 ownership checks. Four source fixture files reproduce byte-for-byte.
 [Evidence](../research/2026-10-31-lance-bitmap-validation.md).
 
-The second required stage is still open: connect original JSON prefix-only
-inference buffering/default Utf8, fixed learned type and actual training stream.
+The native JSON prefix-only inference/default Utf8, fixed learned type and actual
+training stream are now connected and verified below. The second required stage
+remains open for the file/streaming operations and other scalar targets.
 Do not replace the final public/durable requirement with materialized tests.
 Also retain these source target operations in the remaining index inventory:
 
@@ -166,3 +169,34 @@ and other scalar target variants remain open; the overall target/lifecycle stage
 is therefore not relabeled fully complete. Next: source exact function/path
 query matching and residual delegation, followed by authoritative catalog/index
 migration and public collection integration. No durable format change or tuning.
+
+## Verified guarded native leaf matching (2026-11-07)
+
+`lance_json_matcher.mojo` preserves original typed function/path recognition and
+adds a necessary indexed-value equivalence check. The source matcher accepts
+some literal-key getters against different JSONPath values, serialized JSON text
+against unquoted strings, getter coercions against another trained type, and
+numeric keys whose array behavior differs. Original source executions retain
+these counterexamples; native `try_search` leaves those predicates unhandled.
+Utf8 also retains training provenance: extensions converted to strings cannot
+substitute for a string getter that errors. Updates/remap preserve this marker;
+only full rebuilds can establish string-only values again.
+
+**1,344 source scenarios**, including actual consumer/index values, errors and
+source panics, are audited. Native bounded errors replace source panics. The
+original rule recognizes 1,120 references; 79 satisfy
+the additional guard and execute on the real native index with equal values.
+**14 native tests** pass and four fixture files reproduce exactly.
+[Evidence](../research/2026-11-07-lance-json-matcher-validation.md).
+
+Covered typed comparisons/ranges/IN/IS NULL delegate to the target; nullable
+literals and unsupported queries retain their original predicate. Negation
+preserves unknowns, and cancellation reaches matching and target search.
+Sargable leaf rules were source-inspected; this fixture does not execute the
+whole DataFusion planner. The raw bitmap query API remains separate.
+
+The third required stage stays open. Next implement expression binding/coercion,
+residual composition and snapshot-aware selection, retaining per-row short
+circuit/error behavior. Broader function-aware index definitions must establish
+value equivalence before replacing predicates. Then complete the authoritative
+catalog migration and durable public collection lifecycle. No optimization.

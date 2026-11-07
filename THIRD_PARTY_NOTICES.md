@@ -439,3 +439,22 @@ Original source methods run in `tests/fixtures/lance-json-stream`'s oracle with
 actual Arrow/jsonb/futures and transport/error adapters, not a runtime Rust or
 Python index engine. Source, dependency and adaptation records are in the port
 registry and fixture metadata.
+
+### Lance JSON index reference matching
+
+`src/akasha/index/lance_json_matcher.mojo` and the JSON wrapper's `try_search`
+adapt `JsonQueryParser::is_valid_reference` and the Sargable leaf rules in
+Lance `scalar/json.rs` / `scalar/expression.rs` at
+`ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e` (The Lance Authors, Apache-2.0;
+existing Lance license). The existing source-ported jsonb path and integer
+parsers supply an additional value-equivalence guard. This intentionally rejects
+source-recognized references whose indexed value can differ from the UDF result.
+An additional training provenance flag distinguishes actual strings from JSONB
+extensions accepted by Serde string conversion but rejected by the typed getter.
+
+`tests/fixtures/lance-json-matcher` records actual original reference matching,
+extraction, consumer and conversion outputs with real Arrow/DataFusion/jsonb;
+Sargable leaf methods were inspected, not executed by that oracle. Existing
+dependency notices apply. The fixture and `docs/upstream/ports.json` record
+original file/method/crate hashes and the explicit adaptation. No SQL executor
+or durable collection planner is included in this dependency.

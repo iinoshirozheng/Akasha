@@ -11,7 +11,8 @@ from akasha.document.jsonb import JsonbValue
 from akasha.index.lance_json_input import JsonIndexValue, extract_json_index_batch, infer_json_index_type, convert_json_index_batch
 from akasha.index.lance_scalar import LanceScalarKey
 from akasha.index.lance_bitmap import LanceBitmapIndex, LanceBitmapRow, LanceBitmapQuery, LanceOldRows
-from akasha.index.nullable_rows import NullableRowSet
+from akasha.index.nullable_rows import NullableRowSet, NullableRowMask
+from akasha.index.lance_json_matcher import json_bitmap_reference_supported, json_bitmap_query_supported
 from akasha.query.control import QueryControl
 
 
@@ -25,6 +26,8 @@ struct _ExtractedBatch(Copyable, Movable):
 struct LanceJsonBitmapIndex(Copyable, Movable):
     var path: String
     var _bitmap: LanceBitmapIndex
+    # Converted extension strings cannot reveal their original JSONB type.
+    var _string_getter_safe: Bool
 
     def target(self) -> UInt8:
         return self._bitmap.target
@@ -38,9 +41,29 @@ struct LanceJsonBitmapIndex(Copyable, Movable):
                control: Optional[QueryControl] = None) raises -> NullableRowSet:
         return self._bitmap.search(query, track_nulls=track_nulls, control=control.copy())
 
+    def try_search(self, function: String, argument: Optional[String],
+                   query: LanceBitmapQuery, *, negated: Bool = False,
+                   control: Optional[QueryControl] = None) raises -> Optional[NullableRowMask]:
+        """Execute a covered typed function leaf, or retain it as unhandled.
+
+        None is not an empty result: the caller must keep the original predicate.
+        The caller selected this index's column; this is not SQL AST binding.
+        """
+        if control:
+            control.value().checkpoint(0)
+        if not json_bitmap_reference_supported(self.path, self.target(), function, argument):
+            return None
+        if function == "json_get_string" and not self._string_getter_safe:
+            return None
+        if not json_bitmap_query_supported(self.target(), query):
+            return None
+        var rows = self._bitmap.search(query, track_nulls=True, control=control.copy())
+        return Optional(NullableRowMask(rows^, negated))
+
     def remapped(self, mapping: Dict[UInt64, Optional[UInt64]], *,
                  control: Optional[QueryControl] = None) raises -> Self:
-        return Self(self.path.copy(), self._bitmap.remapped(mapping, control=control.copy()))
+        return Self(self.path.copy(), self._bitmap.remapped(mapping, control=control.copy()),
+                    self._string_getter_safe)
 
 
 struct LanceJsonBitmapTrainer(Movable):
@@ -62,6 +85,7 @@ struct LanceJsonBitmapTrainer(Movable):
     var _row_bytes: Int
     var _pending: List[_ExtractedBatch]
     var _rows: List[LanceBitmapRow]
+    var _string_getter_safe: Bool
 
     def __init__(out self, var path: String, *, learned_type: Optional[UInt8] = None,
                  max_rows: Int = 1_000_000, max_bytes: Int = 64 * 1024 * 1024,
@@ -83,6 +107,7 @@ struct LanceJsonBitmapTrainer(Movable):
         self._row_bytes = 0
         self._pending = List[_ExtractedBatch]()
         self._rows = List[LanceBitmapRow]()
+        self._string_getter_safe = True
 
     def learned_type(self) -> Optional[UInt8]:
         return self._type
@@ -148,6 +173,12 @@ struct LanceJsonBitmapTrainer(Movable):
         for i in range(len(converted)):
             if self._control:
                 self._control.value().checkpoint(i)
+            # Serde accepts extensions that json_get_string rejects. Retain
+            # provenance while the original value is still available.
+            if self._type.value() == 4:
+                if converted[i].text:
+                    if batch[i].value.value().kind() != 1:
+                        self._string_getter_safe = False
             self._rows.append(LanceBitmapRow(LanceScalarKey.from_json_result(converted[i], self._type.value()), ids[i]))
         self._row_bytes = bytes
 
@@ -176,7 +207,7 @@ struct LanceJsonBitmapTrainer(Movable):
             var bitmap = LanceBitmapIndex.build(self._type.value(), self._rows,
                 max_rows=self.max_rows, max_bytes=self.max_bytes, control=self._control.copy())
             self._finished()
-            return LanceJsonBitmapIndex(self.path.copy(), bitmap^)
+            return LanceJsonBitmapIndex(self.path.copy(), bitmap^, self._string_getter_safe)
         except error:
             self.abort()
             raise error
@@ -190,7 +221,10 @@ struct LanceJsonBitmapTrainer(Movable):
             self._prepare_finish()
             var bitmap = old._bitmap.updated(self._rows, old_filter=old_filter.copy(), control=self._control.copy())
             self._finished()
-            return LanceJsonBitmapIndex(self.path.copy(), bitmap^)
+            # Old-row filtering and remap cannot recover discarded source
+            # types. Only a complete rebuild can establish string-only input.
+            return LanceJsonBitmapIndex(self.path.copy(), bitmap^,
+                self._string_getter_safe and old._string_getter_safe)
         except error:
             self.abort()
             raise error

@@ -4785,6 +4785,117 @@
         "External sort/spill, generic Arrow passthrough, disk-backed streaming publication, shard/file/cache and other scalar variants",
         "All full-product/platform/performance gates; no tuning"
       ]
+    },
+    {
+      "id": "D01c4m-lance-json-bitmap-guarded-matcher",
+      "upstream": "https://github.com/lance-format/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "sources": [
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/json.rs",
+          "sha256": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-datafusion/src/udf/json.rs",
+          "sha256": "04848471341aa9766b3af29f98b589b1ea1b120ab2efd146fdf043ed6791cd78"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/expression.rs",
+          "sha256": "45023e39a3ced71b1f7664d24ab0d34184f02f4408ddf12433c2ac7d2b33f904"
+        },
+        {
+          "identity": "lance",
+          "path": "rust/lance-index/src/scalar/bitmap.rs",
+          "sha256": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+        }
+      ],
+      "license_files": [
+        "docs/upstream/licenses/lance-Apache-2.0.txt",
+        "docs/upstream/licenses/jsonb-Apache-2.0.txt",
+        "docs/upstream/licenses/datafusion-LICENSE.txt",
+        "docs/upstream/licenses/datafusion-NOTICE.txt"
+      ],
+      "source_units": [
+        "infer_type_from_batch",
+        "validate_json_types",
+        "convert_batch_by_type",
+        "is_valid_reference",
+        "execution_error",
+        "parse_json_path",
+        "get_json_value_by_key",
+        "extract_json_path",
+        "extract_json_path_with_type",
+        "json_value_to_bool",
+        "json_value_to_int",
+        "json_value_to_float",
+        "json_value_to_string"
+      ],
+      "inspected_not_executed_units": [
+        "visit_between",
+        "visit_in_list",
+        "visit_comparison",
+        "visit_is_null",
+        "visit_is_bool",
+        "visit_scalar_function",
+        "visit_like",
+        "BitmapIndexPlugin parser setup disables LikePrefix"
+      ],
+      "targets": [
+        "src/akasha/index/lance_json_matcher.mojo",
+        "src/akasha/index/lance_json_stream.mojo"
+      ],
+      "adaptations": [
+        "Typed two-argument function(Column, Utf8 literal) reference helper; caller already selected column/index",
+        "Additional value-equivalence guard rejects literal-key/JSONPath differences, numeric array keys, JSON text stringification and learned/return type mismatches demonstrated by original source",
+        "Training preserves original-string provenance because Serde accepts extensions that json_get_string rejects; update/remap conservatively retain false, only full rebuild can establish true again",
+        "Unhandled queries return None and must retain their original predicate; this is not an empty row set",
+        "Source-inspected typed leaf null/prefix rules delegate covered queries to real bitmap; nullable allow/block negation and native cancellation controls",
+        "Original reference/extractor/consumer/inference/converter oracle uses real Arrow/DataFusion ScalarValue/jsonb with function/argument transport and unadorned errors; no full SQL planner oracle",
+        "No current application runtime or persisted-format changes; no optimization",
+        "Original extreme Decimal/date formatting panics remain explicit oracle results; native bounded errors replace panics and ordinary source error messages match exactly"
+      ],
+      "fixtures": {
+        "tests/fixtures/lance-json-matcher/Cargo.lock": "e4d78c12d8f52c8d3a42c50b55b92f4683b0adc7cade5bcdb0b0b5c641af7fa7",
+        "tests/fixtures/lance-json-matcher/README.md": "41377778ff03e9b8993855b4c0025f972722583debbdb081d431ea5e00310fa9",
+        "tests/fixtures/lance-json-matcher/cases.json": "0b02facae3dc36d3db19a8a652dedef58c428310582935bbad857129e3cf18e8",
+        "tests/fixtures/lance-json-matcher/sources.json": "13abe28726d228a38126c5305c37ba0faa7ec08ae0574c1d2aff0df8904c97e2"
+      },
+      "status": "verified_native_guarded_json_bitmap_leaf_matching_expression_planner_durable_public_pending",
+      "verification": [
+        "docs/research/2026-11-07-lance-json-matcher-validation.md"
+      ],
+      "results": {
+        "source_scenarios": 1344,
+        "source_recognized_references": 1120,
+        "source_index_successes": 1116,
+        "source_index_errors": 156,
+        "source_index_panics": 72,
+        "source_consumer_successes": 955,
+        "source_consumer_errors": 347,
+        "source_consumer_panics": 42,
+        "native_guard_covered_corpus_queries": 79,
+        "native_tests_passed": 14,
+        "reproduced_fixture_files": 4
+      },
+      "verified_file_sha256": {
+        "src/akasha/index/lance_json_matcher.mojo": "1344f1e8b06ae7aa22a9435dd8fa13116c69a4d0f7b086d571ba1c53a18b1f8f",
+        "src/akasha/index/lance_json_stream.mojo": "ddc1fae5c72fe3827407dcc66e7263c02b711d8dd483cd9fed758df3575e3d04",
+        "tests/mojo/test_lance_json_matcher.mojo": "d2db5ac07732090ec1e7a0e07d81ed47e1e456f035a15089d0c261fd3a72372b",
+        "tests/mojo/test_lance_json_stream.mojo": "def1697b3ddef62f514c83dfaea31f2b80bbc8968e375b4f1421d5a7525f44bf",
+        "tests/mojo/test_lance_bitmap.mojo": "3797379b424f5cb41b364716d315b563721c4446f7c59aa4c1c3bb178810bdb3",
+        "scripts/lance_json_matcher_reference.py": "ebd7c4af34665d3861ccc40ecac89cff04e016176408706a9178866ea1fbea16",
+        "scripts/lance_json_matcher_reference.rs": "ec91164d3d7063a7753e97ebffa06eaa4b969185ef831fe5b3f979d19f421bed"
+      },
+      "remaining": [
+        "Full expression binding/coercion, residual planning, snapshot-aware selection and wider function-aware index coverage",
+        "Preserve whole-expression error/short-circuit behavior and current collection filter semantics during public integration",
+        "Authoritative index catalog migration and durable/public create/list/drop/update/rebuild/recovery lifecycle",
+        "External sort/spill, shard/file/cache support and other scalar targets",
+        "All full-product/platform/performance gates; no tuning"
+      ]
     }
   ]
 }

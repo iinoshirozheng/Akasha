@@ -1,6 +1,6 @@
 # Akasha 完整產品功能差異報告
 
-2026-10-31 最新 D01c4l：JSON 串流型別推斷、固定 learned type 及實際 bitmap 訓練／更新／重建已串接；786 組來源情境（593 成功、193 錯誤）、15 項 Mojo 測試及來源重現通過。這是有界記憶體索引，仍需 query planner、catalog／持久化與公開 collection API。[驗證](2026-10-31-lance-json-stream-validation.md)。完整產品與效能門檻仍開放，未優化。
+2026-11-07 最新 D01c4m：JSON bitmap 原生條件匹配與派送已加入值等價檢查；1,344 組原始碼對照揭露五類不能直接套用來源匹配的情況，未涵蓋條件會保留原本計算。14 項 Mojo 測試與來源逐位元重現通過。[驗證](2026-11-07-lance-json-matcher-validation.md)。完整運算式 planner、snapshot／residual、catalog／持久化與公開 collection 索引管理仍待完成；完整 49 大項與效能門檻仍開放，未優化。
 
 2026-10-31 最新 D01c4k：五種 JSON target 的原生 bitmap 索引核心已完成來源移植與驗證，包含完整型別排序、建索引、nullable 搜尋、舊新資料合併與 row ID 重映射。61 組來源情境、183 組索引狀態、98,160 組搜尋結果／錯誤及 15 項 Mojo 測試通過，來源產物可重現。[驗證](2026-10-31-lance-bitmap-validation.md)。仍需 JSON 串流 wrapper、planner、持久化與公開 collection 整合；完整產品範圍與效能門檻維持開放，未優化。
 

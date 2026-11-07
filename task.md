@@ -4,6 +4,9 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 最新 D01c4m（2026-11-07）：JSON 索引已加入原生 typed leaf 匹配與實際搜尋派送。1,344 組原始碼對照確認五類來源匹配可能選到不同值的情況，新增等價檢查並保留未涵蓋的原條件；NOT 保留 unknown，取消控制已接通。14 項 Mojo 測試與四份來源產物逐位元重現通過。
+  [驗證](docs/research/2026-11-07-lance-json-matcher-validation.md)／[原生用法](docs/native-jsonb.md#native-json-bitmap-predicate-matching)。接續完整運算式綁定／轉型／residual、snapshot 選擇及 catalog 持久化公開整合；這批尚未接入公開 collection planner，完整 49 大項與效能門檻仍開放，未優化。
+
 - 最新 D01c4l（2026-10-31）：JSON 批次已接上實際 bitmap 訓練／更新／重建／搜尋／重映射；只暫存推斷型別所需前綴、EOF 才預設 Utf8，後續沿用已學到的型別。786 組來源串流情境（593 成功、193 錯誤）對齊；15 項 Mojo 測試及四份來源產物重現通過。
   [驗證](docs/research/2026-10-31-lance-json-stream-validation.md)／[原生用法](docs/native-jsonb.md#native-json-bitmap-training)。失敗清除暫存並保留舊索引；下一步為查詢匹配／residual 與 catalog 持久化公開整合。完整 49 大項、外部排序／磁碟建置及效能門檻仍開放，未優化。
 
