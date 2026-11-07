@@ -1,5 +1,6 @@
 from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition
-from akasha.query.json_snapshot import JsonIndexRequest, build_snapshot_json_index
+from akasha.query.json_snapshot import JsonIndexRequest, build_snapshot_json_index, snapshot_json_artifact
+from akasha.storage.json_bitmap_cache import publish_json_bitmap_cache_best_effort, remove_json_bitmap_cache_best_effort
 from akasha.query.query_plan import QueryNode
 from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
@@ -815,11 +816,24 @@ struct PersistentCollection:
                 control.value().checkpoint(0)
             var generation = self._point_store.publish_json_catalog(catalog^, expected)
             self._read_generations[].publish(generation)
+            publish_json_bitmap_cache_best_effort(root[], locations, column, index)
 
     def rebuild_json_index(mut self, name: String,
                            control: Optional[QueryControl] = None) raises:
         var captured = self.snapshot()
-        captured.rebuild_json_index(name, control)
+        var root = captured._acquire()
+        for definition in captured._json_catalog.definitions:
+            if definition.name == name:
+                var locations = root[].id_ordered_locations()
+                var index = snapshot_json_artifact(root[], locations,
+                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)),
+                    control, rebuild=True)
+                with BlockingScopedLock(self._writer_lock[]):
+                    self._ensure_open()
+                    if self._last_sequence == captured.last_sequence() and self._json_catalog_unlocked().revision == captured._json_catalog.revision:
+                        publish_json_bitmap_cache_best_effort(root[], locations, definition.column, index[])
+                return
+        raise Error("unknown JSON index name")
 
     def drop_json_index(mut self, name: String) raises:
         with BlockingScopedLock(self._writer_lock[]):
@@ -839,6 +853,14 @@ struct PersistentCollection:
             catalog.revision = old.revision + 1
             var generation = self._point_store.publish_json_catalog(catalog^, old.revision)
             self._read_generations[].publish(generation)
+            for definition in old.definitions:
+                if definition.name == name:
+                    var shared = False
+                    for other in old.definitions:
+                        if other.name != name and other.column == definition.column and other.path == definition.path and other.target == definition.target:
+                            shared = True
+                    if not shared:
+                        remove_json_bitmap_cache_best_effort(self._path, definition.column, definition.path, definition.target)
 
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""

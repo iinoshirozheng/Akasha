@@ -316,6 +316,8 @@ def scan_record_batches(
     vectors: Sequence[str] = (),
     payload_schema: Mapping[str, Any] | None = None,
     json_columns: Mapping[str, Mapping[str, Any]] | None = None,
+    json_expression: Mapping[str, Any] | None = None,
+    indexes: Sequence[str] = (),
     filter: Mapping[str, Any] | None = None,
     cancellation: CancellationToken | None = None,
     max_candidates: int | None = None,
@@ -334,13 +336,28 @@ def scan_record_batches(
     (function, input, argument, optional needle/limits). Input is an exact stored
     field name or nested json_get expression; results retain source Arrow types.
 
+    json_expression uses the query_json expression schema. indexes selects named
+    catalog bitmaps from the same snapshot; omitted indexes evaluate residuals.
+    The ordinary filter runs first, then JSON, and only true rows are returned.
+    Residual errors occur during iteration. Index validation/training happens at
+    construction and observes cancellation, deadline and live-row candidate limits.
+    Scanning also counts all physical slots, including hidden/tombstoned rows.
+
     One-row dense buffers are borrowed; multi-row vectors and other columns are
     gathered into final owned buffers. The byte cap bounds aligned output buffer
     allocations per batch; a batch exceeding it fails and closes the scanner.
     It excludes source generations, selection descriptors and Arrow metadata.
+    JSON preparation additionally retains snapshot-sized locations and leaf masks;
+    it does not materialize a complete matched-ID list.
     """
     if max_candidates is None:
         max_candidates = collection.limits.max_candidates
+    if json_expression is not None and not isinstance(json_expression, Mapping):
+        raise ValueError("json_expression must be a mapping")
+    if isinstance(indexes, (str, bytes)) or any(type(name) is not str for name in indexes):
+        raise ValueError("indexes must be a sequence of index names")
+    if indexes and json_expression is None:
+        raise ValueError("indexes require json_expression")
     for name, value in (("batch_size", batch_size), ("max_candidates", max_candidates),
                         ("max_batch_bytes", max_batch_bytes)):
         if type(value) is not int or value <= 0 or value > (1 << 63) - 1:
@@ -376,6 +393,8 @@ def scan_record_batches(
     if len({item["name"] for item in descriptors}) != len(descriptors):
         raise ValueError("scanner column names must be unique")
     options = dict(batch_size=batch_size, columns=descriptors,
+                   json_expression=None if json_expression is None else dict(json_expression),
+                   indexes=list(indexes), cancelled=bool(cancellation and cancellation.cancelled),
                    filter=None if filter is None else dict(filter),
                    max_candidates=max_candidates, deadline_ns=deadline_ns,
                    max_batch_bytes=max_batch_bytes)

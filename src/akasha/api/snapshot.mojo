@@ -458,9 +458,18 @@ struct ReadSnapshot(Movable):
         var expression: Optional[FilterExpression] = Optional[
             FilterExpression
         ](),
+        *,
+        var json_expression: Optional[JsonExpression] = None,
+        indexes: List[String] = List[String](),
+        control: Optional[QueryControl] = None,
     ) raises -> ReadScanner:
         """Capture this view for bounded run/slot iteration, independent of close.
         """
+        if json_expression:
+            var prepared = self.prepare_json_catalog(json_expression.value().copy(), indexes, control=control)
+            return ReadScanner.from_json(prepared^, batch_size, expression^)
+        if len(indexes) != 0:
+            raise Error("JSON scanner indexes require an expression")
         return ReadScanner(self._acquire(), batch_size, expression^)
 
     def sparse_records(self) raises -> List[SparseRecord]:

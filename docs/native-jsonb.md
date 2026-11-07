@@ -1106,3 +1106,62 @@ values are null, Boolean, Int64, Float64 or string; exact Float64 bits use
 `{"float_bits":"4000000000000000"}` and binary bytes use `{"binary":"00ff"}`.
 Expressions are limited to depth 16 and 256 nodes, including implicit negation
 for `ne`. Null comparisons retain unknown truth; only true rows are returned.
+
+## JSON expressions in Arrow scans
+
+`scan_record_batches` accepts the same expression schema and named catalog indexes:
+
+```python
+from akashadb import scan_record_batches
+
+expression = {
+    "kind": "predicate",
+    "projection": {"function": "json_get_int", "input": "data", "argument": "v"},
+    "operator": "ge",
+    "value": 2,
+}
+with scan_record_batches(
+    collection, batch_size=128, columns=("id", "vector"),
+    json_expression=expression, indexes=["value"],
+    json_columns={"value": expression["projection"]},
+) as scanner:
+    for batch in scanner:
+        consume(batch)
+```
+
+Omit `indexes` for residual execution. Index names require `json_expression`.
+The existing `filter`, when supplied, runs first; JSON is evaluated only for rows
+that pass it. Only true JSON results are returned. Output retains physical
+run/slot order, which may differ from `query_json`'s sorted ID order.
+
+Construction captures the data/catalog root and prepares shared bitmap masks.
+Residual evaluation and computed projections run during iteration, preserving
+short circuit and batch-local errors. No complete matched-ID list is built.
+The scanner survives writes, index drop, compaction and collection close.
+Close, exhaustion or errors release its prepared owner; returned batches retain
+their own source/buffer owners.
+
+Cancellation is checked at JSON preparation and between batches, with native
+deadline checks during preparation/iteration. `max_candidates` bounds live rows
+during preparation and all visited physical slots during scanning, including
+hidden versions and tombstones. `max_batch_bytes` bounds output allocations;
+snapshot-sized location metadata and index masks are outside that output cap.
+
+## Optional disk bitmap cache
+
+Index creation and `collection.rebuild_json_index(name)` now publish a derived
+`json-bitmap-*.cache` file using the existing atomic cache publisher. On first
+query demand after reopen, matching source sequence, payload fingerprint and
+exact definition permit loading the bitmap instead of retraining it. The root
+then shares the loaded artifact across queries and Arrow scanners.
+
+Missing, stale or corrupt caches rebuild from authoritative point data while
+retaining the learned type. Cache write failure does not fail an already valid
+catalog operation or corrupt prior cache bytes. Drop removes a cache when no
+remaining definition shares its column/path/type. Snapshots never publish files;
+backup/restore correctness does not depend on these optional caches.
+
+This first layer loads the complete bounded bitmap payload on demand. Per-posting
+lazy reads, bounded paging cache and external sort/spill remain unimplemented.
+See [format](formats/json-bitmap-cache-format.md) and
+[validation](research/2026-11-08-json-bitmap-disk-cache-validation.md).

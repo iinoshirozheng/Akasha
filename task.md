@@ -4,6 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 2026-11-08：JSON bitmap 第一層磁碟快取已接通 create／rebuild 發布與重開按需載入，含來源校驗、損壞重建、共用定義清理；11 項原生、205 項相關 Python 測試通過。[驗收](docs/research/2026-11-08-json-bitmap-disk-cache-validation.md)。逐 posting lazy loading、bounded paging cache、外部排序／spill 與 shard merge 仍待後續實作，未宣稱完整磁碟索引完成。
+
+- 2026-11-08：JSON expression／catalog 索引已接入 Arrow scanner，沿用原生 prepared query 與 Arrow C Data 匯出；支援分批投影、計算欄位、filter→JSON 短路、snapshot 壽命與取消／逾時／資源限制。15 項原生與 202 項相關 Python 測試通過；[驗收](docs/research/2026-11-08-json-arrow-scanner-validation.md)。下一階段為磁碟 bitmap、lazy loading／cache、外部排序與 spill。
+
 - 2026-11-08：持久化 JSON catalog 與 Python／HTTP API 已完成驗收。Manifest v6、建立／列出／刪除／重建、root-local bitmap 重用、owned prepared query、備份／恢復與 HNSW 遷移皆已接通；完整 Python 3,764 passed／1 skipped，最終 catalog 邊界與 fsync 補測 34 passed，另有針對性原生測試。詳見[逐項驗收](docs/research/2026-11-08-json-catalog-api-validation.md)。Arrow-specific prepared output、其他索引與效能門檻仍為獨立工作。
 
 - 2026-11-07：原生 expression／residual／snapshot 整合已完成：`ReadSnapshot.prepare_json` 持有一致讀取 root，混用 guarded bitmap 與有序 residual，保留三值邏輯、短路、取消與快照壽命。9 項整合＋26 項相關 Mojo、Python build 與 109 項指定 Python 通過；[驗收](docs/research/2026-11-07-json-expression-snapshot-validation.md)。持久化 catalog 與新 API 的 Python／Arrow／HTTP 暴露仍屬後續階段。

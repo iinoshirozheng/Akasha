@@ -4,6 +4,8 @@ from test_json_expression_snapshot import _leaf
 from std.python import Python
 from std.testing import assert_equal, assert_raises, TestSuite
 from max.algorithm import parallelize
+from akasha.storage.json_bitmap_cache import json_bitmap_cache_name
+from akasha.storage.filesystem import remove_file_if_exists
 
 
 def test_catalog_create_capture_query_reopen_and_drop() raises:
@@ -85,6 +87,7 @@ def test_parallel_preparation_shares_one_complete_artifact() raises:
     var collection = PersistentCollection.open(String(py=directory.name), 2)
     collection.upsert_document(1, [1.0, 0.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:1}")))])
     collection.create_json_index("v", "data", "v")
+    remove_file_if_exists(String(py=directory.name) + "/" + json_bitmap_cache_name("data", "v", 2))
     var captured = collection.snapshot()
     var root = captured._acquire()
     var state = root[].json_indexes[].get("data", "v", 2)

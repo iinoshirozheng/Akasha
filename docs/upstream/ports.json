@@ -4992,6 +4992,92 @@
       "remaining": [
         "Arrow-specific prepared-query exposure, broader scalar/index stages and full product/performance gates are separate work"
       ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "sources": {
+        "rust/lance-datafusion/src/expr.rs": "c515cfffe079f0e37f9b5739f8a2bec9b719955bc6ff62238b8e48912d3adda3",
+        "rust/lance-index/src/scalar/expression.rs": "45023e39a3ced71b1f7664d24ab0d34184f02f4408ddf12433c2ac7d2b33f904",
+        "rust/lance-index/src/scalar/json.rs": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f"
+      },
+      "id": "D01c4p-json-arrow-scanner",
+      "status": "verified_arrow_scanner_integration",
+      "native_files": [
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/api/scanner.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/arrow.py",
+        "tests/mojo/test_json_scanner.mojo",
+        "tests/python/test_json_arrow_scanner.py"
+      ],
+      "adaptation": [
+        "Akasha-owned scanner integration reuses D01c4o prepared expression and root-owned bitmap semantics; no new upstream algorithm port",
+        "Physical run/slot scanning maps visible IDs to prepared bitmap ordinals and exports through existing Arrow C Data owners"
+      ],
+      "verification": [
+        "docs/research/2026-11-08-json-arrow-scanner-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/query/json_snapshot.mojo": "940fd3cb360ca330f8f208a543d4b8a8d9bff03fda73ca50899ffddd8918bf49",
+        "src/akasha/api/scanner.mojo": "9012c0ac3f5982973e6b628a6507bc27fa48f84474f87aff4a4abd022931d1cb",
+        "src/akasha/api/snapshot.mojo": "fcd69e97cb3293874828c1c040359921b3129b6f120fc7140544d5d51a04740f",
+        "src/bindings/python_module.mojo": "c6454cc6e7d1435bba38581fac9b6be95a7942a737b99cf0adf42fd34286a3ee",
+        "python/akashadb/arrow.py": "46bc048a6093a2cfec0d1fc87992f07b7120243b205f23223297c20555b297ce",
+        "tests/mojo/test_json_scanner.mojo": "34f6fd43ef7ea90e90dfa0f960762904494d36f369bd2f16f7f357f04ebca282",
+        "tests/python/test_json_arrow_scanner.py": "ee9aace39cc0d3534a1a8710a8b8e1f086e146e4a2e0064c9bea6b28a628dcb0"
+      },
+      "remaining": [
+        "Disk bitmap encoding, lazy file/cache access, external sort/spill, other scalar targets and full-product gates"
+      ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4q-json-bitmap-disk-cache",
+      "status": "verified_optional_disk_cache_layer",
+      "sources": {
+        "rust/lance-index/src/scalar/bitmap.rs": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+      },
+      "native_files": [
+        "src/akasha/storage/json_bitmap_codec.mojo",
+        "src/akasha/storage/json_bitmap_cache.mojo",
+        "src/akasha/storage/index_cache.mojo",
+        "src/akasha/storage/read_generation.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "tests/mojo/test_json_bitmap_codec.mojo",
+        "tests/mojo/test_json_bitmap_cache.mojo",
+        "tests/python/test_json_bitmap_disk_cache.py"
+      ],
+      "adaptation": [
+        "Architectural reference only; Akasha-owned cache payload and existing atomic publisher, not a new Lance algorithm/file-format port",
+        "Fixed-type full bitmap cache loaded on first demand with source/definition checks"
+      ],
+      "verification": [
+        "docs/research/2026-11-08-json-bitmap-disk-cache-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/storage/json_bitmap_codec.mojo": "0f08c5fe201f309d8fc9ec3f074452aa59d0d61c15e7a6e325882209cc9ca6a0",
+        "src/akasha/storage/json_bitmap_cache.mojo": "8c9a748e4a716a9a03b741e7de5719985b84b825e2de1e8cbbeeed47d611c7bf",
+        "src/akasha/storage/index_cache.mojo": "2502beb0999accfee0f4c1b39d52de3e2dcf9ef3a070666f59e11f899cefcdb6",
+        "src/akasha/storage/read_generation.mojo": "ad4ab0e2410f53c72b90fafebd97c1e866529b0cc812fc9d793946761d778462",
+        "src/akasha/api/collection.mojo": "92b9f8ddc4f767623ce96e23b619fb3beb7c9dc4f79c7bb78b48c3f96bc20cd9",
+        "src/akasha/query/json_snapshot.mojo": "71079f9bf8efe3cb71c5743d590cb1b8e228f744917a37458f585cb163633f87",
+        "tests/mojo/test_json_bitmap_codec.mojo": "5f9cf525f1b7c662d152526069afc24f11ff9ba56bf9f7546fb802c6dd558e82",
+        "tests/mojo/test_json_bitmap_cache.mojo": "22caf9c92eb598419c67e6e28abc0c306552c7e006e00b78863e4a55e95b9a0d",
+        "tests/python/test_json_bitmap_disk_cache.py": "2e0ac1db10483a30fe2474cc557ab4e19b502c6becc7de566b3be762428ec57e"
+      },
+      "remaining": [
+        "Per-posting lazy mapped reads and bounded cache",
+        "External sorting/spill and source shard k-way merge",
+        "Complete disk-index and full-product/platform/performance acceptance"
+      ]
     }
   ]
 }

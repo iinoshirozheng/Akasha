@@ -3,6 +3,7 @@
 from akasha.query.control import CancellationToken, QueryControl
 from akasha.query.point_filter import matches_entry
 from akasha.query.filter_ast import FilterExpression
+from akasha.query.json_snapshot import PreparedJsonQuery
 from akasha.storage.memtable import MemTableEntry
 from akasha.storage.read_generation import ReadGeneration
 from std.memory import ArcPointer
@@ -59,6 +60,7 @@ struct ReadScanner(Movable):
 
     var _root: Optional[ArcPointer[ReadGeneration]]
     var _expression: Optional[FilterExpression]
+    var _json_query: Optional[PreparedJsonQuery]
     var _batch_size: Int
     var _layer: Int
     var _ordinal: Int
@@ -77,15 +79,24 @@ struct ReadScanner(Movable):
             expression.value().validate()
         self._root = Optional(root^)
         self._expression = expression^
+        self._json_query = Optional[PreparedJsonQuery]()
         self._batch_size = batch_size
         self._layer = 0
         self._ordinal = 0
         self._closed = False
         self.visited_slots = 0
 
+    @staticmethod
+    def from_json(var prepared: PreparedJsonQuery, batch_size: Int,
+                  var expression: Optional[FilterExpression]) raises -> Self:
+        var result = Self(prepared._root.copy(), batch_size, expression^)
+        result._json_query = Optional(prepared^)
+        return result^
+
     def close(mut self):
         self._closed = True
         self._root = Optional[ArcPointer[ReadGeneration]]()
+        self._json_query = Optional[PreparedJsonQuery]()
 
     def next_batch(mut self) raises -> Optional[ScanBatch]:
         var token = CancellationToken()
@@ -132,6 +143,11 @@ struct ReadScanner(Movable):
                         root[].catalog,
                     ):
                         continue
+                if self._json_query:
+                    if not self._json_query.value().matches_id(
+                        source.entry_ref_at(ordinal).id, Optional(control.copy())
+                    ):
+                        continue
                 ordinals.append(ordinal)
             if self._ordinal == source.slot_count():
                 self._layer += 1
@@ -140,6 +156,8 @@ struct ReadScanner(Movable):
                 var batch = ScanBatch(root.copy(), layer, ordinals^)
                 if self._layer == root[].layer_count():
                     self._root = Optional[ArcPointer[ReadGeneration]]()
+                    self._json_query = Optional[PreparedJsonQuery]()
                 return Optional(batch^)
         self._root = Optional[ArcPointer[ReadGeneration]]()
+        self._json_query = Optional[PreparedJsonQuery]()
         return Optional[ScanBatch]()

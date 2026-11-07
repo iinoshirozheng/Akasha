@@ -126,7 +126,9 @@ def test_cache_publish_is_atomic_and_stale_or_bad_cache_is_a_miss() raises:
 
 
 def test_authoritative_fingerprint_preserves_frozen_state_bytes() raises:
-    # Independently encoded with Python struct + zlib. Stable insertion order,
+    # Independently encoded with scripts/cache_fingerprint_reference.py, using
+    # the current default payload v3 (the oracle also reproduces old v1 values).
+    # Stable insertion order,
     # signed IDs/zeros, all payload kinds and tombstones belong to the contract.
     var table = MemTable(2)
     assert_equal(authoritative_index_checksum(table), UInt32(0x2707D814))
@@ -139,23 +141,23 @@ def test_authoritative_fingerprint_preserves_frozen_state_bytes() raises:
     table.apply_document_upsert(-7, 1, [-0.0, 1.5], fields^)
     table.apply_upsert(Int.MIN, 2, [2.0, -3.0])
     table.apply_upsert(42, 3, [4.0, 5.0])
-    assert_equal(authoritative_index_checksum(table), UInt32(0xFFE4398B))
+    assert_equal(authoritative_index_checksum(table), UInt32(0xE5A7016D))
     var replaced: List[DocumentField] = [
         DocumentField("b", PayloadValue.boolean(False))
     ]
     table.apply_document_upsert(42, 4, [9.0, -7.0], replaced^)
-    assert_equal(authoritative_index_checksum(table), UInt32(0x5DA4F081))
+    assert_equal(authoritative_index_checksum(table), UInt32(0x9E9EE83C))
     table.apply_delete(-7, 5)
-    assert_equal(authoritative_index_checksum(table), UInt32(0x29833024))
+    assert_equal(authoritative_index_checksum(table), UInt32(0x5939D4A1))
     table.apply_delete(-100, 6)
-    assert_equal(authoritative_index_checksum(table), UInt32(0x8EB737A2))
+    assert_equal(authoritative_index_checksum(table), UInt32(0x689C7BF6))
     var fresh: List[DocumentField] = [
         DocumentField("n", PayloadValue.integer(Int64.MAX))
     ]
     table.apply_document_upsert(-7, 7, [8.25, -0.0], fresh^)
-    assert_equal(authoritative_index_checksum(table), UInt32(0x8F88903A))
+    assert_equal(authoritative_index_checksum(table), UInt32(0x3A3672B8))
     table.set_sparse(-7, [SparseElement(17, 1.5)])
-    assert_equal(authoritative_index_checksum(table), UInt32(0x8F88903A))
+    assert_equal(authoritative_index_checksum(table), UInt32(0x3A3672B8))
     assert_equal(table.last_sequence, UInt64(7))
     assert_equal(table.live_count(), 3)
 

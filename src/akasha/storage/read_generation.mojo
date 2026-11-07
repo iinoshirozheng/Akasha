@@ -157,6 +157,7 @@ struct ReadGeneration(Movable):
     var field_sparse: ArcPointer[FieldArtifacts[FieldSparseIndex]]
     var field_ivf: ArcPointer[FieldIvfArtifacts]
     var json_indexes: ArcPointer[JsonArtifacts]
+    var json_cache_directory: String
     var _pins: ArcPointer[GenerationPinRegistry]
 
     def __init__(
@@ -187,6 +188,7 @@ struct ReadGeneration(Movable):
         self.field_sparse = ArcPointer(FieldArtifacts[FieldSparseIndex]())
         self.field_ivf = ArcPointer(FieldIvfArtifacts())
         self.json_indexes = ArcPointer(JsonArtifacts())
+        self.json_cache_directory = ""
         self._pins = pins^
         self._pins[].pin(generation)
 
@@ -627,6 +629,7 @@ struct ReadGenerationCache(Movable):
                 catalog^,
             )
         )
+        root[].json_cache_directory = self.field_cache_directory.copy()
         self.root = Optional(root)
         self.revision += 1
         return root^

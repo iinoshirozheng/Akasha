@@ -2,6 +2,7 @@
 from std.memory import ArcPointer
 from std.utils import BlockingScopedLock
 from akasha.storage.read_generation import ReadGeneration
+from akasha.storage.json_bitmap_cache import load_json_bitmap_cache
 from akasha.query.json_expression import JsonExpression
 from akasha.query.control import QueryControl
 from akasha.index.lance_json_stream import LanceJsonBitmapTrainer, LanceJsonBitmapIndex
@@ -66,6 +67,13 @@ def snapshot_json_artifact(root: ReadGeneration, locations: List[Tuple[Int, Int]
             control.value().validate_candidate_count(len(locations))
         if state[].ready and not rebuild:
             return state[].ready.value().copy()
+        if not rebuild and request.learned_type:
+            var cached = load_json_bitmap_cache(root, locations, request.column, request.path,
+                request.learned_type.value(), control)
+            if cached:
+                var loaded = ArcPointer(cached.take())
+                state[].publish(loaded.copy())
+                return loaded^
         try:
             state[].begin()
             var built = ArcPointer(build_snapshot_json_index(root, locations, request, control))
@@ -136,6 +144,34 @@ struct PreparedJsonQuery(Movable):
                 count += 1
         return count
 
+    def matches_row(self, row: Int, control: Optional[QueryControl] = None) raises -> Bool:
+        if row < 0 or row >= len(self._locations):
+            raise Error("JSON query row is outside snapshot")
+        var location = self._locations[row]
+        ref entry = self._root[].run(location[0]).memtable.entry_ref_at(location[1])
+        var truth = self._expression._evaluate(len(self._expression._nodes)-1,
+            entry.fields(), self._masks, UInt64(row), control)
+        return truth.value() if truth else False
+
+    def matches_id(self, id: Int, control: Optional[QueryControl] = None) raises -> Bool:
+        """Resolve a visible physical row to this root's bitmap ordinal."""
+        var low = 0
+        var high = len(self._locations)
+        while low < high:
+            var middle = low + (high-low)//2
+            var location = self._locations[middle]
+            var candidate = self._root[].run(location[0]).memtable.entry_ref_at(location[1]).id
+            if candidate < id:
+                low = middle + 1
+            else:
+                high = middle
+        if low == len(self._locations):
+            raise Error("JSON query ID is outside snapshot")
+        var location = self._locations[low]
+        if self._root[].run(location[0]).memtable.entry_ref_at(location[1]).id != id:
+            raise Error("JSON query ID is outside snapshot")
+        return self.matches_row(low, control)
+
     def execute(self, control: Optional[QueryControl] = None) raises -> List[Int]:
         if control:
             control.value().checkpoint(0)
@@ -146,9 +182,6 @@ struct PreparedJsonQuery(Movable):
                 control.value().checkpoint(row)
             var location = self._locations[row]
             ref entry = self._root[].run(location[0]).memtable.entry_ref_at(location[1])
-            var truth = self._expression._evaluate(len(self._expression._nodes)-1,
-                entry.fields(), self._masks, UInt64(row), control)
-            if truth:
-                if truth.value():
-                    result.append(entry.id)
+            if self.matches_row(row, control):
+                result.append(entry.id)
         return result^

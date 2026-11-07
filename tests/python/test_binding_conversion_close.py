@@ -183,7 +183,8 @@ def _exercise_close(path, case):
                 operation = lambda: scanner.next_batch(False)
         else:
             opts = dict(max_candidates=100, deadline_ns=0, max_batch_bytes=1024,
-                batch_size=1, columns=[dict(name="id", kind=1, payload_name="")], filter=None)
+                batch_size=1, columns=[dict(name="id", kind=1, payload_name="")], filter=None,
+                json_expression=None, indexes=[], cancelled=False)
             if case == "scanner_options":
                 opts = ClosingDict(opts, "deadline_ns")
             else:

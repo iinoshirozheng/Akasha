@@ -186,7 +186,8 @@ def test_output_budget_is_shared_across_computed_columns(tmp_path):
 def test_direct_binding_rejects_invalid_alias_and_expression(tmp_path):
     with closing(Collection(tmp_path, 1)) as db:
         base = dict(batch_size=1, filter=None, max_candidates=100,
-                    deadline_ns=0, max_batch_bytes=1024)
+                    deadline_ns=0, max_batch_bytes=1024,
+                    json_expression=None, indexes=[], cancelled=False)
         for name in ("", "bad\0name"):
             with pytest.raises(ValidationError):
                 db._call("scanner", {**base, "columns": [dict(name=name, kind=13,
@@ -201,6 +202,7 @@ def test_scanner_configuration_rechecks_collection_after_python_callback(tmp_pat
                 db.close()
             return super().__getitem__(key)
     options = dict(batch_size=1, filter=None, max_candidates=100, deadline_ns=0,
+        json_expression=None, indexes=[], cancelled=False,
         max_batch_bytes=1024, columns=[ClosingColumn(name="x", kind=13,
             payload_name="", expression=call("json_get", "x"))])
     with pytest.raises(Exception, match="closed"):

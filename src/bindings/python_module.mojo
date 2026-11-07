@@ -1,4 +1,5 @@
 from akasha.query.json_snapshot import PreparedJsonQuery
+from akasha.query.json_expression import JsonExpression
 from akasha.query.json_expression_spec import parse_json_expression
 from akasha.query.jsonb_projection import JsonbProjection
 from akasha.query.jsonb_condition import JsonbCondition
@@ -217,6 +218,18 @@ struct BoundScanner(Movable, Writable):
         var expression = Optional[FilterExpression]()
         if not _is_python_none(options["filter"]):
             expression = Optional(_filter_expression(options["filter"]))
+        var json_expression = Optional[JsonExpression]()
+        var indexes = List[String]()
+        if not _is_python_none(options["json_expression"]):
+            json_expression = Optional(parse_json_expression(json_value_from_python(options["json_expression"])))
+        if len(options["indexes"]) > 256:
+            raise Error("JSON query index count limit exceeded")
+        for name in options["indexes"]:
+            indexes.append(_exact_python_string(name, "index name"))
+        if Bool(py=options["cancelled"]):
+            self.token.cancel()
+        var control = QueryControl(self.token, max_candidates=self.max_candidates,
+                                   deadline_ns=self.deadline_ns)
         _ensure_open(collection[])
         var snapshot = collection[].inner.value().snapshot()
         self.schema_value = scanner_schema(
@@ -226,6 +239,9 @@ struct BoundScanner(Movable, Writable):
             snapshot.scanner(
                 _exact_python_int(options["batch_size"], "scanner batch size"),
                 expression^,
+                json_expression=json_expression^,
+                indexes=indexes,
+                control=Optional(control.copy()),
             )
         )
         snapshot.close()
