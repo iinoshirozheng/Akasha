@@ -16,6 +16,7 @@ from akasha.index.nullable_rows import NullableRowMask
 from akasha.document.jsonb import JsonbValue
 from akasha.document.jsonb_path import JsonbPath
 from akasha.document.record import validate_field_name
+from akasha.query.json_btree_update import JsonBTreeUpdateBase, update_snapshot_json_btree
 
 
 struct JsonIndexRequest(Copyable, Movable):
@@ -170,7 +171,8 @@ def build_snapshot_json_index(root: ReadGeneration, locations: List[Tuple[Int, I
 
 def snapshot_json_artifact(root: ReadGeneration, locations: List[Tuple[Int, Int]],
                            request: JsonIndexRequest, control: Optional[QueryControl] = None,
-                           rebuild: Bool = False) raises -> ArcPointer[JsonScalarIndex]:
+                           rebuild: Bool = False,
+                           base: Optional[JsonBTreeUpdateBase] = None) raises -> ArcPointer[JsonScalarIndex]:
     var target = Int(request.learned_type.value()) if request.learned_type else 0
     var state = root.json_indexes[].get(request.column, request.path, target, request.kind)
     with BlockingScopedLock(state[].lock):
@@ -188,7 +190,11 @@ def snapshot_json_artifact(root: ReadGeneration, locations: List[Tuple[Int, Int]
                 return loaded^
         try:
             state[].begin()
-            var built = ArcPointer(build_snapshot_json_index(root, locations, request, control))
+            var built: ArcPointer[JsonScalarIndex]
+            if rebuild and request.kind == 2 and request.learned_type and base and base.value().matches(request.column, request.path, request.learned_type.value()):
+                built = ArcPointer(update_snapshot_json_btree(base.value(), root, locations, request.column, control))
+            else:
+                built = ArcPointer(build_snapshot_json_index(root, locations, request, control))
             if control:
                 control.value().checkpoint(0)
             if rebuild and state[].ready:

@@ -57,6 +57,21 @@ struct LanceJsonBTreeTrainer(Movable):
     def abort(mut self):
         self._input.abort()
 
+    def finish_update(mut self, old: LanceJsonBTreeIndex, sequence: UInt64,
+                      source_checksum: UInt32) raises -> LanceJsonBTreeIndex:
+        try:
+            self._input._check_open()
+            if self._input.path != old._btree.pages.path or not self.learned_type() or self.learned_type().value() != old.target():
+                raise Error("JSON B-tree update must retain the old path and learned type")
+            var sorted = self._input.finish_sorted()
+            var updated = old._btree.updated_stream(sorted.stream, sequence=sequence,
+                source_checksum=source_checksum, control=self._input._control.copy(),
+                string_getter_safe=sorted.string_getter_safe)
+            return LanceJsonBTreeIndex(updated^)
+        except error:
+            self.abort()
+            raise error
+
     def finish(mut self, column: String, dimension: Int, sequence: UInt64,
                source_checksum: UInt32) raises -> LanceJsonBTreeIndex:
         try:

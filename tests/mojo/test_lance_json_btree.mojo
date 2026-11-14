@@ -2,6 +2,7 @@ from akasha.index.lance_json_btree import LanceJsonBTreeTrainer
 from akasha.index.lance_bitmap import LanceBitmapQuery, LanceBitmapBound
 from akasha.index.lance_scalar import LanceScalarKey
 from akasha.document.jsonb_reader import parse_jsonb
+from akasha.document.jsonb import JsonbValue
 from std.python import Python
 from std.testing import assert_equal, assert_true, assert_false, assert_raises, TestSuite
 from test_lance_json_stream import _values
@@ -99,6 +100,35 @@ def test_json_btree_null_prefix_learned_type_and_substitution_guards() raises:
     var all_null = LanceJsonBTreeTrainer("$")
     all_null.push([None], [0])
     assert_equal(all_null.finish("data", 2, 0, 0).target(), UInt8(4))
+
+
+def test_json_update_retains_type_path_and_string_provenance() raises:
+    var trainer = LanceJsonBTreeTrainer("v")
+    trainer.push([Optional(parse_jsonb("{v:'old'}")), None], [0, 1])
+    var old = trainer.finish("data", 2, 1, 1)
+    var update = LanceJsonBTreeTrainer("v", learned_type=Optional(UInt8(4)), sort_memory_bytes=128)
+    update.push([Optional(parse_jsonb("{v:'new'}"))], [2])
+    var new = update.finish_update(old, 2, 2)
+    assert_true(new._btree.pages.string_getter_safe)
+    assert_equal(new.search(LanceBitmapQuery.equals(LanceScalarKey.text("new"))).selected_rows.values(), [UInt64(2)])
+    assert_equal(old._btree.pages.row_count, 2)
+    with assert_raises():
+        _ = update.finish_update(old, 2, 2)
+    var wrong_path = LanceJsonBTreeTrainer("other", learned_type=Optional(UInt8(4)))
+    with assert_raises():
+        _ = wrong_path.finish_update(old, 2, 2)
+    with assert_raises():
+        wrong_path.push([], [])
+    var wrong_type = LanceJsonBTreeTrainer("v", learned_type=Optional(UInt8(2)))
+    with assert_raises():
+        _ = wrong_type.finish_update(old, 2, 2)
+    var root_trainer = LanceJsonBTreeTrainer("$", learned_type=Optional(UInt8(4)))
+    root_trainer.push([Optional(parse_jsonb("'old'"))], [0])
+    var root_index = root_trainer.finish("data", 2, 1, 1)
+    var extensions = LanceJsonBTreeTrainer("$", learned_type=Optional(UInt8(4)))
+    extensions.push([Optional(JsonbValue.date(1))], [1])
+    var with_extension = extensions.finish_update(root_index, 2, 2)
+    assert_false(with_extension._btree.pages.string_getter_safe)
 
 
 def main() raises:

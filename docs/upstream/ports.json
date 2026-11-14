@@ -5335,6 +5335,51 @@
       "limits": [
         "No performance, whole-product, full SQL planner, per-write incremental B-tree update or cross-platform/GPU claim"
       ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4w-btree-lifecycle-incremental-rebuild",
+      "status": "verified",
+      "native_files": [
+        "src/akasha/index/lance_btree.mojo",
+        "src/akasha/index/lance_json_btree.mojo",
+        "src/akasha/query/json_btree_update.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/api/collection.mojo"
+      ],
+      "adaptation": [
+        "Immutable native update and remap retain Akasha unique row IDs and existing kind-6 codec",
+        "Exact JSONB column comparison and dense-ordinal reconciliation; fixed learned type and conservative string provenance",
+        "One collection-owned baseline with no predecessor chain; explicit rebuild publishes only under existing writer sequence/catalog checks"
+      ],
+      "verification": [
+        "docs/research/2026-11-15-btree-lifecycle-validation.md",
+        "tests/fixtures/lance-btree-lifecycle/sources.json"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/lance_btree.mojo": "8c15b4ba42967aef5cb96b955be84414594275e40a31fdc3681a0e658ab46276",
+        "src/akasha/index/lance_json_btree.mojo": "69be277300a4b7460e332eb7584150dc6b3c67d4be3d38294cdc15d4f4de498c",
+        "src/akasha/query/json_btree_update.mojo": "e80c68b480b94061860d43d1fb0ac0f6b3c42019a356699298586aa501b59958",
+        "src/akasha/query/json_snapshot.mojo": "0d769ca1f56bce60134604d30ac7145b28bb391b5e55446a5e4cd149829627b3",
+        "src/akasha/api/collection.mojo": "2ec699098368c8f731c0c41bd220d9d68bfd89139db07bc6d806778150433757",
+        "tests/mojo/test_btree_lifecycle.mojo": "8e00d7ceb0580ebb145100f3e19904c9b380d3377c3591bb697fff6859d98444",
+        "tests/mojo/test_lance_json_btree.mojo": "6b5d3fb9c9d7c630ed6a8bd6107509e1196cf8c84a063d147d84198e23554e09",
+        "tests/mojo/test_json_btree_collection.mojo": "8918dd8719ced1c94c5e22328ef91b74c16cc8f17095be5ef1a38c123651e4ec",
+        "tests/python/test_json_btree.py": "91a1c47c38cb58731a28044f68e4817b7dd0c5da7ed48682631ddf3c95b0c5c5",
+        "scripts/lance_btree_lifecycle_reference.py": "6ed1116c070f4a1c411cdf55a9ae8da870dee76f2c88c37499d6b0573c6fe36b",
+        "scripts/lance_btree_lifecycle_reference.rs": "18f763653896c64f116af52b1b8ff4bf23e2a8509ffa354b396dd4cd407e2178",
+        "tests/fixtures/lance-btree-lifecycle/cases.json": "8005e4f188b42d28fce99de567723ca78caaab1f577a36427e1b5b2ecf2ccea0",
+        "tests/fixtures/lance-btree-lifecycle/sources.json": "bf4a7531ff620c6dab30340c1630b6e9efd05aff81abee1fe841860b9ecf4eeb",
+        "tests/fixtures/lance-btree-lifecycle/Cargo.lock": "b3322f13f50ed1afd7bf774ad17d6610d75874599b14672a5005043bcae2a9b1"
+      },
+      "remaining": [],
+      "limits": [
+        "No per-write automatic maintenance, performance, whole-product or cross-platform claim",
+        "Source oracle uses original merge/remap bodies and actual DataFusion merge; in-memory input/output adapters replace chunking and durable file training"
+      ]
     }
   ]
 }

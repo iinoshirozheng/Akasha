@@ -1,4 +1,6 @@
 from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition
+from akasha.query.json_btree_update import JsonBTreeUpdateBase
+from akasha.index.json_scalar_index import JsonScalarIndex
 from akasha.query.json_snapshot import JsonIndexRequest, build_snapshot_json_index, snapshot_json_artifact
 from akasha.storage.json_scalar_cache import publish_json_scalar_cache_best_effort, remove_json_scalar_cache_best_effort
 from akasha.query.query_plan import QueryNode
@@ -179,6 +181,7 @@ struct PersistentCollection:
     var _retired: ArcPointer[RetiredFileQueue]
     var _writer_lock: ArcPointer[BlockingSpinLock]
     var _read_generations: ArcPointer[ReadGenerationCache]
+    var _json_btree_base: Optional[JsonBTreeUpdateBase]
     var _maintenance: MaintenanceController
     var _cache_generation: UInt64
     var _source_checksum: UInt32
@@ -251,6 +254,7 @@ struct PersistentCollection:
         self._retired = ArcPointer(RetiredFileQueue())
         self._writer_lock = ArcPointer(BlockingSpinLock())
         self._read_generations = ArcPointer(ReadGenerationCache())
+        self._json_btree_base = None
         self._read_generations[].generation = cache_generation
         self._maintenance = MaintenanceController.start(
             path,
@@ -634,6 +638,7 @@ struct PersistentCollection:
         is released outside the writer lock, so a last owner frees rows and
         device state there."""
         var released = Optional[ArcPointer[ReadGeneration]]()
+        var released_json = Optional[JsonBTreeUpdateBase]()
         with BlockingScopedLock(self._writer_lock[]):
             if self._closed:
                 return
@@ -643,10 +648,13 @@ struct PersistentCollection:
             if self._read_generations[].root:
                 released = Optional(self._read_generations[].root.take())
             self._read_generations[].reset()
+            if self._json_btree_base:
+                released_json = Optional(self._json_btree_base.take())
             self._hnsw.close()
             self._maintenance.cancel()
             self._closed = True
         _ = released^
+        _ = released_json^
         var maintenance_error = String()
         try:
             self._maintenance.close()
@@ -817,21 +825,29 @@ struct PersistentCollection:
             var generation = self._point_store.publish_json_catalog(catalog^, expected)
             self._read_generations[].publish(generation)
             publish_json_scalar_cache_best_effort(root[], locations, column, index)
+            if kind == 2:
+                self._json_btree_base = Optional(JsonBTreeUpdateBase(root.copy(), ArcPointer(index^)))
 
     def rebuild_json_index(mut self, name: String,
                            control: Optional[QueryControl] = None) raises:
         var captured = self.snapshot()
         var root = captured._acquire()
+        var base: Optional[JsonBTreeUpdateBase]
+        with BlockingScopedLock(self._writer_lock[]):
+            self._ensure_open()
+            base = self._json_btree_base.copy()
         for definition in captured._json_catalog.definitions:
             if definition.name == name:
                 var locations = root[].id_ordered_locations()
                 var index = snapshot_json_artifact(root[], locations,
                     JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target), definition.kind),
-                    control, rebuild=True)
+                    control, rebuild=True, base=base.copy())
                 with BlockingScopedLock(self._writer_lock[]):
                     self._ensure_open()
                     if self._last_sequence == captured.last_sequence() and self._json_catalog_unlocked().revision == captured._json_catalog.revision:
                         publish_json_scalar_cache_best_effort(root[], locations, definition.column, index[])
+                        if definition.kind == 2:
+                            self._json_btree_base = Optional(JsonBTreeUpdateBase(root.copy(), index.copy()))
                 return
         raise Error("unknown JSON index name")
 
@@ -861,6 +877,8 @@ struct PersistentCollection:
                             shared = True
                     if not shared:
                         remove_json_scalar_cache_best_effort(self._path, definition.column, definition.path, definition.target, definition.kind)
+                        if definition.kind == 2 and self._json_btree_base and self._json_btree_base.value().matches(definition.column, definition.path, definition.target):
+                            self._json_btree_base = None
 
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""

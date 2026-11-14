@@ -33,6 +33,34 @@ def cache_file(path):
     return files[0]
 
 
+def test_incremental_rebuild_matches_scan_across_ordinal_changes(tmp_path):
+    with closing(Collection(tmp_path, 1)) as db:
+        populate(db, [(i * 2, i % 5) for i in range(130)])
+        db.create_json_index("tree", "data", "v", kind="btree")
+        with db.prepare_json(leaf(), indexes=["tree"]) as held:
+            before = held.execute()
+            for step in range(3):
+                db.apply_point_batch([PointMutation.delete(step * 2)])
+                populate(db, [(-10 + step, 9), (8, step), (21, None)])
+                db.rebuild_json_index("tree")
+                for op in ("eq", "ge", "lt", "is_null"):
+                    expression = leaf(op, 2)
+                    assert db.query_json(expression, indexes=["tree"]) == db.query_json(expression)
+                assert held.execute() == before
+            cache = cache_file(tmp_path)
+            successful = cache.read_bytes()
+            populate(db, [(8, "wrong")])
+            with pytest.raises(ValidationError):
+                db.rebuild_json_index("tree")
+            assert cache.read_bytes() == successful
+            populate(db, [(8, 2)])
+            db.rebuild_json_index("tree")
+            expected = db.query_json(leaf())
+            db.flush()
+    with closing(Collection(tmp_path, 1)) as db:
+        assert db.query_json(leaf(), indexes=["tree"]) == expected
+
+
 def test_large_paged_operators_null_guards_and_reopen(tmp_path):
     with closing(Collection(tmp_path, 1)) as db:
         populate(db, [(i - 2500, None if i % 17 == 0 else i % 11) for i in range(5000)])

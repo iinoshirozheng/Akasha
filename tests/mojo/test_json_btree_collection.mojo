@@ -136,5 +136,49 @@ def test_kind_registry_isolation_and_unhandled_index_keeps_prior_mask() raises:
     collection.close()
 
 
+def test_incremental_rebuild_ordinals_failure_and_publication() raises:
+    var directory = Python.import_module("tempfile").TemporaryDirectory()
+    var path = String(py=directory.name)
+    var collection = PersistentCollection.open(path, 2)
+    for i in range(32):
+        collection.upsert_document(i * 2, [1.0, 0.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:1}")))])
+    collection.create_json_index("tree", "data", "v", kind=2)
+    var held = collection.snapshot().prepare_json_catalog(_leaf("v", 1), [String("tree")])
+    var baseline_sequence = collection._json_btree_base.value().root[].sequence
+    collection.delete(0)
+    collection.upsert_document(-9, [1.0, 0.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:2}")))])
+    collection.upsert_document(8, [1.0, 0.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:2}")))])
+    collection.upsert_document(10, [1.0, 0.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:'bad'}")))])
+    with assert_raises():
+        collection.rebuild_json_index("tree")
+    assert_equal(collection._json_btree_base.value().root[].sequence, baseline_sequence)
+    assert_equal(len(held.execute()), 32)
+    collection.upsert_document(10, [0.0, 1.0], [DocumentField("data", PayloadValue.jsonb(parse_jsonb("{v:1}")))])
+    var cache = path + "/" + json_btree_cache_name("data", "v", 2)
+    var pathlib = Python.import_module("pathlib")
+    var prior_bytes = pathlib.Path(cache).read_bytes()
+    pathlib.Path(cache + ".tmp").mkdir()
+    collection.rebuild_json_index("tree")
+    assert_equal(Bool(py=pathlib.Path(cache).read_bytes() == prior_bytes), True)
+    var latest = collection.snapshot()
+    assert_equal(latest.prepare_json_catalog(_leaf("v", 2), [String("tree")]).execute(), [-9, 8])
+    assert_equal(len(latest.prepare_json_catalog(_leaf("v", 1), [String("tree")]).execute()), 30)
+    pathlib.Path(cache + ".tmp").rmdir()
+    collection.rebuild_json_index("tree")
+    assert_equal(Bool(py=pathlib.Path(cache).read_bytes() == prior_bytes), False)
+    collection.flush()
+    collection.compact()
+    collection.rebuild_json_index("tree")
+    collection.close()
+    assert_equal(Bool(collection._json_btree_base), False)
+    var reopened = PersistentCollection.open(path, 2)
+    assert_equal(reopened.snapshot().prepare_json_catalog(_leaf("v", 2), [String("tree")]).execute(), [-9, 8])
+    reopened.rebuild_json_index("tree")
+    reopened.drop_json_index("tree")
+    assert_equal(Bool(reopened._json_btree_base), False)
+    assert_equal(len(held.execute()), 32)
+    reopened.close()
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

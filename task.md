@@ -4,6 +4,10 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 2026-11-15：B-tree update／remap 已完成獨立上游對照與 JSON／collection 增量重建整合。105 組來源情境（210 個操作結果）一致，fixture 三份產物逐位元重現；12 項原生與 111 項相關 Python 通過，Python 模組建置通過。既有 `rebuild_json_index` 重用未變 JSON 的 scalar 值、重映射 ordinal 並發布完整 cache；保留一個 baseline，格式與 API 不變。[驗收](docs/research/2026-11-15-btree-lifecycle-validation.md)。不是每次寫入自動維護，也未完成其他 scalar targets／全產品／效能門檻。
+
+- 2026-11-15：新增原生 B-tree immutable update／remap：重用外部排序、逐頁 ID 搬移／刪除與既有 kind-6 格式；保留舊讀者，拒絕衝突 ID。3 項生命週期測試通過，涵蓋五種型別、spill、重開與失敗路徑。[計畫](docs/plans/2026-11-15-btree-lifecycle.md)／[驗證](docs/research/2026-11-15-btree-lifecycle-validation.md)。獨立上游生命週期執行對照、JSON／collection 增量發布接線與其他 scalar targets 仍待完成。
+
 - 2026-11-14：B-tree 完整 1～4 範圍已完成：來源對照、原生分頁／持久化、catalog v2 與 kind 隔離、Python／HTTP／JSON／Arrow 整合及恢復驗收。新增 `create_json_index(..., kind="btree")`，預設 bitmap；清單新增 `kind`。17 項原生整合與 227 項相關 Python 通過，Python／Mojo build 通過，舊 v1 catalog fixture 維持逐位元相容；實際 fsync 失敗注入涵蓋兩種 kind。[完整驗收](docs/research/2026-11-14-json-btree-integration-validation.md)。此結論限本次 B-tree 範圍，未宣稱全產品／跨平台／效能驗收。
 
 - 2026-11-14：原生 B-tree 頁面目錄、排序葉頁、mmap codec、四類查詢與 JSON 串流訓練已實作。48,720 次 lookup、8,126 次 leaf、24,378 次分頁搜尋及 786 組 JSON 訓練來源對照通過；本輪 28 項原生測試通過。[驗證](docs/research/2026-11-14-json-btree-lookup-validation.md)。完整 1～4 目標持續進行：catalog 遷移、快照 registry、Python／HTTP／Arrow 派送及端到端恢復仍待完成。

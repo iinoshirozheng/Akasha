@@ -1243,6 +1243,17 @@ JSON training uses the shared external sorter and learned-type rules. The
 root-owned artifact registry separates kind, column, path and target. Rebuild
 retains learned types; drop/recreate is required to infer a changed type.
 
+After creation or a successful writer rebuild, the collection retains one
+B-tree baseline. A rebuild of that same definition reuses scalar values whose
+document ID and exact JSONB column bytes are unchanged, remaps them to the new
+snapshot's dense ordinals, and converts changed/new JSON using the learned type.
+It then publishes a complete kind-6 artifact under the existing sequence/catalog
+check. Reopening or switching to a different definition uses full training.
+Snapshot-only rebuilds stay read-only. The baseline has no predecessor chain
+and is released on close or final definition drop. This avoids repeated JSON
+conversion, but still scans documents and rewrites pages; it is not per-write
+index maintenance or a performance guarantee.
+
 Only equivalent typed getter references replace residual predicates. For
 `json_get_int(..., "v")`, use index path `"v"`; `"$.v"` remains valid training
 JSONPath but does not denote the same literal getter key and stays residual.
