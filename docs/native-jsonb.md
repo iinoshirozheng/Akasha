@@ -946,13 +946,15 @@ and an old index is unchanged even when the final merge fails. The API performs
 no durable writes. Defaults are `max_rows=1_000_000`, `max_bytes=64*1024*1024`
 and `control=None` (optional native `QueryControl`); each batch is still capped
 at 65,536 rows.
-Prefix JSON storage and converted keys have separate logical byte limits.
-Converted keys remain materialized for sorting; this is not external sorting
-or a peak-memory guarantee. See [validation](research/2026-10-31-lance-json-stream-validation.md).
-
-Collection index definitions, planner selection, durable lifecycle and public
-Python/Arrow/service management remain unfinished. Generic Arrow passthrough
-columns and external sort/spill are also separate from this native bitmap API.
+The standalone default retains separate prefix/converted-input byte limits.
+Pass `sort_memory_bytes=Optional(bytes)` to select external sorting: input is
+sorted in bounded runs, merged from anonymous temporary files and consumed as a
+stream. In this mode `max_bytes` bounds each batch, each individual row and the
+final bitmap, rather than aggregate converted input. Null-only prefixes retain
+IDs without retaining extracted JSON. This is not a peak-memory guarantee.
+Collection builds use external sorting by default; public catalog, query and
+Arrow integration are described below. Generic Arrow passthrough columns remain
+separate from this native bitmap API.
 
 ## Native JSON bitmap predicate matching
 
@@ -1057,7 +1059,7 @@ var ids = prepared.execute()
 
 Create a named bitmap definition with
 `collection.create_json_index("value", "data", "$.v")`; `json_indexes()` returns
-its name, column, path and learned scalar target. `drop_json_index("value")`
+its name, column, path, learned scalar target and `kind` (`bitmap` or `btree`). `drop_json_index("value")`
 removes the definition for future snapshots. Definitions survive flush,
 compaction, reopen and physical backup/restore. Later incompatible payloads are
 accepted as data, but preparing an index query reports the type mismatch.
@@ -1161,7 +1163,95 @@ catalog operation or corrupt prior cache bytes. Drop removes a cache when no
 remaining definition shares its column/path/type. Snapshots never publish files;
 backup/restore correctness does not depend on these optional caches.
 
-This first layer loads the complete bounded bitmap payload on demand. Per-posting
-lazy reads, bounded paging cache and external sort/spill remain unimplemented.
+Mapped caches retain a key/offset directory and decode postings on demand.
+Each mapped index shares an LRU limited to 128 postings and 8 MiB logical retained
+storage; oversized postings are used without retention. Opening still scans the
+file for full integrity validation. These limits exclude the directory, mapped
+pages and active query results. Sharded builds and publication are described below.
 See [format](formats/json-bitmap-cache-format.md) and
 [validation](research/2026-11-08-json-bitmap-disk-cache-validation.md).
+
+
+## External bitmap sorting
+
+Collection create, rebuild and cache-miss training use an 8 MiB logical sorting
+run budget. Larger inputs spill sorted rows to anonymous files under `/tmp` and
+merge in stable two-way passes. The combined input/output temporary files are
+bounded by 512 MiB; exhaustion or I/O failure aborts the build without publishing
+a partial index. Existing definitions and ready artifacts are preserved by the
+existing collection publication path.
+
+Only key/row-ID pairs are spilled. Nulls sort first, Float64 total ordering and
+bits are preserved, and the final sorted stream goes directly into bitmap value
+runs. The first non-null value still determines type; EOF alone defaults all-null
+input to Utf8. There is no requirement to retain an arbitrarily long JSON prefix.
+
+Temporary files are created exclusively with mode 0600, immediately unlinked and
+owned by native descriptors. They have bounded records with CRC checks, and no
+name survives a successful unlink, including after process exit. No durable
+format or recovery migration changes. Small inputs need no temporary file.
+
+The run budget excludes sort workspace, caller batches, metadata and final bitmap.
+A single row may exceed 8 MiB but cannot exceed the existing 64 MiB row/batch cap;
+merge retains at most two row heads. Final bitmap and row-count limits remain
+64 MiB logical state / 1,000,000 rows. Collection training applies this sorter
+within each source shard.
+
+
+## Incremental bitmap shard builds
+
+Collection create/rebuild and cache-miss training partition ID-ordered source
+rows into 4,096-row groups, using one global learned type. A valid shard with an
+unchanged source fingerprint is reused; only changed or missing groups retrain.
+Inserting/deleting IDs can shift later group boundaries, so those groups rebuild
+as needed. This is bounded source-group reuse, not a per-write delta index.
+
+Mapped shard cursors feed a k-way key merge. Equal-key postings are unioned and
+local ordinals rebased to the current snapshot. The merged cache is streamed to
+an anonymous mapping and queried through the existing lazy posting cache. The
+final bitmap is no longer fully materialized during collection merge, although
+its existing logical size limits remain enforced.
+
+`create_json_index` and `rebuild_json_index` publish changed shard files and then
+the merged cache under writer exclusion. Unchanged valid shard files retain
+their inode and bytes. Publication is atomic per file; mixed versions after an
+interrupted publication are harmless because every reuse validates source data.
+Snapshot demand only stages anonymous files and never publishes persistent
+caches. Old snapshots continue to own their mapped inodes across replacement,
+shrink cleanup, drop and collection close.
+
+The cache payload stays v1; no authoritative schema migration is needed. See
+[format and failure rules](formats/json-bitmap-cache-format.md#derived-shards-and-streamed-merge).
+
+# Native paged B-tree and public index selection
+
+`collection.create_json_index("by_v", "data", "v", kind="btree")` creates a real
+paged scalar target. Omitting `kind` retains bitmap behavior. HTTP accepts the
+same selection in `PUT /collections/{collection}/json-indexes/{name}` with
+`{"column":"data","path":"v","kind":"btree"}`. Listing adds a `kind` field to
+every definition. Drop, rebuild, named prepared JSON queries and Arrow scanners
+use the recorded kind; their existing call shapes remain unchanged.
+
+The native directory/leaf contract follows pinned Lance. Sorted value/row-ID
+leaves contain at most 4,096 rows, with an 8 MiB encoded target per page and a
+64 MiB hard page limit. The output is an AKIC kind-6 immutable mapped artifact;
+opening validates all contents, while queries materialize one candidate page
+at a time. Full payload/row limits remain 128 MiB and 1,000,000 rows. This is
+lazy materialization, not lazy initial integrity I/O or a performance claim.
+
+JSON training uses the shared external sorter and learned-type rules. The
+root-owned artifact registry separates kind, column, path and target. Rebuild
+retains learned types; drop/recreate is required to infer a changed type.
+
+Only equivalent typed getter references replace residual predicates. For
+`json_get_int(..., "v")`, use index path `"v"`; `"$.v"` remains valid training
+JSONPath but does not denote the same literal getter key and stays residual.
+NULL literals/members/bounds, mismatched targets, extension-string provenance
+and unbounded ranges retain the existing expression behavior. Empty IN can use
+the B-tree's false mask even for NULL input. A later unhandled index never
+removes an already valid mask from another named index.
+
+Catalogs with B-tree definitions use section v2 inside manifest v6; bitmap-only
+catalogs keep their v1 bytes. Older readers reject v2. See
+[the catalog migration contract](formats/json-index-catalog-format.md) and
+[the B-tree cache format](formats/json-btree-cache-format.md).

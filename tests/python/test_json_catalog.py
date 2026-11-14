@@ -28,7 +28,7 @@ def test_python_catalog_query_and_reopen(tmp_path):
         populate(db)
         assert db.query_json(predicate()) == [2, 9]
         db.create_json_index("v", "data", "$.v")
-        assert db.json_indexes() == [{"name": "v", "column": "data", "path": "$.v", "target": 2}]
+        assert db.json_indexes() == [{"name": "v", "column": "data", "path": "$.v", "target": 2, "kind": "bitmap"}]
         assert db.query_json(predicate(), indexes=["v"]) == [2, 9]
         before = (tmp_path / "manifest.bin").read_bytes()
         db.rebuild_json_index("v")

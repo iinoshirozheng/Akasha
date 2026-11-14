@@ -4,6 +4,16 @@
 本次完整範圍涵蓋先前列出的 Qdrant、LanceDB、一般 DB、前端、叢集與維運缺口。
 演算法先固定上游來源、移植為 Mojo 並對照驗證；HTTP／SDK／前端保持薄邊界。
 
+- 2026-11-14：B-tree 完整 1～4 範圍已完成：來源對照、原生分頁／持久化、catalog v2 與 kind 隔離、Python／HTTP／JSON／Arrow 整合及恢復驗收。新增 `create_json_index(..., kind="btree")`，預設 bitmap；清單新增 `kind`。17 項原生整合與 227 項相關 Python 通過，Python／Mojo build 通過，舊 v1 catalog fixture 維持逐位元相容；實際 fsync 失敗注入涵蓋兩種 kind。[完整驗收](docs/research/2026-11-14-json-btree-integration-validation.md)。此結論限本次 B-tree 範圍，未宣稱全產品／跨平台／效能驗收。
+
+- 2026-11-14：原生 B-tree 頁面目錄、排序葉頁、mmap codec、四類查詢與 JSON 串流訓練已實作。48,720 次 lookup、8,126 次 leaf、24,378 次分頁搜尋及 786 組 JSON 訓練來源對照通過；本輪 28 項原生測試通過。[驗證](docs/research/2026-11-14-json-btree-lookup-validation.md)。完整 1～4 目標持續進行：catalog 遷移、快照 registry、Python／HTTP／Arrow 派送及端到端恢復仍待完成。
+
+- 2026-11-14：JSON bitmap 磁碟 shard k-way merge 與增量發布已完成。每 shard 最多 4,096 列，來源指紋決定重用／重建，局部 ordinal 合併時重新定位；串流輸出至 mapped v1 cache，writer 逐檔原子發布變更 shard 與完整快取。28 項原生、211 項相關 Python 測試與模組建置通過，涵蓋部分發布失敗後重開、損壞／截斷、舊 v1、縮減清理及舊快照。[驗收](docs/research/2026-11-14-json-bitmap-shards-validation.md)。這是來源分組重用，未宣稱每次寫入的 delta index、放寬既有規模限制或完成全產品／效能驗收。
+
+- 2026-11-13：JSON bitmap 外部排序／spill 已接入 collection create、rebuild 與 cache-miss 訓練；8 MiB 排序 run、512 MiB 暫存檔合計上限、匿名檔案與分輪兩路合併，結果直接送入既有 bitmap builder。786 組來源情境亦通過 forced-spill 路徑；22 項原生、206 項相關 Python 測試與模組建置通過。[驗收](docs/research/2026-11-13-json-bitmap-external-sort-validation.md)。下一項為持久化 bitmap shard k-way merge／增量發布；輸出 bitmap 仍受既有 64 MiB／1,000,000 rows 限制。
+
+- 2026-11-13：JSON bitmap 已加入逐 posting lazy loading 與 bounded LRU，每個 mapped index 最多保留 128 個 posting／8 MiB 邏輯資料；沿用 v1 格式與完整校驗，支援並行讀取、淘汰、取消及舊映射壽命。30 項原生、205 項相關 Python 測試與 Python 模組建置通過。[驗收](docs/research/2026-11-13-json-bitmap-lazy-postings-validation.md)。下一項為外部排序／spill，再接磁碟 shard k-way merge／增量發布；完整產品與效能門檻仍開放。
+
 - 2026-11-08：JSON bitmap 第一層磁碟快取已接通 create／rebuild 發布與重開按需載入，含來源校驗、損壞重建、共用定義清理；11 項原生、205 項相關 Python 測試通過。[驗收](docs/research/2026-11-08-json-bitmap-disk-cache-validation.md)。逐 posting lazy loading、bounded paging cache、外部排序／spill 與 shard merge 仍待後續實作，未宣稱完整磁碟索引完成。
 
 - 2026-11-08：JSON expression／catalog 索引已接入 Arrow scanner，沿用原生 prepared query 與 Arrow C Data 匯出；支援分批投影、計算欄位、filter→JSON 短路、snapshot 壽命與取消／逾時／資源限制。15 項原生與 202 項相關 Python 測試通過；[驗收](docs/research/2026-11-08-json-arrow-scanner-validation.md)。下一階段為磁碟 bitmap、lazy loading／cache、外部排序與 spill。

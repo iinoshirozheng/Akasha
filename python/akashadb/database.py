@@ -25,7 +25,7 @@ from .models import (
 
 
 class KernelCollection(Protocol):
-    def create_json_index(self, name: str, column: str, path: str) -> None: ...
+    def create_json_index(self, name: str, column: str, path: str, kind: str) -> None: ...
     def drop_json_index(self, name: str) -> None: ...
     def rebuild_json_index(self, name: str) -> None: ...
     def json_indexes(self) -> list[dict[str, Any]]: ...
@@ -185,9 +185,9 @@ class Collection:
         self._record_operation(method, duration, "ok", None)
         return result
 
-    def create_json_index(self, name: str, column: str, path: str) -> None:
-        """Persist a bitmap definition after native type inference and validation."""
-        self._call("create_json_index", name, column, path)
+    def create_json_index(self, name: str, column: str, path: str, *, kind: str = "bitmap") -> None:
+        """Persist a bitmap (default) or btree definition with a fixed learned type."""
+        self._call("create_json_index", name, column, path, kind)
 
     def json_indexes(self) -> list[dict[str, Any]]:
         """Return owned catalog definitions with fixed learned target types."""

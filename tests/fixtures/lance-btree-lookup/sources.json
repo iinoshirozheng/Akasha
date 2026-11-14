@@ -1,0 +1,24 @@
+{
+  "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+  "source_sha256": "1429b7b289ad2ca97f9077be03298846d2d7d95d4030e98498f4d44d9446a7fc",
+  "units": {
+    "try_new": "2a98045220393f911db2498284667d03df15558231adb1abdc0f838872ad1d0b",
+    "page_numbers": "af1c9f0e6d15239211895d5e665a5ddd1ce5752d405f8ccceb8d3668f4191660",
+    "scan_equality_pages": "74d84d0212898cab646245dc8a69962b74e0a9cf2c2d8b8f0efcfdbf5279e9d2",
+    "pages_eq": "c64ef2fb7772ff902fe24f4eb80e650ba5d260a1b7677784678a1c48153fe6e7",
+    "pages_in": "650c7cec6e508f0a02c845bea2db93f3b85241b7d8a302e65c3d4684d57e8907",
+    "pages_between": "aded9767d148116e41206a4854b34bcabf94514d14279b54c0b7f8ed6cc81c4f",
+    "pages_null": "87110c4808563c926550c7cc59ec9b1cf0a29bd4af2b1faeaec6f9222cf93d90",
+    "partition_point": "f6c006817fe3bdfd15faf71817006a2c49d37b73565b12e99ece42d21a2527c7",
+    "analyze_batch": "87e54102acd670fa87e5b09d3b85cd8fa7e403f27ea330efe302ba3707f6c019",
+    "PartialEq": "c6d6851bb151d5c38c459cd9db3722ed244f7bc7b93ddf2ec7aa7d4f02e8059d",
+    "PartialOrd": "9c3a741b6e40a6af41a7ddbc0e4a4fa12821e5e55685ad3740f90d4142e5e865",
+    "Ord": "cebf301bf1aba1a7fbd994e20d6c7215de6e90e6bad12ddbd4caf0eec450c6c6",
+    "Matches": "27ce148c2b618d4956ee80598e072a3eaf848b0c56f734dc79b7b3c6afe41c2d"
+  },
+  "generator_sha256": "fa37fc905f426381aa7a4a51ac0d1033da5c038dc66d7a29757c51604a9be3d2",
+  "scaffold_sha256": "8469594796978c2b9155b5736ffea5d7a6e0f647f34235bbafc4ce25a0f4f376",
+  "cases_sha256": "34a9d03d8e6acc2dcc80e37e0cc9701a10e01eef4195193d95283e5528b26603",
+  "lock_sha256": "472f80f81fd6e8153795539dfefcc79b1846e8e349d2b244930b3d91056202d5",
+  "adapter": "Actual pinned lookup/statistics bodies. Real Arrow comparator dispatch replaces physical-type specialization only. No flat predicate/whole B-tree parity claim."
+}

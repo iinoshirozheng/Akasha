@@ -1,4 +1,5 @@
 from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition, encode_json_catalog, decode_json_catalog
+from akasha.storage.filesystem import read_file_bytes
 from std.testing import assert_equal, assert_raises, TestSuite
 
 
@@ -30,6 +31,44 @@ def test_catalog_roundtrip_and_rejection() raises:
     catalog.definitions.append(catalog.definitions[0].copy())
     with assert_raises():
         _ = encode_json_catalog(catalog)
+
+
+def test_btree_catalog_v2_and_v1_contract() raises:
+    var catalog = JsonIndexCatalog()
+    catalog.revision = 1
+    catalog.definitions.append(JsonIndexDefinition("bitmap", "data", "v", 2))
+    var old = encode_json_catalog(catalog)
+    assert_equal(old[0], UInt8(1))
+    assert_equal(decode_json_catalog(Span(old)).definitions[0].kind, UInt8(1))
+    catalog.definitions.append(JsonIndexDefinition("tree", "data", "v", 2, 2))
+    var bytes = encode_json_catalog(catalog)
+    assert_equal(bytes[0], UInt8(2))
+    var decoded = decode_json_catalog(Span(bytes))
+    assert_equal(decoded.definitions[0].kind, UInt8(1))
+    assert_equal(decoded.definitions[1].kind, UInt8(2))
+    assert_equal(encode_json_catalog(decoded), bytes)
+    var mislabeled = bytes.copy()
+    mislabeled[0] = 1
+    with assert_raises(contains="kind"):
+        _ = decode_json_catalog(Span(mislabeled))
+    catalog.definitions[1].kind = 3
+    with assert_raises(contains="kind"):
+        _ = encode_json_catalog(catalog)
+
+
+def test_independent_mixed_kind_v2_fixture() raises:
+    # Independently packed little-endian header/entries from the format spec.
+    var bytes = read_file_bytes("tests/fixtures/json-catalog-v2.bin")
+    var decoded = decode_json_catalog(Span(bytes))
+    assert_equal(decoded.revision, UInt64(7))
+    assert_equal(decoded.definitions[0].name, "bitmap")
+    assert_equal(decoded.definitions[0].kind, UInt8(1))
+    assert_equal(decoded.definitions[1].name, "tree")
+    assert_equal(decoded.definitions[1].kind, UInt8(2))
+    assert_equal(encode_json_catalog(decoded), bytes)
+    bytes[24] = 3
+    with assert_raises(contains="kind"):
+        _ = decode_json_catalog(Span(bytes))
 
 
 def main() raises:

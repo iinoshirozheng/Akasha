@@ -1,6 +1,6 @@
 from std.ffi import c_int, c_long, c_size_t, external_call
 from akasha.storage.checksum import CRC32_INITIAL, crc32_update
-from std.io.file import O_RDONLY
+from std.io.file import O_RDONLY, FileHandle
 from std.memory.alloc import alloc, Layout
 from std.memory import unsafe_memcpy
 from std.stat import S_ISREG
@@ -65,6 +65,32 @@ struct MappedFile(Movable):
     @staticmethod
     def open_readonly(path: String) raises -> MappedFile:
         """Opens and maps a supported 64-bit POSIX regular byte stream."""
+        var owned_path = path
+        var descriptor = external_call["open", c_int, num_fixed_args=2](
+            owned_path.as_c_string_slice().unsafe_ptr(), c_int(O_RDONLY)
+        )
+        if descriptor < 0:
+            raise Error("open readonly mapping failed: " + String(get_errno()))
+
+        return Self._map_descriptor(descriptor)
+
+    @staticmethod
+    def from_file(file: FileHandle) raises -> Self:
+        """Duplicate a completed immutable staging file; caller retains its FD.
+
+        The caller must finish writes before mapping and must never mutate the
+        inode afterward. The mapping owns the duplicate, independently of caller.
+        """
+        var duplicate = external_call["dup", c_int](c_int(file.handle))
+        if duplicate < 0:
+            raise Error("duplicate mapping descriptor failed: " + String(get_errno()))
+        if external_call["fcntl", c_int, num_fixed_args=2](duplicate, c_int(2), c_int(1)) != 0:
+            _ = external_call["close", c_int](duplicate)
+            raise Error("mapping close-on-exec failed")
+        return Self._map_descriptor(duplicate)
+
+    @staticmethod
+    def _map_descriptor(descriptor: Int32) raises -> Self:
         comptime if CompilationTarget.is_linux():
             comptime assert is_triple[
                 "x86_64-unknown-linux-gnu"
@@ -90,13 +116,6 @@ struct MappedFile(Movable):
         comptime assert (
             size_of[c_long]() == 8
         ), "MappedFile requires 64-bit off_t"
-
-        var owned_path = path
-        var descriptor = external_call["open", c_int, num_fixed_args=2](
-            owned_path.as_c_string_slice().unsafe_ptr(), c_int(O_RDONLY)
-        )
-        if descriptor < 0:
-            raise Error("open readonly mapping failed: " + String(get_errno()))
 
         # Allocate as native 64-bit words so the st_size load is aligned. The
         # C call still receives the same address and writes `_STAT_BYTES` bytes.

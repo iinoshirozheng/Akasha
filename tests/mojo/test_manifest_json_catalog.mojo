@@ -47,7 +47,7 @@ def test_legacy_catalog_defaults_and_valid_crc_bad_section() raises:
     legacy.format_version = 6
     var encoded = encode_manifest_v6(legacy)
     # Empty section has 12 bytes; corrupt its version, then recompute outer CRC.
-    encoded[len(encoded)-16] = 2
+    encoded[len(encoded)-16] = 255
     var checksum = crc32_range(encoded, 4, len(encoded)-4)
     for i in range(4):
         encoded[len(encoded)-4+i] = UInt8((checksum >> UInt32(i*8)) & 255)

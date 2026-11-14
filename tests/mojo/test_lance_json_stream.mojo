@@ -22,14 +22,14 @@ def _values(values: PythonObject) raises -> List[Optional[JsonbValue]]:
     return result^
 
 
-def test_original_prefix_inference_and_lazy_conversion() raises:
+def _source_cases(sort_memory_bytes: Optional[Int] = None) raises:
     var builtins = Python.import_module("builtins")
     var cases = Python.import_module("json").loads(builtins.open("tests/fixtures/lance-json-stream/cases.json").read())
     for row in cases:
         var known = Optional[UInt8]()
         if not Bool(py=row["target"] == Python.none()):
             known = Optional(UInt8(Int(py=row["target"])))
-        var trainer = LanceJsonBitmapTrainer(String(py=row["path"]), learned_type=known.copy())
+        var trainer = LanceJsonBitmapTrainer(String(py=row["path"]), learned_type=known.copy(), sort_memory_bytes=sort_memory_bytes)
         var expected = row["result"]
         var rejected = False
         var message = String()
@@ -80,6 +80,15 @@ def test_original_prefix_inference_and_lazy_conversion() raises:
         with assert_raises():
             _ = trainer.finish()
     assert_equal(len(cases), 786)
+
+
+
+def test_original_prefix_inference_and_lazy_conversion() raises:
+    _source_cases()
+
+
+def test_original_source_cases_through_external_sort() raises:
+    _source_cases(Optional(128))
 
 
 def test_prefix_is_released_when_type_is_known() raises:

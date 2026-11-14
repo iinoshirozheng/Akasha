@@ -5078,6 +5078,263 @@
         "External sorting/spill and source shard k-way merge",
         "Complete disk-index and full-product/platform/performance acceptance"
       ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4r-json-bitmap-lazy-postings",
+      "status": "verified_native_lazy_postings_and_bounded_cache",
+      "sources": {
+        "rust/lance-index/src/scalar/bitmap.rs": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+      },
+      "native_files": [
+        "src/akasha/index/mapped_postings.mojo",
+        "src/akasha/index/lance_bitmap.mojo",
+        "src/akasha/storage/checksum.mojo",
+        "src/akasha/storage/json_bitmap_codec.mojo",
+        "src/akasha/storage/json_bitmap_cache.mojo",
+        "tests/mojo/test_json_bitmap_codec.mojo"
+      ],
+      "adaptation": [
+        "Lance load/load_bitmap architectural reference: resident key directory and on-demand cached posting loads; missing keys bypass cache",
+        "Akasha v1 mapped ordinal format, full upfront integrity validation and bounded synchronized LRU; not Lance Arrow file or portable Roaring format",
+        "Null postings also load lazily; owned returned sets remain valid after eviction"
+      ],
+      "verification": [
+        "docs/research/2026-11-13-json-bitmap-lazy-postings-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/mapped_postings.mojo": "2ef6133872b7d676bf68ff24fa999761924e4f8919f7d8766a77931221ff9c7b",
+        "src/akasha/index/lance_bitmap.mojo": "630c7e6ea379b906d747cf7688dacb4490e4ed22c255a861b0bca01a1aece768",
+        "src/akasha/storage/checksum.mojo": "d8a4c404f826062c72d685e40782eeb808926933506ad17048f824cfddba51f9",
+        "src/akasha/storage/json_bitmap_codec.mojo": "275846c3efa16d6dae2662be2656187266199536485f111e7e9654ddd62b7b21",
+        "src/akasha/storage/json_bitmap_cache.mojo": "7f0a187309a50f4a1eadb40dad658c62dc1e26fe6467a46cfbd888777f908c81",
+        "tests/mojo/test_json_bitmap_codec.mojo": "8effc3101f777a62510a0ea605406f2b5291b98c636457413a4f92c843e9aee4"
+      },
+      "remaining": [
+        "External sorting/spill and disk shard k-way merge/incremental publication",
+        "Full-product/platform/performance acceptance"
+      ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4s-json-bitmap-external-sort",
+      "status": "verified_native_external_sort_and_spill",
+      "sources": {
+        "rust/lance-index/src/scalar/json.rs": "b6c548fbad092bf62ceef5d24a5ac40cc7c6bed307f6de5cecddc2e14a76bb9f",
+        "rust/lance-index/src/scalar/bitmap.rs": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+      },
+      "native_files": [
+        "src/akasha/index/bitmap_sort.mojo",
+        "src/akasha/index/lance_bitmap.mojo",
+        "src/akasha/index/lance_json_stream.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "tests/mojo/test_bitmap_sort.mojo",
+        "tests/mojo/test_lance_json_stream.mojo",
+        "tests/python/test_json_bitmap_disk_cache.py"
+      ],
+      "adaptation": [
+        "Lance JSON ascending/nulls-first spilling sort and bitmap sorted-stream builder are architectural references; no DataFusion runtime dependency",
+        "Mojo stable run sorting and Akasha-owned two-way merge over bounded CRC-framed anonymous POSIX files; not a durable Lance format port",
+        "Existing bitmap value-run merge consumes a row stream; in-memory native API retains its input bounds while collection builds use external-capable sorting",
+        "Null-only inference prefixes spill row IDs without assigning the learned type before first non-null input or EOF"
+      ],
+      "verification": [
+        "docs/research/2026-11-13-json-bitmap-external-sort-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/bitmap_sort.mojo": "f95da897ee06b39d7a4672f042d95984c7230ce5e6879b96b83315f219b46246",
+        "src/akasha/index/lance_bitmap.mojo": "447ab6829618c4aa9f7a22f7fd1b8efd1d6c3a3f4c2cf7aa599a59e412314b5d",
+        "src/akasha/index/lance_json_stream.mojo": "2200959cfc5e8fc71fb0845849a55b318b641a51aaa589596c892f940da8ed68",
+        "src/akasha/query/json_snapshot.mojo": "a81bc2ce7f3d3ac8529b0265a55a6f99bcb9319aebd493487d96cec35a632ab7",
+        "tests/mojo/test_bitmap_sort.mojo": "6b972c08c2c1d7b3213f166b07fd539f6a2e314d266a1b7e3ae57913e3041222",
+        "tests/mojo/test_lance_json_stream.mojo": "e09e7e6b17fb415258199924b1dd72d66e03fa79ca4c631223f1950e8bb57852",
+        "tests/python/test_json_bitmap_disk_cache.py": "71bd60e617f052c1e36052f260e6864db3b4c27239e86a6290e2e3d08a1a0cf3"
+      },
+      "remaining": [
+        "Persistent bitmap shard k-way merge and incremental publication",
+        "Disk-native output builder and full-product/platform/performance gates"
+      ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4t-json-bitmap-shard-merge",
+      "status": "verified_native_shard_merge_and_incremental_publication",
+      "sources": {
+        "rust/lance-index/src/scalar/bitmap.rs": "999eb7743738087bfa9f4df37c271a220b3f35307bcd386e83a0c1db899b7bac"
+      },
+      "native_files": [
+        "src/akasha/storage/json_bitmap_shards.mojo",
+        "src/akasha/storage/json_bitmap_cache.mojo",
+        "src/akasha/storage/json_bitmap_codec.mojo",
+        "src/akasha/storage/mapped_file.mojo",
+        "src/akasha/storage/filesystem.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/index/lance_bitmap.mojo",
+        "src/akasha/index/mapped_postings.mojo",
+        "src/akasha/index/bitmap_sort.mojo",
+        "tests/mojo/test_json_bitmap_shards.mojo",
+        "tests/mojo/test_mapped_file.mojo",
+        "tests/python/test_json_bitmap_shards.py"
+      ],
+      "adaptation": [
+        "Port of merge_shards cursor/min-heap/drain-equal-key union into Mojo BinaryHeap; Akasha v1 ordinal payload instead of Lance Arrow files",
+        "Local shard ordinals are rebased to the captured ID-ordered snapshot; immutable source fingerprints permit unchanged-group reuse",
+        "Akasha-specific two-pass streamed cache writer, anonymous mapping ownership and per-file atomic incremental publication; not an authoritative multi-file manifest",
+        "Each shard is fully validated before reuse; missing, corrupt and stale derived shards retrain from authoritative documents"
+      ],
+      "verification": [
+        "docs/research/2026-11-14-json-bitmap-shards-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/storage/json_bitmap_shards.mojo": "6d7a8f30fbf1006cefdf8f07f1b189a56dff9fa38032773147362d34eb23f346",
+        "src/akasha/storage/json_bitmap_cache.mojo": "517d2bd04432472a91461a12bcdd4510b91aebd1a397c76dc6434dfb4f9be189",
+        "src/akasha/storage/json_bitmap_codec.mojo": "43cad378669fd7d133c052160bca4651b95a66d170230bf89de43e2519bc41f8",
+        "src/akasha/storage/mapped_file.mojo": "a673306789369ad39b50e35d1842db1508dd12f2a70f87aac90e2fbb522a7b3d",
+        "src/akasha/storage/filesystem.mojo": "bf2ceb917553be64a4dd539b5bddd11fe39149c43470ee0a18368bbb95123871",
+        "src/akasha/query/json_snapshot.mojo": "5f35a31de7c67855f2a74b287e6b1af3a30f120b0de72c22aa719b87d53d0f62",
+        "src/akasha/index/lance_bitmap.mojo": "e6c0dd188bbb63d648fed9749ec7f0c0d7d7688b7d10f9dddb23c1c9857df7e1",
+        "src/akasha/index/mapped_postings.mojo": "5451e0c145cd8d79f3e6ee0122ad2f8e74eaa6c03b08e6b2333edf0043c72e76",
+        "src/akasha/index/bitmap_sort.mojo": "268988d929d1100648cbb436275677a49b78e2ee463995c47f8206f739046e64",
+        "tests/mojo/test_json_bitmap_shards.mojo": "2f753ad9536a5e995b6625b13104efb7f428d3562f38b5d3e3455f52fd36c4d1",
+        "tests/mojo/test_mapped_file.mojo": "0d52251ae240542bb9fafba08b975775ccf93d8bcf1bef8d0aab68d59c3e9f4a",
+        "tests/python/test_json_bitmap_shards.py": "8ebe1de9b65b2d1b3ad9cfd767e9b9802eea245b4a4ac0da7e1e2a4c2413b2d0"
+      },
+      "remaining": [
+        "Per-write delta indexing and expanded scale/resource limits are not claimed",
+        "Other scalar index targets/full SQL-planner coverage and full-product/platform/performance gates remain separate"
+      ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4u-native-paged-btree",
+      "status": "verified_native_target_and_json_training_integration_pending",
+      "sources": {
+        "rust/lance-index/src/scalar.rs": "5bec49bf88c7ee092dcca458957aae66431f7e516f72f87e97fbc9f1799a778b",
+        "rust/lance-index/src/scalar/btree.rs": "1429b7b289ad2ca97f9077be03298846d2d7d95d4030e98498f4d44d9446a7fc",
+        "rust/lance-index/src/scalar/btree/flat.rs": "9a41b64ea9fd08f588aadb7e380f2080c19b367ec214db2db1b4f683ab71e162"
+      },
+      "native_files": [
+        "src/akasha/index/lance_btree_lookup.mojo",
+        "src/akasha/index/lance_btree_predicate.mojo",
+        "src/akasha/index/lance_btree.mojo",
+        "src/akasha/index/lance_json_btree.mojo",
+        "src/akasha/storage/btree_pages.mojo",
+        "src/akasha/index/lance_json_stream.mojo",
+        "src/akasha/storage/index_cache.mojo",
+        "src/akasha/storage/json_bitmap_cache.mojo",
+        "src/akasha/storage/json_bitmap_shards.mojo",
+        "tests/mojo/test_lance_btree_lookup.mojo",
+        "tests/mojo/test_lance_btree_predicate.mojo",
+        "tests/mojo/test_lance_btree.mojo",
+        "tests/mojo/test_lance_json_btree.mojo"
+      ],
+      "adaptation": [
+        "Original min/max/null lookup and flat predicate semantics ported to native Mojo; five scalar types and Eq/range/IN/IS NULL only",
+        "Akasha-owned kind-6 payload with sorted key/row-ID leaves, resident statistics directory and immutable mapped ownership; not a Lance file-format port",
+        "Shared JSON extraction/type inference and external sorted stream feeds leaves directly; no intermediate bitmap",
+        "Raw Lance behavior and guarded JSON expression substitution remain separate; unbounded ranges stay residual"
+      ],
+      "verification": [
+        "docs/research/2026-11-14-json-btree-lookup-validation.md",
+        "tests/fixtures/lance-btree-lookup/sources.json",
+        "tests/fixtures/lance-btree-leaf/sources.json"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/lance_btree_lookup.mojo": "7ec858bd443c07a18e406e23186d17420b35c223c3215b196b36482fe8112e88",
+        "src/akasha/index/lance_btree_predicate.mojo": "a69555beffd37c834cbdf3a2d0ee1b40296e45c008bd6fa8865fa39f77852140",
+        "src/akasha/index/lance_btree.mojo": "d61b12e8f6b470d78f8ba89ded91f20bfd7d651b2eb53ec0a3ee2bec19490f60",
+        "src/akasha/index/lance_json_btree.mojo": "ffa033752799108ca30b94d7a01e7b004ade4e56fc555aff2ad5b241ab9e3ca1",
+        "src/akasha/storage/btree_pages.mojo": "9514e9e58effbc10572c5622eab5b5adb070cf89a9d05da4b7c9c57de9966fee",
+        "src/akasha/index/lance_json_stream.mojo": "901b514533b8062ccb37017d66a0b1c821475747aa4140c9bc97d65731f7bb08",
+        "src/akasha/storage/index_cache.mojo": "32671b3ed727d3c19bf8bcbe708a94d35129bca4770f33c4e288de281b11368e",
+        "src/akasha/storage/json_bitmap_cache.mojo": "9b59892a7da3b5ca73ebb8e5ef52c50a037f30c54e0832c1ea2e38011da4b504",
+        "src/akasha/storage/json_bitmap_shards.mojo": "680e9334892afab706997b5c0cca9d8fd78417b9cfc64aaa76302513cd0cd7d6",
+        "tests/mojo/test_lance_btree_lookup.mojo": "834de5fbff7efc3a4bf2aa06d4ab0407ce7384b4d16f2ac26f88814b5867c85e",
+        "tests/mojo/test_lance_btree_predicate.mojo": "65385b1d23d4299dde410522e6f8524efc4c6fe8109ec0ffd36f30d1e35f69ce",
+        "tests/mojo/test_lance_btree.mojo": "19c44a752e67fc974487207dcdc8a6babe911b006721d3333b3305be3a74aaa5",
+        "tests/mojo/test_lance_json_btree.mojo": "f6b5224d91b7f6572955b727dc154c984d0fc4e50fd887c6f18af564af2a65fd"
+      },
+      "remaining": [
+        "Durable catalog migration and root-owned B-tree artifact registry",
+        "Collection/Python/HTTP create/list/drop/rebuild and prepared JSON/Arrow dispatch",
+        "End-to-end restart, failure recovery, compatibility, binding build and regression gates"
+      ]
+    },
+    {
+      "upstream": "https://github.com/lancedb/lance",
+      "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+      "license": "Apache-2.0",
+      "license_file": "docs/upstream/licenses/lance-Apache-2.0.txt",
+      "id": "D01c4v-json-btree-public-integration",
+      "status": "verified_full_btree_scope",
+      "native_files": [
+        "src/akasha/index/json_catalog.mojo",
+        "src/akasha/index/json_artifacts.mojo",
+        "src/akasha/index/json_scalar_index.mojo",
+        "src/akasha/storage/json_scalar_cache.mojo",
+        "src/akasha/query/json_snapshot.mojo",
+        "src/akasha/api/collection.mojo",
+        "src/akasha/api/snapshot.mojo",
+        "src/bindings/python_module.mojo",
+        "python/akashadb/database.py",
+        "apps/server/schemas.py",
+        "apps/server/routes/collections.py",
+        "tests/mojo/test_json_catalog.mojo",
+        "tests/mojo/test_manifest_json_catalog.mojo",
+        "tests/mojo/test_json_btree_collection.mojo",
+        "tests/mojo/test_json_btree_cache.mojo",
+        "tests/python/test_json_btree.py",
+        "tests/python/test_json_catalog.py",
+        "tests/python/test_json_catalog_fsync.py",
+        "tests/fixtures/json-catalog-v2.bin"
+      ],
+      "adaptation": [
+        "Akasha catalog v2 kind selection and canonical v1 bitmap compatibility; point/WAL/outer manifest formats unchanged",
+        "Root-owned kind/column/path/type registry holds the two concrete scalar targets; shared lifecycle and guarded prepared JSON/Arrow dispatch",
+        "Native/Python/HTTP selection, listing, drop/rebuild, optional cache fingerprint validation and dense ordinal checks",
+        "Native paging/source parity inherited from D01c4u; this layer is Akasha-specific integration, not a Lance planner or file-format implementation"
+      ],
+      "verification": [
+        "docs/research/2026-11-14-json-btree-integration-validation.md",
+        "docs/research/2026-11-14-json-btree-lookup-validation.md"
+      ],
+      "verified_file_sha256": {
+        "src/akasha/index/json_catalog.mojo": "e9ec9c57fd9f1ced25b062e378f927a296e061e606f712e2f8cf90a43c2877e7",
+        "src/akasha/index/json_artifacts.mojo": "f9e2ea2c148a5795b1c8df0fad041e1097ce6d47f94f8831508eb7487a27ba2b",
+        "src/akasha/index/json_scalar_index.mojo": "66df6b3e59c2cce5f07b0113cf656b138a41c29b14789292ddd03258eb3c1d42",
+        "src/akasha/storage/json_scalar_cache.mojo": "c2199f721d57344dc098adbb5ccedc45642307b49b5ae02825dea1810f391a79",
+        "src/akasha/query/json_snapshot.mojo": "6765609896ab3541660a8bb9b5a5433ab668779c50e6987f925fed7cdf38d279",
+        "src/akasha/api/collection.mojo": "efb21db1a856e39e8306d18101db7a8300b35ac341ae55c87ac621c368b2c0a4",
+        "src/akasha/api/snapshot.mojo": "8f0738b1544e6a0a61e4181788bb91065390a086d67d5512eaa102108e643bd7",
+        "src/bindings/python_module.mojo": "3ebb3135dd3733d54bdad315922dca936c1a71b701464eb9f9faa35cda61f732",
+        "python/akashadb/database.py": "de0bd60b2904431d24b4b75e88200d1ecbe5bb5f84dfd3b7a44b21bde80837e7",
+        "apps/server/schemas.py": "81961802034b982f981631dda25d58f106c40243932b41d60cdb94aca9846913",
+        "apps/server/routes/collections.py": "d46e5ba5f41f1e8e3c21d7eaa92f4030e94b91e838d00123a93e90d1a87bf3aa",
+        "tests/mojo/test_json_catalog.mojo": "b8343bf594c9c221cd94b5b17f3f039ed2fddba20f05454ffe067e14fa0da801",
+        "tests/mojo/test_manifest_json_catalog.mojo": "2933372ac1309b1dd681c362363e002a2858fdab871b2e0bae0c27be9613f6fe",
+        "tests/mojo/test_json_btree_collection.mojo": "db7b2169812b1c2e31ebe4d3382b3e01df783ea261c8b70f069fb24ee1ca97cd",
+        "tests/mojo/test_json_btree_cache.mojo": "6e0c6676d9b33ca9bd903e504815a86484f583baa951382461929ee93bc0cacb",
+        "tests/python/test_json_btree.py": "64ba34f51cb0c5264c0a644af8cfdceedb8c3dd4a3e4136de663937d96f80712",
+        "tests/python/test_json_catalog.py": "a33bce029a77de67777a36e9a85f39d27693cc014cc3bc331c7bb75e16ac1748",
+        "tests/python/test_json_catalog_fsync.py": "64b8d6faedfcdfffd742da8c4d0b40ebc22c90f8a91fd9def96e630bfa937354",
+        "tests/fixtures/json-catalog-v2.bin": "9e20f9c3633c1dbf8157e694cb00bbf4be07061e3240ffc2fdacae5ac7afc73c"
+      },
+      "remaining": [],
+      "limits": [
+        "No performance, whole-product, full SQL planner, per-write incremental B-tree update or cross-platform/GPU claim"
+      ]
     }
   ]
 }

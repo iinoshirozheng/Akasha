@@ -1154,11 +1154,15 @@ struct BoundCollection(Movable, Writable):
 
     @staticmethod
     def create_json_index(py_self: PythonObject, name: PythonObject,
-                          column: PythonObject, path: PythonObject) raises:
+                          column: PythonObject, path: PythonObject, kind: PythonObject) raises:
         var self = py_self.downcast_value_ptr[BoundCollection]()
         _ensure_open(self[])
+        var kind_name = _exact_python_string(kind, "index kind")
+        if kind_name != "bitmap" and kind_name != "btree":
+            raise Error("index kind must be bitmap or btree")
         self[].inner.value().create_json_index(_exact_python_string(name, "index name"),
-            _exact_python_string(column, "index column"), _exact_python_string(path, "index path"))
+            _exact_python_string(column, "index column"), _exact_python_string(path, "index path"),
+            kind=UInt8(1 if kind_name == "bitmap" else 2))
 
     @staticmethod
     def drop_json_index(py_self: PythonObject, name: PythonObject) raises:
@@ -1177,6 +1181,7 @@ struct BoundCollection(Movable, Writable):
             _set_output_item(item, PythonObject("column"), PythonObject(definition.column))
             _set_output_item(item, PythonObject("path"), PythonObject(definition.path))
             _set_output_item(item, PythonObject("target"), PythonObject(Int(definition.target)))
+            _set_output_item(item, PythonObject("kind"), PythonObject("bitmap" if definition.kind == 1 else "btree"))
             output.append(item)
         return Python.list(Span(output))
 

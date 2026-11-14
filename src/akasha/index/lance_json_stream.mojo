@@ -2,11 +2,12 @@
 
 Port: lance-index scalar/json.rs extract_json_with_type_info,
 convert_stream_by_type, train_index/update and learned-type rebuild rules
-(The Lance Authors, Apache-2.0). Raw/extracted JSON is buffered only until the
-type is known. Converted keys are bounded in memory for the target's sort;
-external sorting, file publication and collection integration are separate.
+(The Lance Authors, Apache-2.0). In-memory training retains a bounded inference prefix and converted rows.
+Collection training uses bounded external sorting and streams null-prefix IDs
+until the learned type is known. File publication remains a separate layer.
 """
 from std.sys import size_of
+from akasha.index.bitmap_sort import ExternalBitmapSort
 from akasha.document.jsonb import JsonbValue
 from akasha.index.lance_json_input import JsonIndexValue, extract_json_index_batch, infer_json_index_type, convert_json_index_batch
 from akasha.index.lance_scalar import LanceScalarKey
@@ -20,6 +21,15 @@ from akasha.query.control import QueryControl
 struct _ExtractedBatch(Copyable, Movable):
     var values: List[JsonIndexValue]
     var ids: List[UInt64]
+
+
+@fieldwise_init
+struct SortedJsonRows(Movable):
+    """Converted sorted input shared by the bitmap and paged B-tree builders."""
+    var path: String
+    var target: UInt8
+    var string_getter_safe: Bool
+    var stream: ExternalBitmapSort
 
 
 @fieldwise_init
@@ -98,8 +108,10 @@ struct LanceJsonBitmapTrainer(Movable):
 
     push accepts one input batch. finish builds an index; finish_update merges
     with an old index of the same path/type. Errors discard all staged state.
-    No writes or partial index are published. Prefix storage and converted
-    keys each have a separate logical byte bound; this is not a peak RSS cap.
+    No partial index is published. The standalone in-memory mode keeps its
+    existing aggregate byte bounds. sort_memory_bytes selects external runs;
+    max_bytes then bounds batches, individual rows and the final bitmap, not
+    aggregate sort input. Neither mode promises a peak RSS cap.
     """
     var path: String
     var max_rows: Int
@@ -113,10 +125,13 @@ struct LanceJsonBitmapTrainer(Movable):
     var _pending: List[_ExtractedBatch]
     var _rows: List[LanceBitmapRow]
     var _string_getter_safe: Bool
+    var _sorter: Optional[ExternalBitmapSort]
 
     def __init__(out self, var path: String, *, learned_type: Optional[UInt8] = None,
                  max_rows: Int = 1_000_000, max_bytes: Int = 64 * 1024 * 1024,
-                 var control: Optional[QueryControl] = None) raises:
+                 var control: Optional[QueryControl] = None,
+                 sort_memory_bytes: Optional[Int] = None,
+                 spill_directory: String = "/tmp", spill_bytes: Int = 512 * 1024 * 1024) raises:
         if max_rows <= 0 or max_bytes <= 0:
             raise Error("JSON bitmap trainer limits must be positive")
         if path.byte_length() > 65_536:
@@ -127,6 +142,11 @@ struct LanceJsonBitmapTrainer(Movable):
         self.max_rows = max_rows
         self.max_bytes = max_bytes
         self._type = learned_type
+        self._sorter = Optional[ExternalBitmapSort]()
+        if sort_memory_bytes:
+            self._sorter = Optional(ExternalBitmapSort(memory_bytes=sort_memory_bytes.value(),
+                disk_bytes=spill_bytes, max_row_bytes=max_bytes, max_rows=max_rows,
+                directory=spill_directory.copy(), control=control.copy()))
         self._control = control^
         self._state = 0
         self._seen = 0
@@ -153,6 +173,8 @@ struct LanceJsonBitmapTrainer(Movable):
     def abort(mut self):
         """Discard staged state, also used by a caller whose input stream fails."""
         self._state = 1
+        if self._sorter:
+            self._sorter.value().abort()
         self._pending.clear()
         self._rows.clear()
         self._pending_bytes = 0
@@ -176,6 +198,16 @@ struct LanceJsonBitmapTrainer(Movable):
             # Source inference reads tags only and stops at the first non-null
             # tag. Whole-batch validation remains in the conversion stage.
             var inferred = infer_json_index_type(batch, self.path, control=self._control.copy())
+            if self._sorter:
+                if inferred:
+                    self._type = inferred
+                    self._append(batch, ids)
+                else:
+                    # Type inference found only nulls. Preserve IDs without
+                    # retaining extracted JSON or guessing the learned type.
+                    for id in ids:
+                        self._sorter.value().push(LanceBitmapRow(LanceScalarKey.null(4), id))
+                return
             var bytes = size_of[_ExtractedBatch]() + len(batch) * (size_of[JsonIndexValue]() + size_of[UInt64]())
             var total = self._check_bytes(self._pending_bytes, bytes)
             for item in batch:
@@ -194,9 +226,11 @@ struct LanceJsonBitmapTrainer(Movable):
         # Source validates the complete batch before deserializing any row.
         var converted = convert_json_index_batch(batch, self._type.value(), self.path,
             max_bytes=self.max_bytes, control=self._control.copy())
-        var bytes = self._check_bytes(self._row_bytes, len(converted) * size_of[LanceBitmapRow]())
-        for value in converted:
-            bytes = self._check_bytes(bytes, value.owned_bytes())
+        var bytes = self._row_bytes
+        if not self._sorter:
+            bytes = self._check_bytes(bytes, len(converted) * size_of[LanceBitmapRow]())
+            for value in converted:
+                bytes = self._check_bytes(bytes, value.owned_bytes())
         for i in range(len(converted)):
             if self._control:
                 self._control.value().checkpoint(i)
@@ -206,7 +240,11 @@ struct LanceJsonBitmapTrainer(Movable):
                 if converted[i].text:
                     if batch[i].value.value().kind() != 1:
                         self._string_getter_safe = False
-            self._rows.append(LanceBitmapRow(LanceScalarKey.from_json_result(converted[i], self._type.value()), ids[i]))
+            var row = LanceBitmapRow(LanceScalarKey.from_json_result(converted[i], self._type.value()), ids[i])
+            if self._sorter:
+                self._sorter.value().push(row^)
+            else:
+                self._rows.append(row^)
         self._row_bytes = bytes
 
     def _flush_prefix(mut self) raises:
@@ -227,12 +265,34 @@ struct LanceJsonBitmapTrainer(Movable):
         self._rows.clear()
         self._row_bytes = 0
         self._state = 2
+        if self._sorter:
+            self._sorter.value().abort()
+
+    def finish_sorted(mut self) raises -> SortedJsonRows:
+        """Transfer prepared external rows; finishing closes this trainer."""
+        try:
+            self._prepare_finish()
+            if not self._sorter:
+                raise Error("sorted JSON training requires external sorting")
+            self._sorter.value().prepare(self._type.value())
+            var sorter = self._sorter.take()
+            self._finished()
+            return SortedJsonRows(self.path.copy(), self._type.value(), self._string_getter_safe, sorter^)
+        except error:
+            self.abort()
+            raise error
 
     def finish(mut self) raises -> LanceJsonBitmapIndex:
         try:
             self._prepare_finish()
-            var bitmap = LanceBitmapIndex.build(self._type.value(), self._rows,
-                max_rows=self.max_rows, max_bytes=self.max_bytes, control=self._control.copy())
+            var bitmap: LanceBitmapIndex
+            if self._sorter:
+                var sorted = self.finish_sorted()
+                var empty = LanceBitmapIndex(sorted.target, max_rows=self.max_rows, max_bytes=self.max_bytes)
+                bitmap = empty.merge_stream(sorted.stream, control=self._control.copy())
+            else:
+                bitmap = LanceBitmapIndex.build(self._type.value(), self._rows,
+                    max_rows=self.max_rows, max_bytes=self.max_bytes, control=self._control.copy())
             self._finished()
             return LanceJsonBitmapIndex(self.path.copy(), bitmap^, self._string_getter_safe)
         except error:
@@ -246,7 +306,12 @@ struct LanceJsonBitmapTrainer(Movable):
             if self.path != old.path or not self._type or self._type.value() != old.target():
                 raise Error("JSON bitmap update must retain the old path and learned type")
             self._prepare_finish()
-            var bitmap = old._bitmap.updated(self._rows, old_filter=old_filter.copy(), control=self._control.copy())
+            var bitmap: LanceBitmapIndex
+            if self._sorter:
+                self._sorter.value().prepare(self._type.value())
+                bitmap = old._bitmap.merge_stream(self._sorter.value(), old_filter=old_filter.copy(), control=self._control.copy())
+            else:
+                bitmap = old._bitmap.updated(self._rows, old_filter=old_filter.copy(), control=self._control.copy())
             self._finished()
             # Old-row filtering and remap cannot recover discarded source
             # types. Only a complete rebuild can establish string-only input.

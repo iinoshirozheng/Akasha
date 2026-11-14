@@ -25,6 +25,7 @@ comptime CACHE_METADATA_KIND = UInt8(2)
 comptime CACHE_HNSW_OVERLAY_KIND = UInt8(3)
 comptime CACHE_FIELD_HNSW_KIND = UInt8(4)
 comptime CACHE_JSON_BITMAP_KIND = UInt8(5)
+comptime CACHE_JSON_BTREE_KIND = UInt8(6)
 comptime _VERSION = UInt16(1)
 comptime _FIXED_BYTES = 40
 comptime _MAX_PAYLOAD_BYTES = 512 * 1024 * 1024
@@ -344,6 +345,7 @@ def _validate_header(kind: UInt8, dimension: Int, payload_length: Int) raises:
         and kind != CACHE_HNSW_OVERLAY_KIND
         and kind != CACHE_FIELD_HNSW_KIND
         and kind != CACHE_JSON_BITMAP_KIND
+        and kind != CACHE_JSON_BTREE_KIND
     ):
         raise Error("unknown derived index cache kind")
     if dimension <= 0:
@@ -358,3 +360,19 @@ def _validate_cache_name(name: String) raises:
     for byte in name.bytes():
         if byte == UInt8(0) or byte == UInt8(0x2F):
             raise Error("derived index cache name is invalid")
+
+
+def publish_mapped_cache(directory: String, name: String,
+                              artifact: MappedCacheArtifact) raises:
+    _validate_cache_name(name)
+    var final = directory + "/" + name
+    var temporary = final + ".tmp"
+    with open(temporary, "w") as file:
+        var offset = 0
+        while offset < artifact._mapping.byte_length():
+            var count = min(64 * 1024, artifact._mapping.byte_length() - offset)
+            file.write_all(artifact._mapping.copy_scalars[DType.uint8](offset, count))
+            offset += count
+        sync_file(file)
+    atomic_replace(temporary, final)
+    sync_directory(directory)

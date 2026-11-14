@@ -248,7 +248,7 @@ def _read_f32s_le(
         return values^
 
 
-struct BorrowedBinaryReader[origin: ImmOrigin](Movable):
+struct BorrowedBinaryReader[origin: ImmOrigin](BinaryReaderSource):
     """Read bytes without copying or owning the source allocation.
 
     Finish all reader/subspan use before the owner is mutated or its buffer
@@ -274,6 +274,11 @@ struct BorrowedBinaryReader[origin: ImmOrigin](Movable):
         var start = self._offset
         self._offset += count
         return self._bytes[start : self._offset]
+
+    def read_bytes(mut self, count: Int) raises -> List[UInt8]:
+        var result = List[UInt8]()
+        result.extend(self.read_span(count))
+        return result^
 
     def read_u8(mut self) raises -> UInt8:
         return UInt8(_read_unsigned_le[1](self._bytes, self._offset))

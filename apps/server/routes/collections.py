@@ -49,7 +49,7 @@ def flush_collection(name: str, request: Request) -> dict[str, int]:
 
 @router.put("/{name}/json-indexes/{index_name}")
 def create_json_index(name: str, index_name: str, body: JsonIndexRequest, request: Request) -> dict[str, bool]:
-    request.app.state.database.collection(name).create_json_index(index_name, body.column, body.path)
+    request.app.state.database.collection(name).create_json_index(index_name, body.column, body.path, kind=body.kind)
     return {"created": True}
 
 

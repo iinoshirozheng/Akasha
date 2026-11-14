@@ -193,3 +193,20 @@ def _parent_directory(path: String) raises -> String:
     for index in range(slash):
         parent.append(bytes[index])
     return String(from_utf8=parent)
+
+
+def create_anonymous_file(directory: String = "/tmp") raises -> FileHandle:
+    """Exclusive unlinked staging inode; descriptor ownership controls cleanup."""
+    var name = List[UInt8]()
+    name.extend((directory + "/akasha-staging-XXXXXX").as_bytes())
+    name.append(0)
+    var descriptor = external_call["mkstemp", c_int](name.unsafe_ptr())
+    if descriptor < 0:
+        raise Error("anonymous staging create failed: " + String(get_errno()))
+    var file = FileHandle()
+    file.handle = Int(descriptor)
+    if external_call["unlink", c_int](name.unsafe_ptr()) != 0:
+        raise Error("anonymous staging unlink failed: " + String(get_errno()))
+    if external_call["fcntl", c_int, num_fixed_args=2](descriptor, c_int(2), c_int(1)) != 0:
+        raise Error("anonymous staging close-on-exec failed")
+    return file^

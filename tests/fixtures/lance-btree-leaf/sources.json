@@ -1,0 +1,2752 @@
+{
+  "revision": "ad2ee27f0f0ad2cd4d756b85214b5a7e5dc1b06e",
+  "dependencies": [
+    {
+      "name": "ahash",
+      "version": "0.8.12",
+      "checksum": "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+    },
+    {
+      "name": "aho-corasick",
+      "version": "1.1.5",
+      "checksum": "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
+    },
+    {
+      "name": "allocator-api2",
+      "version": "0.2.21",
+      "checksum": "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
+    },
+    {
+      "name": "android_system_properties",
+      "version": "0.1.6",
+      "checksum": "ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc"
+    },
+    {
+      "name": "arrow",
+      "version": "58.4.0",
+      "checksum": "6cfdd0833e32a9874d2b55089333ad310c0be208aafa277385ce2461dec90be3"
+    },
+    {
+      "name": "arrow-arith",
+      "version": "58.4.0",
+      "checksum": "0a41203398f0eaa6f7ec8e62c0da742a21abf282c148fc157f6c35c90e29981a",
+      "verified_source_files": [
+        [
+          "src/aggregate.rs",
+          "3a240d485bad5a09db73958da42c08782ae82bfa7855012205e746bd642e3685"
+        ],
+        [
+          "src/arithmetic.rs",
+          "a6710c7b494d3923c620443caa91b44ba3e69f18e3fe0797c6067a1b98761bcc"
+        ],
+        [
+          "src/arity.rs",
+          "1c1590a4e9eedc63869b142bd1ecc5cc229155bbd1585144c825788353a72b65"
+        ],
+        [
+          "src/bitwise.rs",
+          "ab6c68dea0c8458c47935fb0dcaee302e812067614a65f58c646b680aaf598d6"
+        ],
+        [
+          "src/boolean.rs",
+          "3da4a822acdd4002e732fe523d15e5a134e4183f6e6a449122664ed227818fad"
+        ],
+        [
+          "src/lib.rs",
+          "6c625daf22fa03cab6c99c0b485f9fd31eaea146f6976f993694dfb4b4832ad2"
+        ],
+        [
+          "src/numeric.rs",
+          "048a5d845f66e76a962056d9e84128241bb7e3ade23fd1a871f39c8b8b548420"
+        ],
+        [
+          "src/temporal.rs",
+          "d03bf9a6894c56ac82cb9dd349bd374afd0cef8fb2df230ffb5e82b30e341b02"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-array",
+      "version": "58.4.0",
+      "checksum": "ae33dad492b7df00a217563a7b0ef2874df68a0deea1b1a3acf628152f7f7a69",
+      "verified_source_files": [
+        [
+          "src/arithmetic.rs",
+          "6428b04aa7760e8c0159eb240664d1c67f46b6812677e67eea7795c4fe73c096"
+        ],
+        [
+          "src/array/binary_array.rs",
+          "8844ef152078d57cc445718915212d199f2ef6218685c47d7f128dc71df9ffe9"
+        ],
+        [
+          "src/array/boolean_array.rs",
+          "370e0872cb6beb7641745c49a78d69e833c6428f8fa823204da73fc47af1a934"
+        ],
+        [
+          "src/array/byte_array.rs",
+          "30a3455bde1accb8c8bf54fe419428330142db5891f99190482a872c118d53c3"
+        ],
+        [
+          "src/array/byte_view_array.rs",
+          "ec60117c5e60ab417f7653134a6fca70fb98fd49dc281778272927b49f67971f"
+        ],
+        [
+          "src/array/dictionary_array.rs",
+          "27bc3a27f3fe2819c4d81d390557f48d4fcfb1ee879c5b8aa4d58cd4de85e950"
+        ],
+        [
+          "src/array/fixed_size_binary_array.rs",
+          "fd1e81b3f1eefdf601f5c0e584747ca6f66ae4ffd271603c1b78e3545c25604e"
+        ],
+        [
+          "src/array/fixed_size_list_array.rs",
+          "827718af9c41cc838a3a8ebd0a8a327d7468573ba6d00d1be3eb1c634fa5fe50"
+        ],
+        [
+          "src/array/list_array.rs",
+          "87a46a159f0b6476c65a03ba8f73f0d5005d240733530b628e97565fc3c2f689"
+        ],
+        [
+          "src/array/list_view_array.rs",
+          "8f14c00e18089b1691446b0e8bc6fd4b96ae107cceb7de5fceb3a93972255dfd"
+        ],
+        [
+          "src/array/map_array.rs",
+          "35c85b68c734470cdf31004d471604d24e11b99bef8d02804bf35eaa210acc85"
+        ],
+        [
+          "src/array/mod.rs",
+          "64308d3f7ca0271d57cff5c407323a6315374bba8542b7dbf98392979539b83b"
+        ],
+        [
+          "src/array/null_array.rs",
+          "5f1ae207db27f21c3365d7771a2c1761a709dae5adb7ec13f35a8a2406404dfd"
+        ],
+        [
+          "src/array/primitive_array.rs",
+          "d78ac867831864699353244465d577fd3b72ce620e04c9ed0c3b50265a4d49e7"
+        ],
+        [
+          "src/array/run_array.rs",
+          "a25ebde5a651710742b0188e5f6323ec0282448ac36995f3b6e015427b63da30"
+        ],
+        [
+          "src/array/string_array.rs",
+          "efeba5272e8940f0fb250e318b39f9199e899a8ac39114c542be55c4ab226cd6"
+        ],
+        [
+          "src/array/struct_array.rs",
+          "efdfadbdc0418538038536057c7d44c57e3d29fb5a4986fb22993c98cfafe144"
+        ],
+        [
+          "src/array/union_array.rs",
+          "8aebb3984b8c66cbebc282e8de2d20e36e39fc3d54f70a7caed5d34fd231f3c9"
+        ],
+        [
+          "src/builder/boolean_builder.rs",
+          "df7560ff8aa076fe20cc5a7148d985315ca5186ac1e4c74092cd33b13cf59efb"
+        ],
+        [
+          "src/builder/buffer_builder.rs",
+          "1197a612524acf7e79e78f98fb9e624ddb69daa9e444b5ec2926cf2cc1cefdb2"
+        ],
+        [
+          "src/builder/fixed_size_binary_builder.rs",
+          "937ee89c445ff44b60ecb9e81450fe845a69f31c3c0e2b3f8dd4625c9a98bc58"
+        ],
+        [
+          "src/builder/fixed_size_binary_dictionary_builder.rs",
+          "d46c2725e70c7a6c0f097f65fdaa7a314963ec80dbba6068c6512fbd100953b9"
+        ],
+        [
+          "src/builder/fixed_size_list_builder.rs",
+          "7ea2d7168eb0f003298ba051f4a9951baaf1d9d527c8ac452922f800fe84dfae"
+        ],
+        [
+          "src/builder/generic_byte_run_builder.rs",
+          "c328bd54b1e547038e6cde032064cec5141ac820167b1cb5445a2e8212e32d2b"
+        ],
+        [
+          "src/builder/generic_bytes_builder.rs",
+          "df0a137fca3f1fa11e3d6257f8d411438799530ec0e4b102ee7eea363779eec0"
+        ],
+        [
+          "src/builder/generic_bytes_dictionary_builder.rs",
+          "5166c1cba2b9f32bac92d6f0bd0a41671be5b89f6b52bbbd89717abd66adafc1"
+        ],
+        [
+          "src/builder/generic_bytes_view_builder.rs",
+          "03af51a1eb35c3724248d5337cca987d8e29f4b0be5875833e426074d4454332"
+        ],
+        [
+          "src/builder/generic_list_builder.rs",
+          "036227bf4f8aca9b01a8001587a6e183e8519c5994a07b5c893450a1530e39b1"
+        ],
+        [
+          "src/builder/generic_list_view_builder.rs",
+          "707d365ff1ce08ae4ddf6f12c878b70c0bb72f356ee872dde624f665298dc901"
+        ],
+        [
+          "src/builder/map_builder.rs",
+          "4f8f2abc2a47ca85f4151826e148cdc3766018f8a77f979cce0f2c22e93e151a"
+        ],
+        [
+          "src/builder/mod.rs",
+          "895d9abc4be0fbfa8f09e3d804d0c29a2e63a70dc24e984f4070f9f6ada6610a"
+        ],
+        [
+          "src/builder/null_builder.rs",
+          "5ba0774108e756a53c0e0ae04472909a855da2d2d8e2d452ad660943d42675ad"
+        ],
+        [
+          "src/builder/primitive_builder.rs",
+          "ea774b603f6e523e79a1b7faf2092aca5724d95fbffe99956a266114bc89f1ff"
+        ],
+        [
+          "src/builder/primitive_dictionary_builder.rs",
+          "a0d7cf6d97c89f9f0554086acc47bf8625d554250a158013b0c507301af29ff0"
+        ],
+        [
+          "src/builder/primitive_run_builder.rs",
+          "ecf118d9a8dd0c714d0559e53fff2b4f8459c4c5a34b223133f16a7bf0f89225"
+        ],
+        [
+          "src/builder/struct_builder.rs",
+          "1a07dc7549141f04b4f5bc514fcb70b33532796c22c38f9e2d72dae868b867ea"
+        ],
+        [
+          "src/builder/union_builder.rs",
+          "f72bc58b07ac19ba5ac0e9a2cadf78de2f9bfae801fcdf52c5d29f3e3851ef26"
+        ],
+        [
+          "src/cast.rs",
+          "b10269ac1359903ce4cdfc99b98d83f2eae8a836e5e4b42273be68735c543dce"
+        ],
+        [
+          "src/delta.rs",
+          "1a2bf53772d5921481863d0e8f381343b8546e53ead78c98303ba3f4b2af6435"
+        ],
+        [
+          "src/ffi.rs",
+          "5a7862d5410d5b21786e4e45a5734f8d8bf211b0422630c30b97b44d5bb814e6"
+        ],
+        [
+          "src/ffi_stream.rs",
+          "4449e7b6b645e8a9a4f7a86abb20de685a075eeda6928b98de0c5ff97d2c97de"
+        ],
+        [
+          "src/iterator.rs",
+          "97ff37ae21e5c0e2a77143132db86deb66981f4ed9a00695f33055978786ccf2"
+        ],
+        [
+          "src/lib.rs",
+          "75d3ce821fd4ec1a3072b599204b587ab50d2255a54113b5591cb7d8bfd4f0a7"
+        ],
+        [
+          "src/nonblocking.rs",
+          "d04757f2349a70c0e45e8bbed5055234d1441a02e70a007798badf117000fc03"
+        ],
+        [
+          "src/numeric.rs",
+          "c33c17a60d2975ba308de5eef66c89c14d085c70f76e056a40c817462d880d0e"
+        ],
+        [
+          "src/record_batch.rs",
+          "375cf2a786d4a819f43caacb7252bb6ab4d963ecf5c954cbf812149a9368ec7f"
+        ],
+        [
+          "src/run_iterator.rs",
+          "2d87fa3499dee118acecb0bd47adac99fcc2ee230e90aab203551d2fc463e3b0"
+        ],
+        [
+          "src/scalar.rs",
+          "02d76b47f065ce9d19ac9e70579372c4660e8bf908d9821cbbb38c49f2c29adb"
+        ],
+        [
+          "src/temporal_conversions.rs",
+          "e0cbe0d1162670cb07f31901156125f2dc12b8d290147825ee1370af3a8797fb"
+        ],
+        [
+          "src/timezone.rs",
+          "e1804a8bf351b48bf55018627076755fab1c836c364e951fa7fe0d349fcc2cf5"
+        ],
+        [
+          "src/trusted_len.rs",
+          "38345d50859a7fadc406f12f521c7a20252454bef60a2682a731d04d0d698813"
+        ],
+        [
+          "src/types.rs",
+          "980634004f2c19ad50181c6c1e193676ea8ddcdc1303d866269139b3767299fa"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-buffer",
+      "version": "58.4.1",
+      "checksum": "53ee609a07eb721c2e4a7669d7bb88e2106c560e7dec1219096fecf5eae356d1",
+      "verified_source_files": [
+        [
+          "src/alloc/alignment.rs",
+          "e43131f060bab7763e706865c6aaf4c5f5ea2b2af2adb4f922100428e6236125"
+        ],
+        [
+          "src/alloc/mod.rs",
+          "d42326da63b7747056c217f5a51b74e919bb88c943df1bfb1a95155aa9c0bef8"
+        ],
+        [
+          "src/arith.rs",
+          "e0d5015e659876705cdd638e54f8f7aa3fa69dde71870b092c8fa6fe025397f2"
+        ],
+        [
+          "src/bigint/div.rs",
+          "4965f535fee00f14cc80b2815a16281d684c872d06ba06a6c332a08a5f27df73"
+        ],
+        [
+          "src/bigint/mod.rs",
+          "c87a2051496470ae199b17dafd27f3b42e7abceefca50a131669f51796bed373"
+        ],
+        [
+          "src/buffer/boolean.rs",
+          "11cea5649d40b642bbcfc9db0f89005b8f52081040b4c9bc66c2a69982d52cfc"
+        ],
+        [
+          "src/buffer/immutable.rs",
+          "17688e31fc83434bf7fca7fa47ed75f137f6256c4e02043e8580196ad51ae4d4"
+        ],
+        [
+          "src/buffer/mod.rs",
+          "e4d1ac9ec079818bd64a7ea5dfab5fe253a50c54293d2e724bc15f4b71db8709"
+        ],
+        [
+          "src/buffer/mutable.rs",
+          "344d455292944f18f87d87d241612be935471e1d4a2fa96726575e85863e0e4d"
+        ],
+        [
+          "src/buffer/null.rs",
+          "6e575ae740b6cfa8b95608e12e9b8b18fa58ff04bcd64df621040c6f5fc1bf65"
+        ],
+        [
+          "src/buffer/offset.rs",
+          "db35f2934394225ba0ea2c11291ace451cdb3d95706e6bcd90dcae5e73dba9cf"
+        ],
+        [
+          "src/buffer/ops.rs",
+          "aa90a247f5090f8e801654334ba2a7fb4f57bcdc24d27ccf82387109722fb352"
+        ],
+        [
+          "src/buffer/run.rs",
+          "c2b5d797b9e9939798e73dca0ee0f3e523dd205462033825a0633f06f34cfff9"
+        ],
+        [
+          "src/buffer/scalar.rs",
+          "fecd4593c3ea7f3a1c30822040e32024cd117d5b2abaaa9a1dc177b89d27ea58"
+        ],
+        [
+          "src/builder/boolean.rs",
+          "27741e0cbe0fac523714b7ae9fa5d37b999d677c2b54c9dc6bc64a16c839b48d"
+        ],
+        [
+          "src/builder/mod.rs",
+          "830080bec7f61f0e4a71271bf37b933e742bcfe87a4fab89f13273209a447b19"
+        ],
+        [
+          "src/builder/null.rs",
+          "074140bf22154b482f156076a2e35f30f44da96484dcf1ac55b2ab4030dbcea5"
+        ],
+        [
+          "src/builder/offset.rs",
+          "c429edcf40db78262448375994146e309bd113f1ca00d986094a5a5d43f90ded"
+        ],
+        [
+          "src/bytes.rs",
+          "697cd1f149ff50c05befed7b542e07a8fa8fcbb7c1ea08f96258ed4512609b68"
+        ],
+        [
+          "src/interval.rs",
+          "7bcf3bf269379598069fbfba5fca0777000ab8462b5a8f048a1c1dbb2835c180"
+        ],
+        [
+          "src/lib.rs",
+          "0701eec0e0895b1f6ecd4ece7a473b5ef99b39b8cfeb8018f0c374d54795305c"
+        ],
+        [
+          "src/native.rs",
+          "8a9466f26a7fa53a73b21ab93910b55a44ddaca47ef727e25573545d276bd4e4"
+        ],
+        [
+          "src/pool.rs",
+          "8a6a396005c6cd9c2f4970de004bb3a982eb4782373d9862eda0af3c038f996b"
+        ],
+        [
+          "src/util/bit_chunk_iterator.rs",
+          "7e230332c65d6232d00efac4f8bcbb9520aff79b413da04840cc8b7d56cb9405"
+        ],
+        [
+          "src/util/bit_iterator.rs",
+          "d6b5dca8fe9aeb700562673b1b04e6f7b9c43f03f5e4ac98f11c4f84eab9287f"
+        ],
+        [
+          "src/util/bit_mask.rs",
+          "e92325e7bc4d4a6f31197450ca6fda7bcb8e7a3efaf622a7501cb8b6025352d0"
+        ],
+        [
+          "src/util/bit_util.rs",
+          "3d1e4ce49bf1bd004e7b927ce6b6420e0675983dde0d8f605ee25596050672a9"
+        ],
+        [
+          "src/util/mod.rs",
+          "46e839a701661e452928d676f4b7dd20d3e455c063b7e880fe75ba74629c178d"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-cast",
+      "version": "58.4.0",
+      "checksum": "3a8a327c9649f30d8406995f27642b68df354713cca3baaaf100f076f18d5f34",
+      "verified_source_files": [
+        [
+          "src/base64.rs",
+          "06718001dc18481d41320c4344e357ce876732c18b0b4614ba128b35f1d7efd0"
+        ],
+        [
+          "src/cast/decimal.rs",
+          "691d21c85206190f0dd49f5f9a5ef31de7065917780d4c9c3d156bc11a8d5549"
+        ],
+        [
+          "src/cast/dictionary.rs",
+          "0a323942c2f9b7cde0d2f58147e451536914aac0b61886e544098a7fd01da51d"
+        ],
+        [
+          "src/cast/list.rs",
+          "66798f8366f9e7946049611e193b9e7c01c6d94f54f2959fdaf920cb833d66c2"
+        ],
+        [
+          "src/cast/map.rs",
+          "3434ee64b577321481ba65f95fa53fab1394e499eb03c38dbce4c6b74cab7713"
+        ],
+        [
+          "src/cast/mod.rs",
+          "f508d430e101bce1d98e42b0591f8b5ec2f087510eb52cb577182946cf5c3dfa"
+        ],
+        [
+          "src/cast/run_array.rs",
+          "449bd5c0af91c1d7d6bad2a761f4e80c33743ed92e34c263ce13c45a6596fe6e"
+        ],
+        [
+          "src/cast/string.rs",
+          "21e55f06b5047909126c769465ecc0a41dc35b858e36cb03bddc4c8cff20b6e5"
+        ],
+        [
+          "src/cast/union.rs",
+          "0ce5908da375012fa51bc460033faaf32a8c1ed7928c112c93dfe5823c008b59"
+        ],
+        [
+          "src/display.rs",
+          "be5debac73a083c73dda2ca140f2d410f93da0631e76a2eef6bc1efdf9e10b22"
+        ],
+        [
+          "src/lib.rs",
+          "57a513aeeec6a6d5f777ee3faa107cd303753f41ddd3afdac5f28f5b032bced4"
+        ],
+        [
+          "src/parse.rs",
+          "f1015ddd7e0646843da719e283e5947ccb4e979fa23d5f48059c0ad29b07d817"
+        ],
+        [
+          "src/pretty.rs",
+          "04958cbdc3850ed2fd8e16c06b631da947ac377442eec00f42b8f0f0defad7a7"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-csv",
+      "version": "58.4.0",
+      "checksum": "af0dd6d90d1955e9f9a014c1e563ee8aeffc21909085d25623e1da44d96eca26",
+      "verified_source_files": [
+        [
+          "src/lib.rs",
+          "565d017b9301f7674b5a1273d37e61bb1552da06a5ab0a6e4463d7ce63b94039"
+        ],
+        [
+          "src/reader/mod.rs",
+          "3cce3eb7c00f33f178c02ff61ea03d2a92933150da732ad6a0fbcb0f57b63bad"
+        ],
+        [
+          "src/reader/records.rs",
+          "3948b48f682f54b19dbb2d2a19a370d4328d3200a4dfca64debb54ccf083aa62"
+        ],
+        [
+          "src/writer.rs",
+          "15737c8af2df4427936692463b916a27a4e20dd540eedb5e26d9644e75c79551"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-data",
+      "version": "58.4.0",
+      "checksum": "2b24852db04738907e06c04ea61e42fe7fda962a34513022dc0d0e754fb7976b",
+      "verified_source_files": [
+        [
+          "src/byte_view.rs",
+          "0dd180994f35c738c88b89a9345fd348b357f4428da92f6f2e247510d7ff5f5e"
+        ],
+        [
+          "src/data.rs",
+          "b22fda962430ae62d42a0a007eaf2f0e82ae10356e4954cfba91f93641382753"
+        ],
+        [
+          "src/decimal.rs",
+          "6f7017217e6ee9157cc73ef91e0875ea3c90540b772fbd13a633ee848122e9a0"
+        ],
+        [
+          "src/equal/boolean.rs",
+          "13dfce12e9dd2220da4e5ec9fc08a32588b460488e5c7293bb43bc361b365421"
+        ],
+        [
+          "src/equal/byte_view.rs",
+          "b2827cb3ff6b84c3c00616625bfdef191726f663079090c0f930d9d975fabdc8"
+        ],
+        [
+          "src/equal/dictionary.rs",
+          "c82ef433a161190183e67d727ca1334b5dd5dd0ab9e00acfc118f7f82e7fbacf"
+        ],
+        [
+          "src/equal/fixed_binary.rs",
+          "3036070834e80b5ea3cc8c6bad59bffe15eba32818dd042be546d24d67f46a8e"
+        ],
+        [
+          "src/equal/fixed_list.rs",
+          "ffac0b7aeed0834a2d8ad4eb2c5155c2ee79986b242b89bb1c2968b5da1da1e5"
+        ],
+        [
+          "src/equal/list.rs",
+          "54f703bf0ae09966854470e9f92fa6bb8039ff4daf307a27c94f8696e3bd51f6"
+        ],
+        [
+          "src/equal/list_view.rs",
+          "0637419720389e3ee9b0b36e0946c272705fd29b1a53e9ed467d12fa5c8d52d4"
+        ],
+        [
+          "src/equal/mod.rs",
+          "1fc457ffb411198e50da56d1a866ba6a1b7f6fd342b30096d2b48eb29ce76362"
+        ],
+        [
+          "src/equal/null.rs",
+          "b6feab8ce04ec2b85e93a67e2333c5bc7cc4169b8acb98f2af66d812f8df867e"
+        ],
+        [
+          "src/equal/primitive.rs",
+          "975eae9c54e92eff5d744a4df60f013be2102b1789f4c5ab535fac24ad5651f1"
+        ],
+        [
+          "src/equal/run.rs",
+          "6c2260c28a360e233e5a34ce52cab28a5d929dcd636e7d10f367e9ebe5fa454e"
+        ],
+        [
+          "src/equal/structure.rs",
+          "f52ac0326aebc2ca2230de182fa60d2d82785298ca045f0c5720bbbed24d488e"
+        ],
+        [
+          "src/equal/union.rs",
+          "2de73d055d79d8f79a01a0f386303b3e8c4b6e4f2630dfb0c6902fd61820bf33"
+        ],
+        [
+          "src/equal/utils.rs",
+          "adb2589bea2ddb7a0b2a6b173dd189b70793c325a26fda244a9781b883450a77"
+        ],
+        [
+          "src/equal/variable_size.rs",
+          "22eaac0957d0724e57fa4480b9b2b987bb995b81ddf5ea13584fd7058e96c9a5"
+        ],
+        [
+          "src/ffi.rs",
+          "8a80d7d25637700bcf20960c0584a31f531086bada2d4f42da399025144cc081"
+        ],
+        [
+          "src/lib.rs",
+          "da363ea926b382c8737a80010fcca27aba8b8db2f1e5781b678e6ec6071e2600"
+        ],
+        [
+          "src/transform/boolean.rs",
+          "8b21eb31108c5ea71c4182ea64813b27b5afdefa5414f0547a0fa96da8ebd21b"
+        ],
+        [
+          "src/transform/fixed_binary.rs",
+          "5580bb123d03555b2f50b13ffa12309ebbc604bba3b3946269c7151205295f29"
+        ],
+        [
+          "src/transform/fixed_size_list.rs",
+          "e298cf1e9133546f8cb72e0f1f9b8d853faa2493e0f5a32b550da2eeaf07e47d"
+        ],
+        [
+          "src/transform/list.rs",
+          "cb56e8179d7fed0f5e12aa38965c9280720d05bc3bcbc35968538415ff535096"
+        ],
+        [
+          "src/transform/list_view.rs",
+          "eecc32c326b30174b7cdec3251ace09da81745b2df92a3aee2b34962208abcb4"
+        ],
+        [
+          "src/transform/mod.rs",
+          "6b0ad7d09b6c503c023a41285d8cd3b45f6f0995116ff41132cfd750088ba17e"
+        ],
+        [
+          "src/transform/null.rs",
+          "c49272fcddfc97e622e5e64ec97e253cce04f3d54aeb2539d125fa24927d7a63"
+        ],
+        [
+          "src/transform/primitive.rs",
+          "5f30dfec97a5269e28f821c6961004d9bbb9268cc30332908f62bf17ae87c2e4"
+        ],
+        [
+          "src/transform/run.rs",
+          "e84dc4c10d1836ee6ce8deff445bae4f58fe16ecabc886e6a0273da13e51960f"
+        ],
+        [
+          "src/transform/structure.rs",
+          "18d6b5a459d92a41c6fcddac00dd954ab6054c0d83429da4065a8653a4e3829c"
+        ],
+        [
+          "src/transform/union.rs",
+          "20b4b858958022343fa8f04826e3ec4985808f43c43d4ec4f3fe377e96e86414"
+        ],
+        [
+          "src/transform/utils.rs",
+          "279471531e250204bd63473101deade5e64a198e5d0a4c450036f04b45a79663"
+        ],
+        [
+          "src/transform/variable_size.rs",
+          "ce928c511d8d7cbbfe44915c235b481d95bb932af06a5fede6083c901f0e2da9"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-ipc",
+      "version": "58.4.0",
+      "checksum": "29a908a11fcfb3fb2f6730f4ac15e367bc644e419155e96238f68cf3adde572b",
+      "verified_source_files": [
+        [
+          "src/compression.rs",
+          "7dbc702558abc50b8155fd84f93524ce08e5468ec6c0c4885c7f98db0ee9144b"
+        ],
+        [
+          "src/convert.rs",
+          "36a1d44d1ece4bfa1347c4483469f21f145e0e2308f249c6fd32c477f939b3fb"
+        ],
+        [
+          "src/gen/File.rs",
+          "a3d6db68ef5c3a661781d7affd0798f00fd8cd579cde216f9cc8ac3be57de019"
+        ],
+        [
+          "src/gen/Message.rs",
+          "34de329442ccc7cf8aa680a68414a2bca87105988ffe78334078c4c8055acb91"
+        ],
+        [
+          "src/gen/Schema.rs",
+          "eb44e418d226cb4901cfc341f3def1738e5c14e175814bff5cc3eb3755bf95b3"
+        ],
+        [
+          "src/gen/SparseTensor.rs",
+          "89aba36f97e7d7d530f4af4ca3b01d066fe5e554a806a97ab557ba47432a1be3"
+        ],
+        [
+          "src/gen/Tensor.rs",
+          "8d1838b259a84f65dd111d90928a7d5399cbcfeb76d0b2d49802b38b18d1700f"
+        ],
+        [
+          "src/gen/mod.rs",
+          "e75e6355f4fe05da56f1601e9dedf9657b020977889f9276103a109f532733ab"
+        ],
+        [
+          "src/lib.rs",
+          "6808a9e6e8e8c9f2ff68db695bc9573d87a459213f50fb49bf6ce258dd85625d"
+        ],
+        [
+          "src/reader/stream.rs",
+          "cf19e649c464d8f59ceabcd8ed15c04696fcfb6344ad5dd7c929af55678c2fb2"
+        ],
+        [
+          "src/reader.rs",
+          "d27d205e98d2158515f6d2ceab7059b38142441fba3059e0b750e27009890ff7"
+        ],
+        [
+          "src/tests/delta_dictionary.rs",
+          "2b2ee01196b4d13f7bfe6b5615306537af43db82fe8d4d27d82d40c909b2cc39"
+        ],
+        [
+          "src/tests/mod.rs",
+          "bc41e9df42de9ebd21af2da32306ef2a705e22c4f8731cbcdea2f837b3804029"
+        ],
+        [
+          "src/writer.rs",
+          "1a5a79912bd82cd0d941ee851e8407ccbb6c175537481a2d457742bc0e9eacda"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-json",
+      "version": "58.4.0",
+      "checksum": "b8a96aed3931c076adee39ec2a40d8219fc7f09e79bcdaca1df16272993e1e14",
+      "verified_source_files": [
+        [
+          "src/lib.rs",
+          "6e9f6247048c39ff2688ae53fa2d7293d5e1a950d9c61a8b46abf41556cdda80"
+        ],
+        [
+          "src/reader/binary_array.rs",
+          "b0b55199acbda7440bf284edf8f1781da322d72a9234d28fc2a430ab597d304c"
+        ],
+        [
+          "src/reader/boolean_array.rs",
+          "58edb6c14621aa3bb991d474543114eec59454f9ead5ea28918265ee5cc67961"
+        ],
+        [
+          "src/reader/decimal_array.rs",
+          "b9c80a70b383204ec63200384853b576386f297918f9d5bcf790e3334ff9ef52"
+        ],
+        [
+          "src/reader/list_array.rs",
+          "3570ffecab26d63418217af9b7e0a3e7c3e076754123a8ceadfed489e5e4b87c"
+        ],
+        [
+          "src/reader/map_array.rs",
+          "487f708a2e8c359f1b6e2690b9426f4ed82dbc3ec524e5c7693ec44fd4167ad9"
+        ],
+        [
+          "src/reader/mod.rs",
+          "558969c521344717613047337f123f8fcdf6e94749d2723b9d9b602aabea635a"
+        ],
+        [
+          "src/reader/null_array.rs",
+          "cf6d4ab2ca311256e5fe86dff228fca6b9004a4e9e4b00ce93ede67c8f8fb125"
+        ],
+        [
+          "src/reader/primitive_array.rs",
+          "b62a65b02331e9e41a0f019113e57f53e640620e3103053668da6ffa6d4e61b7"
+        ],
+        [
+          "src/reader/run_end_array.rs",
+          "63dc89b48a073692e1b0dd417f34a75decc2cfae081dbaf9d073124c685be6a9"
+        ],
+        [
+          "src/reader/schema.rs",
+          "b0ec494b8ef8eaaeaeb8bd76826bf8d3c87cfd453633bfe3e2cfdf7911054239"
+        ],
+        [
+          "src/reader/serializer.rs",
+          "2e9f1ebaba8109eed45492a7893681758f77cad719869db6bda7bf95dd59ae80"
+        ],
+        [
+          "src/reader/string_array.rs",
+          "e98d5e705f8e2874a7bb87e48ae7f84355513a714c80dc3d1b7e24b6b6bb7841"
+        ],
+        [
+          "src/reader/string_view_array.rs",
+          "05983f2ade20e077ff98d6acc3fc982d458eb2577c384421714653926771726c"
+        ],
+        [
+          "src/reader/struct_array.rs",
+          "38fe86bb1e4a75528c8a6927378fa5bd9158d17dad1836e151dda0c71cb6f50f"
+        ],
+        [
+          "src/reader/tape.rs",
+          "7870a68cdedcc058c199f8091c492a1cac4e2d3280c31cab9a8297879c3689b5"
+        ],
+        [
+          "src/reader/timestamp_array.rs",
+          "f63853a0ccbff74a6eede0cd5444902a16d51a8c63ba1bbb2e73a8354ff3a38a"
+        ],
+        [
+          "src/reader/value_iter.rs",
+          "f2433722f765f15fc29cb876b3a66e810228c54d544a0e1288ab4803a3d7860a"
+        ],
+        [
+          "src/writer/encoder.rs",
+          "4463b171c7441dc6b435df26920fdf613dce5bbe0018fae94f5bdd462e5dceda"
+        ],
+        [
+          "src/writer/mod.rs",
+          "2f9ceb4ec49f885e105e9c8252c64fd41694b9c4c172bf14e01057a4c7f1906e"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-ord",
+      "version": "58.4.0",
+      "checksum": "63a083ec750f5c043f02946b4baf05fcdbb55f4560a3277055caca5cc99f3eb0",
+      "verified_source_files": [
+        [
+          "src/cmp.rs",
+          "853637142725d9eec93db0e6270303604629b09c43351dca7278eca9ddad1ce5"
+        ],
+        [
+          "src/comparison.rs",
+          "e1b507d1fa102bbb0f65d4359fca0057aadb33f4a81d4606d399cdde3b7b54ac"
+        ],
+        [
+          "src/lib.rs",
+          "4e42fe12e00ea6aee1d3bc0944200fd3112c7dbef81cb06c173ceb5a23a35767"
+        ],
+        [
+          "src/ord.rs",
+          "23bb74738006dff6ecd590708d170f5eb7a94f847ab0b1e3d251218acf211d79"
+        ],
+        [
+          "src/partition.rs",
+          "0a957751a05bf3da388dec6e2e6c0ecdf650de5018f18025d9e18a29166935cd"
+        ],
+        [
+          "src/rank.rs",
+          "d3d949d22b71fdd3472bc980c37e072f070131acff7f25e59edd0662abb65588"
+        ],
+        [
+          "src/sort.rs",
+          "4ad18512983f880918ddbc1f12f0077a0ab4ef82e42c9af45912c189dbbe9c34"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-row",
+      "version": "58.4.0",
+      "checksum": "514ba0ef0d4c5896202dae736251ce415abb43a950bed570fb7981b8716c0e4c",
+      "verified_source_files": [
+        [
+          "src/fixed.rs",
+          "3d50978232ea100c75bf04802872e26e9a7424ce99d4bff65908b116ddf38c55"
+        ],
+        [
+          "src/lib.rs",
+          "b68fd84290d6ac32c68ffef0f63e1c70fc75dbcf50fcbe341a859dd64726beae"
+        ],
+        [
+          "src/list.rs",
+          "aa9f8d21f14a6976e9faf09a335b02df58455165b1b8f0ce23de8cb797cf2ca5"
+        ],
+        [
+          "src/run.rs",
+          "0f8b549614182a8183d8903f6a316de311c2adb3f522d365c6de250916022085"
+        ],
+        [
+          "src/variable.rs",
+          "29c673e76e5779f1ed24ade1200397eb778b869e67357ae4c8a4c872bedfaa01"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-schema",
+      "version": "58.4.0",
+      "checksum": "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e",
+      "verified_source_files": [
+        [
+          "src/datatype.rs",
+          "057f2157e07d675f985dc465565a9c86ae97f2f826841d67361f6fc3f39ebf5d"
+        ],
+        [
+          "src/datatype_display.rs",
+          "012b1aceecf43a919d15023fe162e21ba38636a5bbfd2d7668da25cdf6cf8ce0"
+        ],
+        [
+          "src/datatype_parse.rs",
+          "f8afd183edf6284cfb5fc4777f5da8db7f1199b276f68896c1e043971ba6b0b7"
+        ],
+        [
+          "src/error.rs",
+          "ea0a3f25853ef5cbcbea9cc1f5da49f1fc46a4fd463e4f954c42189d3e9f172c"
+        ],
+        [
+          "src/extension/canonical/bool8.rs",
+          "308e0d25bb8b15bb321c625cfdeeda4d9c6f4a8c9ca00c7a1e9d63f8de446e83"
+        ],
+        [
+          "src/extension/canonical/fixed_shape_tensor.rs",
+          "ce74d469543ae6525130f570c7f453ecf8397a743880ffedcda7ccac42230f16"
+        ],
+        [
+          "src/extension/canonical/json.rs",
+          "824275bc53d48f5c0d96b21ac511eb29f616ae8a50268f485a18b9e98b5ed221"
+        ],
+        [
+          "src/extension/canonical/mod.rs",
+          "b34e38e9b4b18db82dc7aa2e127ce932018c3b77e35dcbe8c0a5380afec64422"
+        ],
+        [
+          "src/extension/canonical/opaque.rs",
+          "4370bb4ead6364830a9158a3b93de47febf282c3e6e1e48cbb0acccc49663871"
+        ],
+        [
+          "src/extension/canonical/timestamp_with_offset.rs",
+          "8da77204d275572cf1337db1d569368bbcd05dac05af3b7b6e16989050c84c25"
+        ],
+        [
+          "src/extension/canonical/uuid.rs",
+          "e33dd70269c5747ee5a994d3212a659e9699d29b046abae84c90364a9eb8c357"
+        ],
+        [
+          "src/extension/canonical/variable_shape_tensor.rs",
+          "b6897c2999355a6f8592815b8de39b29bc7e21ae6093283778fe28327d6c9aef"
+        ],
+        [
+          "src/extension/mod.rs",
+          "05b6de4f0e2922b914221cf1b22a2aa91cee2d7a6b9cd4b47172ce8c16bcc9a8"
+        ],
+        [
+          "src/ffi.rs",
+          "38bbcd822ed3a537af3adb6918bbd89ce2348f87215879c97c38731cfb81e7ca"
+        ],
+        [
+          "src/field.rs",
+          "7aea498fb386d32b1aac87d2b08a9aff591c2f7e259d4c12ed5c8667828afae1"
+        ],
+        [
+          "src/fields.rs",
+          "4882abd09049fc33c09f2886b831ce66270e49f8ec0bd2daa4708fad6051cb3a"
+        ],
+        [
+          "src/lib.rs",
+          "fcf571d02309a9f0f1a60b3e54b9271619835e5525c4247d7b3743cdbee62942"
+        ],
+        [
+          "src/schema.rs",
+          "0ce39e9a147c98fff1adc1c93517904592a3d8e33dc542164227d7596dcd13e9"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-select",
+      "version": "58.4.0",
+      "checksum": "c58da39eb3d8350ad4a549e5c2bc49284dac554016c69829310350f1731b0aad",
+      "verified_source_files": [
+        [
+          "src/coalesce/byte_view.rs",
+          "d8ab68045733e7dc01c08aff03a60fe1865075318473307dbd9d2746e4fbea5d"
+        ],
+        [
+          "src/coalesce/generic.rs",
+          "8b2b3d911521d0222bf9b93779f0f0f1f688b33f511b2cef69726c607ab217d3"
+        ],
+        [
+          "src/coalesce/primitive.rs",
+          "59ac94e96bf0ab82ed209dc813a7d75edaa25291536d473d7d2269f5a5dcca97"
+        ],
+        [
+          "src/coalesce.rs",
+          "b00913a7edc39cf00252242d14b83cb91816be375eedd09587dfda860e37a92a"
+        ],
+        [
+          "src/concat.rs",
+          "5f86ccc3c658531cfc655889fb1cfe8446f493d2d54136e633c949efd86f7246"
+        ],
+        [
+          "src/dictionary.rs",
+          "7bebafda4d94f88197a73e196f0faa419dc0b904e99075a1ab3c482127e1a6b7"
+        ],
+        [
+          "src/filter.rs",
+          "e7c12f8e8a298bdcb92c0d34fd5f1a7442ecc76416b637c06382270cc8ffea4d"
+        ],
+        [
+          "src/interleave.rs",
+          "b6c32d51cc2ce39287b091084c195bf141f7584561d4409e679059222be93d0d"
+        ],
+        [
+          "src/lib.rs",
+          "b0417fcf23ea530bf2f7c03c421bd440bb413bda1f98ba39a542f4d6f4eb728d"
+        ],
+        [
+          "src/merge.rs",
+          "c8ef3620664ca4cb8b3466d85afcc58d05f2a2efdd2267ed007fb77b002f7bd2"
+        ],
+        [
+          "src/nullif.rs",
+          "065467dd86324734dd959123cd10004c117424a4f3e5e01a8cefec4f55654a73"
+        ],
+        [
+          "src/take.rs",
+          "5f4c244d5e9530d77426ed2031854c3b6face426f68446f173a84b1e1c42145a"
+        ],
+        [
+          "src/union_extract.rs",
+          "a0faf93b1f86fd80cd4a3557872dc8120cb5ea8225a8449075e87a293109218e"
+        ],
+        [
+          "src/window.rs",
+          "4703faef8c3f36f09a37756394f0a407d6e1258558aeadd73b712beffc4c0d2b"
+        ],
+        [
+          "src/zip.rs",
+          "cb84a2ac9169cafcb092bba0e4268102fdc4979d3d1b5dc25bd8817ad417bf05"
+        ]
+      ]
+    },
+    {
+      "name": "arrow-string",
+      "version": "58.4.0",
+      "checksum": "b6789b388467525e3271326b6b4915666ecfdf5142aef09779445c954b67543c",
+      "verified_source_files": [
+        [
+          "src/binary_like.rs",
+          "0f10b7e8216c3ed407af7316275aa0241e6838e645f57aefb3beb31e12e89aee"
+        ],
+        [
+          "src/binary_predicate.rs",
+          "66a1b518d1e7e33074cd3ada1e5cdc21d37a674f64e3c1c458dcb0e81dac16df"
+        ],
+        [
+          "src/concat_elements.rs",
+          "e8c6cad1c0f739d403c94240e563c100a4a47cad482f6bbc48fe43f415fcdf7b"
+        ],
+        [
+          "src/length.rs",
+          "584e476908306445e954deef0c44d2dcf01c4b4c93243c343ad2dcc7a454cdbe"
+        ],
+        [
+          "src/lib.rs",
+          "32be0b5e567d050b33ddc01dee958ea9484d9645bed3c0a9802bcc724d3a75fa"
+        ],
+        [
+          "src/like.rs",
+          "ff1ee6ff084b9f99ebd4f657da4b4f85e5dbfbc906ca1a2bef153ae06e4cdda0"
+        ],
+        [
+          "src/predicate.rs",
+          "714e17e022ba23970fceffc42f24dac60eeedd3364ac91477cbea6a3a260a39b"
+        ],
+        [
+          "src/regexp.rs",
+          "e6937bd3aa67228a376afe547affbfcf31e8aad7c233f15233091804d6c366aa"
+        ],
+        [
+          "src/substring.rs",
+          "6f473180ddb5bbcffbd908f6a7b3e7ddd0878e1b03c156b698307901cd4f7a99"
+        ]
+      ]
+    },
+    {
+      "name": "async-trait",
+      "version": "0.1.92",
+      "checksum": "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+    },
+    {
+      "name": "atoi",
+      "version": "2.0.0",
+      "checksum": "f28d99ec8bfea296261ca1af174f24225171fea9664ba9003cbebee704810528"
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.1",
+      "checksum": "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+    },
+    {
+      "name": "base64",
+      "version": "0.22.1",
+      "checksum": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+    },
+    {
+      "name": "bitflags",
+      "version": "2.13.2",
+      "checksum": "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.3",
+      "checksum": "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+    },
+    {
+      "name": "bytes",
+      "version": "1.12.1",
+      "checksum": "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+    },
+    {
+      "name": "cc",
+      "version": "1.11.2",
+      "checksum": "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.5",
+      "checksum": "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
+    },
+    {
+      "name": "chrono",
+      "version": "0.4.45",
+      "checksum": "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+    },
+    {
+      "name": "chrono-tz",
+      "version": "0.10.4",
+      "checksum": "a6139a8597ed92cf816dfb33f5dd6cf0bb93a6adc938f11039f371bc5bcd26c3"
+    },
+    {
+      "name": "comfy-table",
+      "version": "7.2.2",
+      "checksum": "958c5d6ecf1f214b4c2bbbbf6ab9523a864bd136dcf71a7e8904799acfe1ad47"
+    },
+    {
+      "name": "const-random",
+      "version": "0.1.18",
+      "checksum": "87e00182fe74b066627d63b85fd550ac2998d4b0bd86bfed477a0ae4c7c71359"
+    },
+    {
+      "name": "const-random-macro",
+      "version": "0.1.16",
+      "checksum": "f9d839f2a20b0aee515dc581a6172f2321f96cab76c1a38a4c584a194955390e"
+    },
+    {
+      "name": "core-foundation-sys",
+      "version": "0.8.7",
+      "checksum": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+    },
+    {
+      "name": "crunchy",
+      "version": "0.2.4",
+      "checksum": "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+    },
+    {
+      "name": "csv",
+      "version": "1.4.0",
+      "checksum": "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
+    },
+    {
+      "name": "csv-core",
+      "version": "0.1.13",
+      "checksum": "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
+    },
+    {
+      "name": "datafusion-common",
+      "version": "54.1.0",
+      "checksum": "ca43b263cdff57042cfa8fb817fb3469f4878933380dccff25f5e793580abbf9",
+      "verified_source_files": [
+        [
+          "src/alias.rs",
+          "c9c2b69bea3aae9ac0865ca5bb27a6bd434d103b5ad7c6d6859d38540fe2c9f8"
+        ],
+        [
+          "src/cast.rs",
+          "fb103a6bb006c952d503fbede5e4b1f31bd03e914aab03adcedc6ae1983a7bfb"
+        ],
+        [
+          "src/column.rs",
+          "3ad78e6fc4e8b601b3466fa6d976954e546a72762890a26143baba5a65532795"
+        ],
+        [
+          "src/config.rs",
+          "84b5253b05080ebbc24747160759da122b7e88ef55a4b2bff34cd9846b611929"
+        ],
+        [
+          "src/cse.rs",
+          "2eb23fac78dc360d64a867dbc63d67c01fc8c41e0ba3defa81e07c886be1aa87"
+        ],
+        [
+          "src/datatype.rs",
+          "56218cdf127408537542f779b09e34494f937eb1cce793af34a2ce61a20b07ba"
+        ],
+        [
+          "src/dfschema.rs",
+          "463b8438b7f400bc404647d20976e5745220daa448a15f5affc617761290a37a"
+        ],
+        [
+          "src/diagnostic.rs",
+          "00baf5f90eb36845502aee1c0ef0b7f3eb002d92120144921b3333bc589aed1a"
+        ],
+        [
+          "src/display/graphviz.rs",
+          "42d859132cda56e23e417c517ce78998a2a12217ca338cae5446b0205c5e2929"
+        ],
+        [
+          "src/display/human_readable.rs",
+          "1bb125e2fc93188f4c7283ba60d794008b692dd4db34f56731102a0e6c83da14"
+        ],
+        [
+          "src/display/mod.rs",
+          "6bb2925b33d3befe3609b9aef4d249ee7f1c55c2496c8bb1c26de4aacefaf31b"
+        ],
+        [
+          "src/encryption.rs",
+          "6c10dec4d10ffec6253575589a65b37a527499b380f744cd1b383eee7586b469"
+        ],
+        [
+          "src/error.rs",
+          "1b77f092ec2256f22459c319d2ac8fe81fed8fe9917986c4cb593774a93e2e6f"
+        ],
+        [
+          "src/extensions.rs",
+          "1e2e9316c6a1d0aa1d272a17fa6e9e0e53815ecf6f4adea09b905a3b26f16054"
+        ],
+        [
+          "src/file_options/arrow_writer.rs",
+          "9cd66efcde587df044f54823eb4029a47220a3c49c66a3b303654c2a818b2258"
+        ],
+        [
+          "src/file_options/avro_writer.rs",
+          "31b40dc337e66f6c64b5f2f39c0cd495b9efcb96e7ef0e309bac71957d9c66d7"
+        ],
+        [
+          "src/file_options/csv_writer.rs",
+          "d1899d1e2229e00e73c0977a88b4322021d937d444b10599d86ebb674fcdc8e5"
+        ],
+        [
+          "src/file_options/file_type.rs",
+          "ca7bd922500e7f6d7c3d16f0117e6ba5621db97a78c92e8270b6a151609715fe"
+        ],
+        [
+          "src/file_options/json_writer.rs",
+          "66897de25bdedda6fdea21f2908be6ed90567a33cb7f0cf7c3efca7785ea8a0c"
+        ],
+        [
+          "src/file_options/mod.rs",
+          "907ca38d19100c88eca1fe0c39034915cb96e45e7a4166d84d0f83bab9615ca4"
+        ],
+        [
+          "src/file_options/parquet_writer.rs",
+          "fcf8a026de950a00e4d2b9e2897a73a3bb830ea324b0bfb69078b2b926a32c90"
+        ],
+        [
+          "src/format.rs",
+          "1ab795ee21ec47222e906039174f0e6ae351cf8243854805c23b09b0fd85ec41"
+        ],
+        [
+          "src/functional_dependencies.rs",
+          "7f0e9a64dfb1ed817fd2f3290eaf600ca5772b4c1812565241c1557ffe710603"
+        ],
+        [
+          "src/hash_utils.rs",
+          "07795d969a3279d16892e6dbc524d432c9d9b3aee59308fd299bb3c8a4320995"
+        ],
+        [
+          "src/heap_size.rs",
+          "5612b7f2e9db9aa6ea1d47345e5578e997f85f7d35a79cee52877bb53af9f509"
+        ],
+        [
+          "src/instant.rs",
+          "a436006b0c201ddecf250ef764d80de9d553d9e5d21ad27439a3e0c054d5f1ff"
+        ],
+        [
+          "src/join_type.rs",
+          "894341107080c7e5c2df4012ef6b6642ac257bc3bed532d88da25261503e386e"
+        ],
+        [
+          "src/lib.rs",
+          "e0a0a19ca34d81e66456bef7658be0e6037ece9d28df0a060e8bf1befcc347ca"
+        ],
+        [
+          "src/metadata.rs",
+          "bff9594479b763e8c3b1c740f5df9e668c3ae29996e879610466ae773b58d23c"
+        ],
+        [
+          "src/nested_struct.rs",
+          "bd914efcd5c9562cece116876db8a39612144c7987998890e300492d4162d71b"
+        ],
+        [
+          "src/null_equality.rs",
+          "0b0e7eb12e14ef2d1770b33602288e2f43db3a0c6c32a4bd4fa7f43f8b59f271"
+        ],
+        [
+          "src/param_value.rs",
+          "499564846d6e7ba484c5706514489461614a223e137583772d65cf6d6d4b1a8d"
+        ],
+        [
+          "src/parquet_config.rs",
+          "e9d2f9356befa3d9cb262ae40e3b4957a480389d1c4f5f3f7c4ea401f529ce55"
+        ],
+        [
+          "src/parsers.rs",
+          "080e9a2bf41e29ce7bb6d33829b68f3235e55a6841c70b208ba9292796ba239e"
+        ],
+        [
+          "src/pruning.rs",
+          "be100e655c67dfd4c6f8e9acdc99c00e5394219a9c655d1188e990888a2641b5"
+        ],
+        [
+          "src/rounding.rs",
+          "35c65f8365ca7aadfa58535a748d144b7105a92dc6c191d9bfa1de1b6e5412fa"
+        ],
+        [
+          "src/scalar/cache.rs",
+          "2f16d87ef95759b38f883040c431cae0d4cd4716151fa9f8de29ff2dd31caaec"
+        ],
+        [
+          "src/scalar/consts.rs",
+          "c890127bd1787b7c9b309ddbb2059ab475895efe3c9a063e57466ea436110f54"
+        ],
+        [
+          "src/scalar/mod.rs",
+          "0989385baf6e523df2cc9179b1508f199c0be3ade2dd95eebe20b3b368cc8104"
+        ],
+        [
+          "src/scalar/struct_builder.rs",
+          "bafcfd6da1b2877be2444db4951ebe2e2655fa94aa5dfdb46c3ddf9676e6df3a"
+        ],
+        [
+          "src/schema_reference.rs",
+          "6580dc8db1aa1985debc8acc59174e99c99a031df8661d62ecf77e76ceac7711"
+        ],
+        [
+          "src/spans.rs",
+          "6fc538b7a3e7d1fce0cf215810ebd47c8cce7f9f9daf4a96a55fe7094f8a509f"
+        ],
+        [
+          "src/stats.rs",
+          "51e835668cb92573d04a20f22ac43eb4b694b237b42b01f19c8f2bac0f7c6f71"
+        ],
+        [
+          "src/table_reference.rs",
+          "3a44ffe9314f899b65770f0805aa603a717c852a2b48b6c71161e9420add3dfc"
+        ],
+        [
+          "src/test_util.rs",
+          "63582951f98eb52b412df3ad521ddf5f06208bdc2cce70400e515e0878e743ed"
+        ],
+        [
+          "src/tree_node.rs",
+          "91128ea16e282067e7f7af05ce9972a2e2d387b6b55a7e31e8ceb4326b2d881e"
+        ],
+        [
+          "src/types/builtin.rs",
+          "d4556fe6324a9e978cce2ac9cf4834563bda9b5a2c1a4dbde7094820987d8d29"
+        ],
+        [
+          "src/types/canonical_extensions/bool8.rs",
+          "db6e2ee023001cb2af6af84c97e29db1cfe47d6eb17c5a70a38ef2053074a269"
+        ],
+        [
+          "src/types/canonical_extensions/fixed_shape_tensor.rs",
+          "c8707375b17c1f3f7a0a0cb20dad0296ff795043aa888074d6bc13c5c6c82e80"
+        ],
+        [
+          "src/types/canonical_extensions/json.rs",
+          "76bb160c22f017ea91e96e13bdba03a9ea409c7c86f3a11dd01cccfd881d733e"
+        ],
+        [
+          "src/types/canonical_extensions/mod.rs",
+          "1113a3c5783e365d0cb89cc47e0fbb3ad68643e10669cf3df379228f5235fd96"
+        ],
+        [
+          "src/types/canonical_extensions/opaque.rs",
+          "9cacb31a1a1b1be20a7621d098d19fc6af7d5f678b1c28699f4b949001f3d325"
+        ],
+        [
+          "src/types/canonical_extensions/timestamp_with_offset.rs",
+          "398337d090c24050f3b5a38fef44fc8047b6cb1b92025b0544661bc16711b964"
+        ],
+        [
+          "src/types/canonical_extensions/uuid.rs",
+          "778a32ef86a434b2a7da287786db32779cee3ba56149a792923d1414d046a73f"
+        ],
+        [
+          "src/types/canonical_extensions/variable_shape_tensor.rs",
+          "fbd01f9a18420dc22e1b6901b73b92018d0efc2c2cf495bb70969a8b375224e6"
+        ],
+        [
+          "src/types/extension.rs",
+          "f16c93aa9c4e723d642679fef43cbe3f12ead9c99b934c4f1deea9fa7c319cbc"
+        ],
+        [
+          "src/types/field.rs",
+          "6266287710f23a4f2f9a6e9cb504bf2072dc8ee626235e25ddfefa43e1387a82"
+        ],
+        [
+          "src/types/logical.rs",
+          "2067d30fafaabcd91b961283c4516154749a217f7c39e53a333e6f358f4547b6"
+        ],
+        [
+          "src/types/mod.rs",
+          "326227e8e3ba1eb58e0af0c63e568e5af9bf0a0f7a3195ea1fa70a2053d9059b"
+        ],
+        [
+          "src/types/native.rs",
+          "9af98f808decb52ced6d7a812347b27e86849daf0e99880bacb660dc5e87a320"
+        ],
+        [
+          "src/unnest.rs",
+          "0412366183259b5de1d31be66970831144480252e2491a9dcfee72f19b05d2fc"
+        ],
+        [
+          "src/utils/aggregate.rs",
+          "ed722a66931825febaf464fa9bebe2b8b79bc4e0d7d23750c8f8f7ed13a02b04"
+        ],
+        [
+          "src/utils/expr.rs",
+          "85380cc8fb3d6dceafa9fcc2dfff9a012caf2c59645a1dc6060cfbec7f9a1a35"
+        ],
+        [
+          "src/utils/memory.rs",
+          "acbef8dde1c5bcd216dc27c01b63f42c4e9fe9ee524f71c716b709c6a69e53be"
+        ],
+        [
+          "src/utils/mod.rs",
+          "bf598809410ae26fc827430f2779b0efa6fc0e04d5a9d779cde0f0319c893b3f"
+        ],
+        [
+          "src/utils/proxy.rs",
+          "a7b9589654c638805d1e8b0a5b83b7c4d1a9610710d62aa186b315b84cca20ab"
+        ],
+        [
+          "src/utils/string_utils.rs",
+          "c4dda4fabeecef5a4ac6d940aa311bba38ca6ffa6801d9370e47c7ceaa6aac93"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-doc",
+      "version": "54.1.0",
+      "checksum": "d69bb69d8769e34f76839c960dbde24c1ac0c885a79b6c3c2287bdc56ec67891",
+      "verified_source_files": [
+        [
+          "src/lib.rs",
+          "df9dd49e7f4bc4ea6aa09621a7f0ec22b1bcc9f9c9b0b700281fa6e396221cf8"
+        ],
+        [
+          "src/udaf.rs",
+          "17249175e16d8badadf1ed2bc7d066bf2e3308d56d51b04eb7e99359df64a0d9"
+        ],
+        [
+          "src/udf.rs",
+          "de66c317eea3664c658e49d275aced21ae7ff41bb4e82661ea5e33784a0588a4"
+        ],
+        [
+          "src/udwf.rs",
+          "9b483c618b706c63f389e748e9fdabd54c4c1c1090949079e76ad3fca5d6fb39"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-expr",
+      "version": "54.1.0",
+      "checksum": "eeb14d374767ee0fc62dc79a5ba8bcf8a63c14e993c7d992d0e63adfa23d77d3",
+      "verified_source_files": [
+        [
+          "src/arguments.rs",
+          "730e848bbd69883b161d23a3f1e73544bad340131561211403d694e8e8f07673"
+        ],
+        [
+          "src/async_udf.rs",
+          "fdfeb03e9d0296db53eb5ce36d165d56af6afb7780e16a1284ffd75a93e1d882"
+        ],
+        [
+          "src/conditional_expressions.rs",
+          "a98939cbdd883ae749e38f4390dc1838b6bb8746a787c18945eb6e1d8cf96d68"
+        ],
+        [
+          "src/execution_props.rs",
+          "5e8af6ae83f54d7b99759dc880446f4464a23bd0df73b91932cb500bee130772"
+        ],
+        [
+          "src/expr.rs",
+          "155ca2c11282d0c75645e07835e72c4e71ea9215374a38d53cc4ae0cb144fc75"
+        ],
+        [
+          "src/expr_fn.rs",
+          "01c77552cc14ea2214c12ded4c2963314c34734eed304f6eaa7cd9a98295e82a"
+        ],
+        [
+          "src/expr_rewriter/guarantees.rs",
+          "df282caf3d51528dffc2cd7f03c1a1bc2d4e0beb9eee1522580b8d2d196f118a"
+        ],
+        [
+          "src/expr_rewriter/mod.rs",
+          "9ff31d01981ba33f1e71510b54009c9d3731e3febb965b90394801c92e6e73d6"
+        ],
+        [
+          "src/expr_rewriter/order_by.rs",
+          "a396a5cab3a28b4466aed71980fb488a18c125cd8516b1d1f9065ece6413b2f1"
+        ],
+        [
+          "src/expr_schema.rs",
+          "abca5b1af06e2894629ac0bb5148bd18f450e6c533f3f65f0cbbe26c1677887a"
+        ],
+        [
+          "src/extension_types/array_formatter_factory.rs",
+          "da10143a0e520410467455de93d539efbd2f58e7c6e00ed8f56bd6cc8f125987"
+        ],
+        [
+          "src/extension_types/mod.rs",
+          "295f44b64ff757bcf3c7179efc7c78e41b85057194ba6d66a072bc25333af9fd"
+        ],
+        [
+          "src/function.rs",
+          "814fa6dc092b959fda7e6c2d606a2dd3292b0f3e5a97cd79d017d3c1f8ba0790"
+        ],
+        [
+          "src/higher_order_function.rs",
+          "b0075d23564adea960aa02c5f08c6083ad190da782e16b5608df136df08b28c3"
+        ],
+        [
+          "src/lib.rs",
+          "1d8d828e0b04c001ebe1015446e783ef83a425a6b218684fea5213edd2dea705"
+        ],
+        [
+          "src/literal.rs",
+          "f8a7bcaf12bf130d60758c1134592b11bba2bb30ea5c34b3137e47e138d7bf40"
+        ],
+        [
+          "src/logical_plan/builder.rs",
+          "2bb7e6b3f3cdf8d47d1c59b856633b78997a180d35ccfab038ea71e42a3a9201"
+        ],
+        [
+          "src/logical_plan/ddl.rs",
+          "067e4b9cde8bc08a33b4b7c74366e85ad9a69184429b4fbd515ad306bc2c3b06"
+        ],
+        [
+          "src/logical_plan/display.rs",
+          "2d9df9f70043c75f28d582bfcc8ced032c05c75675e624f84060eedceef7f0de"
+        ],
+        [
+          "src/logical_plan/dml.rs",
+          "1e087e48457fa2d9afdd7de07399376dd4a457f34a91c7c1920948a1a80ec431"
+        ],
+        [
+          "src/logical_plan/extension.rs",
+          "9755a8ef93c3459feea8e3914e534acfc0a31b53ded5c821209e7bbe2e103256"
+        ],
+        [
+          "src/logical_plan/invariants.rs",
+          "2962f4b0a5485b9dc5a08ba1d31629404abcbfee1f83b8c0ccc3a6aba2489d49"
+        ],
+        [
+          "src/logical_plan/mod.rs",
+          "e9e55e796e439c3b826dab2a183e6ab7583ed22fedb1612da8d4f6baea1851de"
+        ],
+        [
+          "src/logical_plan/plan.rs",
+          "325ec90e18ef8d12fd54af615db3316c397005020c74617167e8353941662914"
+        ],
+        [
+          "src/logical_plan/statement.rs",
+          "f2962d8e70f19c07e2f31eab3488bc0f4c753c87b080c711acd419afc68569d7"
+        ],
+        [
+          "src/logical_plan/tree_node.rs",
+          "1674926be3390b1e71f507996d989bac8cc25b864910ad3792e737ca7674ca90"
+        ],
+        [
+          "src/operation.rs",
+          "098f290a440050fc8429077d5aa32c7ae12e6a37a5cafe3fcc522d4b46dc0060"
+        ],
+        [
+          "src/partition_evaluator.rs",
+          "72e55f16f5bc2c825055a0e728c517a1bebd6804a0b28dac6a1f19835e5a937a"
+        ],
+        [
+          "src/planner.rs",
+          "b531ac43de74d5dfb7ac49a553c6126bfe2c7d02530f37ba18c7d3321ec107d7"
+        ],
+        [
+          "src/predicate_bounds.rs",
+          "f4729c2836d9de7ed671fb95b6e13765e986f42049c71f3a04ec65432198a85f"
+        ],
+        [
+          "src/preimage.rs",
+          "0c2f1017d3373bc63f0678fbb59331176cca45dfa397a043aff74d2beb3c0cf8"
+        ],
+        [
+          "src/ptr_eq.rs",
+          "95d5bb318212cafabbc6e8cd2c5fe4f2ad7f9b4d0c0fa9fe9f0f640bad05d400"
+        ],
+        [
+          "src/registry.rs",
+          "018ab5180a3420b72119752194e645865796fcbc1ff5836d12ea5e031540d372"
+        ],
+        [
+          "src/select_expr.rs",
+          "7d054816ae257398c25b2a54cf469b87ca2aabc3bb41e834561615fc244bd441"
+        ],
+        [
+          "src/simplify.rs",
+          "387fd0224a7c644f7051620173585d41863bd032182ae2e8bc15ee699d7afa43"
+        ],
+        [
+          "src/sql.rs",
+          "06c9803ef8951700e00f0b963bb68752aed2c74c5f5b81f7c1c78b741e77d0c1"
+        ],
+        [
+          "src/table_source.rs",
+          "2e6b4611d344093823aff59fb0ddc2afa0732054b6c0ad155beba5bcf05aa4a1"
+        ],
+        [
+          "src/test/function_stub.rs",
+          "5ad57509926db1f51b03dc4211fbf4743e34469407761e090410c8581448841c"
+        ],
+        [
+          "src/test/mod.rs",
+          "d1364aebc050ee482cdc0e80da00a31a7762297c87baa013f7d89c6996e246d0"
+        ],
+        [
+          "src/tree_node.rs",
+          "4b976b970aa091992d84c2b89a5bfc14817e09b60a53b25f58f9dfdea60883b0"
+        ],
+        [
+          "src/type_coercion/functions.rs",
+          "781b0bc3bbb3d3e04462c583289758dbbe5d120e06ead05ec3f44aa49b2eda22"
+        ],
+        [
+          "src/type_coercion/mod.rs",
+          "0578afc7b11a64f9ccf3465b3827eb474a6102d8c4222ac61e77f9df81c09fb5"
+        ],
+        [
+          "src/type_coercion/other.rs",
+          "95e85ffbbb685c9c8823283f46ca7b765b57c57dfd32ba78738236368d2d10bc"
+        ],
+        [
+          "src/udaf.rs",
+          "91f1f5cbaf5fd87afd156f8cb889127ba3962bc8e7d39e718ef4c11ee1a1e640"
+        ],
+        [
+          "src/udf.rs",
+          "60de6ceb566c2c36432c4342e4475516f9748f19950780093581c3fc65ceb889"
+        ],
+        [
+          "src/udf_eq.rs",
+          "8eb76e7ae2b971d5b5d0cdfbcc9eb2f00fd84eb2c9a723ef90afac9d90e874fe"
+        ],
+        [
+          "src/udwf.rs",
+          "b4eb0bb99611eb667addd2e5860592bc40c1e4144385148e9714831282556caf"
+        ],
+        [
+          "src/utils.rs",
+          "7db472c83e33929fef7405a62d06acc609c3d7b820c38cd8d14e200059850005"
+        ],
+        [
+          "src/var_provider.rs",
+          "f2d42e519aef199727c6127788c87b6d4495bc2c1c192f895797655910ab990a"
+        ],
+        [
+          "src/window_frame.rs",
+          "cbc6b493b80bccbfc23c825514531cba504154d05d1e8c592e7d0fe93d1c0942"
+        ],
+        [
+          "src/window_state.rs",
+          "2732f2429fa649dcba3bb233c22b8ffae574bee9a97296588da75b1956250127"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-expr-common",
+      "version": "54.1.0",
+      "checksum": "b7b19a8c95522bee8cbb313d74263b85e355d2b52f42e67ef5694bf5de9e9356",
+      "verified_source_files": [
+        [
+          "src/accumulator.rs",
+          "6fb560801b61bf71af8dcac3eacad52da8de82db1ba9feb25e29882d22a1b27a"
+        ],
+        [
+          "src/casts.rs",
+          "06138e1ae0478ec7f6c20b64d986bf7f4aa2dc115d471d4cc33e2ce832bbbf97"
+        ],
+        [
+          "src/columnar_value.rs",
+          "fb98f866c1140599488b537ed56e6f22f4fc18722ddb920ae0b6228cc896bb10"
+        ],
+        [
+          "src/dyn_eq.rs",
+          "58559244f0793de22a12e4803a755239344f7fc8b87c06dde8480ab5a8080b2e"
+        ],
+        [
+          "src/groups_accumulator.rs",
+          "9d61ed5000593c2aa40f907549d2567a534363741cfa9d07db62ff637176a52c"
+        ],
+        [
+          "src/interval_arithmetic.rs",
+          "5319f4e5c787895e7a775bcea63640aafa4f33958c42927b0df5e0bbdcf892b9"
+        ],
+        [
+          "src/lib.rs",
+          "7be835350fbd513710be8c43ca6905d2462c732c86a4b2d606cb86595eb1cca5"
+        ],
+        [
+          "src/operator.rs",
+          "a2edfab1b8bf947b1d3d2cc82c9f38c3128ed73008ef56d978b44b109f8f4b97"
+        ],
+        [
+          "src/placement.rs",
+          "1acbee70fbd57e01add4f026cbce93bac0d47ccb8975e190f09313e9a7df7cef"
+        ],
+        [
+          "src/signature.rs",
+          "99559ec9498d05557084657fe2246a723767f37c22c9d9081dcc7d704d70aa21"
+        ],
+        [
+          "src/sort_properties.rs",
+          "7e8d9c466ca974c7e54234759118dbe7d1d78510f96635a6630a4c6e91209f5b"
+        ],
+        [
+          "src/statistics.rs",
+          "0d03c83611a47f8ef9a0304bde3ecb6eaf58260057a4327d6be05a9988797448"
+        ],
+        [
+          "src/type_coercion/aggregates.rs",
+          "ffc842ee5cb133f2223778dbc0541909be317da61451249d12fba029dc25b986"
+        ],
+        [
+          "src/type_coercion/binary/tests/arithmetic.rs",
+          "0fd448dbfc28f7dd4cde1afa3783da2fff307cf911972bb6b3405f31d003b610"
+        ],
+        [
+          "src/type_coercion/binary/tests/comparison.rs",
+          "77fd2c416fdad754542bd82975eb6dd5169d6191286e33b2c8f6d4522d0460db"
+        ],
+        [
+          "src/type_coercion/binary/tests/dictionary.rs",
+          "b1cf42f0c193f8de6b8621ec41c0e83356eedcdcd0fd5dd84b76206310386e70"
+        ],
+        [
+          "src/type_coercion/binary/tests/mod.rs",
+          "2164dfb0938a4569ff001a5454d47da7c89efca27c2460dcd2dd1b28b3f889b4"
+        ],
+        [
+          "src/type_coercion/binary/tests/null_coercion.rs",
+          "e6a78554b5302b0a1606d7e466ddfffc153ed88bf8c866067f9a647c1e69ec3a"
+        ],
+        [
+          "src/type_coercion/binary/tests/run_end_encoded.rs",
+          "b3d8e14a02313b8aa190ab779dca0d3af61988df3f481f92d3df0826b441bf0d"
+        ],
+        [
+          "src/type_coercion/binary.rs",
+          "239912fa400ab30a58d49b6917cb2d3877eb302ff5d852fe5d06ab24c6cab461"
+        ],
+        [
+          "src/type_coercion.rs",
+          "f4d6cda8164bc38c7e5a0ea1529262680fc56c197b8dbcb2bd0a4316a9601352"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-functions-aggregate-common",
+      "version": "54.1.0",
+      "checksum": "97dd2a9e865c6108059f5b37b77934f84b50bfb108f837bd0e5c9536e03f0545",
+      "verified_source_files": [
+        [
+          "src/accumulator.rs",
+          "a6b94b630a9823b50192ad7ab1ac01be17b57bf86bbab04eb22cb7493de1da66"
+        ],
+        [
+          "src/aggregate/avg_distinct/decimal.rs",
+          "bb66b0a1aeb3200737eb8ffb8ad92055a5ff45d01e348000e613fd27ee7b72fa"
+        ],
+        [
+          "src/aggregate/avg_distinct/numeric.rs",
+          "c0fa7e96ea022902dee4c9b737b1735da2acdd506e4f954dd84a0f51a21600d3"
+        ],
+        [
+          "src/aggregate/avg_distinct.rs",
+          "387e95706e95149cf08ad436737100140ba2cf275b3252e0c7e69a9924dc6ac7"
+        ],
+        [
+          "src/aggregate/count_distinct/bytes.rs",
+          "9bfb7eb8cb79fbba1fcb9048a795110f8652536d040c727798c087d139d7cfa6"
+        ],
+        [
+          "src/aggregate/count_distinct/dict.rs",
+          "56c0d0cb79b4d978cdf2302eca2c29dbea147de1329254a8d1f628ec41ce30e8"
+        ],
+        [
+          "src/aggregate/count_distinct/groups.rs",
+          "d8a5f2d5dbfe47899c234225d4c98fae09122d04a8451450d1874f4aeaa0807d"
+        ],
+        [
+          "src/aggregate/count_distinct/native.rs",
+          "c607a3bcef82f2640bce988325c0629f214ea3ae928519c85dd75f7bb81bd5bd"
+        ],
+        [
+          "src/aggregate/count_distinct.rs",
+          "70f1336e4ad1ec40fb0b3a21fa88683027321ff30944761933461a5b0cbe4e7f"
+        ],
+        [
+          "src/aggregate/groups_accumulator/accumulate.rs",
+          "f2cf19867410e3993abf1e532454780a24eef21236367d64eb577a7b3af65d73"
+        ],
+        [
+          "src/aggregate/groups_accumulator/bool_op.rs",
+          "846a8998686ee5eac490ac7d10aefaec046c67336a8218af3b4f5a1ee5f8a3ff"
+        ],
+        [
+          "src/aggregate/groups_accumulator/nulls.rs",
+          "7e0e3f0e0869ac3348c24469246e8a951f90e57179e66246ac01ea6f3c97396f"
+        ],
+        [
+          "src/aggregate/groups_accumulator/prim_op.rs",
+          "f7a0cb8df18e004707c48b2f8fb27d64ad9bbdfb47296f5b973fc178f53ab0bb"
+        ],
+        [
+          "src/aggregate/groups_accumulator.rs",
+          "03ec8bbac51040f2b4a54f2746aac0be938d57969684adf0377b9e1eb327d26f"
+        ],
+        [
+          "src/aggregate/sum_distinct/numeric.rs",
+          "099a5e658088073acba6190085da74b828edf1c3d9e83ea5a0190975f9a80a49"
+        ],
+        [
+          "src/aggregate/sum_distinct.rs",
+          "d84d5961ed919396dffd284cb65e263191a242311d974e522e554427aa07f55c"
+        ],
+        [
+          "src/aggregate.rs",
+          "750eccff66fd476166442dd2f0881a4ed8bbf26daa9f26aed98365a9a81e11c0"
+        ],
+        [
+          "src/lib.rs",
+          "89609e1d21a55b18e2529556a855aab71b3ef044e5c65222c1d35277a3a5e02a"
+        ],
+        [
+          "src/merge_arrays.rs",
+          "2b16b9ca2dccdf297664e2a8145d752a7c9bb9adc79365b103af624a84dc376a"
+        ],
+        [
+          "src/min_max.rs",
+          "753ca35706c25c1b6186665923cbc17867051c78ad519d6d8557d3c6fb6ed244"
+        ],
+        [
+          "src/noop_accumulator.rs",
+          "20aa11eb6d5d9b300d85a4ed5d439d62d3fc9e507a3710fe63de2b9e835297fe"
+        ],
+        [
+          "src/order.rs",
+          "9d925a17a5da49188a6af6ce871ab3c4aafa2563d1d024a8aa475d50e3915e87"
+        ],
+        [
+          "src/stats.rs",
+          "3d878a87404c3b8981f9509636b409b1ab7524115386bc263c7b9c74f893d93c"
+        ],
+        [
+          "src/tdigest.rs",
+          "9d7db7520f5e5392663c1ef565975ff0d768d94fe85805d00116a9fed194ecea"
+        ],
+        [
+          "src/utils.rs",
+          "f15642e6c65e5d95d0de2fe5695305d8be509d9602770e4766e6c30a297f2ea7"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-functions-window-common",
+      "version": "54.1.0",
+      "checksum": "4cdc5e4b6f8b6ef823cc1c761f85088ad4c884fe8df64df3cbcc6b2b84698441",
+      "verified_source_files": [
+        [
+          "src/expr.rs",
+          "1a70320404ead315876123c30c1bbf30bf79445334965e1e3c0e7ccb482cfe5c"
+        ],
+        [
+          "src/field.rs",
+          "ca78aa6664d1ac5d7c9b0aa2c3b5369b0c164553cdb0edca87bba47659df9130"
+        ],
+        [
+          "src/lib.rs",
+          "27da910bbed81bc2eaaf245cdd2e408a80fa4cb1cc79e401567a396808bb43f3"
+        ],
+        [
+          "src/partition.rs",
+          "a0f9ace62a96971b495d79d9b1ef6848cca7e975b4e86e86ce3569130f8e007e"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-physical-expr",
+      "version": "54.1.0",
+      "checksum": "8cabf7a86eb70b816729e33c81bf7767c936ee1226f607a114f5dac2decac8d0",
+      "verified_source_files": [
+        [
+          "src/aggregate.rs",
+          "4f4a1bb34af30924b458b4d91aac92733b6a7b8411ddf9360e0f164c6a871613"
+        ],
+        [
+          "src/analysis.rs",
+          "297eb2b19675b1efa9f18441c60c6b7d16c0001fbbed2b34912842b1bccdd91d"
+        ],
+        [
+          "src/async_scalar_function.rs",
+          "a873c94c6a076969abc30a9a54d6f0e55c35c5be008cc812708e9528dba3ffbb"
+        ],
+        [
+          "src/equivalence/class.rs",
+          "b315c367f065b2bbf359835df5bfc582451f59330b86fc063cf175579821da6b"
+        ],
+        [
+          "src/equivalence/mod.rs",
+          "68b4fef170f5f759535e160a9e6ac184f280dcc3511778b1ad1c1aaef7193bc4"
+        ],
+        [
+          "src/equivalence/ordering.rs",
+          "26676e8dcad12dad648048cc88170dfb5302726acc368ab26264a22e45fbf83d"
+        ],
+        [
+          "src/equivalence/properties/dependency.rs",
+          "01ab13fde44ca59c70c1d6993fe8c0d24b45b99bee09b6e44b403fde4d0aeee7"
+        ],
+        [
+          "src/equivalence/properties/joins.rs",
+          "f051273cf97c80cb84472054c30210043e1ab37cc96c30708dd51661b5f83402"
+        ],
+        [
+          "src/equivalence/properties/mod.rs",
+          "4c12a51fb6d0ad4b1c4dd712ab7cb44b69a07313c200af640196d99ffd64edad"
+        ],
+        [
+          "src/equivalence/properties/union.rs",
+          "25709f93868d1b3f0bbbaee6c5bffc9353769e3dd24e8ddad1d46b7ed5093ab4"
+        ],
+        [
+          "src/expressions/binary/kernels.rs",
+          "0c0e9796c70c0622a2e73a7b84407b5726ab5b9dd17dbefa3dcb3e3d1a059dc6"
+        ],
+        [
+          "src/expressions/binary.rs",
+          "5888fef39a560e43a974a6c86a5398afc68021861af272d03e66b7ab26bbe919"
+        ],
+        [
+          "src/expressions/case/literal_lookup_table/boolean_lookup_table.rs",
+          "30b946cd263bdbf466cfc638f2f06c313a001a952ed80f330f663370fd027d08"
+        ],
+        [
+          "src/expressions/case/literal_lookup_table/bytes_like_lookup_table.rs",
+          "07909ec9a62018a1835daf4abb12461ae03e0a2b7824106f0c14dacaa060e928"
+        ],
+        [
+          "src/expressions/case/literal_lookup_table/mod.rs",
+          "3a2bad3396d52e5e6c4d26f8babc204e3ef8c17dccd56f79c42db2ceaed4c4c2"
+        ],
+        [
+          "src/expressions/case/literal_lookup_table/primitive_lookup_table.rs",
+          "4ef5ea9fa4b7305b686072e019e77bf829a4e148b6c3253c9978f6f2a1b01fc5"
+        ],
+        [
+          "src/expressions/case.rs",
+          "470894816b7dfce4f995b0b3537349ea8b2962ecc199a798575ce2090253dc62"
+        ],
+        [
+          "src/expressions/cast.rs",
+          "75a4343718238bf87243258fae2fa93712d3db1c7e257b1fef8ded3fcb3b6b25"
+        ],
+        [
+          "src/expressions/column.rs",
+          "c93fe93a13bb131e52b00f8b6fdc935507bcfbf2d54e9115f912d33f6f639cb1"
+        ],
+        [
+          "src/expressions/dynamic_filters.rs",
+          "c34f2a4dfd8ea23cd341a80c2fd999227e176045d3807b30f7a1c084a2f03179"
+        ],
+        [
+          "src/expressions/in_list/array_static_filter.rs",
+          "12259bb4c45fd7f57696efc4c6227fab5a69cbabe9f89e2b6a7a03e2e9589040"
+        ],
+        [
+          "src/expressions/in_list/primitive_filter.rs",
+          "dea083ca4f3208434559a353ac70e73e12cc3f617a8b3b2bf66761b92097353c"
+        ],
+        [
+          "src/expressions/in_list/static_filter.rs",
+          "3e6915494eae8a460eafc3ecdd7e8c4901fef7dcfed43408d84dfdb4953a35ce"
+        ],
+        [
+          "src/expressions/in_list/strategy.rs",
+          "bc43719e31a52563dd07c5b0dac98a620491d87d6fe2aaf7a88aa86f18b441ac"
+        ],
+        [
+          "src/expressions/in_list.rs",
+          "5fda76ea1d9fc331d8b3124b3b44f913bfab5cfd0ab8d731b8dbc1509163ad60"
+        ],
+        [
+          "src/expressions/is_not_null.rs",
+          "dda5fe64b3c23e51226abd5b046677285c59233c78bafd518ddce3da764ce36e"
+        ],
+        [
+          "src/expressions/is_null.rs",
+          "b99205754a135ab5ff47a394186b2783925073beb108dba00f1aa18568a97dbe"
+        ],
+        [
+          "src/expressions/lambda.rs",
+          "be4e2bdf3ef5e01df59eafa06588606fa90186199094e7ab4ebec908ec229b66"
+        ],
+        [
+          "src/expressions/lambda_variable.rs",
+          "8ea602152321185aa09556d3b6208727a5147cb600066c08d17fd400d0490cc7"
+        ],
+        [
+          "src/expressions/like.rs",
+          "a6da1c39dc58753dd03d0a9b770a2c212709c694486715165fcdcb52bd24bfec"
+        ],
+        [
+          "src/expressions/literal.rs",
+          "509621d691c1477bf6fffa8edc2e9771bee832cc519b3b815e71ee1abbde9f45"
+        ],
+        [
+          "src/expressions/mod.rs",
+          "1eff3dc29a30ea810b3506d8ea7bca11a7f370cffa131dbe507b920e4731b2f3"
+        ],
+        [
+          "src/expressions/negative.rs",
+          "47e1a16414e637f508d552a173fe294b8b901b2008e66aa71ef79369ea8ab7a1"
+        ],
+        [
+          "src/expressions/no_op.rs",
+          "52eb12c9f387131713b99ac2bb3c3bcf94a0dc7fc9cb0b1a71d55b00d31130ec"
+        ],
+        [
+          "src/expressions/not.rs",
+          "f17dfe5bf6f4a1ed822de6e7f09c885948d7c3fa09e6835c0f8084944c018d9a"
+        ],
+        [
+          "src/expressions/try_cast.rs",
+          "8662e6dc441ad05bdcb451fdf07cdea42eaf3aa6df457b3ca8b7870060be77e1"
+        ],
+        [
+          "src/expressions/unknown_column.rs",
+          "0b3c3cafd00f9f2fc8b42c32e9558bb9b32fb5bf8cff771b9ab75ffb9f45cb29"
+        ],
+        [
+          "src/higher_order_function.rs",
+          "06f2d477f40879b8bd682107e72df89c301784c169e31284b22927040f38cdd9"
+        ],
+        [
+          "src/intervals/cp_solver.rs",
+          "747e4d4c523fb4b8da4619d159492337983506b1d539e67cde802d3a74fe41ab"
+        ],
+        [
+          "src/intervals/mod.rs",
+          "1a8a4bfa0a1aff2b0353459ddad89406fe97701b46731f1d5c0f7c062186e0f3"
+        ],
+        [
+          "src/intervals/test_utils.rs",
+          "97af54e98d4e44e0694eb612efd8c19630cb8bf7c72d24b65554fa80d18f7703"
+        ],
+        [
+          "src/intervals/utils.rs",
+          "6edf23b6ea35667f7f7eeebcaf12d92a4f7d161fc8c0f28d739139366c72c28b"
+        ],
+        [
+          "src/lib.rs",
+          "88069a10b82ff865f8f526dfb2efb84509f6d24b61809783e5b2f0981f3a97d9"
+        ],
+        [
+          "src/partitioning.rs",
+          "9db06c4227959e1cd08ccf534697a51f64e68d82e552db5ed6b82881ac1a3eb1"
+        ],
+        [
+          "src/physical_expr.rs",
+          "a733695dc54cf333ec474189070527fd5944c81681843b451dda07bd49092792"
+        ],
+        [
+          "src/planner.rs",
+          "45924022455684bf488a0df44fb0094280838e9b14aa6e13626b6df136aa798b"
+        ],
+        [
+          "src/projection.rs",
+          "30f023eb230ff76f03dea3cd2d0a46b7c281c0a5b945acc374d82011ff6a9642"
+        ],
+        [
+          "src/scalar_function.rs",
+          "31099345f808f9cbb7ba0358112c24230c3312962e8b63f97ad48f2cf87c644d"
+        ],
+        [
+          "src/scalar_subquery.rs",
+          "7a904c657b01cdff372da9f6458672433df046fdb329b6bf4ec4c53f5289d180"
+        ],
+        [
+          "src/simplifier/const_evaluator.rs",
+          "378bde1c91cd4fb9bcffed94fe621982a75628d7bf93e1275be3630314a625c6"
+        ],
+        [
+          "src/simplifier/mod.rs",
+          "353af166a2f26a517ddfea4adac34dc2c079ef2aad5ab11eb3f6279fbd84088e"
+        ],
+        [
+          "src/simplifier/not.rs",
+          "41cb047af8d0e0e2f223a381caf950808b708a1bdf67a40bd603aaa418cd049b"
+        ],
+        [
+          "src/simplifier/unwrap_cast.rs",
+          "b2f13caffa282901711e7f1fc377e044d1f581fcb3d2eaaaf313d30aad2f4971"
+        ],
+        [
+          "src/statistics/mod.rs",
+          "a8354e10e61adfa62c38852ff99c30a8c6b3d5b459c62fa444cf1fac4151939a"
+        ],
+        [
+          "src/statistics/stats_solver.rs",
+          "5834c6359e7edff2e31771fae049cbae51b07268257bcde43f8b16f1dad39307"
+        ],
+        [
+          "src/utils/guarantee.rs",
+          "de96b06d0b6d0e081cd54fe2a8ad80c192df1826d750daf300688078e4d1a454"
+        ],
+        [
+          "src/utils/mod.rs",
+          "ebdcda281e1d857cab36d5e200f0dccb277132d9dc299e43fcf0fb42582b6707"
+        ],
+        [
+          "src/window/aggregate.rs",
+          "577eff8eeef632c8f504530b11b24f2032d076eb2b72df188d2827698277c2bc"
+        ],
+        [
+          "src/window/mod.rs",
+          "ec29bfc5be30602b19fc6ce29090c1f602dc372f69cb1367221e97fb2b097a34"
+        ],
+        [
+          "src/window/sliding_aggregate.rs",
+          "ef745a4b2303bb5b3b6fb92d2f0d25405cda888efd6f348179b356a729cf23c3"
+        ],
+        [
+          "src/window/standard.rs",
+          "101c3b52066d84253f3e1ebb18f4667e8896ea58d894579d78a0daf7574e01c7"
+        ],
+        [
+          "src/window/standard_window_function_expr.rs",
+          "75343003a9e6021d512fb0c5b3ffac35027135072ea409b563e3db48aada1091"
+        ],
+        [
+          "src/window/window_expr.rs",
+          "ba22c5102ee105fb825ca2b97fc415d023c825bde21a995620c90f38828f5070"
+        ]
+      ]
+    },
+    {
+      "name": "datafusion-physical-expr-common",
+      "version": "54.1.0",
+      "checksum": "72d0d0057fc5a502d45c870cb6d47c66eb7bdd5edb1bd71ad6f3f724975ac2a8",
+      "verified_source_files": [
+        [
+          "src/binary_map.rs",
+          "7c3720fe04a1508c91b4526b498b61a57bfea16de15f7f2ceeebc148bc0bc531"
+        ],
+        [
+          "src/binary_view_map.rs",
+          "1172a18750f13360f041f542a01e9c91fdc6e7534fa29110ddaabbe2c0f8b52a"
+        ],
+        [
+          "src/datum.rs",
+          "272fffe1d3dbe107898d8b993430f1eaf97e107d65cbf3aedb07b32865469ac9"
+        ],
+        [
+          "src/lib.rs",
+          "cd99e31f2e416887129b7de818bb7538e921c1ef32e70e815e0659b1be2738c1"
+        ],
+        [
+          "src/metrics/baseline.rs",
+          "784eb8e45c1833cb0b69578b4fdf442412529bc703ac6867f36c51481c36c009"
+        ],
+        [
+          "src/metrics/builder.rs",
+          "53a009449a85acef693c33187d864071c055570413f527382279726aba8c982e"
+        ],
+        [
+          "src/metrics/custom.rs",
+          "1e359fef8bfd5d4bdd119ad12cb3e3c7bcb1d09c90cfdf8a5bcca0b0f9136fc7"
+        ],
+        [
+          "src/metrics/elapsed_compute.rs",
+          "fefe8962506f75693ec80da9e8683aa59bac0f91519b8ab52cfdcbc39363536d"
+        ],
+        [
+          "src/metrics/expression.rs",
+          "b6892693181c3faf38254cd20bbd39ddf67c317eec2ce855cdfbae4aa4bdd4d5"
+        ],
+        [
+          "src/metrics/mod.rs",
+          "02a3f8da14ee7feaf68e615971e692382011be00bc811fc583826964d1a0ff63"
+        ],
+        [
+          "src/metrics/value.rs",
+          "c49e433f482d88d2014a94582ea336d1992968c42f957233f1e73fb151aaabd1"
+        ],
+        [
+          "src/physical_expr.rs",
+          "bcd4227754ff39547145cfb7961ac775d3fc386e77ba58ef1c2fdbe2d2bd67db"
+        ],
+        [
+          "src/sort_expr.rs",
+          "6496e2b7d0de87a84a911c2d13b8dce253d486931d9ef80ce488c0ae105185a4"
+        ],
+        [
+          "src/tree_node.rs",
+          "2e435ea6cf29ded7e12e84723169e9de29bc7cf3b59d2f925b4d092608418c2f"
+        ],
+        [
+          "src/utils.rs",
+          "f78fae5518ca468d4562e2ff79ba19cc15693d3cd2462498e418179c4e66026b"
+        ]
+      ]
+    },
+    {
+      "name": "either",
+      "version": "1.19.0",
+      "checksum": "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.3",
+      "checksum": "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.15",
+      "checksum": "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
+    },
+    {
+      "name": "fixedbitset",
+      "version": "0.5.9",
+      "checksum": "5905ec755cc8386d7928353e4d356d2be3e89e81e5ca01fe630a1ca4d08dc175"
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "checksum": "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+    },
+    {
+      "name": "foldhash",
+      "version": "0.1.5",
+      "checksum": "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+    },
+    {
+      "name": "foldhash",
+      "version": "0.2.0",
+      "checksum": "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+    },
+    {
+      "name": "futures",
+      "version": "0.3.32",
+      "checksum": "8b147ee9d1f6d097cef9ce628cd2ee62288d963e16fb287bd9286455b241382d"
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.34",
+      "checksum": "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "checksum": "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
+    },
+    {
+      "name": "futures-executor",
+      "version": "0.3.34",
+      "checksum": "031b47cf1a3c6cc8bc2fc76cd437f521619387907d469316e7c0bc278f1f5432"
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.34",
+      "checksum": "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
+    },
+    {
+      "name": "futures-macro",
+      "version": "0.3.34",
+      "checksum": "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.34",
+      "checksum": "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "checksum": "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "checksum": "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.2.17",
+      "checksum": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.3.4",
+      "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3",
+      "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+    },
+    {
+      "name": "half",
+      "version": "2.7.1",
+      "checksum": "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.15.5",
+      "checksum": "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "checksum": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+    },
+    {
+      "name": "iana-time-zone",
+      "version": "0.1.65",
+      "checksum": "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
+    },
+    {
+      "name": "iana-time-zone-haiku",
+      "version": "0.1.2",
+      "checksum": "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.2",
+      "checksum": "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
+    },
+    {
+      "name": "itertools",
+      "version": "0.14.0",
+      "checksum": "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.19",
+      "checksum": "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+    },
+    {
+      "name": "jobserver",
+      "version": "0.1.35",
+      "checksum": "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.107",
+      "checksum": "8dc09d2154098bbf4ef54eab6b117a3c24cbbffe94046b16ee6d6d4510584d3a"
+    },
+    {
+      "name": "lexical-core",
+      "version": "1.0.6",
+      "checksum": "7d8d125a277f807e55a77304455eb7b1cb52f2b18c143b60e766c120bd64a594"
+    },
+    {
+      "name": "lexical-parse-float",
+      "version": "1.0.6",
+      "checksum": "52a9f232fbd6f550bc0137dcb5f99ab674071ac2d690ac69704593cb4abbea56"
+    },
+    {
+      "name": "lexical-parse-integer",
+      "version": "1.0.6",
+      "checksum": "9a7a039f8fb9c19c996cd7b2fcce303c1b2874fe1aca544edc85c4a5f8489b34"
+    },
+    {
+      "name": "lexical-util",
+      "version": "1.0.7",
+      "checksum": "2604dd126bb14f13fb5d1bd6a66155079cb9fa655b37f875b3a742c705dbed17"
+    },
+    {
+      "name": "lexical-write-float",
+      "version": "1.0.6",
+      "checksum": "50c438c87c013188d415fbabbb1dceb44249ab81664efbd31b14ae55dabb6361"
+    },
+    {
+      "name": "lexical-write-integer",
+      "version": "1.0.6",
+      "checksum": "409851a618475d2d5796377cad353802345cba92c867d9fbcde9cf4eac4e14df"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191",
+      "checksum": "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+    },
+    {
+      "name": "libm",
+      "version": "0.2.16",
+      "checksum": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+    },
+    {
+      "name": "lock_api",
+      "version": "0.4.14",
+      "checksum": "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
+    },
+    {
+      "name": "log",
+      "version": "0.4.35",
+      "checksum": "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
+    },
+    {
+      "name": "lz4_flex",
+      "version": "0.13.1",
+      "checksum": "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+    },
+    {
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "checksum": "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
+    },
+    {
+      "name": "num-complex",
+      "version": "0.4.6",
+      "checksum": "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+    },
+    {
+      "name": "num-integer",
+      "version": "0.1.47",
+      "checksum": "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "checksum": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "checksum": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+    },
+    {
+      "name": "parking_lot",
+      "version": "0.12.5",
+      "checksum": "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
+    },
+    {
+      "name": "parking_lot_core",
+      "version": "0.9.12",
+      "checksum": "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
+    },
+    {
+      "name": "petgraph",
+      "version": "0.8.3",
+      "checksum": "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
+    },
+    {
+      "name": "phf",
+      "version": "0.12.1",
+      "checksum": "913273894cec178f401a31ec4b656318d95473527be05c0752cc41cdc32be8b7"
+    },
+    {
+      "name": "phf_shared",
+      "version": "0.12.1",
+      "checksum": "06005508882fb681fd97892ecff4b7fd0fee13ef1aa569f8695dae7ab9099981"
+    },
+    {
+      "name": "pin-project",
+      "version": "1.1.13",
+      "checksum": "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
+    },
+    {
+      "name": "pin-project-internal",
+      "version": "1.1.13",
+      "checksum": "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b"
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "checksum": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+    },
+    {
+      "name": "pkg-config",
+      "version": "0.3.34",
+      "checksum": "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "checksum": "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "checksum": "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+    },
+    {
+      "name": "r-efi",
+      "version": "5.3.0",
+      "checksum": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+    },
+    {
+      "name": "r-efi",
+      "version": "6.0.0",
+      "checksum": "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+    },
+    {
+      "name": "redox_syscall",
+      "version": "0.5.18",
+      "checksum": "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
+    },
+    {
+      "name": "regex",
+      "version": "1.13.1",
+      "checksum": "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+    },
+    {
+      "name": "regex-automata",
+      "version": "0.4.18",
+      "checksum": "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
+    },
+    {
+      "name": "regex-syntax",
+      "version": "0.8.11",
+      "checksum": "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+    },
+    {
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "checksum": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23",
+      "checksum": "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+    },
+    {
+      "name": "ryu",
+      "version": "1.0.23",
+      "checksum": "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+    },
+    {
+      "name": "scopeguard",
+      "version": "1.2.0",
+      "checksum": "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+    },
+    {
+      "name": "semver",
+      "version": "1.0.28",
+      "checksum": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "checksum": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "checksum": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.151",
+      "checksum": "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1",
+      "checksum": "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+    },
+    {
+      "name": "simdutf8",
+      "version": "0.1.5",
+      "checksum": "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+    },
+    {
+      "name": "siphasher",
+      "version": "1.0.4",
+      "checksum": "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "checksum": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+    },
+    {
+      "name": "smallvec",
+      "version": "1.16.5",
+      "checksum": "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
+    },
+    {
+      "name": "sqlparser",
+      "version": "0.62.0",
+      "checksum": "13c6d1b651dc4edf07eead2a0c6c78016ce971bc2c10da5266861b13f25e7cec"
+    },
+    {
+      "name": "sqlparser_derive",
+      "version": "0.5.0",
+      "checksum": "a6dd45d8fc1c79299bfbb7190e42ccbbdf6a5f52e4a6ad98d92357ea965bd289"
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "checksum": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+    },
+    {
+      "name": "syn",
+      "version": "3.0.10",
+      "checksum": "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
+    },
+    {
+      "name": "tiny-keccak",
+      "version": "2.0.2",
+      "checksum": "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+    },
+    {
+      "name": "tokio",
+      "version": "1.54.1",
+      "checksum": "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
+    },
+    {
+      "name": "tokio-macros",
+      "version": "2.7.2",
+      "checksum": "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
+    },
+    {
+      "name": "twox-hash",
+      "version": "2.1.5",
+      "checksum": "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27",
+      "checksum": "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+    },
+    {
+      "name": "unicode-segmentation",
+      "version": "1.13.3",
+      "checksum": "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+    },
+    {
+      "name": "unicode-width",
+      "version": "0.2.3",
+      "checksum": "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
+    },
+    {
+      "name": "uuid",
+      "version": "1.29.2",
+      "checksum": "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
+    },
+    {
+      "name": "version_check",
+      "version": "0.9.5",
+      "checksum": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "checksum": "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+    },
+    {
+      "name": "wasip2",
+      "version": "1.0.4+wasi-0.2.12",
+      "checksum": "b67efb37e106e55ce722a510d6b5f9c17f083e5fc79afc2badeb12cc313d9487"
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.130",
+      "checksum": "a0181c14ddd6c7b8b0b0132a5f1ea2f32be0d893cd3ea97b6e3b28886b8a3d1c"
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.130",
+      "checksum": "6e931a02a39abdbf66966fc35902b5ed58344750a70885bed4ebb3d8eaf28ed9"
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.130",
+      "checksum": "2ca4b54280e455bd831e33a6b8e734baf432fe63fbc35c42ac14ce67a043a53a"
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.130",
+      "checksum": "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
+    },
+    {
+      "name": "web-time",
+      "version": "1.1.0",
+      "checksum": "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+    },
+    {
+      "name": "windows-core",
+      "version": "0.62.2",
+      "checksum": "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
+    },
+    {
+      "name": "windows-implement",
+      "version": "0.60.2",
+      "checksum": "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
+    },
+    {
+      "name": "windows-interface",
+      "version": "0.59.3",
+      "checksum": "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "checksum": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+    },
+    {
+      "name": "windows-result",
+      "version": "0.4.1",
+      "checksum": "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.5.1",
+      "checksum": "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
+    },
+    {
+      "name": "wit-bindgen",
+      "version": "0.57.1",
+      "checksum": "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.8.63",
+      "checksum": "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.8.63",
+      "checksum": "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "checksum": "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+    },
+    {
+      "name": "zstd",
+      "version": "0.13.5",
+      "checksum": "50adf04cf3ec914b0b9905c9dde90c80fe74bfd701e331fc80a39c512c525278"
+    },
+    {
+      "name": "zstd-safe",
+      "version": "7.4.1",
+      "checksum": "498d94ad68720c89b4fbe41b9090850651e68cb2dd9210ce7ffbff3a94653819"
+    },
+    {
+      "name": "zstd-sys",
+      "version": "2.1.3+zstd.1.5.7",
+      "checksum": "f729a06d0257428fd9d997ac8db7e1407bd0262ab016b085b36bc52957c0052d"
+    }
+  ],
+  "input_generator_sha256": "3940637aa1e1ff1fcadac4089b48f4e9ddb808bf48161cbe665ca940d1d10488",
+  "lookup_generator_sha256": "fa37fc905f426381aa7a4a51ac0d1033da5c038dc66d7a29757c51604a9be3d2",
+  "sources": {
+    "rust/lance-index/src/scalar.rs": "5bec49bf88c7ee092dcca458957aae66431f7e516f72f87e97fbc9f1799a778b",
+    "rust/lance-index/src/scalar/btree/flat.rs": "9a41b64ea9fd08f588aadb7e380f2080c19b367ec214db2db1b4f683ab71e162",
+    "rust/lance-index/src/scalar/btree.rs": "1429b7b289ad2ca97f9077be03298846d2d7d95d4030e98498f4d44d9446a7fc"
+  },
+  "units": {
+    "to_expr": "6312014b96f8752a466d2b2a612cf5b318982d80e4d586268b61e6121124e81c",
+    "escape_like_pattern": "cf409474bfd52791bbb31dd6647d06526198216132c815d561479325f75d75e8",
+    "search": "d36a9fb4d4aafde9ddd683062b73122e88ad3c03f051f6f12079b9968828aa1f",
+    "eval_expr": "e7cb0c6908db35b525a52b5655c50bc37969a0a7822afbeaae1c9e40f2165f52",
+    "ids": "d2998da6870bb98bc2723738135c348805941d4efb32b49eff7d09a2ed491397",
+    "search_prebuilt": "7fc0c7e698132e8dd3334c3fb2f617ae76d2753fd7977573ebebe6effb90a9a2",
+    "all": "a40dca5f49631c1238a28fbf1a6573dca368ae82716b6e460559fc18ff3091ec",
+    "all_ignore_nulls": "f953284585c0a3a99c2e6970787cdb6d19301a83a11ae8fb5e093a30a6f4c129",
+    "all_non_null": "5eb842aa799a55b3095efe60154051731eeb7fc8ae09e5f5fa6381911d2905b4",
+    "search_page": "03ea5139079c9d04838b319900bd0b4a9b97dd142d49b509167350d3af998c83",
+    "search_with_options": "0f2479cd873954f7a02e305951f5e4ca9f932edcf3d5637adc88e350c90a48bf",
+    "compile_predicate": "bac6f07c94f810f95179a41d0c56178d8c82890918b0b4a5e7f1357fc1a4d55a",
+    "wrap_bound": "0aa7376ec769d7ee92e0e55530868a1a22ad30a6718f099ff20c87acc28f33f4",
+    "compute_next_prefix": "f5cd69e5592dcd13a547821bc5b6cee027f9fd238af77f02662d97a681055f9b",
+    "next_unicode_char": "0a1fc0a88c4849f2b4966463fbda657181cdafe6427fa2863d7a387fd03c35c9"
+  },
+  "generator_sha256": "29aff971007b48a4b94084f107c5ec408795854b3b5d7ef1e1b98d0b83e3c5ac",
+  "scaffold_sha256": "2c304c097c9aac6082db466831e6c677f875f5c6c301c05afd94f61ec356c2b9",
+  "paged_scaffold_sha256": "85fc71ed9c83894fb68f050d4f8d3f2b5b8d4233e670e00982aeb5a89c4865f2",
+  "lookup_source_sha256": "bea0af80b7f4962c29ef637063e89ba0cff750d28223ade0345b050873050406",
+  "cases_sha256": "34a863b0241725bf336fcb1379e2a0580c58a110262ae46813762b14b2479aa3",
+  "lock_sha256": "a1c4ee001dd205c9b2d036ef79114a0c1d9e0a649b23e6f4750826186bb76fbf",
+  "adapter": "Original FlatIndex search/eval_expr and SargableQuery to_expr; actual DataFusion physical expressions and Arrow kernels. Original BTreeIndex search_with_options/search_page/compile_predicate with pinned lookup. Materialized BTreeSet row-address adapter, no-op metrics and in-memory leaf reader; constructor directly computes immutable all/null sets. No Lance file codec or concurrent IO claim."
+}

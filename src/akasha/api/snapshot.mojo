@@ -425,7 +425,7 @@ struct ReadSnapshot(Movable):
             if definition.name == name:
                 var locations = root[].id_ordered_locations()
                 _ = snapshot_json_artifact(root[], locations,
-                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)),
+                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target), definition.kind),
                     control, rebuild=True)
                 return
         raise Error("unknown JSON index name")
@@ -439,7 +439,7 @@ struct ReadSnapshot(Movable):
             var found = False
             for definition in self._json_catalog.definitions:
                 if definition.name == name:
-                    requests.append(JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)))
+                    requests.append(JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target), definition.kind))
                     found = True
                     break
             if not found:

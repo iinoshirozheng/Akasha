@@ -1,11 +1,14 @@
-"""Lance bitmap scalar target: materialized search, run merge and row remap.
+"""Lance bitmap scalar target: posting search, run merge and row remap.
 
 Ported from lance-index scalar/bitmap.rs, scalar/btree.rs and index-core
 OldIndexDataFilter (The Lance Authors, Apache-2.0). Sorted native keys replace
-the source BTreeMap; postings use the source-ported RoaringRowSet. File storage,
-cache, shard merging and planner/catalog integration are separate layers.
+the source BTreeMap; postings use the source-ported RoaringRowSet. Optional
+mapped storage supplies postings through the same accessors.
 """
 from std.sys import size_of
+from std.memory import ArcPointer
+from akasha.index.mapped_postings import MappedPostings
+from akasha.storage.index_cache import MappedCacheArtifact
 from akasha.index.lance_scalar import LanceScalarKey
 from akasha.index.roaring_rows import RoaringRowSet
 from akasha.index.nullable_rows import NullableRowSet
@@ -16,6 +19,32 @@ from akasha.query.control import QueryControl
 struct LanceBitmapRow(Copyable, Movable):
     var key: LanceScalarKey
     var id: UInt64
+
+
+trait BitmapRowStream(Movable):
+    def next(mut self) raises -> Optional[LanceBitmapRow]:
+        ...
+
+
+struct _BatchRows[origin: ImmOrigin](BitmapRowStream):
+    var batches: Pointer[List[List[LanceBitmapRow]], Self.origin]
+    var batch: Int
+    var row: Int
+
+    def __init__(out self, ref[Self.origin] batches: List[List[LanceBitmapRow]]):
+        self.batches = Pointer(to=batches)
+        self.batch = 0
+        self.row = 0
+
+    def next(mut self) raises -> Optional[LanceBitmapRow]:
+        while self.batch < len(self.batches[]):
+            if self.row < len(self.batches[][self.batch]):
+                var result = self.batches[][self.batch][self.row].copy()
+                self.row += 1
+                return Optional(result^)
+            self.batch += 1
+            self.row = 0
+        return None
 
 
 @fieldwise_init
@@ -128,12 +157,13 @@ struct LanceOldRows(Copyable, Movable):
 
 
 struct LanceBitmapIndex(Copyable, Movable):
-    """Owned bounded target; updates return a new index, preserving old readers.
+    """Bounded target; updates return a new index, preserving old readers.
 
     max_rows bounds input rows, key count and sum of posting cardinalities.
     max_bytes bounds logical retained state and input copy separately, excluding
     capacity/allocator overhead. Operations can also hold old state, a sort
-    buffer and temporary posting sets; this is not a peak RSS limit.
+    buffer and temporary posting sets; this is not a peak RSS limit. Mapped
+    targets retain a bounded directory and a separately bounded posting LRU.
     """
     var target: UInt8
     var max_rows: Int
@@ -143,6 +173,8 @@ struct LanceBitmapIndex(Copyable, Movable):
     var _nulls: RoaringRowSet
     var _rows: Int
     var _bytes: Int
+    var _mapped: Optional[ArcPointer[MappedPostings]]
+    var _shards: List[ArcPointer[MappedCacheArtifact]]
 
     def __init__(out self, target: UInt8, *, max_rows: Int = 1_000_000,
                  max_bytes: Int = 64 * 1024 * 1024) raises:
@@ -157,6 +189,8 @@ struct LanceBitmapIndex(Copyable, Movable):
         self._nulls = RoaringRowSet(max_values=max_rows, max_bytes=max_bytes)
         self._rows = 0
         self._bytes = 0
+        self._mapped = Optional[ArcPointer[MappedPostings]]()
+        self._shards = List[ArcPointer[MappedCacheArtifact]]()
 
     def _empty_set(self) raises -> RoaringRowSet:
         return RoaringRowSet(max_values=self.max_rows, max_bytes=self.max_bytes)
@@ -234,17 +268,17 @@ struct LanceBitmapIndex(Copyable, Movable):
                     mut old_pos: Int, mut emitted_null: Bool, mut result: Self,
                     old_filter: Optional[LanceOldRows], control: Optional[QueryControl]) raises:
         if key.is_null:
-            if not self._nulls.is_empty():
-                rows = rows.union_with(self._retained(self._nulls, old_filter, control), control=control.copy())
+            if not self.null_rows(control).is_empty():
+                rows = rows.union_with(self._retained(self.null_rows(control), old_filter, control), control=control.copy())
             emitted_null = True
         else:
             while old_pos < len(self._keys) and self._keys[old_pos]._compare_same(key) < 0:
                 if control:
                     control.value().checkpoint(0)
-                result._emit(self._keys[old_pos], self._retained(self._postings[old_pos], old_filter, control))
+                result._emit(self._keys[old_pos], self._retained(self.posting(old_pos, control), old_filter, control))
                 old_pos += 1
             if old_pos < len(self._keys) and self._keys[old_pos]._compare_same(key) == 0:
-                rows = rows.union_with(self._retained(self._postings[old_pos], old_filter, control), control=control.copy())
+                rows = rows.union_with(self._retained(self.posting(old_pos, control), old_filter, control), control=control.copy())
                 old_pos += 1
         result._emit(key, rows^)
 
@@ -263,41 +297,64 @@ struct LanceBitmapIndex(Copyable, Movable):
             self._check(count, bytes)
         if control:
             control.value().validate_candidate_count(count)
+        var stream = _BatchRows(batches)
+        return self.merge_stream(stream, old_filter=old_filter.copy(), control=control.copy())
+
+    def merge_stream[Stream: BitmapRowStream](self, mut stream: Stream, *,
+                     old_filter: Optional[LanceOldRows] = None,
+                     control: Optional[QueryControl] = None) raises -> Self:
+        """Consume globally sorted rows without retaining the input stream."""
+        if control:
+            control.value().validate_candidate_count(self._rows)
+            control.value().checkpoint(0)
         var result = Self(self.target, max_rows=self.max_rows, max_bytes=self.max_bytes)
         var current = Optional[LanceScalarKey]()
         var rows = self._empty_set()
         var old_pos = 0
         var emitted_null = False
         var ordinal = 0
-        for batch in batches:
-            for entry in batch:
-                if control:
-                    control.value().checkpoint(ordinal)
-                ordinal += 1
-                var comparison = current.value()._compare_same(entry.key) if current else -1
-                if comparison > 0:
-                    raise Error("bitmap input must be sorted by value with nulls first")
-                if not current or comparison != 0:
-                    if current:
-                        self._finish_run(current.value(), rows^, old_pos, emitted_null, result, old_filter, control)
-                    current = Optional(entry.key.copy())
-                    rows = self._empty_set()
-                _ = rows.insert(entry.id)
+        while True:
+            var next_row = stream.next()
+            if not next_row:
+                break
+            var entry = next_row.take()
+            ordinal += 1
+            self._check(ordinal, size_of[LanceBitmapRow]() + len(entry.key._bytes))
+            entry.key.validate(self.target)
+            if control:
+                control.value().checkpoint(ordinal)
+                control.value().validate_candidate_count(ordinal)
+            var comparison = current.value()._compare_same(entry.key) if current else -1
+            if comparison > 0:
+                raise Error("bitmap input must be sorted by value with nulls first")
+            if not current or comparison != 0:
+                if current:
+                    self._finish_run(current.value(), rows^, old_pos, emitted_null, result, old_filter, control)
+                current = Optional(entry.key.copy())
+                rows = self._empty_set()
+            _ = rows.insert(entry.id)
         if current:
             self._finish_run(current.value(), rows^, old_pos, emitted_null, result, old_filter, control)
         while old_pos < len(self._keys):
             if control:
                 control.value().checkpoint(0)
-            result._emit(self._keys[old_pos], self._retained(self._postings[old_pos], old_filter, control))
+            result._emit(self._keys[old_pos], self._retained(self.posting(old_pos, control), old_filter, control))
             old_pos += 1
-        if not emitted_null and not self._nulls.is_empty():
-            result._emit(LanceScalarKey.null(self.target), self._retained(self._nulls, old_filter, control))
+        if not emitted_null and not self.null_rows(control).is_empty():
+            result._emit(LanceScalarKey.null(self.target), self._retained(self.null_rows(control), old_filter, control))
         return result^
 
     def keys(self) -> List[LanceScalarKey]:
         return self._keys.copy()
 
-    def null_rows(self) -> RoaringRowSet:
+    def posting(self, slot: Int, control: Optional[QueryControl] = None) raises -> RoaringRowSet:
+        if self._mapped:
+            return self._mapped.value()[].load(slot + 1, control)
+        return self._postings[slot].copy()
+
+    def null_rows(self, control: Optional[QueryControl] = None) raises -> RoaringRowSet:
+        if self._mapped:
+            return self._mapped.value()[].load(0, control)
         return self._nulls.copy()
 
     def _lower(self, key: LanceScalarKey, *, after: Bool = False) -> Int:
@@ -312,13 +369,13 @@ struct LanceBitmapIndex(Copyable, Movable):
                 high = middle
         return low
 
-    def lookup(self, key: LanceScalarKey) raises -> RoaringRowSet:
+    def lookup(self, key: LanceScalarKey, control: Optional[QueryControl] = None) raises -> RoaringRowSet:
         key.validate(self.target)
         if key.is_null:
-            return self._nulls.copy()
+            return self.null_rows(control)
         var at = self._lower(key)
         if at < len(self._keys) and self._keys[at]._compare_same(key) == 0:
-            return self._postings[at].copy()
+            return self.posting(at, control)
         return self._empty_set()
 
     def search(self, query: LanceBitmapQuery, *, track_nulls: Bool = True,
@@ -353,7 +410,7 @@ struct LanceBitmapIndex(Copyable, Movable):
             if len(query.values) != 1:
                 raise Error("bitmap equality requires one value")
             query_for_null = query.values[0].is_null
-            rows = self.lookup(query.values[0])
+            rows = self.lookup(query.values[0], control)
         elif query.kind == 1:
             var low = 0
             var high = len(self._keys)
@@ -362,19 +419,19 @@ struct LanceBitmapIndex(Copyable, Movable):
             if query.upper.key:
                 high = self._lower(query.upper.key.value(), after=query.upper.included)
             for i in range(low, high):
-                rows = rows.union_with(self._postings[i], control=control.copy())
+                rows = rows.union_with(self.posting(i, control), control=control.copy())
         elif query.kind == 2:
             for i in range(len(query.values)):
                 if control:
                     control.value().checkpoint(i)
                 query_for_null = query_for_null or query.values[i].is_null
-                rows = rows.union_with(self.lookup(query.values[i]), control=control.copy())
+                rows = rows.union_with(self.lookup(query.values[i], control), control=control.copy())
         elif query.kind == 3:
-            rows = self._nulls.copy()
+            rows = self.null_rows(control)
         else:
             raise Error("unsupported bitmap query")
         if track_nulls and not query_for_null:
-            nulls = self._nulls.copy()
+            nulls = self.null_rows(control)
         return NullableRowSet(rows^, nulls^)
 
     def remapped(self, mapping: Dict[UInt64, Optional[UInt64]], *,
@@ -386,7 +443,7 @@ struct LanceBitmapIndex(Copyable, Movable):
         var result = Self(self.target, max_rows=self.max_rows, max_bytes=self.max_bytes)
         for i in range(len(self._keys) + 1):
             var key = LanceScalarKey.null(self.target) if i == len(self._keys) else self._keys[i].copy()
-            var input = self._nulls.copy() if key.is_null else self._postings[i].copy()
+            var input = self.null_rows(control) if key.is_null else self.posting(i, control)
             var rows = self._empty_set()
             var ordinal = 0
             for id in input.values(max_bytes=self.max_bytes, control=control.copy()):

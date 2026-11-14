@@ -1,4 +1,4 @@
-from akasha.storage.filesystem import remove_file_if_exists, write_file_sync
+from akasha.storage.filesystem import remove_file_if_exists, write_file_sync, create_anonymous_file
 from akasha.storage.mapped_file import MappedFile
 from akasha.storage.checksum import crc32_range
 from std.ffi import c_int, external_call
@@ -272,6 +272,25 @@ def test_packed_unaligned_load_checks_full_range_and_lifetime() raises:
     with assert_raises():
         _ = mapped.load_scalars[DType.uint16, 4](0)
 
+
+
+def test_anonymous_file_mapping_owns_duplicate_and_survives_writer_close() raises:
+    var file = create_anonymous_file()
+    var bytes: List[UInt8] = [1, 7, 9]
+    file.write_all(bytes)
+    var fd = Int32(file.handle)
+    assert_equal(_fcntl_getfd(fd) & 1, 1)
+    var mapped = MappedFile.from_file(file)
+    var owned = mapped._descriptor_for_testing()
+    assert_true(owned != fd)
+    assert_equal(_fcntl_getfd(owned) & 1, 1)
+    file.close()
+    _assert_descriptor_closed(fd)
+    assert_equal(mapped.byte_at(1), UInt8(7))
+    mapped.release_descriptor()
+    _assert_descriptor_closed(owned)
+    assert_equal(mapped.byte_at(2), UInt8(9))
+    mapped.close()
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

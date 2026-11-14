@@ -129,6 +129,7 @@ class JsonIndexRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     column: StrictStr
     path: StrictStr
+    kind: Literal["bitmap", "btree"] = "bitmap"
 
 
 class JsonExpressionRequest(BaseModel):

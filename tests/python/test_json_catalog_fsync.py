@@ -7,7 +7,8 @@ import sys
 import pytest
 
 
-def test_catalog_directory_sync_failure_requires_reopen(tmp_path):
+@pytest.mark.parametrize("kind", ["bitmap", "btree"])
+def test_catalog_directory_sync_failure_requires_reopen(tmp_path, kind):
     if sys.platform not in ("darwin", "linux"):
         pytest.skip("directory fsync interposer supports macOS and Linux")
     root = Path(__file__).resolve().parents[2]
@@ -28,7 +29,7 @@ db.flush()
 marker = path / "fail-sync"
 marker.touch()
 try:
-    db.create_json_index("v", "data", "$.v")
+    db.create_json_index("v", "data", "v", kind=sys.argv[2])
 except ValidationError:
     pass
 else:
@@ -43,6 +44,7 @@ else:
 db.close()
 db = Collection(path, 1)
 assert db.json_indexes()[0]["name"] == "v"
+assert db.json_indexes()[0]["kind"] == sys.argv[2]
 assert db.get_point(1) is not None
 db.drop_json_index("v")
 db.close()
@@ -50,6 +52,6 @@ db.close()
     environment = dict(os.environ)
     environment["DYLD_INSERT_LIBRARIES" if sys.platform == "darwin" else "LD_PRELOAD"] = str(library)
     environment["AKASHA_FSYNC_FAIL_MARKER"] = str(tmp_path / "database" / "fail-sync")
-    result = subprocess.run([sys.executable, str(script), str(tmp_path / "database")],
+    result = subprocess.run([sys.executable, str(script), str(tmp_path / "database"), kind],
                             env=environment, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr

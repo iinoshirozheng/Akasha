@@ -1,6 +1,6 @@
 from akasha.index.json_catalog import JsonIndexCatalog, JsonIndexDefinition
 from akasha.query.json_snapshot import JsonIndexRequest, build_snapshot_json_index, snapshot_json_artifact
-from akasha.storage.json_bitmap_cache import publish_json_bitmap_cache_best_effort, remove_json_bitmap_cache_best_effort
+from akasha.storage.json_scalar_cache import publish_json_scalar_cache_best_effort, remove_json_scalar_cache_best_effort
 from akasha.query.query_plan import QueryNode
 from akasha.query.universal import query_generation
 from akasha.query.field_recommendation import RecommendationExample, recommend_generation_field
@@ -790,18 +790,18 @@ struct PersistentCollection:
             return self._json_catalog_unlocked().definitions.copy()
 
     def create_json_index(mut self, name: String, column: String, path: String,
-                          control: Optional[QueryControl] = None) raises:
+                          control: Optional[QueryControl] = None, *, kind: UInt8 = 1) raises:
         # Build outside writer exclusion; publish only against the captured state.
         var snapshot = self.snapshot()
         var catalog = snapshot._json_catalog.copy()
         for definition in catalog.definitions:
             if definition.name == name:
                 raise Error("JSON index name already exists")
-        var definition = JsonIndexDefinition(name.copy(), column.copy(), path.copy(), 1)
+        var definition = JsonIndexDefinition(name.copy(), column.copy(), path.copy(), 1, kind)
         definition.validate()
         var root = snapshot._acquire()
         var locations = root[].id_ordered_locations()
-        var index = build_snapshot_json_index(root[], locations, JsonIndexRequest(column.copy(), path.copy()), control)
+        var index = build_snapshot_json_index(root[], locations, JsonIndexRequest(column.copy(), path.copy(), kind=kind), control)
         definition.target = index.target()
         if catalog.revision == UInt64.MAX:
             raise Error("JSON catalog revision exhausted")
@@ -816,7 +816,7 @@ struct PersistentCollection:
                 control.value().checkpoint(0)
             var generation = self._point_store.publish_json_catalog(catalog^, expected)
             self._read_generations[].publish(generation)
-            publish_json_bitmap_cache_best_effort(root[], locations, column, index)
+            publish_json_scalar_cache_best_effort(root[], locations, column, index)
 
     def rebuild_json_index(mut self, name: String,
                            control: Optional[QueryControl] = None) raises:
@@ -826,12 +826,12 @@ struct PersistentCollection:
             if definition.name == name:
                 var locations = root[].id_ordered_locations()
                 var index = snapshot_json_artifact(root[], locations,
-                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target)),
+                    JsonIndexRequest(definition.column.copy(), definition.path.copy(), Optional(definition.target), definition.kind),
                     control, rebuild=True)
                 with BlockingScopedLock(self._writer_lock[]):
                     self._ensure_open()
                     if self._last_sequence == captured.last_sequence() and self._json_catalog_unlocked().revision == captured._json_catalog.revision:
-                        publish_json_bitmap_cache_best_effort(root[], locations, definition.column, index[])
+                        publish_json_scalar_cache_best_effort(root[], locations, definition.column, index[])
                 return
         raise Error("unknown JSON index name")
 
@@ -857,10 +857,10 @@ struct PersistentCollection:
                 if definition.name == name:
                     var shared = False
                     for other in old.definitions:
-                        if other.name != name and other.column == definition.column and other.path == definition.path and other.target == definition.target:
+                        if other.name != name and other.column == definition.column and other.path == definition.path and other.target == definition.target and other.kind == definition.kind:
                             shared = True
                     if not shared:
-                        remove_json_bitmap_cache_best_effort(self._path, definition.column, definition.path, definition.target)
+                        remove_json_scalar_cache_best_effort(self._path, definition.column, definition.path, definition.target, definition.kind)
 
     def snapshot(self) raises -> ReadSnapshot:
         """Capture an immutable owned view of all currently visible records."""
